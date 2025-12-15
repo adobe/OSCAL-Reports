@@ -1,8 +1,8 @@
 /**
  * Password Generator for Default Credentials (Frontend)
  * Generates password in format: username#DDMMYYHH
- * Where DD=day, MM=month, YY=last 2 digits of year, HH=hour (24-hour format)
- * Note: The $ in "username#$DDMMYYHH" is just notation - actual format is username#DDMMYYHH
+ * Where DD=day, MM=month, YY=last 2 digits of year, HH=hour (24-hour format, UTC)
+ * Note: Uses UTC time to match Dockerfile's build-time password generation
  * 
  * This matches the backend password generation logic
  */

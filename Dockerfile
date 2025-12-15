@@ -40,8 +40,9 @@ RUN mkdir -p /app/config/app
 ARG BUILD_TIMESTAMP=""
 
 # Generate credentials file with timestamp-based passwords
-# Format: username#DDMMYYHH (DD=day, MM=month, YY=year, HH=hour)
+# Format: username#DDMMYYHH (DD=day, MM=month, YY=year, HH=hour in UTC)
 # Use Node.js to parse BUILD_TIMESTAMP for cross-platform compatibility
+# IMPORTANT: Uses UTC time to ensure consistency across all timezones
 RUN BUILD_DATE_RAW="${BUILD_TIMESTAMP:-$(date -Iseconds)}" && \
     BUILD_DATE=$(node -e "const d=new Date('$BUILD_DATE_RAW'||Date.now()); console.log(String(d.getUTCDate()).padStart(2,'0'))") && \
     BUILD_MONTH=$(node -e "const d=new Date('$BUILD_DATE_RAW'||Date.now()); console.log(String(d.getUTCMonth()+1).padStart(2,'0'))") && \
