@@ -12,7 +12,23 @@ import './IntegrityWarning.css';
 function IntegrityWarning({ warning, onDismiss }) {
   const [dismissed, setDismissed] = useState(false);
 
+  // Debug logging
+  React.useEffect(() => {
+    if (warning) {
+      console.log('🚨 IntegrityWarning component received warning:', warning);
+      console.log('   Message:', warning.message);
+      console.log('   Severity:', warning.severity);
+      console.log('   Details:', warning.details);
+    }
+  }, [warning]);
+
   if (!warning || dismissed) {
+    if (!warning) {
+      console.log('ℹ️ IntegrityWarning: No warning provided');
+    }
+    if (dismissed) {
+      console.log('ℹ️ IntegrityWarning: Warning dismissed');
+    }
     return null;
   }
 

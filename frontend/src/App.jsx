@@ -156,9 +156,13 @@ function App() {
       console.log('✅ Catalog URL extracted:', response.data.catalogUrl);
       
       // Check for integrity warning
+      console.log('🔍 Checking integrity warning from response:', response.data.integrityWarning);
       if (response.data.integrityWarning) {
-        console.warn('⚠️ Integrity warning:', response.data.integrityWarning);
+        console.warn('⚠️ Integrity warning detected:', response.data.integrityWarning);
+        console.warn('⚠️ Setting integrity warning state...');
         setIntegrityWarning(response.data.integrityWarning);
+      } else {
+        console.log('✅ No integrity warning found');
       }
       
       setExistingSSP(sspData);
