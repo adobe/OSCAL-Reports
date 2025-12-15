@@ -44,10 +44,10 @@ ARG BUILD_TIMESTAMP=""
 # Use Node.js to parse BUILD_TIMESTAMP for cross-platform compatibility
 # IMPORTANT: Uses UTC time to ensure consistency across all timezones
 RUN BUILD_DATE_RAW="${BUILD_TIMESTAMP:-$(date -Iseconds)}" && \
-    BUILD_DATE=$(node -e "const d=new Date('$BUILD_DATE_RAW'||Date.now()); console.log(String(d.getUTCDate()).padStart(2,'0'))") && \
-    BUILD_MONTH=$(node -e "const d=new Date('$BUILD_DATE_RAW'||Date.now()); console.log(String(d.getUTCMonth()+1).padStart(2,'0'))") && \
-    BUILD_YEAR=$(node -e "const d=new Date('$BUILD_DATE_RAW'||Date.now()); console.log(String(d.getUTCFullYear()).slice(-2))") && \
-    BUILD_HOUR=$(node -e "const d=new Date('$BUILD_DATE_RAW'||Date.now()); console.log(String(d.getUTCHours()).padStart(2,'0'))") && \
+    BUILD_DATE=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCDate()).padStart(2,'0'))") && \
+    BUILD_MONTH=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCMonth()+1).padStart(2,'0'))") && \
+    BUILD_YEAR=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCFullYear()).slice(-2))") && \
+    BUILD_HOUR=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCHours()).padStart(2,'0'))") && \
     ADMIN_PASSWORD="admin#${BUILD_DATE}${BUILD_MONTH}${BUILD_YEAR}${BUILD_HOUR}" && \
     USER_PASSWORD="user#${BUILD_DATE}${BUILD_MONTH}${BUILD_YEAR}${BUILD_HOUR}" && \
     ASSESSOR_PASSWORD="assessor#${BUILD_DATE}${BUILD_MONTH}${BUILD_YEAR}${BUILD_HOUR}" && \

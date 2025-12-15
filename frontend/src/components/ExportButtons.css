@@ -4,6 +4,7 @@
 
 .export-card {
   background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 1.25rem;
@@ -264,7 +265,7 @@
 
 /* Assessor Warning Modal */
 .assessor-warning-modal {
-  max-width: 600px;
+  max-width: 800px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -338,8 +339,8 @@
 .warning-details h4 {
   color: #e65100;
   margin-top: 0;
-  margin-bottom: 0.75rem;
-  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -352,8 +353,9 @@
 }
 
 .warning-details li {
-  margin-bottom: 0.75rem;
-  line-height: 1.6;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+  font-size: 0.9rem;
 }
 
 .warning-details li:last-child {
@@ -433,7 +435,10 @@
 
   .warning-details ul {
     padding-left: 1rem;
-    font-size: 0.9rem;
+  }
+
+  .warning-details li {
+    font-size: 0.85rem;
   }
 }
 
