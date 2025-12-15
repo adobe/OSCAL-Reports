@@ -207,6 +207,16 @@ Generate reports in multiple formats:
 
 The application includes an intelligent control suggestion engine that provides automated recommendations for control implementations.
 
+### AI Provider Support
+
+The application supports multiple AI providers for enhanced control suggestions:
+
+- **🏠 Ollama** (Local/Self-hosted) - Run AI models locally with full data privacy
+- **☁️ Mistral API** (Cloud) - Direct access to Mistral AI cloud service
+- **🚀 AWS Bedrock** (Cloud) - Enterprise-grade managed AI from Amazon with access to Mistral, Claude, and Llama models
+
+**See**: [AWS_BEDROCK_INTEGRATION.md](AWS_BEDROCK_INTEGRATION.md) for detailed AWS Bedrock configuration guide.
+
 ### Features
 
 - **Pattern Matching**: Analyzes control families (AC, AU, IA, SC, SI, etc.) and keywords

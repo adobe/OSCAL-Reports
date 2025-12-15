@@ -9,7 +9,9 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.952.0",
     "@oscal/oscal-deep-diff": "^1.0.0",
+    "@smithy/node-http-handler": "^4.4.6",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "axios": "^1.6.2",

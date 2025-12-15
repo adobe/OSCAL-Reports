@@ -88,6 +88,49 @@ app.get('/api/test-suggestions', (req, res) => {
   }
 });
 
+// Debug endpoint for integrity hash troubleshooting
+app.post('/api/debug-integrity', async (req, res) => {
+  try {
+    const { oscalData } = req.body;
+    
+    if (!oscalData) {
+      return res.status(400).json({ error: 'OSCAL data is required' });
+    }
+    
+    // Get integrity info
+    const integrityInfo = getIntegrityInfo(oscalData);
+    
+    // Verify hash
+    const verificationResult = verifyIntegrityHash(oscalData);
+    
+    // Get metadata props for inspection
+    const metadata = oscalData['system-security-plan']?.metadata || oscalData.metadata;
+    const props = metadata?.props || [];
+    
+    res.json({
+      success: true,
+      integrityInfo: integrityInfo,
+      verification: verificationResult,
+      metadata: {
+        propsCount: props.length,
+        props: props.map(p => ({
+          name: p.name,
+          ns: p.ns,
+          value: p.value?.substring(0, 32) + (p.value?.length > 32 ? '...' : ''),
+          class: p.class
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Debug integrity error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 // Get default credentials (for frontend display)
 app.get('/api/auth/default-credentials', (req, res) => {
   try {
@@ -2542,8 +2585,113 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
  */
 app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
   try {
-    const { url, apiToken = '' } = req.body;
+    const { provider = 'ollama', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
     
+    console.log(`🔍 Testing ${provider} connection...`);
+    
+    // AWS Bedrock test connection
+    if (provider === 'aws-bedrock') {
+      try {
+        // Dynamically import AWS SDK and Node.js https
+        const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
+        const { Agent: HttpsAgent } = await import('https');
+        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
+        
+        if (!awsAccessKeyId || !awsSecretAccessKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'AWS credentials required (Access Key ID and Secret Access Key)'
+          });
+        }
+        
+        if (!awsRegion) {
+          return res.status(400).json({
+            success: false,
+            error: 'AWS region required'
+          });
+        }
+        
+        // Create custom HTTPS agent to handle SSL certificate issues
+        // In production, you should use proper SSL certificates
+        const httpsAgent = new HttpsAgent({
+          rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
+          keepAlive: true
+        });
+        
+        // Create Bedrock client with custom request handler
+        const client = new BedrockRuntimeClient({
+          region: awsRegion,
+          credentials: {
+            accessKeyId: awsAccessKeyId,
+            secretAccessKey: awsSecretAccessKey
+          },
+          requestHandler: new NodeHttpHandler({
+            httpsAgent: httpsAgent,
+            connectionTimeout: 10000,
+            socketTimeout: 30000
+          })
+        });
+        
+        // Test with a simple prompt
+        const modelId = bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+        const command = new ConverseCommand({
+          modelId: modelId,
+          messages: [
+            {
+              role: 'user',
+              content: [{ text: 'Test connection. Reply with "OK".' }]
+            }
+          ],
+          inferenceConfig: {
+            maxTokens: 10,
+            temperature: 0.5
+          }
+        });
+        
+        const response = await client.send(command);
+        
+        console.log(`✅ AWS Bedrock connection successful`);
+        console.log(`   Region: ${awsRegion}`);
+        console.log(`   Model: ${modelId}`);
+        
+        return res.json({
+          success: true,
+          message: 'AWS Bedrock connection successful',
+          details: {
+            provider: 'aws-bedrock',
+            region: awsRegion,
+            modelId: modelId,
+            testResponse: response.output?.message?.content?.[0]?.text || 'Response received'
+          }
+        });
+        
+      } catch (error) {
+        console.error(`❌ AWS Bedrock connection failed:`, error.message);
+        
+        let errorMessage = 'AWS Bedrock connection failed';
+        if (error.name === 'AccessDeniedException') {
+          errorMessage = 'AWS Access Denied. Check credentials and IAM permissions (bedrock:InvokeModel required)';
+        } else if (error.name === 'ResourceNotFoundException') {
+          errorMessage = `Model not found: ${bedrockModelId}. Check model ID and region availability`;
+        } else if (error.name === 'ValidationException') {
+          errorMessage = 'Invalid request parameters';
+        } else {
+          errorMessage = error.message;
+        }
+        
+        return res.status(500).json({
+          success: false,
+          error: errorMessage,
+          details: {
+            provider: 'aws-bedrock',
+            errorType: error.name,
+            errorCode: error.code
+          }
+        });
+      }
+    }
+    
+    // Ollama or Mistral API test connection (requires URL)
     if (!url || !url.trim()) {
       return res.status(400).json({ 
         success: false,
@@ -2554,9 +2702,9 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // Parse and normalize the URL
     let fullUrl = url.trim();
     
-    // Add protocol if missing (default to http)
+    // Add protocol if missing (default to http for ollama, https for mistral-api)
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-      fullUrl = `http://${fullUrl}`;
+      fullUrl = provider === 'mistral-api' ? `https://${fullUrl}` : `http://${fullUrl}`;
     }
     
     // Validate URL format
@@ -2573,9 +2721,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // Reconstruct URL to ensure it's properly formatted
     fullUrl = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}` : ''}${urlObj.pathname}`;
     
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`🔍 Testing AI Engine connection to: ${fullUrl}`);
-    }
+    console.log(`   URL: ${fullUrl}`);
     
     // Prepare headers with API token if provided
     const headers = {

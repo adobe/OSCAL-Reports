@@ -13,6 +13,16 @@ import http from 'http';
 import https from 'https';
 import { loadConfig } from './configManager.js';
 
+// AWS SDK imports (lazy loaded when needed)
+let BedrockRuntimeClient, ConverseCommand;
+try {
+  const awsModule = await import('@aws-sdk/client-bedrock-runtime');
+  BedrockRuntimeClient = awsModule.BedrockRuntimeClient;
+  ConverseCommand = awsModule.ConverseCommand;
+} catch (error) {
+  console.log('ℹ️ AWS SDK not installed. AWS Bedrock support disabled. Run: npm install @aws-sdk/client-bedrock-runtime');
+}
+
 let mistralConfig = null;
 
 /**
@@ -34,41 +44,59 @@ export async function loadMistralConfig() {
     let aiModel = 'mistral:7b';
     let aiTimeout = 30000;
     let aiApiToken = '';
+    let aiProvider = 'ollama';
+    let awsRegion = 'us-east-1';
+    let awsAccessKeyId = '';
+    let awsSecretAccessKey = '';
+    let bedrockModelId = 'mistral.mistral-large-2402-v1:0';
     
-    if (config.aiConfig && config.aiConfig.enabled && config.aiConfig.url) {
-      let baseUrl = config.aiConfig.url.trim();
+    if (config.aiConfig && config.aiConfig.enabled) {
+      aiEnabled = true;
+      aiProvider = config.aiConfig.provider || 'ollama';
+      aiTimeout = config.aiConfig.timeout || 180000;
       
-      // Handle migration from old format (url + port) to new format (full URL)
-      if (config.aiConfig.port && !baseUrl.includes('://')) {
-        // Old format: separate url and port
-        const hostname = baseUrl || 'localhost';
-        const port = config.aiConfig.port || 11434;
-        baseUrl = `http://${hostname}:${port}`;
-      }
-      
-      // Add protocol if missing (default to http)
-      if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-        baseUrl = `http://${baseUrl}`;
-      }
-      
-      // Parse and normalize URL
-      try {
-        const urlObj = new URL(baseUrl);
-        aiUrl = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}` : ''}${urlObj.pathname}`;
-        aiEnabled = true;
-        aiModel = config.aiConfig.model || 'mistral:7b';
-        aiApiToken = config.aiConfig.apiToken || '';
-        // Increase timeout to 180 seconds (180000ms) to allow for model loading and processing
-        // First request can take 30-60 seconds to load model into memory
-        // Subsequent requests may take 60-120 seconds depending on model size and prompt complexity
-        aiTimeout = config.aiConfig.timeout || 180000;
-        console.log(`🔧 Using AI Engine URL from Settings: ${aiUrl}`);
+      // Provider-specific configuration
+      if (aiProvider === 'aws-bedrock') {
+        // AWS Bedrock configuration
+        awsRegion = config.aiConfig.awsRegion || 'us-east-1';
+        awsAccessKeyId = config.aiConfig.awsAccessKeyId || '';
+        awsSecretAccessKey = config.aiConfig.awsSecretAccessKey || '';
+        bedrockModelId = config.aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+        console.log(`🔧 Using AWS Bedrock in region: ${awsRegion}`);
+        console.log(`   Model: ${bedrockModelId}`);
         console.log(`   Timeout: ${aiTimeout}ms (${aiTimeout/1000}s)`);
-        if (aiApiToken) {
-          console.log(`   Using API token for authentication`);
+      } else if (config.aiConfig.url) {
+        // Ollama or Mistral API - requires URL
+        let baseUrl = config.aiConfig.url.trim();
+        
+        // Handle migration from old format (url + port) to new format (full URL)
+        if (config.aiConfig.port && !baseUrl.includes('://')) {
+          // Old format: separate url and port
+          const hostname = baseUrl || 'localhost';
+          const port = config.aiConfig.port || 11434;
+          baseUrl = `http://${hostname}:${port}`;
         }
-      } catch (e) {
-        console.warn(`⚠️ Invalid AI Engine URL format: ${baseUrl}, error: ${e.message}`);
+        
+        // Add protocol if missing (default to http for ollama, https for mistral-api)
+        if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+          baseUrl = aiProvider === 'mistral-api' ? `https://${baseUrl}` : `http://${baseUrl}`;
+        }
+        
+        // Parse and normalize URL
+        try {
+          const urlObj = new URL(baseUrl);
+          aiUrl = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}` : ''}${urlObj.pathname}`;
+          aiModel = config.aiConfig.model || 'mistral:7b';
+          aiApiToken = config.aiConfig.apiToken || '';
+          console.log(`🔧 Using AI Engine URL from Settings: ${aiUrl}`);
+          console.log(`   Provider: ${aiProvider}`);
+          console.log(`   Timeout: ${aiTimeout}ms (${aiTimeout/1000}s)`);
+          if (aiApiToken) {
+            console.log(`   Using API token for authentication`);
+          }
+        } catch (e) {
+          console.warn(`⚠️ Invalid AI Engine URL format: ${baseUrl}, error: ${e.message}`);
+        }
       }
     }
     
@@ -80,12 +108,17 @@ export async function loadMistralConfig() {
     
     mistralConfig = {
       enabled: aiEnabled || config.mistralConfig?.enabled || false,
-      provider: 'ollama', // 'ollama' or 'mistral-api'
+      provider: aiProvider || 'ollama', // 'ollama', 'mistral-api', or 'aws-bedrock'
       ollamaUrl: defaultOllamaUrl,
       model: aiModel || config.mistralConfig?.model || 'mistral:7b',
       apiToken: aiApiToken || config.mistralConfig?.apiToken || '',
       mistralApiKey: config.mistralConfig?.mistralApiKey || '',
       mistralApiUrl: config.mistralConfig?.mistralApiUrl || 'https://api.mistral.ai/v1/chat/completions',
+      // AWS Bedrock configuration
+      awsRegion: awsRegion,
+      awsAccessKeyId: awsAccessKeyId,
+      awsSecretAccessKey: awsSecretAccessKey,
+      bedrockModelId: bedrockModelId,
       timeout: aiTimeout || config.mistralConfig?.timeout || 180000, // 180 seconds default for model loading and processing
       maxRetries: config.mistralConfig?.maxRetries || 2,
       fallbackToPatternMatching: config.mistralConfig?.fallbackToPatternMatching !== false
@@ -266,6 +299,101 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
     if (error.response?.status === 401) {
       throw new Error('Invalid Mistral API key');
     }
+    throw error;
+  }
+}
+
+/**
+ * Generate implementation text using AWS Bedrock
+ * Supports Mistral, Claude, and Llama models on Bedrock
+ */
+async function generateWithAWSBedrock(control, config, existingControls = []) {
+  if (!BedrockRuntimeClient || !ConverseCommand) {
+    throw new Error('AWS SDK not installed. Install with: npm install @aws-sdk/client-bedrock-runtime');
+  }
+
+  if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+    throw new Error('AWS credentials not configured');
+  }
+
+  if (!config.awsRegion) {
+    throw new Error('AWS region not configured');
+  }
+
+  const prompt = buildPrompt(control, existingControls);
+  
+  try {
+    console.log(`🔄 Connecting to AWS Bedrock in ${config.awsRegion}...`);
+    
+    // Import Node.js https and AWS SDK handler
+    const { Agent: HttpsAgent } = await import('https');
+    const { NodeHttpHandler } = await import('@smithy/node-http-handler');
+    
+    // Create custom HTTPS agent to handle SSL certificate issues
+    // In production, you should use proper SSL certificates
+    const httpsAgent = new HttpsAgent({
+      rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
+      keepAlive: true
+    });
+    
+    // Create Bedrock Runtime client with custom request handler
+    const client = new BedrockRuntimeClient({
+      region: config.awsRegion,
+      credentials: {
+        accessKeyId: config.awsAccessKeyId,
+        secretAccessKey: config.awsSecretAccessKey
+      },
+      requestHandler: new NodeHttpHandler({
+        httpsAgent: httpsAgent,
+        connectionTimeout: 30000,
+        socketTimeout: config.timeout || 180000
+      })
+    });
+
+    // Set model ID (default to Mistral Large if not specified)
+    const modelId = config.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+    console.log(`📝 Using Bedrock model: ${modelId}`);
+
+    // Create the command with Converse API
+    const command = new ConverseCommand({
+      modelId: modelId,
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: prompt }]
+        }
+      ],
+      inferenceConfig: {
+        maxTokens: 512,
+        temperature: 0.7,
+        topP: 0.9
+      }
+    });
+
+    // Send the command and get response
+    const response = await client.send(command);
+
+    // Extract response text
+    if (response.output && response.output.message && response.output.message.content) {
+      const responseText = response.output.message.content[0]?.text;
+      if (responseText) {
+        console.log(`✅ Received response from AWS Bedrock (${responseText.length} chars)`);
+        return cleanResponse(responseText);
+      }
+    }
+    
+    throw new Error('Invalid response format from AWS Bedrock');
+  } catch (error) {
+    if (error.name === 'AccessDeniedException') {
+      throw new Error('AWS Access Denied. Check your credentials and IAM permissions (bedrock:InvokeModel required)');
+    }
+    if (error.name === 'ResourceNotFoundException') {
+      throw new Error(`Model not found: ${config.bedrockModelId}. Check model ID and region availability`);
+    }
+    if (error.name === 'ThrottlingException') {
+      throw new Error('AWS Bedrock throttling limit reached. Please try again later');
+    }
+    console.error(`❌ AWS Bedrock error:`, error.message);
     throw error;
   }
 }
@@ -479,18 +607,20 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
           implementation = await generateWithOllama(control, config, existingControls);
         } else if (config.provider === 'mistral-api') {
           implementation = await generateWithMistralAPI(control, config, existingControls);
+        } else if (config.provider === 'aws-bedrock') {
+          implementation = await generateWithAWSBedrock(control, config, existingControls);
         } else {
-          throw new Error(`Unknown Mistral provider: ${config.provider}`);
+          throw new Error(`Unknown AI provider: ${config.provider}`);
         }
         
         if (implementation && implementation.length > 50) {
-          console.log(`✅ Successfully generated implementation with Mistral (attempt ${attempt + 1})`);
+          console.log(`✅ Successfully generated implementation with ${config.provider} (attempt ${attempt + 1})`);
           // Mark as AI-generated by returning object with flag
           return { text: implementation, aiGenerated: true, attempted: true };
         }
       } catch (error) {
         lastError = error;
-        console.warn(`⚠️ Mistral generation attempt ${attempt + 1} failed:`, error.message);
+        console.warn(`⚠️ ${config.provider} generation attempt ${attempt + 1} failed:`, error.message);
         
         if (attempt < (config.maxRetries || 2)) {
           // Wait before retry (exponential backoff)
@@ -623,6 +753,39 @@ export async function checkMistralAvailability() {
         available: true,
         provider: 'mistral-api',
         reason: 'Mistral API configured (availability not tested)'
+      };
+    } else if (config.provider === 'aws-bedrock') {
+      // Check AWS Bedrock configuration
+      if (!BedrockRuntimeClient || !ConverseCommand) {
+        return {
+          available: false,
+          provider: 'aws-bedrock',
+          reason: 'AWS SDK not installed. Run: npm install @aws-sdk/client-bedrock-runtime'
+        };
+      }
+      
+      if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+        return {
+          available: false,
+          provider: 'aws-bedrock',
+          reason: 'AWS credentials not configured'
+        };
+      }
+      
+      if (!config.awsRegion) {
+        return {
+          available: false,
+          provider: 'aws-bedrock',
+          reason: 'AWS region not configured'
+        };
+      }
+      
+      return {
+        available: true,
+        provider: 'aws-bedrock',
+        awsRegion: config.awsRegion,
+        bedrockModelId: config.bedrockModelId,
+        reason: 'AWS Bedrock configured (credentials not validated - will be tested on first API call)'
       };
     }
     

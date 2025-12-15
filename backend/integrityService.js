@@ -65,11 +65,24 @@ export function calculateIntegrityHash(oscalData) {
     // Create a copy of the data without the integrity property to avoid circular dependency
     const dataToHash = removeIntegrityProperty(JSON.parse(JSON.stringify(oscalData)));
     
+    // Log metadata props for debugging
+    const metadata = dataToHash['system-security-plan']?.metadata || dataToHash.metadata;
+    const props = metadata?.props || [];
+    console.log(`   Props in data to hash: ${props.length} properties`);
+    props.forEach((p, i) => {
+      console.log(`     [${i}] ${p.name} (ns: ${p.ns?.split('/').pop() || 'none'})`);
+    });
+    
     // Recursively normalize the entire structure (sort all keys at all levels)
     const normalizedData = normalizeJsonRecursive(dataToHash);
     
     // Convert to normalized JSON string (no whitespace, deterministic order)
     const normalizedJson = JSON.stringify(normalizedData);
+    
+    // Log JSON characteristics for debugging
+    console.log(`   Normalized JSON length: ${normalizedJson.length} chars`);
+    console.log(`   First 200 chars: ${normalizedJson.substring(0, 200)}...`);
+    console.log(`   Last 200 chars: ...${normalizedJson.substring(normalizedJson.length - 200)}`);
     
     // Calculate SHA-256 hash (FIPS 180-4 approved)
     const hash = crypto.createHash(INTEGRITY_ALGORITHM);
@@ -97,13 +110,17 @@ function removeIntegrityProperty(oscalData) {
     if (ssp.metadata && ssp.metadata.props) {
       ssp.metadata.props = ssp.metadata.props.filter(
         prop => !(prop.name === INTEGRITY_PROPERTY_NAME && 
+                  prop.ns === INTEGRITY_PROPERTY_NAMESPACE) &&
+                !(prop.name === 'file-integrity-timestamp' && 
                   prop.ns === INTEGRITY_PROPERTY_NAMESPACE)
       );
     }
   } else if (oscalData.metadata && oscalData.metadata.props) {
     oscalData.metadata.props = oscalData.metadata.props.filter(
       prop => !(prop.name === INTEGRITY_PROPERTY_NAME && 
-                prop.ns === INTEGRITY_PROPERTY_NAMESPACE)
+                prop.ns === INTEGRITY_PROPERTY_NAMESPACE) &&
+                !(prop.name === 'file-integrity-timestamp' && 
+                  prop.ns === INTEGRITY_PROPERTY_NAMESPACE)
     );
   }
   
@@ -206,6 +223,7 @@ export function addIntegrityHash(oscalData) {
 export function verifyIntegrityHash(oscalData) {
   try {
     console.log('🔐 Starting integrity verification...');
+    console.log('📊 OSCAL structure:', oscalData ? (oscalData['system-security-plan'] ? 'SSP format' : 'Other format') : 'Missing');
     
     // Extract integrity hash from OSCAL metadata
     const storedHash = extractIntegrityHash(oscalData);
@@ -221,11 +239,13 @@ export function verifyIntegrityHash(oscalData) {
     }
     
     console.log('✅ Stored hash found:', storedHash.substring(0, 16) + '...');
+    console.log('   Full stored hash:', storedHash);
     
     // Calculate hash of current content
     console.log('🔄 Calculating hash of current file content...');
     const calculatedHash = calculateIntegrityHash(oscalData);
     console.log('✅ Calculated hash:', calculatedHash.substring(0, 16) + '...');
+    console.log('   Full calculated hash:', calculatedHash);
     
     // Compare hashes
     const isValid = storedHash === calculatedHash;

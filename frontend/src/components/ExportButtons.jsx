@@ -10,11 +10,14 @@ import React, { useState, useEffect } from 'react';
 import './ExportButtons.css';
 import { validateSSP, getValidatorStatus } from '../services/oscalValidator';
 import ValidationStatus from './ValidationStatus';
+import { useAuth } from '../contexts/AuthContext';
 
 function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, loading, systemInfo, controls }) {
+  const { user } = useAuth();
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [validatorReady, setValidatorReady] = useState(false);
+  const [showAssessorWarning, setShowAssessorWarning] = useState(false);
   
   // Validation options - user can select what to validate
   const [validationOptions, setValidationOptions] = useState({
@@ -83,6 +86,27 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
 
   const closeValidationModal = () => {
     setValidationResult(null);
+  };
+
+  // Handle OSCAL export with Assessor check
+  const handleOSCALExport = () => {
+    // Check if user is Assessor role
+    if (user && user.role === 'Assessor') {
+      setShowAssessorWarning(true);
+    } else {
+      // For other roles, export directly
+      onExportSSP();
+    }
+  };
+
+  // Handle Assessor confirmation
+  const handleAssessorConfirm = () => {
+    setShowAssessorWarning(false);
+    onExportSSP();
+  };
+
+  const handleAssessorCancel = () => {
+    setShowAssessorWarning(false);
   };
 
   return (
@@ -204,7 +228,7 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
         <div className="export-buttons">
           <button
             className="btn btn-primary export-btn"
-            onClick={onExportSSP}
+            onClick={handleOSCALExport}
             disabled={loading}
             title="OSCAL JSON: Standards-compliant format for automated processing and integration with other OSCAL tools"
           >
@@ -286,6 +310,58 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
           result={validationResult}
           onClose={closeValidationModal}
         />
+      )}
+
+      {/* Assessor Warning Modal */}
+      {showAssessorWarning && (
+        <div className="modal-overlay" onClick={handleAssessorCancel}>
+          <div className="modal-content assessor-warning-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>⚠️ Assessor Export Warning</h3>
+              <button className="modal-close" onClick={handleAssessorCancel}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="warning-icon-large">🔐</div>
+              <p className="warning-message">
+                You are exporting this OSCAL Report as an <strong>Assessor</strong>.
+              </p>
+              <div className="warning-details">
+                <h4>⚠️ Important: File Integrity Reset</h4>
+                <ul>
+                  <li>
+                    <strong>Integrity Hash Will Be Updated:</strong> A new FIPS 140-2 compliant SHA-256 integrity hash will be generated for this export.
+                  </li>
+                  <li>
+                    <strong>Previous Hash Replaced:</strong> The old integrity hash will be replaced with a new one based on your current export.
+                  </li>
+                  <li>
+                    <strong>Future Imports:</strong> When anyone imports this newly exported file, they will NOT see integrity warnings because the new hash will match.
+                  </li>
+                  <li>
+                    <strong>Audit Trail:</strong> The timestamp of this integrity update will be recorded in the OSCAL metadata.
+                  </li>
+                </ul>
+              </div>
+              <div className="warning-question">
+                <strong>Do you want to proceed with the export?</strong>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleAssessorCancel}
+              >
+                ❌ Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleAssessorConfirm}
+              >
+                ✅ Yes, Proceed with Export
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
