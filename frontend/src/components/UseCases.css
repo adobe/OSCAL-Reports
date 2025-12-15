@@ -1,0 +1,570 @@
+.usecases-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%);
+  padding: 2rem;
+  color: white;
+}
+
+.usecases-header {
+  text-align: center;
+  margin-bottom: 3rem;
+  animation: fadeInDown 0.6s ease-out;
+}
+
+.usecases-header h1 {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.usecases-header h2 {
+  font-size: 1.8rem;
+  font-weight: 300;
+  margin-bottom: 0.5rem;
+}
+
+.usecases-header .subtitle {
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+.usecases-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  margin-bottom: 3rem;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+  align-items: stretch;
+}
+
+/* Responsive grid - stack on smaller screens */
+@media (max-width: 768px) {
+  .usecases-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.usecase-card {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  animation: fadeInUp 0.6s ease-out;
+  animation-fill-mode: both;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.usecase-card:nth-child(1) { animation-delay: 0.1s; }
+.usecase-card:nth-child(2) { animation-delay: 0.2s; }
+.usecase-card:nth-child(3) { animation-delay: 0.3s; }
+.usecase-card:nth-child(4) { animation-delay: 0.4s; }
+
+.usecase-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.usecase-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.usecase-icon {
+  font-size: 3rem;
+  flex-shrink: 0;
+}
+
+.usecase-title-section h3 {
+  color: #333;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.usecase-subtitle {
+  color: #666;
+  margin: 0.25rem 0 0 0;
+  font-size: 0.95rem;
+}
+
+.usecase-description {
+  color: #555;
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.usecase-features h4,
+.usecase-workflow h4 {
+  color: #333;
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.usecase-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem 0;
+}
+
+.usecase-features li {
+  color: #555;
+  padding: 0.25rem 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.check-icon {
+  color: #4CAF50;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.workflow-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.workflow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 70px;
+  position: relative;
+}
+
+.step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.step-icon {
+  font-size: 1.5rem;
+}
+
+.step-action {
+  font-size: 0.75rem;
+  color: #555;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.step-arrow {
+  position: absolute;
+  right: -0.5rem;
+  top: 12px;
+  color: #999;
+  font-size: 1.2rem;
+}
+
+.usecase-btn {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: auto;
+}
+
+.btn-blue { background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%); color: white; }
+.btn-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
+.btn-purple { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #333; }
+.btn-orange { background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); color: white; }
+
+.usecase-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Feature Comparison Tooltip */
+.feature-comparison-tooltip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+  z-index: 100;
+  width: 95%;
+  max-width: 900px;
+  pointer-events: none;
+}
+
+.usecase-card {
+  position: relative;
+}
+
+.usecase-card:hover .feature-comparison-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltip-header {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin-bottom: 1rem;
+  text-align: center;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.tooltip-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tooltip-table th,
+.tooltip-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tooltip-table th {
+  background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.tooltip-table tbody tr {
+  background: white;
+  transition: background 0.2s ease;
+}
+
+.tooltip-table tbody tr:hover {
+  background: rgba(237, 28, 36, 0.05);
+}
+
+.tooltip-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tooltip-table td {
+  color: #333;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.tooltip-table td:first-child {
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+/* Footer Section */
+.usecases-footer {
+  max-width: 1400px;
+  margin: 0 auto;
+  animation: fadeIn 0.8s ease-out 0.4s;
+  animation-fill-mode: both;
+}
+
+.comparison-table {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  border: none;
+}
+
+.comparison-table h3 {
+  color: #1e3a8a;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.5rem;
+  text-shadow: none;
+}
+
+.comparison-table table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 1rem 0.75rem;
+  text-align: left !important;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.comparison-table th {
+  background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%);
+  color: white;
+  font-weight: 700;
+  text-align: left !important;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.comparison-table tbody tr {
+  background: white;
+  transition: background 0.2s ease;
+}
+
+.comparison-table tbody tr:hover {
+  background: rgba(30, 58, 138, 0.05);
+}
+
+.comparison-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.comparison-table td {
+  color: #1e3a8a;
+  text-align: left !important;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.comparison-table td:first-child {
+  font-weight: 600;
+  color: #1e3a8a;
+}
+
+.getting-started-section-merged {
+  padding: 2.5rem 2rem 1.5rem 2rem;
+  margin-top: 2.5rem;
+  border-top: 2px solid #e0e0e0;
+  text-align: center;
+}
+
+.getting-started-section-merged h3 {
+  color: #1e3a8a;
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.getting-started-section-merged p {
+  color: #1e3a8a;
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.getting-started-section {
+  background: white;
+  border-radius: 16px;
+  padding: 3rem 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.getting-started-section h3 {
+  color: #333;
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.getting-started-section p {
+  color: #666;
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.btn-large {
+  padding: 1.25rem 3rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.info-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.info-box {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.info-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.info-box h4 {
+  color: #333;
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.info-box p {
+  color: #666;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.usecases-credits {
+  text-align: center;
+  padding: 2rem 0 1rem 0;
+  opacity: 0.9;
+}
+
+.usecases-credits p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.usecases-credits small {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+/* Animations */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .usecases-container {
+    padding: 1rem;
+  }
+
+  .usecases-header h1 {
+    font-size: 2rem;
+  }
+
+  .usecases-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .usecases-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .usecase-card {
+    padding: 1.5rem;
+  }
+
+  .workflow-steps {
+    flex-direction: column;
+  }
+
+  .step-arrow {
+    display: none;
+  }
+
+  .comparison-table {
+    overflow-x: auto;
+    padding: 1.5rem;
+  }
+
+  .comparison-table h3 {
+    font-size: 1.25rem;
+  }
+
+  .comparison-table table {
+    font-size: 0.85rem;
+    min-width: 600px;
+  }
+
+  .comparison-table th,
+  .comparison-table td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .info-boxes {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .usecases-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .usecase-icon {
+    font-size: 2.5rem;
+  }
+
+  .usecase-title-section h3 {
+    font-size: 1.25rem;
+  }
+
+  .btn-large {
+    padding: 1rem 2rem;
+    font-size: 1rem;
+  }
+}
+

@@ -2,7 +2,7 @@
 
 **A comprehensive web application for generating compliance documentation from OSCAL catalogs**
 
-Version 2.0 | January 2025
+Version 2.0 | November 2025
 
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -15,6 +15,7 @@ Version 2.0 | January 2025
 ### 🎯 Key Features
 
 - ✨ **New Workflow**: Load existing reports first, then update catalogs intelligently
+- 🤖 **Automated Control Suggestions**: AI-powered recommendations for control implementations
 - 📚 **Multiple Frameworks**: NIST SP 800-53, Australian ISM, Singapore IM8
 - 📊 **Multiple Export Formats**: OSCAL JSON, Excel, PDF, and CCM
 - 🔄 **Smart Catalog Updates**: Automatically detect new/changed controls
@@ -35,7 +36,7 @@ Version 2.0 | January 2025
 
 ```bash
 # Clone or download the repository
-cd OSCAL-Report-Generator-V1
+cd OSCAL-Report-Generator-V2
 
 # Run the setup script
 chmod +x setup.sh
@@ -202,6 +203,69 @@ Generate reports in multiple formats:
 
 ---
 
+## 🤖 Automated Control Suggestions
+
+The application includes an intelligent control suggestion engine that provides automated recommendations for control implementations.
+
+### AI Provider Support
+
+The application supports multiple AI providers for enhanced control suggestions:
+
+- **🏠 Ollama** (Local/Self-hosted) - Run AI models locally with full data privacy
+- **☁️ Mistral API** (Cloud) - Direct access to Mistral AI cloud service
+- **🚀 AWS Bedrock** (Cloud) - Enterprise-grade managed AI from Amazon with access to Mistral, Claude, and Llama models
+
+**See**: [AWS_BEDROCK_INTEGRATION.md](AWS_BEDROCK_INTEGRATION.md) for detailed AWS Bedrock configuration guide.
+
+### Features
+
+- **Pattern Matching**: Analyzes control families (AC, AU, IA, SC, SI, etc.) and keywords
+- **Template Library**: Pre-built templates for common control types
+- **Machine Learning**: Learns from your existing control implementations
+- **Confidence Scoring**: Each suggestion includes a confidence level (High/Medium/Low)
+- **Field-Level Application**: Apply individual fields or all suggestions at once
+- **Reasoning Display**: Explains why each suggestion was made
+
+### How to Use
+
+1. Expand any control in the controls list
+2. Click the **"🤖 Get Suggestions"** button
+3. Review the suggested implementation details with confidence scores
+4. Apply individual fields using the "Apply" button next to each field
+5. Or apply all suggestions at once using "✅ Apply All Suggestions"
+
+### Suggestion Strategies
+
+The engine uses multiple strategies to provide the best suggestions:
+
+1. **Control Family Templates** (High Confidence)
+   - Matches controls to predefined templates by family
+   - Provides comprehensive implementation suggestions
+
+2. **Pattern Matching** (Medium Confidence)
+   - Analyzes control title and description for keywords
+   - Matches against known patterns (access, audit, encryption, etc.)
+
+3. **Learning from Existing Controls** (Medium Confidence)
+   - Finds similar controls from existing implementations
+   - Averages implementation details from similar controls
+
+4. **Default Suggestions** (Low Confidence)
+   - Provides generic but useful suggestions based on control characteristics
+
+### Supported Fields
+
+The suggestion engine can provide recommendations for:
+- Implementation Status
+- Implementation Description
+- Responsible Party
+- Control Type
+- Testing Method
+- Testing Frequency
+- Risk Rating
+
+---
+
 ## 📊 Export Formats
 
 ### 1. OSCAL SSP JSON
@@ -246,12 +310,30 @@ Australian ISM-specific format with:
 
 ## 🔧 Configuration
 
+### Configuration Directory Structure
+
+All configuration files are centralized in the `config/` directory:
+
+```
+config/
+├── app/              # Application runtime configs (sensitive)
+│   ├── config.json   # Application settings (SSO, messaging, API gateways)
+│   └── users.json    # User accounts (FIPS 140-2 compliant passwords)
+└── build/            # Build/deployment configs
+    ├── docker-compose.yml
+    ├── truenas-app.yaml
+    └── Dockerfile
+```
+
+**Security Note**: The `config/app/` directory contains sensitive data and should be encrypted and have restricted access controls applied.
+
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NODE_ENV` | `production` | Node environment mode |
-| `PORT` | `3019` | Server port |
+| `PORT` | `3020` (V2) / `3019` (V1) | Server port |
+| `BUILD_TIMESTAMP` | Current time | Build timestamp for password generation |
 
 ### Port Configuration
 
@@ -261,6 +343,15 @@ Change the port by setting the `PORT` environment variable:
 PORT=8080 node server.js
 ```
 
+### Default Credentials
+
+Default user passwords are generated using timestamp format: `username#$DDMMYYHH`
+
+- **Format**: `username#$DDMMYYHH` (DD=Day, MM=Month, YY=Year, HH=Hour)
+- **Example**: `user#$27112514` (November 27, 2025 at 14:00)
+- **Location**: Check `credentials.txt` file after setup/build
+- **Login UI**: Default passwords displayed on login page
+
 ---
 
 ## 🛠️ Development
@@ -268,7 +359,7 @@ PORT=8080 node server.js
 ### Project Structure
 
 ```
-OSCAL-Report-Generator-V1/
+OSCAL-Report-Generator-V2/
 ├── backend/                 # Node.js + Express backend
 │   ├── server.js           # Main server file
 │   ├── ccmExport.js        # CCM Excel generation
@@ -300,12 +391,15 @@ OSCAL-Report-Generator-V1/
 - ExcelJS (Excel generation)
 - PDFKit (PDF generation)
 - Axios (HTTP client)
+- PBKDF2 (FIPS 140-2 compliant password hashing)
+- Crypto (Node.js built-in cryptographic functions)
 
 **Frontend:**
 - React 18
 - Vite (build tool)
 - CSS3 (styling)
 - Local Storage API (data persistence)
+- Axios (HTTP client for API calls)
 
 ### Development Commands
 
@@ -394,15 +488,57 @@ Body: { "fileData": "<base64-encoded-excel>" }
 Response: { "systemInfo": {...}, "controls": [...], "statistics": {...} }
 ```
 
+### Authentication Endpoints
+
+```
+POST /api/auth/login
+Body: { "username": "user", "password": "user#$27112514" }
+Response: { "success": true, "user": {...}, "sessionToken": "..." }
+
+GET /api/auth/default-credentials
+Response: { "success": true, "passwords": {...}, "format": "username#$DDMMYYHH" }
+
+GET /api/auth/validate
+Headers: { "Authorization": "Bearer <token>" }
+Response: { "valid": true, "user": {...} }
+
+POST /api/auth/logout
+Headers: { "Authorization": "Bearer <token>" }
+Response: { "success": true }
+```
+
 ---
 
 ## 🔐 Security Considerations
+
+### Password Security
+
+- **FIPS 140-2 Compliant Hashing**: All passwords use PBKDF2 with SHA-256
+  - 100,000 iterations (meets FIPS recommendations)
+  - Random 16-byte salt per password
+  - 32-byte (256-bit) key length
+  - Format: `pbkdf2$sha256$iterations$salt$hash`
+- **Timestamp-Based Default Passwords**: Default credentials use format `username#$DDMMYYHH`
+  - Generated based on build/startup timestamp
+  - More secure than static default passwords
+  - Displayed in login UI and credentials file
+- **Automatic Password Migration**: Legacy SHA-256 passwords automatically migrate to PBKDF2 on login
+
+### Configuration Security
+
+- **Centralized Config Directory**: All configuration files stored in `config/` directory
+  - Runtime configs in `config/app/` (sensitive data)
+  - Build configs in `config/build/` (deployment files)
+  - Ready for folder-level encryption and access control
+- **Sensitive Files Excluded**: Config files excluded from version control via `.gitignore`
+
+### Data Storage
 
 - All data is stored in browser local storage (client-side)
 - No sensitive data is stored on the server
 - Catalog URLs are fetched server-side to avoid CORS issues
 - Health check endpoint for monitoring
-- No authentication required (deploy behind reverse proxy if needed)
+- User authentication and authorization system in place
 
 ---
 

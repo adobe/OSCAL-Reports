@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  oscal-report-generator-v2:
+    image: oscal-report-generator-v2:latest
+    container_name: oscal-report-generator-v2
+    hostname: oscal-generator-v2
+    restart: unless-stopped
+    
+    ports:
+      - "3020:3020"
+    
+    environment:
+      - NODE_ENV=production
+      - PORT=3020
+      # Ollama service URL for Docker networking (if Ollama is deployed)
+      # For Docker Compose deployments, use: http://ollama:11434
+      # For standalone deployments, update this to your Ollama service URL
+      - OLLAMA_URL=http://ollama:11434
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3020/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    labels:
+      - "app.name=OSCAL Report Generator"
+      - "app.description=Generate OSCAL SOA/SSP/CCM compliance reports"
+      - "app.author=Mukesh Kesharwani"
+      - "app.version=1.2.6"
+      # TrueNAS WebUI Portal Configuration
+      - "org.truenas.webui.enable=true"
+      - "org.truenas.webui.protocol=http"
+      - "org.truenas.webui.host=0.0.0.0"
+      - "org.truenas.webui.port=3020"
+      - "org.truenas.webui.path=/"
+      # Alternative TrueNAS portal labels (if above doesn't work)
+      - "traefik.enable=true"
+      - "traefik.http.routers.oscal.rule=PathPrefix(`/`)"
+      - "traefik.http.services.oscal.loadbalancer.server.port=3020"
+    
+    networks:
+      - oscal-network
+
+networks:
+  oscal-network:
+    name: oscal-network
+    driver: bridge
+    external: false  # Set to true if network already exists
+

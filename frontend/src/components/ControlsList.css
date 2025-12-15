@@ -1,0 +1,366 @@
+.controls-list-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 4px 6px var(--shadow);
+  margin-bottom: 1rem;
+}
+
+.controls-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.filters-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.filters-row-1 {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+.filters-row-2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.filters-left {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: stretch;
+  flex: 1;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+}
+
+.filter-box {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  height: 42px;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(237, 28, 36, 0.1);
+}
+
+
+.filter-select {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  min-width: 140px;
+  width: 100%;
+  white-space: nowrap;
+  height: 42px;
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+
+.filter-select option {
+  white-space: normal;
+  word-wrap: break-word;
+  padding: 0.25rem;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--light);
+  border-radius: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+  height: 42px;
+  box-sizing: border-box;
+}
+
+.bulk-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dark);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.bulk-btn {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: white;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.bulk-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+  transform: scale(1.05);
+}
+
+.controls-stats {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--light);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: white;
+  border-radius: 6px;
+  border-left: 4px solid var(--primary);
+}
+
+.stat-effective {
+  border-left-color: #86EFAC;
+}
+
+.stat-alternate {
+  border-left-color: #BBF7D0;
+}
+
+.stat-ineffective {
+  border-left-color: #FECACA;
+}
+
+.stat-no-visibility {
+  border-left-color: #000000;
+}
+
+.stat-not-implemented {
+  border-left-color: #FCA5A5;
+}
+
+.stat-na {
+  border-left-color: #D1D5DB;
+}
+
+.bulk-effective:hover {
+  background: #86EFAC !important;
+  color: #1F2937 !important;
+}
+
+.bulk-alternate:hover {
+  background: #BBF7D0 !important;
+  color: #1F2937 !important;
+}
+
+.bulk-not-implemented:hover {
+  background: #FCA5A5 !important;
+  color: #1F2937 !important;
+}
+
+.bulk-not-applicable:hover {
+  background: #D1D5DB !important;
+  color: #1F2937 !important;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--dark);
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dark);
+}
+
+.controls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-height: 450px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.controls-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.controls-list::-webkit-scrollbar-track {
+  background: var(--light);
+  border-radius: 4px;
+}
+
+.controls-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.controls-list::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+.no-results {
+  text-align: center;
+  padding: 3rem;
+  color: var(--dark);
+  opacity: 0.5;
+}
+
+@media (max-width: 768px) {
+  .controls-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .filters-row-1,
+  .filters-row-2 {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .search-box,
+  .filter-box {
+    width: 100%;
+    flex: 1;
+    min-width: unset;
+  }
+
+  .filters-left {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .filter-select {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .bulk-actions {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .controls-stats {
+    flex-direction: column;
+  }
+
+  .stat {
+    width: 100%;
+  }
+}
+
+/* Comparison Mode Styles */
+.filter-change {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(132, 204, 22, 0.05));
+  border-color: var(--primary);
+  font-weight: 500;
+}
+
+.stat-divider {
+  width: 2px;
+  height: 30px;
+  background: linear-gradient(to bottom, transparent, var(--border), transparent);
+  margin: 0 0.5rem;
+}
+
+.stat-new {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(59, 130, 246, 0.1));
+  border-color: #3b82f6;
+}
+
+.stat-changed {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.1));
+  border-color: #f59e0b;
+}
+
+.stat-unchanged {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(22, 163, 74, 0.1));
+  border-color: #16a34a;
+}
+
+.comparison-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(132, 204, 22, 0.1));
+  border: 2px solid var(--primary);
+  border-radius: 10px;
+  animation: fadeInSlide 0.4s ease-out;
+}
+
+.banner-icon {
+  font-size: 1.5rem;
+}
+
+.banner-text {
+  color: var(--dark);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.banner-text strong {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
