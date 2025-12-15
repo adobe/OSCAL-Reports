@@ -1,0 +1,158 @@
+/**
+ * Integrity Warning Component Styles
+ * 
+ * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+ * @copyright Copyright (c) 2025 Mukesh Kesharwani
+ * @license MIT
+ */
+
+.integrity-warning {
+  margin: 1rem 0;
+  border-radius: 8px;
+  padding: 1rem;
+  border: 2px solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.integrity-warning-warning {
+  background-color: #fff3cd;
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.integrity-warning-info {
+  background-color: #d1ecf1;
+  border-color: #17a2b8;
+  color: #0c5460;
+}
+
+.integrity-warning-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.integrity-warning-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.integrity-warning-icon-warning::before {
+  content: '⚠';
+  display: block;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.integrity-warning-icon-info::before {
+  content: 'ℹ';
+  display: block;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.integrity-warning-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.integrity-warning-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.integrity-fips-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.integrity-warning-details {
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.integrity-warning-meta {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  opacity: 0.8;
+}
+
+.integrity-warning-meta small {
+  font-size: 0.875rem;
+}
+
+.integrity-warning-dismiss {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.integrity-warning-dismiss:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+  opacity: 1;
+}
+
+.integrity-warning-warning .integrity-warning-dismiss {
+  color: #856404;
+}
+
+.integrity-warning-info .integrity-warning-dismiss {
+  color: #0c5460;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .integrity-warning {
+    padding: 0.75rem;
+  }
+
+  .integrity-warning-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .integrity-warning-content {
+    gap: 0.75rem;
+  }
+}
+

@@ -1,0 +1,124 @@
+.ccm-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.ccm-tab {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: none;
+  font-weight: 600;
+  color: var(--dark);
+  opacity: 0.6;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+
+.ccm-tab:hover {
+  opacity: 0.8;
+  background: var(--light);
+}
+
+.ccm-tab.active {
+  opacity: 1;
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.ccm-tab-content {
+  padding-top: 0.5rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.api-response-display {
+  background: var(--light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.api-response-display pre {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--dark);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+@media (max-width: 768px) {
+  .ccm-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .ccm-tab {
+    white-space: nowrap;
+    font-size: 0.9rem;
+    padding: 0.6rem 1rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Change Badge Styles */
+.change-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: help;
+  margin-right: 0.5rem;
+  transition: all 0.2s;
+  animation: pulseIn 0.4s ease-out;
+}
+
+.change-new {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(59, 130, 246, 0.15));
+  color: #2563eb;
+  border: 1.5px solid #3b82f6;
+}
+
+.change-changed {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.15));
+  color: #d97706;
+  border: 1.5px solid #f59e0b;
+}
+
+.change-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes pulseIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+

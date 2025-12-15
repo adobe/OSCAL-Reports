@@ -1,0 +1,754 @@
+/**
+ * MultiReportComparison Component Styles
+ * 
+ * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+ * @copyright Copyright (c) 2025 Mukesh Kesharwani
+ * @license MIT
+ */
+
+.multi-report-comparison {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%);
+  padding: 0 0 2rem 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* App Header - Full viewport width */
+.multi-report-comparison .app-header {
+  margin: 0;
+  margin-bottom: 2rem;
+  width: 100vw;
+  max-width: 100vw;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Add padding to all content except header */
+.multi-report-comparison > *:not(.app-header) {
+  padding-left: 2rem;
+  padding-right: 2rem;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Comparison Header Card */
+.comparison-header {
+  position: relative;
+  margin-bottom: 2rem;
+  padding: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px var(--shadow);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.comparison-header h2 {
+  margin: 0;
+  color: var(--dark);
+  font-size: 1.8rem;
+  flex: 1;
+  text-align: center;
+}
+
+/* Comparison header buttons - intentionally gray for visual hierarchy */
+.comparison-header .btn-secondary {
+  flex-shrink: 0;
+  padding: 1rem 1.5rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px var(--shadow);
+  white-space: nowrap;
+}
+
+.comparison-header .btn-secondary:hover {
+  background: #5a6268;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.comparison-back-btn {
+  position: absolute;
+  left: 1.5rem;
+  top: 1.5rem;
+}
+
+.comparison-title-section {
+  width: 100%;
+  text-align: center;
+}
+
+.comparison-title-section h2 {
+  margin: 0;
+  color: var(--dark);
+  font-size: 1.8rem;
+}
+
+.comparison-title-section p {
+  margin: 0.5rem 0 1rem 0;
+  color: var(--dark);
+  opacity: 0.8;
+  font-size: 0.95rem;
+}
+
+.step-title {
+  margin: 1.5rem 0 0 0;
+  color: var(--primary);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+/* Upload Section - FORCE Horizontal Layout */
+.upload-section {
+  margin-bottom: 2rem !important;
+  padding: 1.5rem !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(10px) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 6px var(--shadow) !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important; /* THREE COLUMNS SIDE BY SIDE */
+  gap: 1.5rem !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  align-items: start !important;
+  grid-auto-flow: column !important;
+}
+
+.upload-card {
+  background: rgba(248, 250, 252, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px var(--shadow);
+  border: 1px solid rgba(224, 231, 255, 0.3);
+  overflow: hidden;
+  width: 100%; /* Ensure all cards have full width of their grid cell */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px; /* Ensure consistent minimum height across all cards */
+  max-width: none; /* Remove any max-width constraint */
+  transition: all 0.3s ease;
+}
+
+.upload-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+.upload-header {
+  background: linear-gradient(135deg, rgba(237, 28, 36, 0.1) 0%, rgba(44, 44, 44, 0.1) 100%);
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-bottom: 1px solid rgba(224, 231, 255, 0.3);
+  min-height: 60px; /* Reduced height since no dropdown */
+  flex-shrink: 0; /* Don't shrink the header */
+}
+
+.upload-header h4 {
+  margin: 0;
+  color: var(--dark);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.csp-type-selector {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(237, 28, 36, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(237, 28, 36, 0.15);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.csp-type-selector label {
+  font-weight: 600;
+  color: var(--dark);
+  font-size: 0.9rem;
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.csp-type-select {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 0; /* Allow shrinking */
+}
+
+.csp-type-select:hover {
+  border-color: var(--primary);
+}
+
+.csp-type-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(237, 28, 36, 0.1);
+}
+
+.upload-body {
+  padding: 1.5rem;
+  min-height: 150px; /* Ensure consistent minimum height */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1; /* Fill remaining space */
+}
+
+.upload-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* Stretch to full width */
+  justify-content: center;
+  gap: 1rem;
+  min-height: 80px; /* Reduced for better spacing */
+}
+
+.no-url-message {
+  text-align: center;
+  padding: 1rem;
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 193, 7, 0.3);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.no-url-message p {
+  margin: 0.5rem 0;
+  color: var(--dark);
+  font-size: 0.9rem;
+}
+
+.no-url-message p:first-child {
+  font-weight: 600;
+}
+
+.no-url-message strong {
+  color: var(--primary);
+}
+
+.or-divider {
+  color: #a0aec0;
+  font-weight: 500;
+}
+
+.file-upload-btn,
+.upload-options .btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1.5rem;
+  background: var(--primary);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px var(--shadow);
+  border: none;
+  font-size: 0.95rem;
+  min-height: 42px; /* Ensure consistent button height */
+  text-decoration: none;
+  width: 100%; /* Full width within container */
+  box-sizing: border-box;
+}
+
+.file-upload-btn:hover,
+.upload-options .btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.upload-options .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.file-upload-btn input[type="file"] {
+  display: none;
+}
+
+.uploaded-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: rgba(198, 246, 213, 0.2);
+  border: 1px solid rgba(154, 230, 180, 0.5);
+  border-radius: 8px;
+  min-height: 80px; /* Ensure consistent height when loaded */
+}
+
+.success-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.uploaded-info div {
+  flex: 1;
+  min-height: 45px; /* Consistent text area height */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.uploaded-info strong {
+  display: block;
+  color: var(--dark);
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.uploaded-info small {
+  display: block;
+  color: var(--dark);
+  opacity: 0.8;
+  font-size: 0.85rem;
+}
+
+/* Button size variants - .btn-sm inherited from App.css */
+
+/* Component-specific button styles */
+.btn-danger {
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px var(--shadow);
+}
+
+.btn-danger:hover {
+  background: #e53e3e;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Action Section */
+.action-section {
+  text-align: center;
+  margin: 2rem 0;
+  padding: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px var(--shadow);
+}
+
+/* Large button variant for prominent actions */
+.btn-large {
+  padding: 1rem 3rem;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn-large:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.help-text {
+  margin-top: 1rem;
+  color: var(--dark);
+  opacity: 0.8;
+  font-size: 0.9rem;
+}
+
+/* Comparison View */
+.comparison-summary {
+  margin-bottom: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px var(--shadow);
+  padding: 1.5rem;
+  border: 1px solid rgba(224, 231, 255, 0.3);
+}
+
+.comparison-summary h3 {
+  margin: 0 0 1rem 0;
+  color: var(--dark);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.report-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.report-card {
+  background: rgba(248, 250, 252, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px var(--shadow);
+  border: 1px solid rgba(224, 231, 255, 0.3);
+  padding: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+.report-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+.report-icon {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.report-info {
+  flex: 1;
+}
+
+.report-info strong {
+  display: block;
+  color: #2d3748;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.report-info small {
+  display: block;
+  color: #718096;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+/* Catalog Differences */
+.catalog-differences {
+  margin-bottom: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(224, 231, 255, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px var(--shadow);
+  padding: 1.5rem;
+}
+
+.catalog-differences h3 {
+  margin-top: 0;
+  color: var(--dark);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.diff-box {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.diff-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(248, 250, 252, 0.95);
+  border-radius: 6px;
+  border: 1px solid rgba(224, 231, 255, 0.2);
+}
+
+.diff-label {
+  font-weight: 600;
+  color: #2d3748;
+  min-width: 150px;
+}
+
+.diff-value {
+  color: #718096;
+}
+
+/* Controls Comparison Table */
+.controls-comparison {
+  margin-bottom: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px var(--shadow);
+  padding: 1.5rem;
+  border: 1px solid rgba(224, 231, 255, 0.3);
+}
+
+.controls-comparison h3 {
+  margin: 0 0 1rem 0;
+  color: var(--dark);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.comparison-table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px var(--shadow);
+  background: white;
+  border: 1px solid rgba(224, 231, 255, 0.2);
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+}
+
+.comparison-table thead {
+  background: linear-gradient(135deg, #ED1C24 0%, #2C2C2C 100%);
+  color: white;
+}
+
+.comparison-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  border-right: 1px solid #718096;
+}
+
+.comparison-table th:last-child {
+  border-right: none;
+}
+
+.comparison-table td {
+  padding: 1rem;
+  border-top: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+}
+
+.comparison-table td:last-child {
+  border-right: none;
+}
+
+.comparison-table tr.has-differences {
+  background: #fff5f5;
+}
+
+.comparison-table tr:hover {
+  background: #f7fafc;
+}
+
+.status-effective {
+  background: #c6f6d5;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #22543d;
+}
+
+.status-ineffective {
+  background: #fed7d7;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #742a2a;
+}
+
+.status-not-applicable {
+  background: #e2e8f0;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #4a5568;
+}
+
+.status-not-found {
+  background: #fefcbf;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  color: #744210;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.badge-success {
+  background: #c6f6d5;
+  color: #22543d;
+}
+
+.badge-warning {
+  background: #fbd38d;
+  color: #7c2d12;
+}
+
+/* Statistics */
+.comparison-stats {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px var(--shadow);
+  padding: 1.5rem;
+  border: 1px solid rgba(224, 231, 255, 0.3);
+}
+
+.comparison-stats h3 {
+  margin: 0 0 1rem 0;
+  color: var(--dark);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(237, 28, 36, 0.1) 0%, rgba(44, 44, 44, 0.1) 100%);
+  border-radius: 12px;
+  box-shadow: 0 2px 4px var(--shadow);
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  color: var(--dark);
+  opacity: 0.9;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* Responsive - Only for small tablets */
+@media (max-width: 767px) and (min-width: 601px) {
+  .upload-section {
+    grid-template-columns: repeat(2, 1fr) !important; /* Two columns on small tablets */
+    gap: 1rem !important;
+  }
+  
+  .upload-card:last-child {
+    grid-column: span 2; /* Make the third card span both columns */
+  }
+}
+
+@media (max-width: 600px) {
+  .multi-report-comparison {
+    padding: 1rem;
+  }
+
+  .app-header-comparison {
+    padding: 1rem;
+  }
+
+  .app-header-comparison h1 {
+    font-size: 1.5rem;
+  }
+
+  .app-header-comparison p {
+    font-size: 0.85rem;
+  }
+
+  .app-header-comparison .settings-btn {
+    position: static;
+    transform: none;
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+
+  .app-header-comparison .settings-btn:hover {
+    transform: none;
+  }
+
+  .comparison-header {
+    padding: 1.5rem 1rem;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .comparison-header h2 {
+    font-size: 1.4rem;
+  }
+
+  .comparison-header .btn-secondary {
+    width: 100%;
+  }
+
+  .upload-section {
+    padding: 1rem;
+  }
+
+  .comparison-back-btn {
+    position: static;
+    margin-bottom: 1rem;
+  }
+
+  .comparison-title-section h2 {
+    font-size: 1.4rem;
+  }
+
+  .step-title {
+    font-size: 1.1rem;
+  }
+
+  .upload-section {
+    grid-template-columns: 1fr !important; /* Stack cards vertically on mobile ONLY */
+  }
+
+  .upload-options {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .report-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .comparison-table {
+    font-size: 0.85rem;
+  }
+
+  .comparison-table th,
+  .comparison-table td {
+    padding: 0.5rem;
+  }
+}
+

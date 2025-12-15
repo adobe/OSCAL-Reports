@@ -1,0 +1,26 @@
+{
+  "name": "keekars-oscal-soa-ssp-ccm-frontend",
+  "private": true,
+  "version": "1.2.6",
+  "type": "module",
+  "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.6.2",
+    "lucide-react": "^0.294.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.8"
+  }
+}
+

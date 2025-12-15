@@ -1,0 +1,3 @@
+# This file ensures the config directory structure is tracked in git
+# Actual config files (config.json, users.json) are ignored via .gitignore
+
