@@ -1,0 +1,45 @@
+{
+  "apiGateways": {
+    "aws": {
+      "enabled": false,
+      "url": "",
+      "region": "ap-southeast-2"
+    },
+    "azure": {
+      "enabled": false,
+      "url": ""
+    }
+  },
+  "publishedSoaUrl": "https://raw.githubusercontent.com/keekar2022/OSCAL-Reports/refs/heads/main/AEMGovAu_ComplianceReport_Sample_2025-11-20.json",
+  "messagingConfig": {
+    "enabled": false,
+    "channel": "email",
+    "email": {
+      "enabled": false,
+      "smtpHost": "",
+      "smtpPort": 587,
+      "smtpSecure": false,
+      "smtpUser": "",
+      "smtpPassword": "",
+      "fromEmail": "",
+      "fromName": "OSCAL Report Generator",
+      "loginUrl": ""
+    },
+    "slack": {
+      "enabled": false,
+      "webhookUrl": "",
+      "channel": "#general"
+    }
+  },
+  "aiConfig": {
+    "enabled": true,
+    "url": "http://localhost:11434",
+    "apiToken": "",
+    "model": "mistral",
+    "timeout": 120000,
+    "organizationName": "Your Organization"
+  },
+  "lastModified": "",
+  "version": "1.0.0"
+}
+

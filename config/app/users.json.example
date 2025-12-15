@@ -1,0 +1,14 @@
+[
+  {
+    "id": "unique-uuid-here",
+    "username": "admin",
+    "password": "pbkdf2$sha256$100000$salt$hash",
+    "email": "admin@example.com",
+    "role": "Platform Admin",
+    "fullName": "Platform Administrator",
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "isActive": true,
+    "updatedAt": "2025-01-01T00:00:00.000Z"
+  }
+]
+
