@@ -81,7 +81,7 @@ RUN BUILD_DATE_RAW="${BUILD_TIMESTAMP:-$(date -Iseconds)}" && \
     echo "Delete this file after changing the default credentials." >> credentials.txt && \
     echo "================================================================================" >> credentials.txt
 
-# Build argument for port (defaults to 3020 for V2)
+# Build argument for port (defaults to 3020 for Blue, 3019 for Green)
 ARG PORT=3020
 
 # Expose port

@@ -888,7 +888,7 @@ cd ../backend && NODE_ENV=production node server.js
 
 ### Environment Variables
 - `NODE_ENV`: Set to `production` for production deployments
-- `PORT`: Backend server port (default: 3020 for V2, legacy: 3019 for V1)
+- `PORT`: Backend server port (default: 3020 for Blue, 3019 for Green)
 - `OLLAMA_URL`: Ollama service URL (for Docker deployments)
 - Frontend dev server port: 3021 (configured in `vite.config.js`)
 
@@ -897,7 +897,7 @@ cd ../backend && NODE_ENV=production node server.js
 ## Project Structure
 
 ```
-OSCAL-Report-Generator-V2/
+OSCAL-Report-Generator-Green/
 ├── backend/                 # Node.js + Express backend
 │   ├── auth/                # Authentication & authorization
 │   │   ├── userManager.js   # User management & password hashing (PBKDF2)

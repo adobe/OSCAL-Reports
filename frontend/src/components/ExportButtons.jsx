@@ -240,7 +240,7 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
             ) : (
               <>
                 <span className="export-icon">📄</span>
-                Export SOA/SSP in OSCAL
+                Export SOA/SSP/CCM in OSCAL
               </>
             )}
           </button>
@@ -259,26 +259,7 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
             ) : (
               <>
                 <span className="export-icon">📊</span>
-                Export Excel SSP
-              </>
-            )}
-          </button>
-
-          <button
-            className="btn btn-success export-btn"
-            onClick={onExportCCM}
-            disabled={loading}
-            title="CCM (Cloud Control Matrix): Comprehensive Excel matrix based on ACSC ISM template with detailed control documentation"
-          >
-            {loading ? (
-              <>
-                <span className="spinner"></span>
-                Generating...
-              </>
-            ) : (
-              <>
-                <span className="export-icon">☁️</span>
-                Export CCM (Excel)
+                Export SOA/SSP/CCM in Excel
               </>
             )}
           </button>
@@ -297,7 +278,7 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
             ) : (
               <>
                 <span className="export-icon">📕</span>
-                Export PDF Report
+                Export SOA/SSP/CCM in PDF
               </>
             )}
           </button>

@@ -36,7 +36,7 @@ Version 2.0 | November 2025
 
 ```bash
 # Clone or download the repository
-cd OSCAL-Report-Generator-V2
+cd OSCAL-Report-Generator-Green
 
 # Run the setup script
 chmod +x setup.sh
@@ -332,7 +332,7 @@ config/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NODE_ENV` | `production` | Node environment mode |
-| `PORT` | `3020` (V2) / `3019` (V1) | Server port |
+| `PORT` | `3020` (Blue) / `3019` (Green) | Server port |
 | `BUILD_TIMESTAMP` | Current time | Build timestamp for password generation |
 
 ### Port Configuration
@@ -359,7 +359,7 @@ Default user passwords are generated using timestamp format: `username#$DDMMYYHH
 ### Project Structure
 
 ```
-OSCAL-Report-Generator-V2/
+OSCAL-Report-Generator-Green/
 ├── backend/                 # Node.js + Express backend
 │   ├── server.js           # Main server file
 │   ├── ccmExport.js        # CCM Excel generation

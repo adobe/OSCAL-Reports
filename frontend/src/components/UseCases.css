@@ -216,7 +216,7 @@
   transition: all 0.3s ease;
   z-index: 100;
   width: 95%;
-  max-width: 900px;
+  max-width: 100%;
   pointer-events: none;
 }
 

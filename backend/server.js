@@ -269,7 +269,7 @@ app.get('/api/ollama/diagnostics', authenticate, async (req, res) => {
         'Verify Ollama container name is exactly "ollama"',
         'Check OLLAMA_URL environment variable is set to http://ollama:11434',
         'Run: docker network connect oscal-network ollama',
-        'Run: docker network connect oscal-network oscal-report-generator-v2'
+        'Run: docker network connect oscal-network oscal-report-generator-green'
       ]
     });
   } catch (error) {
@@ -1672,36 +1672,33 @@ app.post('/api/compare-multiple-reports', async (req, res) => {
       if (extractedReports.baseline) {
         const control = extractedReports.baseline.find(c => c.id === controlId);
         if (control) {
-          comparison.baseline = {
-            status: control.status || 'N/A',
-            implementation: control.implementation || ''
-          };
+          // Include all control fields for editing in the modal
+          comparison.baseline = { ...control };
           comparison.group = control.groupTitle || '';
           comparison.title = control.catalogTitle || control.title || controlId;
+          comparison.description = control.catalogDescription || '';
         }
       }
       
       if (extractedReports.csp1) {
         const control = extractedReports.csp1.find(c => c.id === controlId);
         if (control) {
-          comparison.csp1 = {
-            status: control.status || 'N/A',
-            implementation: control.implementation || ''
-          };
+          // Include all control fields
+          comparison.csp1 = { ...control };
           if (!comparison.group) comparison.group = control.groupTitle || '';
           if (!comparison.title) comparison.title = control.catalogTitle || control.title || controlId;
+          if (!comparison.description) comparison.description = control.catalogDescription || '';
         }
       }
       
       if (extractedReports.csp2) {
         const control = extractedReports.csp2.find(c => c.id === controlId);
         if (control) {
-          comparison.csp2 = {
-            status: control.status || 'N/A',
-            implementation: control.implementation || ''
-          };
+          // Include all control fields
+          comparison.csp2 = { ...control };
           if (!comparison.group) comparison.group = control.groupTitle || '';
           if (!comparison.title) comparison.title = control.catalogTitle || control.title || controlId;
+          if (!comparison.description) comparison.description = control.catalogDescription || '';
         }
       }
       

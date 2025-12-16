@@ -52,6 +52,11 @@ function App() {
   const [error, setError] = useState('');
   const [integrityWarning, setIntegrityWarning] = useState(null);
   const [lastSaveTime, setLastSaveTime] = useState(null);
+
+  // Debug: Log integrity warning state changes
+  React.useEffect(() => {
+    console.log('🔍 App.jsx - integrityWarning state changed:', integrityWarning);
+  }, [integrityWarning]);
   const [comparisonStats, setComparisonStats] = useState(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [showLoadPrompt, setShowLoadPrompt] = useState(false);
@@ -638,52 +643,50 @@ function App() {
           </div>
         )}
 
-        {/* Progress Steps Indicator */}
+        {/* Combined Progress Steps & Save Controls */}
         {step > 1 && (
-          <div className="steps-indicator">
-            <div className={`step ${step >= 1.5 ? 'active' : ''} ${step > 1.5 ? 'completed' : ''}`}>
-              <div className="step-number">1</div>
-              <div className="step-label">Select Catalog</div>
+          <div className="workflow-control-bar">
+            {/* Left side: Progress Steps */}
+            <div className="steps-indicator">
+              <div className={`step ${step >= 1.5 ? 'active' : ''} ${step > 1.5 ? 'completed' : ''}`}>
+                <div className="step-number">1</div>
+                <div className="step-label">Select Catalog</div>
+              </div>
+              <div className={`step ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`}>
+                <div className="step-number">2</div>
+                <div className="step-label">System Info</div>
+              </div>
+              <div className={`step ${step >= 3 ? 'active' : ''}`}>
+                <div className="step-number">3</div>
+                <div className="step-label">Document Controls</div>
+              </div>
             </div>
-            <div className={`step ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`}>
-              <div className="step-number">2</div>
-              <div className="step-label">System Info</div>
-            </div>
-            <div className={`step ${step >= 3 ? 'active' : ''}`}>
-              <div className="step-number">3</div>
-              <div className="step-label">Document Controls</div>
-            </div>
-          </div>
-        )}
 
-        {/* Auto-save Status Bar */}
-        {step === 3 && (
-          <div className="autosave-bar">
-            <div className="autosave-status">
-              <span className="autosave-icon">💾</span>
-              <span className="autosave-text">
-                <strong>Auto-save enabled</strong>
-                {lastSaveTime && (
-                  <> · Last saved: <span className="save-time">{lastSaveTime.toLocaleTimeString()}</span></>
-                )}
-              </span>
-            </div>
-            <div className="autosave-actions">
-              <button 
-                className="btn btn-sm btn-secondary" 
-                onClick={handleLoadData}
-                title="Reload saved data"
-              >
-                🔄 Reload
-              </button>
-              <button 
-                className="btn btn-sm btn-secondary" 
-                onClick={handleClearData}
-                title="Clear all saved data"
-              >
-                🗑️ Clear
-              </button>
-            </div>
+            {/* Right side: Auto-save controls (only show on step 3) */}
+            {step === 3 && (
+              <div className="autosave-controls">
+                <div className="autosave-indicator">
+                  <span className="pulse-dot"></span>
+                  <span className="autosave-text">Auto-save enabled</span>
+                </div>
+                <div className="autosave-actions">
+                  <button 
+                    className="btn btn-sm btn-secondary" 
+                    onClick={handleLoadData}
+                    title="Reload saved data"
+                  >
+                    🔄 Reload
+                  </button>
+                  <button 
+                    className="btn btn-sm btn-secondary" 
+                    onClick={handleClearData}
+                    title="Clear all saved data"
+                  >
+                    🗑️ Clear
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -788,6 +791,7 @@ function App() {
                 <ControlsList
                   controls={controls}
                   onControlUpdate={handleControlUpdate}
+                  organizationName={systemInfo.organization || 'Organization'}
                 />
 
                 <ExportButtons

@@ -14,20 +14,26 @@ function IntegrityWarning({ warning, onDismiss }) {
 
   // Debug logging
   React.useEffect(() => {
+    console.log('🔍 IntegrityWarning component mounted/updated');
+    console.log('   Warning prop:', warning);
+    console.log('   Dismissed state:', dismissed);
+    
     if (warning) {
       console.log('🚨 IntegrityWarning component received warning:', warning);
       console.log('   Message:', warning.message);
       console.log('   Severity:', warning.severity);
       console.log('   Details:', warning.details);
-    }
-  }, [warning]);
-
-  if (!warning || dismissed) {
-    if (!warning) {
+    } else {
       console.log('ℹ️ IntegrityWarning: No warning provided');
     }
+  }, [warning, dismissed]);
+
+  // Always log render decision
+  console.log('🎨 IntegrityWarning render:', { hasWarning: !!warning, dismissed });
+
+  if (!warning || dismissed) {
     if (dismissed) {
-      console.log('ℹ️ IntegrityWarning: Warning dismissed');
+      console.log('ℹ️ IntegrityWarning: Warning dismissed - returning null');
     }
     return null;
   }
@@ -56,6 +62,8 @@ function IntegrityWarning({ warning, onDismiss }) {
     }
     return 'integrity-warning-icon-info';
   };
+
+  console.log('✅ IntegrityWarning: Rendering warning component');
 
   return (
     <div className={`integrity-warning ${getSeverityClass()}`}>

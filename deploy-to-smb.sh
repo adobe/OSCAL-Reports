@@ -9,16 +9,58 @@ echo "🚀 OSCAL Report Generator - SMB Deployment"
 echo "=========================================="
 echo ""
 
-# Configuration
-SOURCE_DIR="/Users/mkesharw/Library/CloudStorage/OneDrive-Adobe/Documents/Contri/18-JustLikeThat/OSCAL-Report-Generator-V1"
-DESTINATION="/Volumes/KACI-Apps/OSCAL-Report-Generator-V1"  # You need to set this to your SMB share path
+# Ask user to select deployment environment
+echo "📋 Select deployment environment:"
+echo "  🟢 Green - Default (New version/Testing)"
+echo "  🔵 Blue - Stable (Current production)"
+echo ""
+read -p "Deploy to [Green/Blue] (default: Green): " DEPLOY_ENV
+echo ""
+
+# Default to Green if no input or normalize input
+DEPLOY_ENV=${DEPLOY_ENV:-Green}
+case "$DEPLOY_ENV" in
+    [Bb]lue|BLUE|1)
+        DEPLOY_ENV="Blue"
+        echo "✅ Selected: 🔵 Blue deployment (Stable/Production)"
+        ;;
+    [Gg]reen|GREEN|2|"")
+        DEPLOY_ENV="Green"
+        echo "✅ Selected: 🟢 Green deployment (New/Testing)"
+        ;;
+    *)
+        echo "⚠️  Invalid selection. Defaulting to Green deployment."
+        DEPLOY_ENV="Green"
+        ;;
+esac
+
+echo ""
+
+# Configuration based on selected environment
+# Source is always the current directory (where development happens)
+CURRENT_DIR=$(pwd)
+SOURCE_DIR="$CURRENT_DIR"
+
+# Destination changes based on Blue/Green selection
+if [ "$DEPLOY_ENV" = "Blue" ]; then
+    DESTINATION="/Volumes/KACI-Apps/OSCAL-Report-Generator-Blue"
+else
+    DESTINATION="/Volumes/KACI-Apps/OSCAL-Report-Generator-Green"
+fi
+
+echo "📂 Deploying FROM current directory:"
+echo "   Source: $SOURCE_DIR"
+echo "📁 Deploying TO $DEPLOY_ENV environment:"
+echo "   Destination: $DESTINATION"
+echo ""
 
 # Check if destination is set
 if [ -z "$DESTINATION" ]; then
     echo "❌ Error: DESTINATION not set!"
     echo ""
     echo "Please edit this script and set DESTINATION to your SMB share path."
-    echo "Example: DESTINATION=\"/Volumes/YourSMBShare/OSCAL-Report-Generator-V1\""
+    echo "Example: DESTINATION=\"/Volumes/YourSMBShare/OSCAL-Report-Generator-Green\""
+    echo "         DESTINATION=\"/Volumes/YourSMBShare/OSCAL-Report-Generator-Blue\""
     echo ""
     exit 1
 fi
@@ -33,10 +75,6 @@ if [ ! -d "$DESTINATION" ]; then
     echo ""
     exit 1
 fi
-
-echo "📂 Source: $SOURCE_DIR"
-echo "📁 Destination: $DESTINATION"
-echo ""
 
 # Ask for confirmation
 read -p "Continue with deployment? (y/n): " -n 1 -r
@@ -74,6 +112,11 @@ rsync -avzh --update --progress \
     --exclude '.env.local' \
     --exclude '.vscode/' \
     --exclude '.idea/' \
+    --exclude 'credentials.txt' \
+    --exclude '.cache/' \
+    --exclude '*.pid' \
+    --exclude 'backend/config.json' \
+    --exclude 'backend/auth/users.json' \
     "$SOURCE_DIR/" "$DESTINATION/"
 
 # Check if rsync was successful
@@ -84,14 +127,16 @@ if [ $? -eq 0 ]; then
     echo "📊 Summary:"
     echo "  - Only modified files were copied"
     echo "  - Unchanged files were skipped"
-    echo "  - node_modules and build artifacts excluded"
+    echo "  - Excluded: node_modules, build artifacts, credentials.txt, .env files"
+    echo "  - Protected: config.json, users.json (environment-specific files)"
     echo ""
     echo "🔧 Next steps on deployment server:"
     echo "  1. cd $DESTINATION"
     echo "  2. npm install (in root, backend, and frontend)"
     echo "  3. cd frontend && npm run build"
     echo "  4. cp -r frontend/dist/* backend/public/"
-    echo "  5. cd backend && node server.js"
+    echo "  5. Check credentials.txt for admin password (auto-generated on first Docker build)"
+    echo "  6. cd backend && node server.js"
 else
     echo ""
     echo "❌ Deployment failed!"

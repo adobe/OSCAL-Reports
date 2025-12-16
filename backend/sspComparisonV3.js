@@ -542,13 +542,32 @@ function extractSystemInfoFromSSP(sspData) {
         }
       }
       
-      // Extract from metadata
+      // Extract from metadata (only if not already set from props)
       if (ssp.metadata) {
-        // Organization
-        if (ssp.metadata.parties && Array.isArray(ssp.metadata.parties)) {
-          const orgParty = ssp.metadata.parties.find(p => p.type === 'organization');
-          if (orgParty && orgParty.name) {
-            systemInfo.organization = orgParty.name;
+        // Organization - only extract from metadata if not already set from system-characteristics.props
+        // This prevents overwriting the implementing organization with the catalog publisher
+        if (!systemInfo.organization && ssp.metadata.parties && Array.isArray(ssp.metadata.parties)) {
+          // Look for organization in responsible-parties first (more specific)
+          if (ssp.metadata['responsible-parties']) {
+            const orgRole = ssp.metadata['responsible-parties'].find(rp => 
+              rp['role-id'] === 'system-owner' || rp['role-id'] === 'prepared-by'
+            );
+            if (orgRole) {
+              const partyUuid = orgRole['party-uuids'] && orgRole['party-uuids'][0];
+              if (partyUuid) {
+                const party = ssp.metadata.parties.find(p => p.uuid === partyUuid && p.type === 'organization');
+                if (party && party.name) {
+                  systemInfo.organization = party.name;
+                }
+              }
+            }
+          }
+          // Fallback: use first organization only if still not found
+          if (!systemInfo.organization) {
+            const orgParty = ssp.metadata.parties.find(p => p.type === 'organization');
+            if (orgParty && orgParty.name) {
+              systemInfo.organization = orgParty.name;
+            }
           }
         }
         

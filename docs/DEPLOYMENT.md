@@ -175,7 +175,7 @@ docker-compose -f truenas-app.yaml up -d
 docker ps
 
 # Check logs
-docker logs oscal-report-generator-v2
+docker logs oscal-report-generator-green
 
 # Test health endpoint
 curl http://localhost:3020/health

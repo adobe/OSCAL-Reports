@@ -270,7 +270,7 @@ function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = []
                 </label>
                 <select
                   id={`status-${control.id}`}
-                  className={`form-control status-${control.status}`}
+                  className={`form-control status-select status-${control.status || 'not-assessed'}`}
                   value={control.status}
                   onChange={handleStatusChange}
                   disabled={!canEditImplementationStatus()}

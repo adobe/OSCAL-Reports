@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import buildInfo from '../utils/buildInfo';
 import { useAuth } from '../contexts/AuthContext';
+import ControlEditModal from './ControlEditModal';
 import './MultiReportComparison.css';
 
 function MultiReportComparison({ onBack, onShowSettings }) {
@@ -34,6 +35,9 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   const [error, setError] = useState('');
   const [comparisonResult, setComparisonResult] = useState(null);
   const [step, setStep] = useState(1); // 1: Upload, 2: Comparison View
+  const [editingControl, setEditingControl] = useState(null);
+  const [baselineControls, setBaselineControls] = useState(null); // Editable baseline controls
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Load published SOA URL from server settings
   useEffect(() => {
@@ -132,6 +136,19 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       console.log('🔍 Catalog differences:', response.data.catalogDifferences);
       
       setComparisonResult(response.data);
+      
+      // Extract baseline controls for editing
+      if (response.data.controls) {
+        const baselineControlsMap = {};
+        response.data.controls.forEach(control => {
+          if (control.baseline) {
+            baselineControlsMap[control.id] = { ...control.baseline, id: control.id, title: control.title };
+          }
+        });
+        setBaselineControls(baselineControlsMap);
+        console.log('📋 Extracted baseline controls for editing:', Object.keys(baselineControlsMap).length);
+      }
+      
       setStep(2); // Move to comparison view
     } catch (err) {
       setError(`Comparison failed: ${err.response?.data?.error || err.message}`);
@@ -141,6 +158,11 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   };
 
   const handleReset = () => {
+    if (hasUnsavedChanges) {
+      if (!window.confirm('You have unsaved changes. Are you sure you want to start a new comparison?')) {
+        return;
+      }
+    }
     setReports({
       baseline: null,
       csp1: null,
@@ -152,8 +174,79 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       csp2: 'CSP Report 2'
     });
     setComparisonResult(null);
+    setBaselineControls(null);
+    setHasUnsavedChanges(false);
     setStep(1);
     setError('');
+  };
+
+  const handleControlClick = (controlId) => {
+    if (baselineControls && baselineControls[controlId]) {
+      setEditingControl(baselineControls[controlId]);
+    } else {
+      console.warn('Control not found in baseline:', controlId);
+    }
+  };
+
+  const handleControlSave = (updatedControl) => {
+    setBaselineControls(prev => ({
+      ...prev,
+      [updatedControl.id]: updatedControl
+    }));
+    setHasUnsavedChanges(true);
+    setEditingControl(null);
+    console.log('✅ Control updated:', updatedControl.id);
+  };
+
+  const handleExportDefault = async () => {
+    if (!reports.baseline || !baselineControls) {
+      setError('No baseline report to export.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Prepare system info from baseline report
+      const systemInfo = {
+        title: reports.baseline['system-security-plan']?.metadata?.title || 'System Security Plan',
+        systemName: reports.baseline['system-security-plan']?.['system-characteristics']?.['system-name'] || reportNames.baseline,
+        systemId: reports.baseline['system-security-plan']?.['system-characteristics']?.['system-ids']?.[0]?.id || 'N/A',
+        description: reports.baseline['system-security-plan']?.['system-characteristics']?.description || '',
+        securityLevel: reports.baseline['system-security-plan']?.['system-characteristics']?.['security-sensitivity-level'] || 'moderate'
+      };
+
+      // Convert baselineControls map to array
+      const controlsArray = Object.values(baselineControls);
+
+      // Extract metadata from baseline report
+      const metadata = reports.baseline['system-security-plan']?.metadata || {};
+
+      // Call the generate-ssp API
+      const response = await axios.post('/api/generate-ssp', {
+        metadata: metadata,
+        controls: controlsArray,
+        systemInfo: systemInfo
+      }, getAuthConfig());
+
+      // Download the file
+      const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${systemInfo.systemName || 'default-report'}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setHasUnsavedChanges(false);
+      console.log('✅ Default report exported successfully');
+    } catch (err) {
+      console.error('❌ Export failed:', err);
+      setError(`Export failed: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (step === 2 && comparisonResult) {
@@ -179,10 +272,25 @@ function MultiReportComparison({ onBack, onShowSettings }) {
           <button className="btn-secondary" onClick={handleReset}>
             ← New Comparison
           </button>
-          <h2>📊 Multi-Report Comparison Results</h2>
-          <button className="btn-secondary" onClick={onBack}>
-            ← Back to Main
-          </button>
+          <div className="comparison-header-center">
+            <h2>📊 Multi-Report Comparison Results</h2>
+            {hasUnsavedChanges && (
+              <span className="unsaved-changes-badge">⚠️ Unsaved Changes</span>
+            )}
+          </div>
+          <div className="header-actions">
+            <button 
+              className="btn-primary" 
+              onClick={handleExportDefault}
+              disabled={loading || !reports.baseline}
+              title="Export Default Report"
+            >
+              {loading ? '⏳ Exporting...' : '📥 Export Default Report'}
+            </button>
+            <button className="btn-secondary" onClick={onBack}>
+              ← Back to Main
+            </button>
+          </div>
         </div>
 
         <div className="comparison-summary">
@@ -319,7 +427,15 @@ function MultiReportComparison({ onBack, onShowSettings }) {
               <tbody>
                 {comparisonResult.controls && comparisonResult.controls.map((control, idx) => (
                   <tr key={idx} className={control.hasDifferences ? 'has-differences' : ''}>
-                    <td><strong>{control.id}</strong></td>
+                    <td>
+                      <button 
+                        className="control-id-link"
+                        onClick={() => handleControlClick(control.id)}
+                        title="Click to edit this control in Default Report"
+                      >
+                        <strong>{control.id}</strong> 📝
+                      </button>
+                    </td>
                     <td>{control.title || 'N/A'}</td>
                     {reports.baseline && (
                       <td className={`status-${control.baseline?.status || 'not-found'}`}>
@@ -349,6 +465,17 @@ function MultiReportComparison({ onBack, onShowSettings }) {
             </table>
           </div>
         </div>
+
+        {/* Control Edit Modal */}
+        {editingControl && (
+          <ControlEditModal
+            control={editingControl}
+            onClose={() => setEditingControl(null)}
+            onSave={handleControlSave}
+            allControls={baselineControls ? Object.values(baselineControls) : []}
+            organizationName={reports.baseline?.['system-security-plan']?.['system-characteristics']?.organization || 'Organization'}
+          />
+        )}
 
         <footer className="app-footer">
           <p>
@@ -402,7 +529,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
         {/* Baseline Report */}
         <div className="upload-card">
           <div className="upload-header">
-            <h4>📄 This platform default published report</h4>
+            <h4>📄 This platform published report (Default)</h4>
           </div>
           <div className="upload-body">
             <div className="csp-type-selector">
@@ -502,7 +629,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
         {/* CSP Report 2 */}
         <div className="upload-card">
           <div className="upload-header">
-            <h4>☁️ Cloud Service Provider 2 Report</h4>
+            <h4>☁️ Report 2</h4>
           </div>
           <div className="upload-body">
             <div className="csp-type-selector">
