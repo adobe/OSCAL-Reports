@@ -1,0 +1,45 @@
+{
+  "system-security-plan": {
+    "uuid": "test-12345",
+    "metadata": {
+      "title": "Test SSP for Integrity Check",
+      "last-modified": "2025-12-16T14:00:00Z",
+      "version": "1.0",
+      "oscal-version": "1.1.2",
+      "props": [
+        {
+          "name": "file-integrity-hash",
+          "ns": "https://oscal-report-generator.adobe.com/ns/integrity",
+          "value": "old-hash-that-wont-match-123456789",
+          "class": "integrity",
+          "remarks": "FIPS 140-2 compliant SHA-256 hash for file integrity verification. Algorithm: SHA256."
+        },
+        {
+          "name": "file-integrity-timestamp",
+          "ns": "https://oscal-report-generator.adobe.com/ns/integrity",
+          "value": "2025-12-16T14:00:00.000Z",
+          "class": "integrity",
+          "remarks": "Timestamp when integrity hash was calculated."
+        }
+      ]
+    },
+    "import-profile": {
+      "href": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
+    },
+    "system-characteristics": {
+      "system-ids": [
+        {
+          "id": "test-system-001"
+        }
+      ],
+      "system-name": "Test System",
+      "description": "Test system for integrity verification",
+      "security-sensitivity-level": "moderate"
+    },
+    "control-implementation": {
+      "description": "Test control implementation",
+      "implemented-requirements": []
+    }
+  }
+}
+
