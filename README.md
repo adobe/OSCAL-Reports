@@ -2,7 +2,7 @@
 
 **A comprehensive web application for generating compliance documentation from OSCAL catalogs**
 
-Version 2.0 | November 2025
+Version 1.2.6 | December 2025
 
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
