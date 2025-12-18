@@ -25,7 +25,7 @@ const STATUS_OPTIONS = [
 const RISK_LEVELS = ['Critical', 'High', 'Medium', 'Low'];
 const TEST_FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annually', 'Ad-hoc'];
 
-function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls = [] }) {
+function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls = [], organizationName = 'Organization' }) {
   const { canEditImplementationStatus, canEditTestingMethod } = useAuth();
   const [activeTab, setActiveTab] = useState('implementation');
   const [fetchingData, setFetchingData] = useState({});
@@ -319,7 +319,7 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
                   </label>
                   <select
                     id={`status-${control.id}`}
-                    className={`form-control status-${control.status || 'not-assessed'}`}
+                    className={`form-control status-select status-${control.status || 'not-assessed'}`}
                     value={control.status || 'not-assessed'}
                     onChange={(e) => handleChange('status', e.target.value)}
                     disabled={!canEditImplementationStatus()}
@@ -392,24 +392,22 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
                     onChange={(e) => handleChange('responsibleParty', e.target.value)}
                   >
                     <option value="">Select...</option>
-                    <option value="Implemented By Adobe">Implemented By Adobe</option>
-                    <option value="Inherited from CSP">Inherited from CSP</option>
+                    <option value="Not Applicable">Not Applicable</option>
+                    <option value="Inherited from Service Provider">Inherited from Service Provider</option>
+                    <option value={`Implemented by ${organizationName}`}>Implemented by {organizationName}</option>
                     <option value="Shared">Shared</option>
                     <option value="Consumer Responsibility">Consumer Responsibility</option>
-                    <option value="Consumer Implementation Required">Consumer Implementation Required</option>
-                    <option value="Consumer Configuration Required">Consumer Configuration Required</option>
                   </select>
                 </div>
 
-                {(control.responsibleParty === 'Consumer Implementation Required' || 
-                  control.responsibleParty === 'Consumer Configuration Required') && (
+                {control.responsibleParty === 'Consumer Responsibility' && (
                   <div className="form-group">
                     <label htmlFor={`consumer-guidance-${control.id}`}>Consumer Guidance</label>
                     <textarea
                       id={`consumer-guidance-${control.id}`}
                       className="form-control"
                       rows="3"
-                      placeholder="Provide guidance for consumer implementation or configuration..."
+                      placeholder="Provide guidance for consumer responsibility..."
                       value={control.consumerGuidance || ''}
                       onChange={(e) => handleChange('consumerGuidance', e.target.value)}
                     />
@@ -417,7 +415,7 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
                 )}
 
                 <div className="form-group">
-                  <label htmlFor={`control-owner-${control.id}`}>Cloud Provider Responsibility</label>
+                  <label htmlFor={`control-owner-${control.id}`}>Control Inheritance/Implementation by Consumer</label>
                   <select
                     id={`control-owner-${control.id}`}
                     className="form-control"
@@ -425,9 +423,9 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
                     onChange={(e) => handleChange('controlOwner', e.target.value)}
                   >
                     <option value="">Select...</option>
-                    <option value="Inherited from CSP">Inherited from CSP</option>
+                    <option value="Control Inherited from Service Provider">Control Inherited from Service Provider</option>
+                    <option value="Control Configurator Based on Options Given">Control Configurator Based on Options Given</option>
                     <option value="Control Implementer">Control Implementer</option>
-                    <option value="Control Option Provider">Control Option Provider</option>
                   </select>
                 </div>
 

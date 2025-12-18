@@ -1,10 +1,10 @@
 version: "3.8"
 
 services:
-  oscal-report-generator-v2:
-    image: oscal-report-generator-v2:latest
-    container_name: oscal-report-generator-v2
-    hostname: oscal-generator-v2
+  oscal-report-generator-green:
+    image: oscal-report-generator-green:latest
+    container_name: oscal-report-generator-green
+    hostname: oscal-generator-green
     restart: unless-stopped
     
     ports:

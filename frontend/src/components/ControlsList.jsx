@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import ControlItemCCM from './ControlItemCCM';
 import './ControlsList.css';
 
-function ControlsList({ controls, onControlUpdate }) {
+function ControlsList({ controls, onControlUpdate, organizationName = 'Organization' }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGroup, setFilterGroup] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -304,6 +304,7 @@ function ControlsList({ controls, onControlUpdate }) {
               key={control.id}
               control={control}
               isExpanded={expandedControl === control.id}
+              organizationName={organizationName}
               onToggle={() => toggleControl(control.id)}
               onUpdate={onControlUpdate}
               allControls={controls}

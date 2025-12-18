@@ -9,8 +9,14 @@
 # Don't exit on error - we want to show helpful messages
 # set -e
 
+# Change to the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 echo "🔨 OSCAL Report Generator - Docker Build Script"
 echo "================================================"
+echo ""
+echo "📂 Script directory: $SCRIPT_DIR"
 echo ""
 
 # Detect version from current directory path

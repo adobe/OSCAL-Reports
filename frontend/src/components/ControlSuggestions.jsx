@@ -12,7 +12,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import './ControlSuggestions.css';
 
-const ControlSuggestions = ({ control, existingControls, onApplySuggestion }) => {
+const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hideButton = false, autoFetch = false }) => {
   const { getAuthConfig, sessionToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
@@ -146,27 +146,43 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion }) =>
     return 'Low';
   };
 
+  // Auto-fetch when autoFetch prop is true
+  React.useEffect(() => {
+    if (autoFetch && control && !suggestions && !loading) {
+      fetchSuggestions();
+    }
+  }, [autoFetch, control]);
+
   return (
     <div className="control-suggestions">
-      <button
-        type="button"
-        className="suggest-btn"
-        onClick={fetchSuggestions}
-        disabled={loading}
-        title="Get AI-powered suggestions for this control"
-      >
-        {loading ? (
-          <>
-            <span className="spinner"></span>
-            Generating...
-          </>
-        ) : (
-          <>
-            <span>🤖</span>
-            Get Suggestions
-          </>
-        )}
-      </button>
+      {!hideButton && (
+        <button
+          type="button"
+          className="suggest-btn"
+          onClick={fetchSuggestions}
+          disabled={loading}
+          title="Get AI-powered suggestions for this control"
+        >
+          {loading ? (
+            <>
+              <span className="spinner"></span>
+              Generating...
+            </>
+          ) : (
+            <>
+              <span>🤖</span>
+              Get Suggestions
+            </>
+          )}
+        </button>
+      )}
+
+      {loading && hideButton && (
+        <div className="suggestion-loading">
+          <span className="spinner"></span>
+          Generating AI suggestions...
+        </div>
+      )}
 
       {error && (
         <div className="suggestion-error">

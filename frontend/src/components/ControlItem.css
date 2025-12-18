@@ -376,3 +376,58 @@
   }
 }
 
+/* Status-based coloring for Implementation Status dropdown - Global Styles */
+.status-select {
+  font-weight: 600;
+  border-width: 2px;
+  transition: all 0.2s;
+}
+
+.status-select.status-not-assessed {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.status-select.status-effective {
+  background-color: #f0fdf4;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.status-select.status-alternate-control {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.status-select.status-ineffective {
+  background-color: #fff7ed;
+  border-color: #f97316;
+  color: #9a3412;
+}
+
+.status-select.status-no-visibility {
+  background-color: #f9fafb;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+.status-select.status-not-implemented {
+  background-color: #faf5ff;
+  border-color: #a855f7;
+  color: #6b21a8;
+}
+
+.status-select.status-not-applicable {
+  background-color: #f3f4f6;
+  border-color: #4b5563;
+  color: #1f2937;
+}
+
+.status-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  transform: scale(1.01);
+}
+
