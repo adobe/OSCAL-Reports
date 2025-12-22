@@ -1955,40 +1955,49 @@ function sanitizeOSCALString(value, useDefault = true) {
     return useDefault ? OSCAL_EMPTY_PLACEHOLDER : undefined;
   }
   
-  // Convert to string and aggressively trim ALL leading/trailing whitespace
-  // This includes spaces, tabs, newlines (\n), carriage returns (\r), etc.
-  let cleaned = String(value)
-    .replace(/^[\s\n\r\t]+/, '')  // Remove leading whitespace/newlines
-    .replace(/[\s\n\r\t]+$/, '');  // Remove trailing whitespace/newlines
+  // Convert to string
+  let cleaned = String(value);
   
-  // Additional safety: remove any remaining trailing newlines/whitespace in multi-line text
-  // Keep trimming until no more trailing whitespace exists
-  while (cleaned.length > 0 && /[\s\n\r\t]$/.test(cleaned)) {
-    cleaned = cleaned.replace(/[\s\n\r\t]+$/, '');
-  }
+  // CRITICAL: Only trim leading/trailing whitespace from the ENTIRE string
+  // Do NOT modify content in the middle (preserve line breaks, formatting, etc.)
+  // This is a simple, safe trim that won't lose any actual content
+  cleaned = cleaned.trim();
   
-  // Remove leading whitespace one more time to be absolutely sure
-  while (cleaned.length > 0 && /^[\s\n\r\t]/.test(cleaned)) {
-    cleaned = cleaned.replace(/^[\s\n\r\t]+/, '');
-  }
-  
+  // If the string is empty after trimming, use placeholder
   if (cleaned.length === 0) {
     return useDefault ? OSCAL_EMPTY_PLACEHOLDER : undefined;
   }
   
-  // Final validation: ensure the string matches OSCAL pattern ^\S(.*\S)?$
-  // Pattern means: starts with non-whitespace, ends with non-whitespace (or single non-whitespace char)
+  // OSCAL pattern validation: ^\S(.*\S)?$
+  // This means: starts with non-whitespace, ends with non-whitespace
+  // The standard trim() should handle this, but let's be extra safe
   const oscalPattern = /^\S(.*\S)?$/;
+  
   if (!oscalPattern.test(cleaned)) {
-    console.warn(`⚠️ String doesn't match OSCAL pattern after cleaning: "${cleaned.substring(0, 50)}..."`);
-    console.warn(`   First char code: ${cleaned.charCodeAt(0)}, Last char code: ${cleaned.charCodeAt(cleaned.length - 1)}`);
+    // This shouldn't happen after trim(), but if it does, it means
+    // there's still leading/trailing whitespace we missed
+    console.warn(`⚠️ String has whitespace after trim(): "${cleaned.substring(0, 100)}..."`);
+    console.warn(`   First char: [${cleaned.charAt(0)}] (code: ${cleaned.charCodeAt(0)})`);
+    console.warn(`   Last char: [${cleaned.charAt(cleaned.length - 1)}] (code: ${cleaned.charCodeAt(cleaned.length - 1)})`);
     
-    // Emergency cleanup: use a more aggressive approach
-    cleaned = cleaned.split('\n').map(line => line.trim()).filter(line => line).join('\n');
+    // One more aggressive trim attempt - remove ANY leading/trailing whitespace
+    // But still preserve ALL content in the middle
+    cleaned = cleaned.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
     
-    // If still doesn't match, return placeholder as last resort
+    // Final check
     if (!oscalPattern.test(cleaned)) {
-      console.error(`❌ Failed to sanitize string to match OSCAL pattern, using placeholder`);
+      console.error(`❌ String still has whitespace issues after aggressive trim`);
+      console.error(`   This should not happen. String length: ${cleaned.length}`);
+      console.error(`   Content preview: "${cleaned.substring(0, 200)}"`);
+      
+      // NEVER replace actual content with placeholder
+      // If we have content, keep it even if pattern doesn't match perfectly
+      if (cleaned.length > 0) {
+        console.warn(`⚠️ Keeping content despite pattern mismatch to avoid data loss`);
+        return cleaned;
+      }
+      
+      // Only use placeholder if truly empty
       return useDefault ? OSCAL_EMPTY_PLACEHOLDER : undefined;
     }
   }
