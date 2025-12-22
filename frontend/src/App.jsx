@@ -435,7 +435,7 @@ function App() {
     return `${sanitizedName}_ComplianceReport_${today}.${extension}`;
   };
 
-  const handleExportSSP = async () => {
+  const handleExportSSP = async (validationOptions = {}) => {
     setLoading(true);
     setError('');
     
@@ -446,7 +446,8 @@ function App() {
         systemInfo: {
           ...systemInfo,
           catalogueUrl  // Include catalogueUrl so it can be saved in import-profile.href
-        }
+        },
+        validationOptions  // Pass validation options to backend
       });
 
       const blob = new Blob([JSON.stringify(response.data, null, 2)], {

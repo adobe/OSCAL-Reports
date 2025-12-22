@@ -24,6 +24,7 @@ import { loadConfig, saveConfig, validateConfig } from './configManager.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
 import { addIntegrityHash, verifyIntegrityHash, getIntegrityInfo } from './integrityService.js';
+import { getLogStats, cleanupOldLogs } from './aiLogger.js';
 import { 
   initializeDefaultUsers, 
   authenticateUser, 
@@ -1944,10 +1945,210 @@ function extractControlDescription(control) {
   return descParts.map(part => part.prose || '').filter(Boolean).join('\n\n');
 }
 
+// Utility function to sanitize strings for OSCAL compliance
+// OSCAL requires pattern: ^\S(.*\S)?$ (no leading/trailing whitespace, no empty strings)
+// Replace empty/blank values with placeholder to maintain document structure
+const OSCAL_EMPTY_PLACEHOLDER = "No_Input_Recorded";
+
+function sanitizeOSCALString(value, useDefault = true) {
+  if (value === null || value === undefined) {
+    return useDefault ? OSCAL_EMPTY_PLACEHOLDER : undefined;
+  }
+  
+  // Convert to string and aggressively trim ALL leading/trailing whitespace
+  // This includes spaces, tabs, newlines (\n), carriage returns (\r), etc.
+  let cleaned = String(value)
+    .replace(/^[\s\n\r\t]+/, '')  // Remove leading whitespace/newlines
+    .replace(/[\s\n\r\t]+$/, '');  // Remove trailing whitespace/newlines
+  
+  // Additional safety: remove any remaining trailing newlines/whitespace in multi-line text
+  // Keep trimming until no more trailing whitespace exists
+  while (cleaned.length > 0 && /[\s\n\r\t]$/.test(cleaned)) {
+    cleaned = cleaned.replace(/[\s\n\r\t]+$/, '');
+  }
+  
+  // Remove leading whitespace one more time to be absolutely sure
+  while (cleaned.length > 0 && /^[\s\n\r\t]/.test(cleaned)) {
+    cleaned = cleaned.replace(/^[\s\n\r\t]+/, '');
+  }
+  
+  if (cleaned.length === 0) {
+    return useDefault ? OSCAL_EMPTY_PLACEHOLDER : undefined;
+  }
+  
+  // Final validation: ensure the string matches OSCAL pattern ^\S(.*\S)?$
+  // Pattern means: starts with non-whitespace, ends with non-whitespace (or single non-whitespace char)
+  const oscalPattern = /^\S(.*\S)?$/;
+  if (!oscalPattern.test(cleaned)) {
+    console.warn(`⚠️ String doesn't match OSCAL pattern after cleaning: "${cleaned.substring(0, 50)}..."`);
+    console.warn(`   First char code: ${cleaned.charCodeAt(0)}, Last char code: ${cleaned.charCodeAt(cleaned.length - 1)}`);
+    
+    // Emergency cleanup: use a more aggressive approach
+    cleaned = cleaned.split('\n').map(line => line.trim()).filter(line => line).join('\n');
+    
+    // If still doesn't match, return placeholder as last resort
+    if (!oscalPattern.test(cleaned)) {
+      console.error(`❌ Failed to sanitize string to match OSCAL pattern, using placeholder`);
+      return useDefault ? OSCAL_EMPTY_PLACEHOLDER : undefined;
+    }
+  }
+  
+  return cleaned;
+}
+
+// Recursive function to sanitize entire OSCAL object structure
+function sanitizeOSCALObject(obj, preserveEmptyArrays = false, useDefaultForEmpty = true) {
+  if (obj === null || obj === undefined) {
+    return undefined;
+  }
+  
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    const sanitized = obj
+      .map(item => sanitizeOSCALObject(item, preserveEmptyArrays, useDefaultForEmpty))
+      .filter(item => item !== undefined);
+    // Preserve empty arrays for certain OSCAL required fields
+    return sanitized.length > 0 || preserveEmptyArrays ? sanitized : undefined;
+  }
+  
+  // Handle strings - use placeholder for empty strings to meet OSCAL pattern requirements
+  if (typeof obj === 'string') {
+    return sanitizeOSCALString(obj, useDefaultForEmpty);
+  }
+  
+  // Handle primitives (numbers, booleans, etc.)
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+  
+  // Handle objects
+  const sanitized = {};
+  // OSCAL fields that require empty arrays to be preserved
+  const arrayFieldsToPreserve = ['categorizations', 'components', 'users'];
+  
+  for (const [key, value] of Object.entries(obj)) {
+    const shouldPreserveEmpty = arrayFieldsToPreserve.includes(key);
+    const sanitizedValue = sanitizeOSCALObject(value, shouldPreserveEmpty, useDefaultForEmpty);
+    if (sanitizedValue !== undefined) {
+      sanitized[key] = sanitizedValue;
+    } else if (shouldPreserveEmpty && Array.isArray(value)) {
+      // Preserve empty arrays for required OSCAL fields
+      sanitized[key] = [];
+    }
+  }
+  
+  // Return undefined if object is now empty (all values were removed)
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
+// Utility function to sanitize props array
+function sanitizeProps(props) {
+  if (!Array.isArray(props)) return [];
+  return props
+    .map(prop => {
+      const sanitizedValue = sanitizeOSCALString(prop.value, true);
+      const sanitizedName = sanitizeOSCALString(prop.name, true);
+      
+      // Filter out props where both name and value are the placeholder (meaningless data)
+      if (sanitizedValue === OSCAL_EMPTY_PLACEHOLDER && sanitizedName === OSCAL_EMPTY_PLACEHOLDER) {
+        return null;
+      }
+      
+      const sanitizedProp = {
+        ...prop,
+        name: sanitizedName,
+        value: sanitizedValue
+      };
+      
+      // Only add optional fields if they have meaningful values
+      if (prop.class) {
+        const sanitizedClass = sanitizeOSCALString(prop.class, true);
+        if (sanitizedClass !== OSCAL_EMPTY_PLACEHOLDER) {
+          sanitizedProp.class = sanitizedClass;
+        }
+      }
+      
+      if (prop.ns) {
+        const sanitizedNs = sanitizeOSCALString(prop.ns, true);
+        if (sanitizedNs !== OSCAL_EMPTY_PLACEHOLDER) {
+          sanitizedProp.ns = sanitizedNs;
+        }
+      }
+      
+      if (prop.remarks) {
+        const sanitizedRemarks = sanitizeOSCALString(prop.remarks, true);
+        if (sanitizedRemarks !== OSCAL_EMPTY_PLACEHOLDER) {
+          sanitizedProp.remarks = sanitizedRemarks;
+        }
+      }
+      
+      return sanitizedProp;
+    })
+    .filter(Boolean); // Remove null entries
+}
+
+// Function to filter metadata to only include OSCAL-compliant fields
+function filterOSCALMetadata(metadata) {
+  if (!metadata) return {};
+  
+  // Only include fields that are part of the official OSCAL SSP metadata schema
+  const allowedFields = [
+    'title',
+    'published',
+    'last-modified',
+    'version',
+    'oscal-version',
+    'revisions',
+    'document-ids',
+    'props',
+    'links',
+    'roles',
+    'locations',
+    'parties',
+    'responsible-parties',
+    'remarks'
+  ];
+  
+  const filtered = {};
+  for (const field of allowedFields) {
+    if (metadata[field] !== undefined) {
+      filtered[field] = metadata[field];
+    }
+  }
+  
+  return filtered;
+}
+
+// Function to filter control to only include OSCAL-compliant fields for implemented-requirements
+function filterOSCALImplementedRequirement(implementedReq) {
+  // Only include fields that are part of the official OSCAL implemented-requirement schema
+  const allowedFields = [
+    'uuid',
+    'control-id',
+    'description',
+    'props',
+    'links',
+    'set-parameters',
+    'responsible-roles',
+    'statements',
+    'by-components',
+    'remarks'
+  ];
+  
+  const filtered = {};
+  for (const field of allowedFields) {
+    if (implementedReq[field] !== undefined) {
+      filtered[field] = implementedReq[field];
+    }
+  }
+  
+  return filtered;
+}
+
 // Generate OSCAL SSP
 app.post('/api/generate-ssp', async (req, res) => {
   try {
-    const { metadata, controls, systemInfo } = req.body;
+    const { metadata, controls, systemInfo, validationOptions = {} } = req.body;
     
     // Debug: Log first control to see what structure we're receiving
     if (controls && controls.length > 0) {
@@ -1972,12 +2173,20 @@ app.post('/api/generate-ssp', async (req, res) => {
 
     // Build SSP metadata - preserve catalog metadata and enhance with SSP-specific data
     // Start with a deep copy of catalog metadata to preserve all fields
-    const sspMetadata = metadata ? JSON.parse(JSON.stringify(metadata)) : {};
+    // Then recursively sanitize ALL strings in the entire metadata structure
+    const rawMetadata = metadata ? JSON.parse(JSON.stringify(metadata)) : {};
     
-    // Override with SSP-specific values
-    sspMetadata.title = systemInfo.title || metadata?.title || "System Security Plan";
+    // If strict validation is enabled, filter to only allowed OSCAL fields
+    const filteredMetadata = validationOptions.additionalProperties 
+      ? filterOSCALMetadata(rawMetadata)
+      : rawMetadata;
+    
+    const sspMetadata = sanitizeOSCALObject(filteredMetadata) || {};
+    
+    // Override with SSP-specific values - sanitize all strings
+    sspMetadata.title = sanitizeOSCALString(systemInfo.title || metadata?.title || "System Security Plan");
     sspMetadata["last-modified"] = new Date().toISOString();
-    sspMetadata.version = systemInfo.version || metadata?.version || "1.0";
+    sspMetadata.version = sanitizeOSCALString(systemInfo.version || metadata?.version || "1.0");
     sspMetadata["oscal-version"] = "2.1.0";  // OSCAL schema only allows "2.1.0" as valid value
     
     // Ensure props array exists (for integrity hash addition later)
@@ -2006,14 +2215,15 @@ app.post('/api/generate-ssp', async (req, res) => {
     }
     
     // Add assessor details to metadata as a party and responsible-party
-    if (systemInfo.assessorDetails) {
+    const sanitizedAssessorDetails = sanitizeOSCALString(systemInfo.assessorDetails);
+    if (sanitizedAssessorDetails) {
       const assessorUuid = uuidv4();
       
       // Create party for assessor
       const assessorParty = {
         uuid: assessorUuid,
         type: "organization",
-        name: systemInfo.assessorDetails,
+        name: sanitizedAssessorDetails,
         remarks: "Assessment organization responsible for conducting the security assessment"
       };
       
@@ -2039,9 +2249,10 @@ app.post('/api/generate-ssp', async (req, res) => {
     // Don't add empty roles/parties arrays - they can cause oneOf validation errors
     if (metadata) {
       
-      // Preserve remarks if available
-      if (metadata.remarks) {
-        sspMetadata.remarks = metadata.remarks;
+      // Preserve remarks if available (sanitized) - don't use placeholder for optional fields
+      const sanitizedMetadataRemarks = sanitizeOSCALString(metadata.remarks, false);
+      if (sanitizedMetadataRemarks) {
+        sspMetadata.remarks = sanitizedMetadataRemarks;
       }
     }
     // Don't add empty roles/parties arrays - they can cause oneOf validation errors
@@ -2051,42 +2262,43 @@ app.post('/api/generate-ssp', async (req, res) => {
         uuid: uuidv4(),
         metadata: sspMetadata,
         "import-profile": {
-          href: systemInfo.catalogueUrl || "#"
+          href: sanitizeOSCALString(systemInfo.catalogueUrl) || "#"
         },
         "system-characteristics": {
           "system-ids": [
             {
-              id: systemInfo.systemId || uuidv4()
+              id: sanitizeOSCALString(systemInfo.systemId) || uuidv4()
             }
           ],
-          "system-name": systemInfo.systemName || "System Name",
-          description: systemInfo.description || "System Description",
-          "security-sensitivity-level": systemInfo.securityLevel || "moderate",
+          "system-name": sanitizeOSCALString(systemInfo.systemName) || "System Name",
+          description: sanitizeOSCALString(systemInfo.description) || "System Description",
+          "security-sensitivity-level": sanitizeOSCALString(systemInfo.securityLevel) || "moderate",
           ...((() => {
             // Build props array, only include if not empty
-            const propsArray = [
-              ...(systemInfo.organization ? [{
+            // Conditionally exclude custom props if "No Additional Properties" validation is enabled
+            const propsArray = !validationOptions.additionalProperties ? [
+              ...(sanitizeOSCALString(systemInfo.organization) ? [{
                 name: "organization",
-                value: systemInfo.organization
+                value: sanitizeOSCALString(systemInfo.organization)
               }] : []),
-              ...(systemInfo.systemOwner ? [{
+              ...(sanitizeOSCALString(systemInfo.systemOwner) ? [{
                 name: "system-owner",
-                value: systemInfo.systemOwner
+                value: sanitizeOSCALString(systemInfo.systemOwner)
               }] : []),
               // assessorDetails now in metadata.responsible-parties with role-id: "prepared-by"
-              ...(systemInfo.cspIaaS ? [{
+              ...(sanitizeOSCALString(systemInfo.cspIaaS) ? [{
                 name: "csp-iaas",
-                value: systemInfo.cspIaaS
+                value: sanitizeOSCALString(systemInfo.cspIaaS)
               }] : []),
-              ...(systemInfo.cspPaaS ? [{
+              ...(sanitizeOSCALString(systemInfo.cspPaaS) ? [{
                 name: "csp-paas",
-                value: systemInfo.cspPaaS
+                value: sanitizeOSCALString(systemInfo.cspPaaS)
               }] : []),
-              ...(systemInfo.cspSaaS ? [{
+              ...(sanitizeOSCALString(systemInfo.cspSaaS) ? [{
                 name: "csp-saas",
-                value: systemInfo.cspSaaS
+                value: sanitizeOSCALString(systemInfo.cspSaaS)
               }] : [])
-            ];
+            ] : [];
             return propsArray.length > 0 ? { props: propsArray } : {};
           })()),
           "system-information": {
@@ -2097,44 +2309,48 @@ app.post('/api/generate-ssp', async (req, res) => {
                 description: "Information types stored, processed, or transmitted by this system",
                 "categorizations": [],
                 "confidentiality-impact": {
-                  base: systemInfo.confidentiality || "moderate"
+                  base: sanitizeOSCALString(systemInfo.confidentiality) || "moderate"
                 },
                 "integrity-impact": {
-                  base: systemInfo.integrity || "moderate"
+                  base: sanitizeOSCALString(systemInfo.integrity) || "moderate"
                 },
                 "availability-impact": {
-                  base: systemInfo.availability || "moderate"
+                  base: sanitizeOSCALString(systemInfo.availability) || "moderate"
                 }
               }
             ]
           },
           "security-impact-level": {
-            "security-objective-confidentiality": systemInfo.confidentiality || "moderate",
-            "security-objective-integrity": systemInfo.integrity || "moderate",
-            "security-objective-availability": systemInfo.availability || "moderate"
+            "security-objective-confidentiality": sanitizeOSCALString(systemInfo.confidentiality) || "moderate",
+            "security-objective-integrity": sanitizeOSCALString(systemInfo.integrity) || "moderate",
+            "security-objective-availability": sanitizeOSCALString(systemInfo.availability) || "moderate"
           },
           status: {
-            state: systemInfo.status || "under-development"
+            state: sanitizeOSCALString(systemInfo.status) || "under-development"
           },
           "authorization-boundary": {
-            description: systemInfo.authorizationBoundary || "System authorization boundary description"
+            description: sanitizeOSCALString(systemInfo.authorizationBoundary) || "System authorization boundary description"
           }
         },
         "system-implementation": {
           description: (() => {
             // Combine system description and CSP provider details
-            let implDesc = systemInfo.description || "System implementation description";
+            let implDesc = sanitizeOSCALString(systemInfo.description) || "System implementation description";
             
             const cspDetails = [];
-            if (systemInfo.cspIaaS) cspDetails.push(`IaaS: ${systemInfo.cspIaaS}`);
-            if (systemInfo.cspPaaS) cspDetails.push(`PaaS: ${systemInfo.cspPaaS}`);
-            if (systemInfo.cspSaaS) cspDetails.push(`SaaS: ${systemInfo.cspSaaS}`);
+            const cspIaaS = sanitizeOSCALString(systemInfo.cspIaaS);
+            const cspPaaS = sanitizeOSCALString(systemInfo.cspPaaS);
+            const cspSaaS = sanitizeOSCALString(systemInfo.cspSaaS);
+            
+            if (cspIaaS) cspDetails.push(`IaaS: ${cspIaaS}`);
+            if (cspPaaS) cspDetails.push(`PaaS: ${cspPaaS}`);
+            if (cspSaaS) cspDetails.push(`SaaS: ${cspSaaS}`);
             
             if (cspDetails.length > 0) {
               implDesc += `\n\nCloud Service Providers: ${cspDetails.join(', ')}`;
             }
             
-            return implDesc;
+            return sanitizeOSCALString(implDesc) || "System implementation description";
           })(),
           users: [],
           components: []
@@ -2145,28 +2361,41 @@ app.post('/api/generate-ssp', async (req, res) => {
             // Build the implemented requirement with proper OSCAL structure
             const implementedReq = {
               uuid: uuidv4(),
-              "control-id": control.id,
-              description: control.implementation || control.description || "Not documented"
+              "control-id": sanitizeOSCALString(control.id, true),
+              description: sanitizeOSCALString(control.implementation || control.description, true)
             };
             
             // Preserve catalog props and add implementation props
-            const catalogProps = control.props || [];
+            const catalogProps = sanitizeProps(control.props || []);
             const implementationProps = [
               {
                 name: "implementation-status",
-                value: control.status || "planned"
-              },
-              {
-                name: "catalog-control-title",
-                value: control.title || ""
-              },
-              {
-                name: "catalog-control-description",
-                value: control.description || ""
+                value: sanitizeOSCALString(control.status, true)
               }
             ];
             
+            // Add catalog control title and description as props only if "No Additional Properties" is NOT selected
+            if (!validationOptions.additionalProperties) {
+              const titleValue = sanitizeOSCALString(control.title, true);
+              const descValue = sanitizeOSCALString(control.description, true);
+              
+              // Only add if not placeholder (meaningful data)
+              if (titleValue && titleValue !== OSCAL_EMPTY_PLACEHOLDER) {
+                implementationProps.push({
+                  name: "catalog-control-title",
+                  value: titleValue
+                });
+              }
+              if (descValue && descValue !== OSCAL_EMPTY_PLACEHOLDER) {
+                implementationProps.push({
+                  name: "catalog-control-description",
+                  value: descValue
+                });
+              }
+            }
+            
             // Add custom fields as props (OSCAL-compliant way)
+            // Conditionally exclude custom props if "No Additional Properties" validation is enabled
             const customFieldsMapping = {
               'responsibleParty': 'responsible-party',
               'controlOwner': 'control-owner',
@@ -2190,40 +2419,66 @@ app.post('/api/generate-ssp', async (req, res) => {
             };
             
             const customProps = [];
-            Object.keys(customFieldsMapping).forEach(field => {
-              if (control[field] !== undefined && control[field] !== '') {
-                customProps.push({
-                  name: customFieldsMapping[field],
-                  value: typeof control[field] === 'object' ? JSON.stringify(control[field]) : String(control[field])
-                });
-              }
-            });
+            // Only include custom props if "No Additional Properties" is NOT selected
+            if (!validationOptions.additionalProperties) {
+              Object.keys(customFieldsMapping).forEach(field => {
+                const rawValue = control[field];
+                // Include field if it has any value (even empty string will get placeholder)
+                if (rawValue !== undefined && rawValue !== null) {
+                  const sanitizedValue = typeof rawValue === 'object' 
+                    ? sanitizeOSCALString(JSON.stringify(rawValue), true)
+                    : sanitizeOSCALString(String(rawValue), true);
+                  
+                  // Always add - sanitizeOSCALString returns placeholder for empty values
+                  customProps.push({
+                    name: customFieldsMapping[field],
+                    value: sanitizedValue
+                  });
+                }
+              });
+            }
             
-            implementedReq.props = [...catalogProps, ...implementationProps, ...customProps];
+            implementedReq.props = sanitizeProps([...catalogProps, ...implementationProps, ...customProps]);
             
-            // Preserve catalog params if they exist
+            // Preserve catalog params if they exist (sanitize all strings)
             if (control.params && control.params.length > 0) {
-              implementedReq.params = control.params;
+              const sanitizedParams = sanitizeOSCALObject(control.params);
+              if (sanitizedParams) {
+                implementedReq.params = sanitizedParams;
+              }
             }
             
-            // Preserve or create parts structure
+            // Preserve or create parts structure (sanitize all strings)
             if (control.parts && control.parts.length > 0) {
-              implementedReq.parts = control.parts;
+              const sanitizedParts = sanitizeOSCALObject(control.parts);
+              if (sanitizedParts) {
+                implementedReq.parts = sanitizedParts;
+              }
             }
             
-            // Add statements if present
+            // Add statements if present (sanitize all strings)
             if (control.statements && control.statements.length > 0) {
-              implementedReq.statements = control.statements;
+              const sanitizedStatements = sanitizeOSCALObject(control.statements);
+              if (sanitizedStatements) {
+                implementedReq.statements = sanitizedStatements;
+              }
             }
             
-            // Add implementation remarks
-            if (control.remarks) {
-              implementedReq.remarks = control.remarks;
+            // Add implementation remarks (sanitized) - only if present and not empty
+            const sanitizedRemarks = sanitizeOSCALString(control.remarks, false);
+            if (sanitizedRemarks) {
+              implementedReq.remarks = sanitizedRemarks;
             }
             
-            // Preserve class if present
-            if (control.class) {
-              implementedReq.class = control.class;
+            // Preserve class if present (sanitized) - only if present and not empty
+            const sanitizedClass = sanitizeOSCALString(control.class, false);
+            if (sanitizedClass) {
+              implementedReq.class = sanitizedClass;
+            }
+            
+            // If strict validation is enabled, filter to only allowed OSCAL fields
+            if (validationOptions.additionalProperties) {
+              return filterOSCALImplementedRequirement(implementedReq);
             }
             
             return implementedReq;
@@ -2232,17 +2487,26 @@ app.post('/api/generate-ssp', async (req, res) => {
       }
     };
 
+    // FINAL SANITIZATION PASS: Recursively sanitize entire SSP structure
+    // This catches any remaining whitespace/empty strings we might have missed
+    console.log('🧹 Performing final OSCAL sanitization pass...');
+    const sanitizedSSP = sanitizeOSCALObject(ssp);
+    
+    if (!sanitizedSSP || !sanitizedSSP['system-security-plan']) {
+      throw new Error('SSP sanitization resulted in empty document');
+    }
+    
     // Add FIPS 140-2 compliant integrity hash before returning
     try {
       console.log('🔐 Attempting to add integrity hash to SSP...');
       console.log('📊 SSP structure check:', {
-        hasSSP: !!ssp['system-security-plan'],
-        hasMetadata: !!ssp['system-security-plan']?.metadata,
-        hasProps: !!ssp['system-security-plan']?.metadata?.props,
-        propsCount: ssp['system-security-plan']?.metadata?.props?.length || 0
+        hasSSP: !!sanitizedSSP['system-security-plan'],
+        hasMetadata: !!sanitizedSSP['system-security-plan']?.metadata,
+        hasProps: !!sanitizedSSP['system-security-plan']?.metadata?.props,
+        propsCount: sanitizedSSP['system-security-plan']?.metadata?.props?.length || 0
       });
       
-      const sspWithIntegrity = addIntegrityHash(ssp);
+      const sspWithIntegrity = addIntegrityHash(sanitizedSSP);
       
       // Verify integrity hash was added
       const finalProps = sspWithIntegrity['system-security-plan']?.metadata?.props || [];
@@ -2266,7 +2530,7 @@ app.post('/api/generate-ssp', async (req, res) => {
       console.error('❌ Error stack:', integrityError.stack);
       // Don't fail the export if integrity hash fails - just log warning
       console.warn('⚠️ Returning SSP without integrity hash due to error');
-      res.json(ssp);
+      res.json(sanitizedSSP);
     }
   } catch (error) {
     console.error('Error generating SSP:', error.message);
@@ -2565,6 +2829,46 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
         OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
+    });
+  }
+});
+
+/**
+ * Get AI telemetry log statistics
+ * Returns information about logged AI interactions
+ */
+app.get('/api/ai/logs/stats', authenticate, authorize([PERMISSIONS.VIEW_AI_LOGS]), async (req, res) => {
+  try {
+    const stats = getLogStats();
+    res.json({
+      success: true,
+      ...stats
+    });
+  } catch (error) {
+    console.error('Error getting log stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get log statistics',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Clean up old AI telemetry logs
+ * Deletes log files older than specified days
+ */
+app.post('/api/ai/logs/cleanup', authenticate, authorize([PERMISSIONS.MANAGE_AI_LOGS]), async (req, res) => {
+  try {
+    const { daysToKeep = 30 } = req.body;
+    const result = cleanupOldLogs(daysToKeep);
+    res.json(result);
+  } catch (error) {
+    console.error('Error cleaning up logs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cleanup logs',
+      details: error.message
     });
   }
 });

@@ -31,7 +31,11 @@ export const PERMISSIONS = {
   EDIT_CONTROLS: 'edit_controls',
   VIEW_REPORTS: 'view_reports',
   EXPORT_REPORTS: 'export_reports',
-  COMPARE_REPORTS: 'compare_reports'
+  COMPARE_REPORTS: 'compare_reports',
+  
+  // AI Telemetry Log permissions
+  VIEW_AI_LOGS: 'view_ai_logs',
+  MANAGE_AI_LOGS: 'manage_ai_logs'
 };
 
 // Map roles to their permissions
@@ -50,7 +54,9 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.EDIT_CONTROLS,
     PERMISSIONS.VIEW_REPORTS,
     PERMISSIONS.EXPORT_REPORTS,
-    PERMISSIONS.COMPARE_REPORTS
+    PERMISSIONS.COMPARE_REPORTS,
+    PERMISSIONS.VIEW_AI_LOGS,
+    PERMISSIONS.MANAGE_AI_LOGS
   ],
   [ROLES.USER]: [
     // User can edit most fields except settings and assessor-specific fields

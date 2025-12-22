@@ -80,6 +80,10 @@
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
+  display: inline-block;
+  text-align: center;
+  min-width: fit-content;
+  box-sizing: border-box;
 }
 
 .status-not-assessed {

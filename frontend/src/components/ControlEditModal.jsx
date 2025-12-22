@@ -28,10 +28,26 @@ function ControlEditModal({ control, onClose, onSave, allControls = [], organiza
   }
 
   const handleChange = (field, value) => {
-    setEditedControl(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setEditedControl(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+      
+      // Auto-populate related fields when status changes to "Not Applicable"
+      if (field === 'status' && value === 'not-applicable') {
+        // Set Responsible Party to "Not Applicable" if not already set
+        if (!prev.responsibleParty || prev.responsibleParty === '') {
+          updated.responsibleParty = 'Not Applicable';
+        }
+        // Set Control Inheritance/Implementation by Consumer to "Control Implementer" if not already set
+        if (!prev.controlOwner || prev.controlOwner === '') {
+          updated.controlOwner = 'Control Implementer';
+        }
+      }
+      
+      return updated;
+    });
     setHasChanges(true);
   };
 

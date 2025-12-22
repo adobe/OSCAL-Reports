@@ -59,7 +59,20 @@ function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = []
   }, []);
 
   const handleStatusChange = (e) => {
-    onUpdate(control.id, 'status', e.target.value);
+    const newStatus = e.target.value;
+    onUpdate(control.id, 'status', newStatus);
+    
+    // Auto-populate related fields when "Not Applicable" is selected
+    if (newStatus === 'not-applicable') {
+      // Set Responsible Party to "Not Applicable" if not already set
+      if (!control.responsibleParty || control.responsibleParty === '') {
+        onUpdate(control.id, 'responsibleParty', 'Not Applicable');
+      }
+      // Set Cloud Provider Responsibility to "Control Implementer" if not already set
+      if (!control.controlOwner || control.controlOwner === '') {
+        onUpdate(control.id, 'controlOwner', 'Control Implementer');
+      }
+    }
   };
 
   const handleImplementationChange = (e) => {
@@ -328,6 +341,7 @@ function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = []
                 <option value="Consumer Responsibility">Consumer Responsibility</option>
                 <option value="Consumer Implementation Required">Consumer Implementation Required</option>
                 <option value="Consumer Configuration Required">Consumer Configuration Required</option>
+                <option value="Not Applicable">Not Applicable</option>
               </select>
               </div>
 

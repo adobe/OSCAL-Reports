@@ -75,6 +75,18 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
 
   const handleChange = (field, value) => {
     onUpdate(control.id, field, value);
+    
+    // Auto-populate related fields when status changes to "Not Applicable"
+    if (field === 'status' && value === 'not-applicable') {
+      // Set Responsible Party to "Not Applicable" if not already set
+      if (!control.responsibleParty || control.responsibleParty === '') {
+        onUpdate(control.id, 'responsibleParty', 'Not Applicable');
+      }
+      // Set Control Inheritance/Implementation by Consumer to "Control Implementer" if not already set
+      if (!control.controlOwner || control.controlOwner === '') {
+        onUpdate(control.id, 'controlOwner', 'Control Implementer');
+      }
+    }
   };
 
   // Function to fetch API data and manage history

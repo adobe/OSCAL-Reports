@@ -133,24 +133,27 @@
   margin-bottom: 1.5rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .status-badge.success {
   background: #e8f5e9;
   color: #2e7d32;
-  border: 2px solid #4caf50;
+  border: 3px solid #4caf50;
 }
 
 .status-badge.error {
   background: #ffebee;
   color: #c62828;
-  border: 2px solid #f44336;
+  border: 3px solid #f44336;
 }
 
 .status-badge.warning {
   background: #fff3e0;
   color: #e65100;
-  border: 2px solid #ff9800;
+  border: 3px solid #ff9800;
 }
 
 .validation-message {
