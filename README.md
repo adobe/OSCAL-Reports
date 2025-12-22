@@ -2,7 +2,7 @@
 
 **A comprehensive web application for generating compliance documentation from OSCAL catalogs**
 
-Version 1.2.6 | December 2025
+Version 1.2.7 | December 2025
 
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -16,8 +16,9 @@ Version 1.2.6 | December 2025
 
 - ✨ **New Workflow**: Load existing reports first, then update catalogs intelligently
 - 🤖 **Automated Control Suggestions**: AI-powered recommendations for control implementations
+- 📊 **AI Telemetry Logging**: OpenTelemetry-compliant logging of all AI interactions
 - 📚 **Multiple Frameworks**: NIST SP 800-53, Australian ISM, Singapore IM8
-- 📊 **Multiple Export Formats**: OSCAL JSON, Excel, PDF, and CCM
+- 📈 **Multiple Export Formats**: OSCAL JSON, Excel, PDF, and CCM
 - 🔄 **Smart Catalog Updates**: Automatically detect new/changed controls
 - 💾 **Data Persistence**: Browser-based local storage for multi-session work
 - ⚡ **Auto-save**: Automatic progress saving
@@ -36,7 +37,7 @@ Version 1.2.6 | December 2025
 
 ```bash
 # Clone or download the repository
-cd OSCAL-Report-Generator-Green
+cd OSCAL_Reports
 
 # Run the setup script
 chmod +x setup.sh
@@ -49,8 +50,11 @@ npm run dev
 cd backend
 node server.js
 
-# Access the application
-open http://localhost:3019
+# Access the application (production)
+open http://localhost:3020
+
+# Or access frontend dev server
+open http://localhost:3021
 ```
 
 ### TrueNAS Server Deployment
@@ -82,8 +86,8 @@ For deployment on **nas.keekar.com** or other TrueNAS servers:
    ```
 
 5. **Access from Network**
-   - Open browser to `http://nas.keekar.com:3019`
-   - Or use the server's IP address: `http://<server-ip>:3019`
+   - Open browser to `http://nas.keekar.com:3020`
+   - Or use the server's IP address: `http://<server-ip>:3020`
 
 ---
 
@@ -200,6 +204,32 @@ Generate reports in multiple formats:
 - **Load saved data**: Resume from browser storage
 - **Clear data**: Start fresh when needed
 - **Export/Import**: Download and upload SSP JSON files
+
+---
+
+## 📊 AI Telemetry Logging (New in v1.2.7!)
+
+All AI interactions are logged following **OpenTelemetry (OTel) Generative AI Semantic Conventions** for full observability and compliance:
+
+### Features
+- **OTel Compliant**: Follows [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- **JSONL Format**: One JSON object per line for easy parsing
+- **Automatic Rotation**: New log file created when size reaches 5MB
+- **Detailed Metrics**: Tracks tokens, latency, prompts, responses, and errors
+- **Security**: Admin-only access with RBAC permissions
+
+### What's Logged
+- **Prompts**: All prompts sent to AI engines
+- **Responses**: AI-generated implementation text
+- **Performance**: Latency, token usage, model information
+- **Context**: Control ID, family, user/session metadata
+- **Errors**: Detailed error information for debugging
+
+### API Endpoints
+- `GET /api/ai/logs/stats` - View log statistics
+- `POST /api/ai/logs/cleanup` - Clean up old logs
+
+See [ARCHITECTURE.md - AI Telemetry Logging](docs/ARCHITECTURE.md#ai-telemetry-logging-v127) for complete documentation.
 
 ---
 
@@ -332,12 +362,21 @@ config/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NODE_ENV` | `production` | Node environment mode |
-| `PORT` | `3020` (Blue) / `3019` (Green) | Server port |
+| `PORT` | `3020` | Backend server port (default) |
+| `FRONTEND_DEV_PORT` | `3021` | Frontend dev server port (vite) |
 | `BUILD_TIMESTAMP` | Current time | Build timestamp for password generation |
 
 ### Port Configuration
 
-Change the port by setting the `PORT` environment variable:
+The application uses the following ports:
+
+- **Backend Server**: `3020` (default, configurable via `PORT` env var)
+- **Frontend Dev Server**: `3021` (configured in `vite.config.js`)
+- **Blue Deployment**: `8120` (optional blue-green deployment)
+- **Green Deployment**: `8121` (optional blue-green deployment)
+- **Ollama AI Service**: `11434` (if using local AI)
+
+Change the backend port by setting the `PORT` environment variable:
 
 ```bash
 PORT=8080 node server.js
@@ -359,28 +398,112 @@ Default user passwords are generated using timestamp format: `username#$DDMMYYHH
 ### Project Structure
 
 ```
-OSCAL-Report-Generator-Green/
-├── backend/                 # Node.js + Express backend
-│   ├── server.js           # Main server file
-│   ├── ccmExport.js        # CCM Excel generation
-│   ├── ccmImport.js        # CCM import functionality
-│   ├── pdfExport.js        # PDF generation
-│   ├── sspComparisonV3.js  # Catalog comparison logic
-│   ├── package.json        # Backend dependencies
-│   └── public/             # Built frontend files
+OSCAL_Reports/
+├── backend/                      # Node.js + Express backend
+│   ├── auth/                     # Authentication & authorization
+│   │   ├── middleware.js         # Auth middleware
+│   │   ├── passwordGenerator.js  # Password utilities
+│   │   ├── roles.js              # Role definitions (Admin, Assessor, User)
+│   │   └── userManager.js        # User management & PBKDF2 hashing
+│   ├── server.js                 # Main server file (Port 3020)
+│   ├── configManager.js          # Configuration management
+│   ├── ccmExport.js              # CCM Excel generation
+│   ├── ccmImport.js              # CCM import functionality
+│   ├── pdfExport.js              # PDF generation
+│   ├── sspComparisonV3.js        # Catalog comparison logic
+│   ├── controlSuggestionEngine.js # AI suggestion engine
+│   ├── mistralService.js         # Mistral AI integration
+│   ├── integrityService.js       # SSP integrity checking
+│   ├── messagingService.js       # Email/notification service
+│   ├── oscalValidator.js         # OSCAL validation
+│   ├── oscalValidatorAJV.js      # AJV-based validation
+│   ├── oscal-schema.json         # OSCAL JSON Schema v1.1.2
+│   ├── package.json              # Backend dependencies
+│   └── public/                   # Built frontend files (generated)
 │
-├── frontend/               # React frontend
+├── frontend/                     # React frontend
 │   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── utils/          # Utility functions
-│   │   ├── App.jsx         # Main application component
-│   │   └── App.css         # Global styles
-│   ├── package.json        # Frontend dependencies
-│   └── vite.config.js      # Vite configuration
+│   │   ├── components/           # React components
+│   │   │   ├── AIIntegration.jsx         # AI provider config
+│   │   │   ├── CatalogChoice.jsx         # Catalog selection
+│   │   │   ├── CatalogueInput.jsx        # Catalog input
+│   │   │   ├── CCMUpload.jsx             # CCM file upload
+│   │   │   ├── ControlEditModal.jsx      # Control editor
+│   │   │   ├── ControlItem.jsx           # Individual control
+│   │   │   ├── ControlItemCCM.jsx        # CCM control item
+│   │   │   ├── ControlsList.jsx          # Controls list view
+│   │   │   ├── ControlSuggestions.jsx    # AI suggestions UI
+│   │   │   ├── ErrorBoundary.jsx         # Error handling
+│   │   │   ├── ExistingSSPUpload.jsx     # SSP upload
+│   │   │   ├── ExportButtons.jsx         # Export options
+│   │   │   ├── InitialChoice.jsx         # Workflow choice
+│   │   │   ├── IntegrityWarning.jsx      # Integrity alerts
+│   │   │   ├── Login.jsx                 # Authentication UI
+│   │   │   ├── MessagingConfiguration.jsx # Email config
+│   │   │   ├── MultiReportComparison.jsx # Report comparison
+│   │   │   ├── SaveLoadBar.jsx           # Save/load bar
+│   │   │   ├── SaveLoadPanel.jsx         # Save/load panel
+│   │   │   ├── Settings.jsx              # Settings (legacy)
+│   │   │   ├── SettingsWithTabs.jsx      # Tabbed settings
+│   │   │   ├── SSOIntegration.jsx        # SSO configuration
+│   │   │   ├── SystemInfoForm.jsx        # System info form
+│   │   │   ├── UseCases.jsx              # Use case selector
+│   │   │   ├── UserManagement.jsx        # User admin UI
+│   │   │   └── ValidationStatus.jsx      # OSCAL validation
+│   │   ├── contexts/                 # React contexts
+│   │   │   └── AuthContext.jsx       # Authentication context
+│   │   ├── services/                 # Frontend services
+│   │   │   └── oscalValidator.js     # Client-side OSCAL validation
+│   │   ├── utils/                    # Utility functions
+│   │   │   ├── buildInfo.js          # Build metadata
+│   │   │   ├── passwordGenerator.js  # Client password utilities
+│   │   │   └── storage.js            # LocalStorage management
+│   │   ├── App.jsx                   # Main application component
+│   │   ├── App.css                   # Global styles
+│   │   ├── index.css                 # Base CSS
+│   │   └── main.jsx                  # Entry point
+│   ├── index.html                    # HTML template
+│   ├── package.json                  # Frontend dependencies
+│   └── vite.config.js                # Vite config (Port 3021)
 │
-├── setup.sh                # Setup script
-├── ARCHITECTURE.md         # Architecture documentation
-└── README.md               # This file
+├── config/                           # Configuration directory
+│   ├── app/                          # Application configs (sensitive)
+│   │   ├── config.json.example       # Config template
+│   │   └── users.json.example        # Users template
+│   └── build/                        # Build/deployment configs
+│       ├── docker-compose.yml        # Docker Compose
+│       ├── Dockerfile                # Docker build
+│       └── truenas-app.yaml          # TrueNAS config
+│
+├── docs/                             # Documentation
+│   ├── ARCHITECTURE.md               # Technical architecture & AI telemetry
+│   ├── DEPLOYMENT.md                 # Deployment guide (Docker, TrueNAS, SMB)
+│   ├── CONFIGURATION.md              # Configuration documentation
+│   └── OSCAL_Compliance_Tool_Demo.pptx # Demo presentation
+│
+├── blue/                             # Blue deployment landing page
+│   └── index.html                    # Redirect to Port 8120 (Blue-Green strategy)
+│
+├── green/                            # Green deployment landing page
+│   └── index.html                    # Redirect to Port 8121 (Blue-Green strategy)
+│
+├── sample_output/                    # Sample outputs
+│   ├── AEMGovAu_ComplianceReport_Sample_2025-11-20.json
+│   └── test-ssp-integrity.json
+│
+├── logs/                             # AI telemetry logs (OTel GenAI format)
+│   └── ai-telemetry-YYYY-MM-DD.jsonl # Log files (auto-rotated at 5MB)
+│
+├── package.json                      # Root package (dev scripts)
+├── setup.sh                          # Setup script
+├── deploy-to-smb.sh                  # SMB deployment
+├── build_on_truenas.sh               # TrueNAS build script
+├── reactivate-admin.sh               # Admin reactivation
+├── docker-compose.yml                # Docker Compose (root)
+├── Dockerfile                        # Dockerfile (root)
+├── truenas-app.yaml                  # TrueNAS config (root)
+├── LICENSE                           # MIT License
+└── README.md                         # This file
 ```
 
 ### Tech Stack
@@ -548,8 +671,12 @@ Response: { "success": true }
 
 **1. Port already in use**
 ```bash
-# Find and kill process on port 3019
-lsof -i :3019
+# Find and kill process on port 3020 (backend)
+lsof -i :3020
+kill -9 <PID>
+
+# Or port 3021 (frontend dev)
+lsof -i :3021
 kill -9 <PID>
 ```
 
@@ -563,7 +690,7 @@ cp -r dist ../backend/public
 **3. Health check fails**
 ```bash
 # Check if server is running
-curl http://localhost:3019/health
+curl http://localhost:3020/health
 
 # Check logs
 cd backend
@@ -573,8 +700,8 @@ tail -f server.log
 **4. Cannot access from network (TrueNAS)**
 - Ensure the server is listening on `0.0.0.0` (not just `localhost`)
 - Check firewall settings on the server
-- Verify port 3019 is open and forwarded correctly
-- Test with: `curl http://<server-ip>:3019/health`
+- Verify port 3020 is open and forwarded correctly
+- Test with: `curl http://<server-ip>:3020/health`
 
 ---
 
@@ -636,19 +763,19 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) file for 
 
 ## 📚 Documentation
 
-This project maintains 5 essential documentation files:
+This project maintains 3 essential documentation files:
 
 1. **[README.md](README.md)** - This file - Overview, quick start, and features
-2. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical architecture, API endpoints, data flow
-3. **[TRUENAS_DEPLOYMENT.md](TRUENAS_DEPLOYMENT.md)** - TrueNAS SCALE deployment guide
-4. **[DEPLOYMENT_TO_SMB.md](DEPLOYMENT_TO_SMB.md)** - SMB share deployment instructions
-5. **[ENHANCEMENTS.md](ENHANCEMENTS.md)** - Enhancement history, Metaschema Framework validation
+2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture, API endpoints, AI telemetry
+3. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment guide (Docker, TrueNAS, SMB)
+4. **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Configuration reference
 
 ### Quick Links
 
-- **Validation Features**: [ENHANCEMENTS.md - Metaschema Framework & OSCAL Validation](ENHANCEMENTS.md#metaschema-framework--oscal-validation)
-- **API Documentation**: [ARCHITECTURE.md - API Endpoints](ARCHITECTURE.md)
-- **Deployment Guides**: [TRUENAS_DEPLOYMENT.md](TRUENAS_DEPLOYMENT.md) | [DEPLOYMENT_TO_SMB.md](DEPLOYMENT_TO_SMB.md)
+- **AI Telemetry Logging**: [ARCHITECTURE.md - AI Telemetry](docs/ARCHITECTURE.md#ai-telemetry-logging-v127)
+- **API Documentation**: [ARCHITECTURE.md - API Endpoints](docs/ARCHITECTURE.md)
+- **Deployment Guides**: [DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **Configuration**: [CONFIGURATION.md](docs/CONFIGURATION.md)
 
 ---
 
@@ -658,7 +785,7 @@ For issues, questions, or feature requests:
 
 - **GitHub Issues**: Open an issue on the repository
 - **Documentation**: See above for all available documentation
-- **Server**: Access at nas.keekar.com:3019
+- **Server**: Access at nas.keekar.com:3020
 - **Email**: mukesh.kesharwani@adobe.com
 
 ---

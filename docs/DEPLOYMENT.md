@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Deployment Guide
 
-**Version**: 1.2.6  
+**Version**: 1.2.7  
 **Author**: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>  
 **Last Updated**: December 2025
 
@@ -29,17 +29,21 @@
 
 ```bash
 # Clone the repository
-cd OSCAL-Report-Generator-1.2.6
+cd OSCAL-Report-Generator-1.2.7
 
 # Run setup script
 chmod +x setup.sh
 ./setup.sh
 
-# Start development server
+# Start development server (both frontend and backend)
 npm run dev
 
 # Access application
+# Frontend dev server (with hot reload):
 open http://localhost:3021
+
+# Or backend directly (production build):
+open http://localhost:3020
 ```
 
 ---
@@ -50,7 +54,7 @@ open http://localhost:3021
 
 ```bash
 # Build the image
-docker build -t oscal-report-generator:1.2.6 .
+docker build -t oscal-report-generator:1.2.7 .
 
 # Run the container
 docker run -d \
@@ -58,10 +62,13 @@ docker run -d \
   -p 3020:3020 \
   -e NODE_ENV=production \
   -e PORT=3020 \
-  oscal-report-generator:1.2.6
+  oscal-report-generator:1.2.7
 
 # Verify it's running
 curl http://localhost:3020/health
+
+# Expected response:
+# {"status":"healthy","service":"Keekar's OSCAL SOA/SSP/CCM Generator"}
 ```
 
 ### Docker Compose (with Ollama AI)
@@ -86,12 +93,18 @@ docker-compose down
 
 ### Method 1: Quick Start (GUI - 5 Minutes)
 
-**Target Server**: http://nas.keekar.com
+**Target Server**: http://nas.keekar.com:3020
+
+**Port Configuration**:
+- Application Port: 3020 (backend API and frontend)
+- Ollama AI Service: 11434 (if using local AI)
+- Blue Deployment: 8120 (optional)
+- Green Deployment: 8121 (optional)
 
 #### 1. Build Docker Image (On Your PC)
 
 ```bash
-cd /path/to/OSCAL-Report-Generator-1.2.6
+cd /path/to/OSCAL-Report-Generator-1.2.7
 docker build -t oscal-report-generator:latest .
 docker save -o oscal-report-generator.tar oscal-report-generator:latest
 ```
@@ -202,15 +215,16 @@ The script will:
 
 ### TrueNAS Configuration Parameters
 
-| Parameter | Value | Adjustable? |
-|-----------|-------|-------------|
-| **Application Name** | oscal-report-generator | ✅ Yes |
-| **Container Port** | 3020 | ❌ No (fixed) |
-| **External Port** | 3020 | ✅ Yes (any available) |
-| **CPU Limit** | 2 cores | ✅ Yes |
-| **Memory Limit** | 2GB | ✅ Yes |
-| **NODE_ENV** | production | ✅ Yes |
-| **Health Check Path** | /health | ❌ No |
+| Parameter | Value | Adjustable? | Notes |
+|-----------|-------|-------------|-------|
+| **Application Name** | oscal-report-generator | ✅ Yes | Any valid name |
+| **Container Port** | 3020 | ❌ No (fixed) | Application listens on 3020 |
+| **External Port** | 3020 | ✅ Yes | Map to any available port |
+| **Ollama Port** | 11434 | ❌ No (if using) | For local AI |
+| **CPU Limit** | 2 cores | ✅ Yes | Minimum 1 core |
+| **Memory Limit** | 2GB | ✅ Yes | Minimum 1GB |
+| **NODE_ENV** | production | ✅ Yes | Use 'production' |
+| **Health Check Path** | /health | ❌ No | Fixed endpoint |
 
 ### TrueNAS Checklist
 
@@ -309,12 +323,13 @@ Create a `.env` file (or set in your deployment):
 ```bash
 # Application
 NODE_ENV=production
-PORT=3020
+PORT=3020                    # Backend server port
 
-# AI Integration
-OLLAMA_URL=http://localhost:11434
-# OR for AWS Bedrock
-AWS_REGION=ap-southeast-2
+# AI Integration (Optional)
+OLLAMA_URL=http://localhost:11434   # For local Ollama AI
+
+# OR for AWS Bedrock (Cloud AI)
+AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your-key
 AWS_SECRET_ACCESS_KEY=your-secret
 BEDROCK_MODEL_ID=mistral.mistral-large-2402-v1:0
@@ -355,6 +370,7 @@ server {
     listen 80;
     server_name oscal.yourdomain.com;
 
+    # Main application
     location / {
         proxy_pass http://localhost:3020;
         proxy_http_version 1.1;
@@ -365,6 +381,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Increase timeout for AI operations
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
     }
 }
 ```
@@ -409,14 +429,20 @@ docker logs -f oscal-generator
 ps aux | grep node
 
 # Check port usage
-lsof -i :3020
+lsof -i :3020        # Backend
+lsof -i :3021        # Frontend dev
+lsof -i :11434       # Ollama AI
 netstat -an | grep 3020
 
 # Verify file permissions
 ls -la config/app/
 
-# Test AI connectivity
-curl http://localhost:11434/api/tags  # For Ollama
+# Test AI connectivity (if using Ollama)
+curl http://localhost:11434/api/tags
+
+# Test AWS Bedrock (if using)
+# Check backend logs for connection attempts
+docker logs oscal-generator | grep -i bedrock
 ```
 
 ### Performance Tuning
@@ -513,6 +539,6 @@ For deployment issues or questions:
 
 ---
 
-**Document Version**: 1.2.6  
+**Document Version**: 1.2.7  
 **Last Updated**: December 16, 2025
 

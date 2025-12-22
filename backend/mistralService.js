@@ -12,6 +12,7 @@ import axios from 'axios';
 import http from 'http';
 import https from 'https';
 import { loadConfig } from './configManager.js';
+import { logAIInteraction, logAIError } from './aiLogger.js';
 
 // AWS SDK imports (lazy loaded when needed)
 let BedrockRuntimeClient, ConverseCommand;
@@ -157,6 +158,7 @@ export async function loadMistralConfig() {
  */
 async function generateWithOllama(control, config, existingControls = []) {
   const prompt = buildPrompt(control, existingControls);
+  const startTime = Date.now();
   
   console.log(`🔗 Attempting to connect to Ollama at: ${config.ollamaUrl}`);
   console.log(`   Model: ${config.model || 'mistral:7b'}`);
@@ -217,13 +219,58 @@ async function generateWithOllama(control, config, existingControls = []) {
     );
 
     if (response.data && response.data.response) {
+      const latency = Date.now() - startTime;
+      const cleanedResponse = cleanResponse(response.data.response);
+      
+      // Log successful AI interaction (OTel GenAI Semantic Conventions)
+      logAIInteraction({
+        provider: 'ollama',
+        model: config.model || 'mistral:7b',
+        operation: 'generate',
+        prompt: prompt,
+        response: cleanedResponse,
+        metadata: {
+          controlId: control.id,
+          controlTitle: control.title,
+          controlFamily: control.id?.split('-')[0] || 'unknown',
+          temperature: 0.7,
+          topP: 0.9,
+          maxTokens: 150
+        },
+        tokenUsage: {
+          inputTokens: Math.ceil(prompt.length / 4), // Approximate
+          outputTokens: Math.ceil(cleanedResponse.length / 4), // Approximate
+          totalTokens: Math.ceil((prompt.length + cleanedResponse.length) / 4)
+        },
+        latency: latency,
+        status: 'success'
+      });
+      
       console.log(`✅ Successfully received response from Ollama (${response.data.response.length} chars)`);
-      return cleanResponse(response.data.response);
+      return cleanedResponse;
     }
     
     console.warn(`⚠️ Invalid response format from Ollama:`, response.data);
     throw new Error('Invalid response format from Ollama');
   } catch (error) {
+    const latency = Date.now() - startTime;
+    
+    // Log AI error (OTel GenAI Semantic Conventions)
+    logAIError({
+      provider: 'ollama',
+      model: config.model || 'mistral:7b',
+      operation: 'generate',
+      prompt: prompt,
+      error: error,
+      metadata: {
+        controlId: control.id,
+        controlTitle: control.title,
+        controlFamily: control.id?.split('-')[0] || 'unknown',
+        errorCode: error.code,
+        latency: latency
+      }
+    });
+    
     if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
       const errorMsg = `Ollama service not reachable at ${config.ollamaUrl}. ` +
         `Error: ${error.code}. ` +
@@ -261,6 +308,7 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
   }
 
   const prompt = buildPrompt(control, existingControls);
+  const startTime = Date.now();
   
   try {
     const response = await axios.post(
@@ -291,11 +339,57 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
     );
 
     if (response.data && response.data.choices && response.data.choices[0]) {
-      return cleanResponse(response.data.choices[0].message.content);
+      const latency = Date.now() - startTime;
+      const cleanedResponse = cleanResponse(response.data.choices[0].message.content);
+      
+      // Log successful AI interaction (OTel GenAI Semantic Conventions)
+      logAIInteraction({
+        provider: 'mistral-api',
+        model: 'mistral-7b-instruct',
+        operation: 'chat.completions',
+        prompt: prompt,
+        response: cleanedResponse,
+        metadata: {
+          controlId: control.id,
+          controlTitle: control.title,
+          controlFamily: control.id?.split('-')[0] || 'unknown',
+          temperature: 0.7,
+          topP: 0.9,
+          maxTokens: 150,
+          responseId: response.data.id
+        },
+        tokenUsage: {
+          inputTokens: response.data.usage?.prompt_tokens || Math.ceil(prompt.length / 4),
+          outputTokens: response.data.usage?.completion_tokens || Math.ceil(cleanedResponse.length / 4),
+          totalTokens: response.data.usage?.total_tokens || Math.ceil((prompt.length + cleanedResponse.length) / 4)
+        },
+        latency: latency,
+        status: 'success'
+      });
+      
+      return cleanedResponse;
     }
     
     throw new Error('Invalid response format from Mistral API');
   } catch (error) {
+    const latency = Date.now() - startTime;
+    
+    // Log AI error (OTel GenAI Semantic Conventions)
+    logAIError({
+      provider: 'mistral-api',
+      model: 'mistral-7b-instruct',
+      operation: 'chat.completions',
+      prompt: prompt,
+      error: error,
+      metadata: {
+        controlId: control.id,
+        controlTitle: control.title,
+        controlFamily: control.id?.split('-')[0] || 'unknown',
+        errorCode: error.response?.status,
+        latency: latency
+      }
+    });
+    
     if (error.response?.status === 401) {
       throw new Error('Invalid Mistral API key');
     }
@@ -321,6 +415,7 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
   }
 
   const prompt = buildPrompt(control, existingControls);
+  const startTime = Date.now();
   
   try {
     console.log(`🔄 Connecting to AWS Bedrock in ${config.awsRegion}...`);
@@ -377,13 +472,61 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
     if (response.output && response.output.message && response.output.message.content) {
       const responseText = response.output.message.content[0]?.text;
       if (responseText) {
+        const latency = Date.now() - startTime;
+        const cleanedResponse = cleanResponse(responseText);
+        
+        // Log successful AI interaction (OTel GenAI Semantic Conventions)
+        logAIInteraction({
+          provider: 'aws-bedrock',
+          model: modelId,
+          operation: 'converse',
+          prompt: prompt,
+          response: cleanedResponse,
+          metadata: {
+            controlId: control.id,
+            controlTitle: control.title,
+            controlFamily: control.id?.split('-')[0] || 'unknown',
+            temperature: 0.7,
+            topP: 0.9,
+            maxTokens: 512,
+            awsRegion: config.awsRegion,
+            finishReasons: response.stopReason ? [response.stopReason] : []
+          },
+          tokenUsage: {
+            inputTokens: response.usage?.inputTokens || Math.ceil(prompt.length / 4),
+            outputTokens: response.usage?.outputTokens || Math.ceil(cleanedResponse.length / 4),
+            totalTokens: response.usage?.totalTokens || Math.ceil((prompt.length + cleanedResponse.length) / 4)
+          },
+          latency: latency,
+          status: 'success'
+        });
+        
         console.log(`✅ Received response from AWS Bedrock (${responseText.length} chars)`);
-        return cleanResponse(responseText);
+        return cleanedResponse;
       }
     }
     
     throw new Error('Invalid response format from AWS Bedrock');
   } catch (error) {
+    const latency = Date.now() - startTime;
+    
+    // Log AI error (OTel GenAI Semantic Conventions)
+    logAIError({
+      provider: 'aws-bedrock',
+      model: modelId,
+      operation: 'converse',
+      prompt: prompt,
+      error: error,
+      metadata: {
+        controlId: control.id,
+        controlTitle: control.title,
+        controlFamily: control.id?.split('-')[0] || 'unknown',
+        awsRegion: config.awsRegion,
+        errorName: error.name,
+        latency: latency
+      }
+    });
+    
     if (error.name === 'AccessDeniedException') {
       throw new Error('AWS Access Denied. Check your credentials and IAM permissions (bedrock:InvokeModel required)');
     }

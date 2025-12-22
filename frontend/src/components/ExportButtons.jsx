@@ -94,15 +94,15 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
     if (user && user.role === 'Assessor') {
       setShowAssessorWarning(true);
     } else {
-      // For other roles, export directly
-      onExportSSP();
+      // For other roles, export directly with validation options
+      onExportSSP(validationOptions);
     }
   };
 
   // Handle Assessor confirmation
   const handleAssessorConfirm = () => {
     setShowAssessorWarning(false);
-    onExportSSP();
+    onExportSSP(validationOptions);
   };
 
   const handleAssessorCancel = () => {
