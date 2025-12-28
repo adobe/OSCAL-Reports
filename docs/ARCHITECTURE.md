@@ -33,8 +33,6 @@ Keekar's OSCAL SOA/SSP/CCM Generator is a full-stack web application with a Reac
 
 - **Backend Server**: Port `3020` (default, configurable via `PORT` environment variable)
 - **Frontend Dev Server**: Port `3021` (configured in `vite.config.js`, proxies API to 3020)
-- **Blue Deployment**: Port `8120` (optional blue-green deployment strategy)
-- **Green Deployment**: Port `8121` (optional blue-green deployment strategy)
 - **Ollama AI Service**: Port `11434` (local AI model server)
 - **Production**: Single backend server on port `3020` serves both API and static frontend files
 
@@ -990,17 +988,7 @@ OSCAL_Reports/
 │   ├── ARCHITECTURE.md               # This file - Technical architecture
 │   ├── DEPLOYMENT.md                 # Deployment guide
 │   ├── CONFIGURATION.md              # Configuration documentation
-│   ├── AI_INTEGRATION.md             # AWS Bedrock integration guide
-│   ├── README.md                     # Documentation overview
 │   └── OSCAL_Compliance_Tool_Demo.pptx # Demo presentation
-│
-├── blue/                             # Blue deployment landing page
-│   ├── index.html                    # Redirect to Port 8120
-│   └── README.md                     # Blue deployment docs
-│
-├── green/                            # Green deployment landing page
-│   ├── index.html                    # Redirect to Port 8121
-│   └── README.md                     # Green deployment docs
 │
 ├── sample_output/                    # Sample output files
 │   ├── AEMGovAu_ComplianceReport_Sample_2025-11-20.json

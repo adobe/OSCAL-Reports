@@ -1,14 +1,23 @@
 /**
- * AI Logger - OpenTelemetry (OTel) Generative AI Semantic Conventions
+ * AI Logger - OpenTelemetry (OTel) Generative AI Semantic Conventions + ECS Compliance
  * 
- * Logs all AI prompts and responses according to OTel GenAI semantic conventions.
- * Implements automatic log rotation when files reach 5MB.
+ * Logs all AI prompts and responses according to:
+ * - OTel GenAI semantic conventions
+ * - Elastic Common Schema (ECS) field names
+ * 
+ * Features:
+ * - Automatic log rotation when files reach 5MB
+ * - ECS-compliant field names for log aggregation
+ * - Context-rich logging (session, IP, request ID, user info)
+ * - JSONL format (one JSON object per line)
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
  * @license MIT
  * 
- * Reference: https://opentelemetry.io/docs/specs/semconv/gen-ai/
+ * References:
+ * - OTel GenAI: https://opentelemetry.io/docs/specs/semconv/gen-ai/
+ * - ECS: https://www.elastic.co/guide/en/ecs/current/
  */
 
 import fs from 'fs';
@@ -73,7 +82,7 @@ function generateSpanId() {
 }
 
 /**
- * Log AI interaction according to OTel GenAI Semantic Conventions
+ * Log AI interaction according to OTel GenAI Semantic Conventions + ECS
  * 
  * @param {Object} params - Logging parameters
  * @param {string} params.provider - AI provider (ollama, mistral-api, aws-bedrock)
@@ -86,6 +95,7 @@ function generateSpanId() {
  * @param {number} params.latency - Request latency in milliseconds
  * @param {string} params.status - Request status (success, error)
  * @param {string} params.error - Error message if failed
+ * @param {Object} params.context - Request context (user, session, IP, etc.)
  */
 export function logAIInteraction({
   provider,
@@ -97,26 +107,75 @@ export function logAIInteraction({
   tokenUsage = {},
   latency,
   status = 'success',
-  error = null
+  error = null,
+  context = {}
 }) {
   try {
     const timestamp = new Date().toISOString();
     const traceId = generateTraceId();
     const spanId = generateSpanId();
     
-    // OTel GenAI Semantic Conventions log entry
+    // Determine log level based on status
+    const logLevel = status === 'error' ? 'error' : 
+                    status === 'warning' ? 'warn' : 'info';
+    
+    // ECS + OTel GenAI Semantic Conventions log entry
     const logEntry = {
-      // Trace context
-      timestamp,
-      trace_id: traceId,
-      span_id: spanId,
+      // === ECS Core Fields ===
+      '@timestamp': timestamp,              // ECS: Event timestamp (ISO 8601)
+      'log.level': logLevel,                 // ECS: Log level (info, warn, error)
+      'message': `AI ${operation} request to ${provider}:${model}`, // ECS: Human-readable message
       
-      // Resource attributes (describes the AI system)
-      resource: {
-        'service.name': 'oscal-report-generator',
-        'service.version': '1.2.7',
-        'deployment.environment': process.env.NODE_ENV || 'production'
-      },
+      // === ECS Event Fields ===
+      'event.action': 'ai_request',          // ECS: What happened
+      'event.category': ['ai', 'api'],       // ECS: Event categorization
+      'event.type': ['info', 'access'],      // ECS: Event type
+      'event.outcome': status === 'success' ? 'success' : 'failure', // ECS: Outcome
+      'event.duration': (latency || 0) * 1000000, // ECS: Duration in nanoseconds
+      'event.module': 'ai_integration',      // ECS: Module name
+      'event.dataset': 'ai_telemetry',       // ECS: Dataset name
+      
+      // === ECS Service Fields ===
+      'service.name': 'oscal-report-generator',
+      'service.version': '1.2.7',
+      'service.environment': process.env.NODE_ENV || 'production',
+      
+      // === ECS Host Fields ===
+      'host.hostname': process.env.HOSTNAME || require('os').hostname(),
+      'host.name': process.env.HOSTNAME || require('os').hostname(),
+      
+      // === ECS User Fields (from context) ===
+      'user.name': context.username || metadata.userId || 'anonymous',
+      'user.id': context.userId || metadata.userId,
+      'user.email': context.userEmail,
+      'user.roles': context.userRoles || [],
+      
+      // === ECS Client Fields (from context) ===
+      'client.ip': context.clientIp || context.ip,
+      'client.address': context.clientAddress,
+      'client.user.name': context.username,
+      
+      // === ECS HTTP Fields (from context) ===
+      'http.request.id': context.requestId || spanId,
+      'http.request.method': context.httpMethod || 'POST',
+      'http.request.path': context.requestPath || metadata.requestPath,
+      'http.response.status_code': status === 'success' ? 200 : 500,
+      
+      // === ECS URL Fields (from context) ===
+      'url.full': context.requestUrl,
+      'url.path': context.requestPath || metadata.requestPath,
+      
+      // === ECS Trace Fields (OpenTelemetry) ===
+      'trace.id': traceId,
+      'span.id': spanId,
+      
+      // === ECS Error Fields (if error) ===
+      ...(error && {
+        'error.type': error.type || error.name || 'AIError',
+        'error.message': error.message || 'Unknown error',
+        'error.stack_trace': error.stack,
+        'error.code': error.code,
+      }),
       
       // GenAI attributes (OTel semantic conventions)
       attributes: {
@@ -175,13 +234,15 @@ export function logAIInteraction({
         }
       ],
       
-      // Additional metadata
+      // === Additional Metadata (Application-specific) ===
       metadata: {
         control_id: metadata.controlId,
         control_family: metadata.controlFamily,
-        user_id: metadata.userId,
-        session_id: metadata.sessionId,
-        request_path: metadata.requestPath,
+        session_id: context.sessionId || metadata.sessionId,
+        request_id: context.requestId || spanId,
+        user_agent: context.userAgent,
+        referer: context.referer,
+        correlation_id: context.correlationId,
         ...metadata
       }
     };
@@ -193,8 +254,9 @@ export function logAIInteraction({
     const logLine = JSON.stringify(logEntry) + '\n';
     fs.appendFileSync(logFile, logLine, 'utf8');
     
-    // Console log for monitoring (abbreviated)
-    console.log(`[AI-LOG] ${timestamp} | ${provider}:${model} | ${status} | ${latency}ms | Tokens: ${tokenUsage.totalTokens || 0}`);
+    // Console log for monitoring (abbreviated) - ECS format
+    const logPrefix = logLevel === 'error' ? '❌' : logLevel === 'warn' ? '⚠️' : '✓';
+    console.log(`${logPrefix} [AI-LOG] ${timestamp} | ${provider}:${model} | ${status} | ${latency}ms | Tokens: ${tokenUsage.totalTokens || 0} | User: ${context.username || 'anon'} | IP: ${context.clientIp || 'unknown'}`);
     
     return { traceId, spanId, logFile };
   } catch (error) {

@@ -165,6 +165,15 @@ export function isValidRole(role) {
   return Object.values(ROLES).includes(role);
 }
 
+/**
+ * Get all permissions for a specific role
+ * @param {string} role - User role
+ * @returns {Array<string>}
+ */
+export function getRolePermissions(role) {
+  return ROLE_PERMISSIONS[role] || [];
+}
+
 export default {
   ROLES,
   PERMISSIONS,
@@ -177,6 +186,7 @@ export default {
   canEditSystemInfo,
   canManageUsers,
   getAllRoles,
-  isValidRole
+  isValidRole,
+  getRolePermissions
 };
 

@@ -27,6 +27,7 @@ import ExportButtons from './components/ExportButtons';
 import SaveLoadBar from './components/SaveLoadBar';
 import MultiReportComparison from './components/MultiReportComparison';
 import IntegrityWarning from './components/IntegrityWarning';
+import Footer from './components/Footer';
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
 import buildInfo from './utils/buildInfo';
 import './App.css';
@@ -965,6 +966,8 @@ function AppWithUseCases() {
           </div>
         </div>
       )}
+      {/* Application Footer */}
+      <Footer />
     </>
   );
 }

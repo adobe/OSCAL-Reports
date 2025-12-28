@@ -17,6 +17,7 @@
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "concurrently": "^8.2.2"
   },
   "dependencies": {

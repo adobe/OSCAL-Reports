@@ -9,48 +9,17 @@ echo "🚀 OSCAL Report Generator - SMB Deployment"
 echo "=========================================="
 echo ""
 
-# Ask user to select deployment environment
-echo "📋 Select deployment environment:"
-echo "  🟢 Green - Default (New version/Testing)"
-echo "  🔵 Blue - Stable (Current production)"
-echo ""
-read -p "Deploy to [Green/Blue] (default: Green): " DEPLOY_ENV
-echo ""
-
-# Default to Green if no input or normalize input
-DEPLOY_ENV=${DEPLOY_ENV:-Green}
-case "$DEPLOY_ENV" in
-    [Bb]lue|BLUE|1)
-        DEPLOY_ENV="Blue"
-        echo "✅ Selected: 🔵 Blue deployment (Stable/Production)"
-        ;;
-    [Gg]reen|GREEN|2|"")
-        DEPLOY_ENV="Green"
-        echo "✅ Selected: 🟢 Green deployment (New/Testing)"
-        ;;
-    *)
-        echo "⚠️  Invalid selection. Defaulting to Green deployment."
-        DEPLOY_ENV="Green"
-        ;;
-esac
-
-echo ""
-
-# Configuration based on selected environment
+# Configuration
 # Source is always the current directory (where development happens)
 CURRENT_DIR=$(pwd)
 SOURCE_DIR="$CURRENT_DIR"
 
-# Destination changes based on Blue/Green selection
-if [ "$DEPLOY_ENV" = "Blue" ]; then
-    DESTINATION="/Volumes/KACI-Apps/OSCAL-Report-Generator-Blue"
-else
-    DESTINATION="/Volumes/KACI-Apps/OSCAL-Report-Generator-Green"
-fi
+# Destination: Update this path to match your SMB share location
+DESTINATION="/Volumes/KACI-Apps/OSCAL-Report-Generator"
 
 echo "📂 Deploying FROM current directory:"
 echo "   Source: $SOURCE_DIR"
-echo "📁 Deploying TO $DEPLOY_ENV environment:"
+echo "📁 Deploying TO:"
 echo "   Destination: $DESTINATION"
 echo ""
 
@@ -59,8 +28,7 @@ if [ -z "$DESTINATION" ]; then
     echo "❌ Error: DESTINATION not set!"
     echo ""
     echo "Please edit this script and set DESTINATION to your SMB share path."
-    echo "Example: DESTINATION=\"/Volumes/YourSMBShare/OSCAL-Report-Generator-Green\""
-    echo "         DESTINATION=\"/Volumes/YourSMBShare/OSCAL-Report-Generator-Blue\""
+    echo "Example: DESTINATION=\"/Volumes/YourSMBShare/OSCAL-Report-Generator\""
     echo ""
     exit 1
 fi

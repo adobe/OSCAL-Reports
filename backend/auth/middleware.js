@@ -8,7 +8,7 @@ import { hasPermission } from './roles.js';
 /**
  * Authentication middleware - verifies session token
  */
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const token = req.headers['authorization']?.replace('Bearer ', '') || 
                 req.cookies?.sessionToken ||
                 req.query.token;
@@ -20,7 +20,7 @@ export function authenticate(req, res, next) {
     });
   }
   
-  const session = validateSession(token);
+  const session = await validateSession(token);
   
   if (!session) {
     return res.status(401).json({ 
@@ -85,13 +85,13 @@ export function requireRole(allowedRoles) {
 /**
  * Optional authentication middleware - attaches user if token is valid, but doesn't require it
  */
-export function optionalAuth(req, res, next) {
+export async function optionalAuth(req, res, next) {
   const token = req.headers['authorization']?.replace('Bearer ', '') || 
                 req.cookies?.sessionToken ||
                 req.query.token;
   
   if (token) {
-    const session = validateSession(token);
+    const session = await validateSession(token);
     if (session) {
       req.user = session;
     }

@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { atomicWriteJSON } from './utils/atomicWrite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,8 +118,10 @@ function loadConfig() {
 
 /**
  * Save configuration to file
+ * 
+ * Uses atomic write operations to prevent config corruption on crashes.
  */
-function saveConfig(config) {
+async function saveConfig(config) {
   try {
     // Ensure config directory exists
     if (!fs.existsSync(CONFIG_DIR)) {
@@ -176,10 +179,11 @@ function saveConfig(config) {
     
     console.log('💾 Saving config - publishedSoaUrl:', configToSave.publishedSoaUrl);
     
-    // Write to file with pretty formatting
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
+    // Write to file with atomic operations (crash-resistant)
+    // Creates backup automatically and uses temp file + rename pattern
+    await atomicWriteJSON(CONFIG_FILE, configToSave, { backup: true });
     
-    console.log('✅ Configuration saved successfully');
+    console.log('✅ Configuration saved successfully (atomic write)');
     return true;
   } catch (error) {
     console.error('❌ Error saving configuration:', error.message);
@@ -190,7 +194,7 @@ function saveConfig(config) {
 /**
  * Update specific configuration section
  */
-function updateConfig(updates) {
+async function updateConfig(updates) {
   try {
     const currentConfig = loadConfig();
     const newConfig = {
@@ -198,7 +202,7 @@ function updateConfig(updates) {
       ...updates
     };
     
-    return saveConfig(newConfig);
+    return await saveConfig(newConfig);
   } catch (error) {
     console.error('❌ Error updating configuration:', error.message);
     return false;
@@ -216,9 +220,9 @@ function getConfigValue(key) {
 /**
  * Reset configuration to defaults
  */
-function resetConfig() {
+async function resetConfig() {
   console.log('🔄 Resetting configuration to defaults...');
-  return saveConfig(DEFAULT_CONFIG);
+  return await saveConfig(DEFAULT_CONFIG);
 }
 
 /**

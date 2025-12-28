@@ -30,8 +30,8 @@ function ControlEditModal({ control, onClose, onSave, allControls = [], organiza
   const handleChange = (field, value) => {
     setEditedControl(prev => {
       const updated = {
-        ...prev,
-        [field]: value
+      ...prev,
+      [field]: value
       };
       
       // Auto-populate related fields when status changes to "Not Applicable"

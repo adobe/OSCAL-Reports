@@ -23,12 +23,12 @@ services:
       - "app.description=Mistral 7B AI model server"
 
   # OSCAL Report Generator Application
-  oscal-generator-green:
+  oscal-generator:
     build:
       context: .
       dockerfile: Dockerfile
-    image: oscal-report-generator-green:latest
-    container_name: oscal-report-generator-green
+    image: oscal-report-generator:latest
+    container_name: oscal-report-generator
     restart: unless-stopped
     ports:
       - "${EXTERNAL_PORT:-3020}:3020"

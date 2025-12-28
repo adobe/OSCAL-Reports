@@ -1,0 +1,38 @@
+# Test files and directories
+tests/
+**/*.test.js
+**/*.test.jsx
+**/*.spec.js
+**/*.spec.jsx
+jest.config.js
+coverage/
+
+# Development files
+.git/
+.github/
+node_modules/
+*.log
+*.md
+!README.md
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Documentation (optional - remove if you want docs in production)
+docs/
+
+# Build artifacts
+dist/
+build/
+tmp/
+temp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+

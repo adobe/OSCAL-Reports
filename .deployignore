@@ -1,0 +1,53 @@
+# Deployment Exclusion List
+# Add this file to your deployment scripts to exclude test files
+
+# Test directories
+tests/
+
+# Test files
+**/*.test.js
+**/*.test.jsx
+**/*.spec.js
+**/*.spec.jsx
+jest.config.js
+coverage/
+
+# Development dependencies
+node_modules/
+
+# Git files
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+.cursor/
+
+# Documentation (if not needed in production)
+docs/
+*.md
+!README.md
+
+# Build artifacts from tests
+*.log
+*.pid
+tmp/
+temp/
+
+# Environment files
+.env.test
+.env.development
+.env.local
+.env.*.local
+
+# CI/CD files
+.travis.yml
+.circleci/
+azure-pipelines.yml
+

@@ -726,6 +726,59 @@ function cleanResponse(response) {
  * @param {Array} existingControls - Array of existing controls to learn writing style from
  * @returns {Promise<string>} - Generated implementation text
  */
+/**
+ * Try to generate with a specific AI provider
+ * @param {string} provider - Provider name
+ * @param {Object} control - Control object
+ * @param {Object} config - Provider config
+ * @param {Array} existingControls - Existing controls for context
+ * @returns {Promise<string|null>} Implementation text or null
+ */
+async function tryGenerateWithProvider(provider, control, config, existingControls) {
+  const maxRetries = config.maxRetries || 2;
+  let lastError = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      let implementation = null;
+      
+      if (provider === 'ollama') {
+        implementation = await generateWithOllama(control, config, existingControls);
+      } else if (provider === 'mistral-api') {
+        implementation = await generateWithMistralAPI(control, config, existingControls);
+      } else if (provider === 'aws-bedrock') {
+        implementation = await generateWithAWSBedrock(control, config, existingControls);
+      } else {
+        throw new Error(`Unknown AI provider: ${provider}`);
+      }
+      
+      if (implementation && implementation.length > 50) {
+        console.log(`✅ Successfully generated implementation with ${provider} (attempt ${attempt + 1})`);
+        return implementation;
+      }
+    } catch (error) {
+      lastError = error;
+      console.warn(`⚠️ ${provider} generation attempt ${attempt + 1} failed:`, error.message);
+      
+      if (attempt < maxRetries) {
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
+  }
+  
+  throw lastError || new Error(`${provider} generation failed after all retries`);
+}
+
+/**
+ * Generate implementation with dual-method fallback pattern
+ * Tries primary provider first, falls back to secondary provider if available
+ * 
+ * @param {Object} control - Control object
+ * @param {Function} fallbackGenerator - Fallback generator for pattern matching
+ * @param {Array} existingControls - Existing controls for context
+ * @returns {Promise<Object|null>} Result object with text, aiGenerated, attempted flags
+ */
 export async function generateImplementationWithMistral(control, fallbackGenerator, existingControls = []) {
   try {
     const config = await loadMistralConfig();
@@ -738,49 +791,80 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
       return fallback ? { text: fallback, aiGenerated: false, attempted: false } : null;
     }
 
-    console.log(`🤖 Generating implementation with Mistral (${config.provider}) for control: ${control.id}`);
+    console.log(`🤖 Generating implementation with ${config.provider} for control: ${control.id}`);
     
     let implementation = null;
-    let lastError = null;
+    let primaryProvider = config.provider;
+    let fallbackProvider = null;
+    let primaryError = null;
     
-    // Try with retries
-    for (let attempt = 0; attempt <= (config.maxRetries || 2); attempt++) {
+    // Define provider fallback chain (Dual-Method Fallback Pattern)
+    // Priority: Configured Provider -> Local Ollama (if available) -> Pattern Matching
+    if (config.provider === 'mistral-api' || config.provider === 'aws-bedrock') {
+      // If using cloud service, fallback to local Ollama
+      fallbackProvider = 'ollama';
+    }
+    
+    // Try primary provider
+    try {
+      implementation = await tryGenerateWithProvider(primaryProvider, control, config, existingControls);
+      
+      if (implementation && implementation.length > 50) {
+        return { text: implementation, aiGenerated: true, attempted: true, provider: primaryProvider };
+      }
+    } catch (error) {
+      primaryError = error;
+      console.warn(`⚠️ Primary provider (${primaryProvider}) failed:`, error.message);
+    }
+    
+    // Try fallback provider if available
+    if (fallbackProvider && !implementation) {
+      console.log(`🔄 Attempting fallback to ${fallbackProvider}...`);
+      
       try {
-        if (config.provider === 'ollama') {
-          implementation = await generateWithOllama(control, config, existingControls);
-        } else if (config.provider === 'mistral-api') {
-          implementation = await generateWithMistralAPI(control, config, existingControls);
-        } else if (config.provider === 'aws-bedrock') {
-          implementation = await generateWithAWSBedrock(control, config, existingControls);
-        } else {
-          throw new Error(`Unknown AI provider: ${config.provider}`);
-        }
+        // Create fallback config (use default Ollama settings)
+        const fallbackConfig = {
+          ...config,
+          provider: fallbackProvider,
+          ollamaUrl: config.ollamaUrl || 'http://localhost:11434',
+          model: 'mistral:7b',
+          maxRetries: 1 // Fewer retries for fallback
+        };
+        
+        implementation = await tryGenerateWithProvider(fallbackProvider, control, fallbackConfig, existingControls);
         
         if (implementation && implementation.length > 50) {
-          console.log(`✅ Successfully generated implementation with ${config.provider} (attempt ${attempt + 1})`);
-          // Mark as AI-generated by returning object with flag
-          return { text: implementation, aiGenerated: true, attempted: true };
+          console.log(`✅ Successfully generated with fallback provider (${fallbackProvider})`);
+          return { 
+            text: implementation, 
+            aiGenerated: true, 
+            attempted: true, 
+            provider: fallbackProvider,
+            usedFallback: true,
+            primaryError: primaryError?.message
+          };
         }
-      } catch (error) {
-        lastError = error;
-        console.warn(`⚠️ ${config.provider} generation attempt ${attempt + 1} failed:`, error.message);
-        
-        if (attempt < (config.maxRetries || 2)) {
-          // Wait before retry (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-        }
+      } catch (fallbackError) {
+        console.warn(`⚠️ Fallback provider (${fallbackProvider}) also failed:`, fallbackError.message);
+        // Continue to pattern matching fallback
       }
     }
     
-    // All attempts failed
+    // All AI providers failed, use pattern matching fallback
     if (config.fallbackToPatternMatching !== false) {
-      console.log('⚠️ Mistral generation failed, using fallback pattern matching');
+      console.log('⚠️ All AI providers failed, using pattern matching fallback');
       const fallback = fallbackGenerator ? fallbackGenerator(control) : null;
-      // Return with flag indicating fallback was used after attempting Mistral
-      return fallback ? { text: fallback, aiGenerated: false, attempted: true, error: lastError?.message } : null;
+      // Return with flag indicating fallback was used after attempting AI
+      return fallback ? { 
+        text: fallback, 
+        aiGenerated: false, 
+        attempted: true, 
+        error: primaryError?.message,
+        fallbackReason: 'All AI providers unavailable'
+      } : null;
     }
     
-    throw lastError || new Error('Mistral generation failed after all retries');
+    throw primaryError || new Error('AI generation failed after all attempts');
     
   } catch (error) {
     console.error('❌ Error in Mistral service:', error.message);
@@ -788,9 +872,15 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
     // Fallback to pattern matching if enabled
     const config = await loadMistralConfig();
     if (config.fallbackToPatternMatching !== false && fallbackGenerator) {
-      console.log('🔄 Falling back to pattern matching');
+      console.log('🔄 Falling back to pattern matching due to error');
       const fallback = fallbackGenerator(control);
-      return fallback ? { text: fallback, aiGenerated: false, attempted: true, error: error.message } : null;
+      return fallback ? { 
+        text: fallback, 
+        aiGenerated: false, 
+        attempted: true, 
+        error: error.message,
+        fallbackReason: 'Service error'
+      } : null;
     }
     
     return null;

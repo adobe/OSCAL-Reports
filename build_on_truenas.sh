@@ -9,19 +9,33 @@
 # Don't exit on error - we want to show helpful messages
 # set -e
 
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'  # No Color
+
+# Helper functions
+print_success() { echo -e "${GREEN}✓${NC} $1"; }
+print_error() { echo -e "${RED}✗${NC} $1"; }
+print_warning() { echo -e "${YELLOW}⚠${NC}  $1"; }
+print_info() { echo -e "${BLUE}ℹ${NC}  $1"; }
+
 # Change to the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "🔨 OSCAL Report Generator - Docker Build Script"
-echo "================================================"
+echo -e "${CYAN}🔨 OSCAL Report Generator - Docker Build Script${NC}"
+echo -e "${CYAN}================================================${NC}"
 echo ""
-echo "📂 Script directory: $SCRIPT_DIR"
+print_info "Script directory: $SCRIPT_DIR"
 echo ""
 
 # Detect version from current directory path
 CURRENT_DIR=$(pwd)
-DEPLOY_VERSION=""
+DEPLOY_VERSION="V2"
 DEPLOY_DIR=""
 DOCKER_IMAGE=""
 CONTAINER_PORT=""
@@ -38,80 +52,15 @@ if [ "$IS_TRUENAS" = "true" ] && [ -n "$SSH_CONNECTION" ]; then
     echo "ℹ️  Running via SSH on TrueNAS - proceeding with local build"
 fi
 
-# Detect version from path (Blue/Green instead of V2/V1)
-# Check for Blue first (more specific), then Green
-if echo "$CURRENT_DIR" | grep -qi "OSCAL-Report-Generator-Blue\|/blue/"; then
-    DEPLOY_VERSION="Blue"
-    DEPLOY_DIR="OSCAL-Report-Generator-Blue"
-    DOCKER_IMAGE="oscal-report-generator-blue:latest"
-    CONTAINER_PORT="3020"
-    echo "✅ Detected: Blue deployment"
-elif echo "$CURRENT_DIR" | grep -qi "OSCAL-Report-Generator-Green\|/green/"; then
-    DEPLOY_VERSION="Green"
-    DEPLOY_DIR="OSCAL-Report-Generator-Green"
-    DOCKER_IMAGE="oscal-report-generator-green:latest"
-    CONTAINER_PORT="3019"
-    echo "✅ Detected: Green deployment"
-else
-    # Fallback: try to detect from directory name
-    DIR_NAME=$(basename "$CURRENT_DIR")
-    if echo "$DIR_NAME" | grep -qi "blue"; then
-        DEPLOY_VERSION="Blue"
-        DEPLOY_DIR="OSCAL-Report-Generator-Blue"
-        DOCKER_IMAGE="oscal-report-generator-blue:latest"
-        CONTAINER_PORT="3020"
-        echo "✅ Detected: Blue deployment (from directory name)"
-    elif echo "$DIR_NAME" | grep -qi "green"; then
-        DEPLOY_VERSION="Green"
-        DEPLOY_DIR="OSCAL-Report-Generator-Green"
-        DOCKER_IMAGE="oscal-report-generator-green:latest"
-        CONTAINER_PORT="3019"
-        echo "✅ Detected: Green deployment (from directory name)"
-    else
-        # Ask user if we can't detect (only if running interactively)
-        echo "⚠️  Warning: Cannot detect deployment version (Blue/Green) from path."
-        echo "   Current directory: $CURRENT_DIR"
-        echo ""
-        
-        # Check if running interactively (has TTY)
-        if [ -t 0 ]; then
-            read -p "Select deployment version [Blue/Green] (default: Blue): " USER_CHOICE
-            USER_CHOICE=${USER_CHOICE:-Blue}
-        else
-            # Non-interactive: default to Blue
-            echo "   Non-interactive mode: Defaulting to Blue"
-            USER_CHOICE="Blue"
-        fi
-        
-        case "$USER_CHOICE" in
-            [Bb]lue|BLUE|1|"")
-                DEPLOY_VERSION="Blue"
-                DEPLOY_DIR="OSCAL-Report-Generator-Blue"
-                DOCKER_IMAGE="oscal-report-generator-blue:latest"
-                CONTAINER_PORT="3020"
-                echo "✅ Selected: Blue deployment"
-                ;;
-            [Gg]reen|GREEN|2)
-                DEPLOY_VERSION="Green"
-                DEPLOY_DIR="OSCAL-Report-Generator-Green"
-                DOCKER_IMAGE="oscal-report-generator-green:latest"
-                CONTAINER_PORT="3019"
-                echo "✅ Selected: Green deployment"
-                ;;
-            *)
-                echo "⚠️  Invalid choice. Defaulting to Blue."
-                DEPLOY_VERSION="Blue"
-                DEPLOY_DIR="OSCAL-Report-Generator-Blue"
-                DOCKER_IMAGE="oscal-report-generator-blue:latest"
-                CONTAINER_PORT="3020"
-                ;;
-        esac
-    fi
-fi
+# Set deployment configuration
+DEPLOY_DIR="OSCAL-Report-Generator"
+DOCKER_IMAGE="oscal-report-generator:latest"
+CONTAINER_PORT="3020"
+print_success "Deployment configuration set"
 
 # Validate that CONTAINER_PORT is set
 if [ -z "$CONTAINER_PORT" ]; then
-    echo "❌ Error: CONTAINER_PORT variable is not set!"
+    print_error "CONTAINER_PORT variable is not set!"
     echo "   This should not happen. Please check the script logic."
     exit 1
 fi

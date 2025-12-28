@@ -1,0 +1,181 @@
+/**
+ * Footer Styles - Application footer styling
+ * 
+ * Part of OSCAL Report Generator V2
+ * 
+ * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+ * @copyright Copyright (c) 2025 Mukesh Kesharwani
+ * @license MIT
+ */
+
+.app-footer {
+  background: linear-gradient(to bottom, #f8f9fa 0%, #e9ecef 100%);
+  border-top: 2px solid #dee2e6;
+  padding: 24px 20px;
+  margin-top: 60px;
+  text-align: center;
+  font-size: 0.9em;
+  color: #495057;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.footer-main {
+  margin-bottom: 12px;
+  line-height: 1.6;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-main strong {
+  color: #212529;
+  font-weight: 600;
+}
+
+.footer-main .version {
+  background: #e7f1ff;
+  color: #004085;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.footer-main .author {
+  color: #6c757d;
+}
+
+.footer-main .copyright {
+  color: #6c757d;
+}
+
+.footer-links {
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-links a {
+  color: #007bff;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.footer-links a:hover {
+  color: #0056b3;
+  text-decoration: underline;
+  background: rgba(0, 123, 255, 0.05);
+}
+
+.footer-links a:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+.divider {
+  margin: 0 8px;
+  color: #dee2e6;
+  user-select: none;
+}
+
+.footer-build-info {
+  font-size: 0.8em;
+  color: #adb5bd;
+  font-family: 'Courier New', monospace;
+  margin-top: 8px;
+  cursor: help;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .app-footer {
+    font-size: 0.85em;
+    padding: 20px 16px;
+    margin-top: 40px;
+  }
+  
+  .footer-main {
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .divider {
+    display: none;
+  }
+  
+  .footer-main .divider:first-of-type,
+  .footer-links .divider {
+    display: inline;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer-links {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .footer-links .divider {
+    display: none;
+  }
+}
+
+/* Dark mode support (if implemented in future) */
+@media (prefers-color-scheme: dark) {
+  .app-footer {
+    background: linear-gradient(to bottom, #2d3748 0%, #1a202c 100%);
+    border-top-color: #4a5568;
+    color: #cbd5e0;
+  }
+  
+  .footer-main strong {
+    color: #f7fafc;
+  }
+  
+  .footer-main .version {
+    background: #2c5282;
+    color: #bee3f8;
+  }
+  
+  .footer-main .author,
+  .footer-main .copyright {
+    color: #a0aec0;
+  }
+  
+  .footer-links a {
+    color: #63b3ed;
+  }
+  
+  .footer-links a:hover {
+    color: #90cdf4;
+    background: rgba(99, 179, 237, 0.1);
+  }
+  
+  .divider {
+    color: #4a5568;
+  }
+  
+  .footer-build-info {
+    color: #718096;
+  }
+}
+
+/* Print styles - hide footer when printing */
+@media print {
+  .app-footer {
+    display: none;
+  }
+}
+
