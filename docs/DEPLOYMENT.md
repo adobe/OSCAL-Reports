@@ -9,11 +9,12 @@
 ## 📋 Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Docker Deployment](#docker-deployment)
-3. [TrueNAS Deployment](#truenas-deployment)
-4. [SMB/Network Share Deployment](#smbnetwork-share-deployment)
-5. [Production Configuration](#production-configuration)
-6. [Troubleshooting](#troubleshooting)
+2. [Configuration Management](#configuration-management)
+3. [Docker Deployment](#docker-deployment)
+4. [TrueNAS Deployment](#truenas-deployment)
+5. [SMB/Network Share Deployment](#smbnetwork-share-deployment)
+6. [Production Configuration](#production-configuration)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -45,6 +46,68 @@ open http://localhost:3021
 # Or backend directly (production build):
 open http://localhost:3020
 ```
+
+---
+
+## Configuration Management
+
+### Configuration Directory Structure
+
+All configuration files are centralized in the `config/` directory:
+
+```
+config/
+├── app/          # Application runtime configuration files
+│   ├── config.json    # Application settings (SSO, messaging, API gateways, etc.)
+│   └── users.json     # User accounts and authentication data
+│
+└── build/        # Build and deployment configuration files
+    ├── docker-compose.yml   # Docker Compose configuration for local deployment
+    ├── truenas-app.yaml     # TrueNAS Docker App configuration
+    └── Dockerfile           # Docker build instructions
+```
+
+### Security and Access Control
+
+**⚠️ IMPORTANT**: The `config/app/` directory contains sensitive data including:
+- User credentials (FIPS 140-2 compliant PBKDF2 hashed passwords)
+- API keys and secrets
+- SMTP credentials
+- SSO configuration
+
+**Password Storage Format:**
+- Passwords are stored using PBKDF2 with SHA-256 (FIPS 140-2 compliant)
+- Format: `pbkdf2$sha256$100000$salt$hash`
+- 100,000 iterations, random 16-byte salt per password
+- Legacy SHA-256 passwords automatically migrate to PBKDF2 on login
+
+**This directory should be encrypted and have restricted access controls applied.**
+
+#### Recommended Security Measures
+
+1. **File System Encryption**: Apply encryption at the filesystem level for the `config/app/` directory
+2. **Access Control**: Restrict read/write permissions to authorized users only
+3. **Backup Encryption**: Ensure backups of this directory are also encrypted
+4. **Version Control**: These files are excluded from git (see `.gitignore`)
+
+### File Migration
+
+The application automatically migrates configuration files from legacy locations:
+- `backend/config.json` → `config/app/config.json`
+- `backend/auth/users.json` → `config/app/users.json`
+
+Migration happens automatically on first run. Legacy files are removed after successful migration.
+
+### Configuration File Locations
+
+**Runtime Locations** (for application execution):
+- Primary: `config/app/config.json` and `config/app/users.json`
+- Legacy (backward compatibility): `backend/config.json` and `backend/auth/users.json`
+
+**Build Locations** (for Docker/build processes):
+- `docker-compose.yml` (copied from `config/build/docker-compose.yml`)
+- `truenas-app.yaml` (copied from `config/build/truenas-app.yaml`)
+- `Dockerfile` (copied from `config/build/Dockerfile`)
 
 ---
 
@@ -98,8 +161,6 @@ docker-compose down
 **Port Configuration**:
 - Application Port: 3020 (backend API and frontend)
 - Ollama AI Service: 11434 (if using local AI)
-- Blue Deployment: 8120 (optional)
-- Green Deployment: 8121 (optional)
 
 #### 1. Build Docker Image (On Your PC)
 
@@ -188,7 +249,7 @@ docker-compose -f truenas-app.yaml up -d
 docker ps
 
 # Check logs
-docker logs oscal-report-generator-green
+docker logs oscal-report-generator
 
 # Test health endpoint
 curl http://localhost:3020/health

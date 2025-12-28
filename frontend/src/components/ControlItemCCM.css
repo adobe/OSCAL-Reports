@@ -81,14 +81,14 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.4rem 0.8rem;
+  padding: 0.35rem 0.7rem;
   border-radius: 20px;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   cursor: help;
-  margin-right: 0.5rem;
   transition: all 0.2s;
   animation: pulseIn 0.4s ease-out;
+  white-space: nowrap;
 }
 
 .change-new {
@@ -113,12 +113,17 @@
     opacity: 0;
     transform: scale(0.8);
   }
-  50% {
-    transform: scale(1.05);
-  }
   100% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Responsive adjustments for CCM controls */
+@media (max-width: 768px) {
+  .change-badge {
+    font-size: 0.65rem;
+    padding: 0.3rem 0.6rem;
   }
 }
 

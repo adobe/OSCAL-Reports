@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { ROLES, isValidRole } from './roles.js';
 import { generateDefaultPasswordFromEnv } from './passwordGenerator.js';
+import { atomicWriteJSON } from '../utils/atomicWrite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -165,7 +166,7 @@ function isValidEmail(email) {
  * Load users from file
  * @returns {Array}
  */
-function loadUsers() {
+async function loadUsers() {
   try {
     // Ensure config directory exists
     if (!fs.existsSync(CONFIG_DIR)) {
@@ -191,7 +192,7 @@ function loadUsers() {
     // Migrate legacy users file to new location
     if (usersPath === LEGACY_USERS_FILE) {
       console.log('📦 Migrating users to config/app/users.json...');
-      saveUsers(users);
+      await saveUsers(users);
       // Optionally remove legacy file after successful migration
       try {
         fs.unlinkSync(LEGACY_USERS_FILE);
@@ -212,7 +213,7 @@ function loadUsers() {
  * Save users to file
  * @param {Array} users - Users array
  */
-function saveUsers(users) {
+async function saveUsers(users) {
   try {
     // Ensure config directory exists
     if (!fs.existsSync(CONFIG_DIR)) {
@@ -228,11 +229,12 @@ function saveUsers(users) {
       console.error(`   Error: ${err.message}`);
       // Try legacy location as fallback
       console.log(`   Attempting to use legacy location: ${LEGACY_USERS_FILE}`);
-      fs.writeFileSync(LEGACY_USERS_FILE, JSON.stringify(users, null, 2));
+      await atomicWriteJSON(LEGACY_USERS_FILE, users, { backup: true });
       return;
     }
     
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    // Use atomic write operations (crash-resistant)
+    await atomicWriteJSON(USERS_FILE, users, { backup: true });
     console.log(`💾 Saved ${users.length} users to ${USERS_FILE}`);
   } catch (error) {
     console.error('Error saving users:', error);
@@ -263,8 +265,8 @@ function isOldDefaultPassword(username, passwordHash) {
  * Migrate default users to new password format
  * Always updates default users' passwords to use the new timestamp format
  */
-function migrateDefaultUsersToNewPasswordFormat() {
-  const users = loadUsers();
+async function migrateDefaultUsersToNewPasswordFormat() {
+  const users = await loadUsers();
   const defaultUsernames = ['admin', 'user', 'assessor'];
   let updated = false;
   const updatedPasswords = {};
@@ -303,7 +305,7 @@ function migrateDefaultUsersToNewPasswordFormat() {
   }
   
   if (updated) {
-    saveUsers(users);
+    await saveUsers(users);
     console.log('✅ Default users updated to new password format');
     console.log('📝 New passwords (format: username#$DDMMYYHH):');
     Object.entries(updatedPasswords).forEach(([username, password]) => {
@@ -317,13 +319,13 @@ function migrateDefaultUsersToNewPasswordFormat() {
 /**
  * Initialize default users if none exist
  */
-export function initializeDefaultUsers() {
+export async function initializeDefaultUsers() {
   try {
     console.log('🔐 Initializing default users...');
     console.log(`   Config directory: ${CONFIG_DIR}`);
     console.log(`   Users file: ${USERS_FILE}`);
     
-    const users = loadUsers();
+    const users = await loadUsers();
     console.log(`   Found ${users.length} existing users`);
     
     if (users.length === 0) {
@@ -371,7 +373,7 @@ export function initializeDefaultUsers() {
       }
     ];
     
-      saveUsers(defaultUsers);
+      await saveUsers(defaultUsers);
       console.log('✅ Default users initialized:');
       console.log(`   - admin / ${adminPassword} (Platform Admin)`);
       console.log(`   - user / ${userPassword} (User)`);
@@ -380,7 +382,7 @@ export function initializeDefaultUsers() {
       // Check if existing default users need password migration and reactivation
       console.log('🔄 Checking for password migration...');
       try {
-        migrateDefaultUsersToNewPasswordFormat();
+        await migrateDefaultUsersToNewPasswordFormat();
       } catch (err) {
         console.error('❌ Error migrating default users:', err);
         console.error('   Stack:', err.stack);
@@ -402,8 +404,8 @@ export function initializeDefaultUsers() {
  * @param {string} password - Password
  * @returns {Object|null} - User object with session token or null
  */
-export function authenticateUser(username, password) {
-  const users = loadUsers();
+export async function authenticateUser(username, password) {
+  const users = await loadUsers();
   
   if (process.env.NODE_ENV === 'development') {
     console.log(`🔍 Authentication attempt for username: ${username}`);
@@ -499,8 +501,8 @@ export function logout(token) {
  * Get all users (without passwords)
  * @returns {Array}
  */
-export function getAllUsers() {
-  const users = loadUsers();
+export async function getAllUsers() {
+  const users = await loadUsers();
   return users.map(({ password: _, ...user }) => user);
 }
 
@@ -509,8 +511,8 @@ export function getAllUsers() {
  * @param {string} userId - User ID
  * @returns {Object|null}
  */
-export function getUserById(userId) {
-  const users = loadUsers();
+export async function getUserById(userId) {
+  const users = await loadUsers();
   const user = users.find(u => u.id === userId);
   if (user) {
     const { password: _, ...userWithoutPassword } = user;
@@ -525,8 +527,8 @@ export function getUserById(userId) {
  * @param {string} generatedPassword - Optional generated password (if not provided, will be generated)
  * @returns {Object} - Created user with plain password for sending
  */
-export function createUser(userData, generatedPassword = null) {
-  const users = loadUsers();
+export async function createUser(userData, generatedPassword = null) {
+  const users = await loadUsers();
   
   // Validate username is email format
   if (!isValidEmail(userData.username)) {
@@ -573,7 +575,7 @@ export function createUser(userData, generatedPassword = null) {
   };
   
   users.push(newUser);
-  saveUsers(users);
+  await saveUsers(users);
   
   const { password: _, ...userWithoutPassword } = newUser;
   
@@ -590,8 +592,8 @@ export function createUser(userData, generatedPassword = null) {
  * @param {Object} updates - Updates to apply
  * @returns {Object} - Updated user
  */
-export function updateUser(userId, updates) {
-  const users = loadUsers();
+export async function updateUser(userId, updates) {
+  const users = await loadUsers();
   const userIndex = users.findIndex(u => u.id === userId);
   
   if (userIndex === -1) {
@@ -643,7 +645,7 @@ export function updateUser(userId, updates) {
     delete users[userIndex].deactivatedAt;
   }
   
-  saveUsers(users);
+  await saveUsers(users);
   
   const { password: _, ...userWithoutPassword } = users[userIndex];
   return userWithoutPassword;
@@ -665,8 +667,8 @@ function isDefaultUser(user) {
  * Deactivate user (soft delete - set isActive to false)
  * @param {string} userId - User ID
  */
-export function deactivateUser(userId) {
-  const users = loadUsers();
+export async function deactivateUser(userId) {
+  const users = await loadUsers();
   const userIndex = users.findIndex(u => u.id === userId);
   
   if (userIndex === -1) {
@@ -682,14 +684,14 @@ export function deactivateUser(userId) {
   users[userIndex].isActive = false;
   users[userIndex].deactivatedAt = new Date().toISOString();
   
-  saveUsers(users);
+  await saveUsers(users);
 }
 
 /**
  * Delete user (soft delete - set isActive to false)
  * @param {string} userId - User ID
  */
-export function deleteUser(userId) {
+export async function deleteUser(userId) {
   // For backward compatibility, this now calls deactivateUser
   deactivateUser(userId);
 }
@@ -700,8 +702,8 @@ export function deleteUser(userId) {
  * @param {boolean} force - Force delete without 45-day check (for auto-cleanup)
  * @returns {Object} - Result object with success status and message
  */
-export function hardDeleteUser(userId, force = false) {
-  const users = loadUsers();
+export async function hardDeleteUser(userId, force = false) {
+  const users = await loadUsers();
   const userIndex = users.findIndex(u => u.id === userId);
   
   if (userIndex === -1) {
@@ -733,7 +735,7 @@ export function hardDeleteUser(userId, force = false) {
   
   // Remove user from array
   users.splice(userIndex, 1);
-  saveUsers(users);
+  await saveUsers(users);
   
   return {
     success: true,
@@ -746,8 +748,8 @@ export function hardDeleteUser(userId, force = false) {
  * Auto-cleanup: Delete users deactivated for 90+ days (except default users)
  * @returns {Object} - Result object with deleted users count
  */
-export function autoCleanupDeactivatedUsers() {
-  const users = loadUsers();
+export async function autoCleanupDeactivatedUsers() {
+  const users = await loadUsers();
   const now = Date.now();
   const ninetyDaysInMs = 90 * 24 * 60 * 60 * 1000;
   
@@ -783,7 +785,7 @@ export function autoCleanupDeactivatedUsers() {
   });
   
   if (deletedUsers.length > 0) {
-    saveUsers(remainingUsers);
+    await saveUsers(remainingUsers);
     console.log(`🧹 Auto-cleanup: Deleted ${deletedUsers.length} user(s) deactivated for 90+ days`);
     deletedUsers.forEach(u => {
       console.log(`   - ${u.username} (${u.email}) - deactivated for ${u.daysDeactivated} days`);
@@ -802,8 +804,8 @@ export function autoCleanupDeactivatedUsers() {
  * @param {string} userId - User ID
  * @returns {number|null} - Days since deactivation or null if not deactivated
  */
-export function getDaysSinceDeactivation(userId) {
-  const users = loadUsers();
+export async function getDaysSinceDeactivation(userId) {
+  const users = await loadUsers();
   const user = users.find(u => u.id === userId);
   
   if (!user || !user.deactivatedAt) {
@@ -820,8 +822,8 @@ export function getDaysSinceDeactivation(userId) {
  * @param {string} oldPassword - Old password
  * @param {string} newPassword - New password
  */
-export function changePassword(userId, oldPassword, newPassword) {
-  const users = loadUsers();
+export async function changePassword(userId, oldPassword, newPassword) {
+  const users = await loadUsers();
   const userIndex = users.findIndex(u => u.id === userId);
   
   if (userIndex === -1) {
@@ -838,7 +840,7 @@ export function changePassword(userId, oldPassword, newPassword) {
   users[userIndex].passwordChangedAt = new Date().toISOString();
   users[userIndex].updatedAt = new Date().toISOString();
   
-  saveUsers(users);
+  await saveUsers(users);
 }
 
 export default {

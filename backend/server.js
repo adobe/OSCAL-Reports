@@ -45,6 +45,24 @@ import {
 import { generateDefaultPasswordFromEnv } from './auth/passwordGenerator.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
 import { ROLES, PERMISSIONS } from './auth/roles.js';
+import { 
+  createJob, 
+  getJob, 
+  getJobResult, 
+  listJobs, 
+  deleteJob, 
+  cleanupOldJobs,
+  JOB_TYPE,
+  JOB_STATUS
+} from './jobQueue.js';
+import {
+  saveState,
+  getState,
+  listStates,
+  deleteState,
+  cleanupOldStates,
+  getStateStats
+} from './debugStateManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -427,7 +445,7 @@ app.get('/api/auth/diagnostic', (req, res) => {
 /**
  * Login endpoint
  */
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
@@ -443,7 +461,7 @@ app.post('/api/auth/login', (req, res) => {
       });
     }
     
-    const user = authenticateUser(username, password);
+    const user = await authenticateUser(username, password);
     
     if (!user) {
       console.log(`❌ Authentication failed for: ${username}`);
@@ -527,7 +545,7 @@ app.get('/api/auth/me', authenticate, (req, res) => {
 /**
  * Change password
  */
-app.post('/api/auth/change-password', authenticate, (req, res) => {
+app.post('/api/auth/change-password', authenticate, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
     
@@ -545,7 +563,7 @@ app.post('/api/auth/change-password', authenticate, (req, res) => {
       });
     }
     
-    changePassword(req.user.userId, oldPassword, newPassword);
+    await changePassword(req.user.userId, oldPassword, newPassword);
     
     console.log(`✅ Password changed for user: ${req.user.username}`);
     res.json({ success: true, message: 'Password changed successfully' });
@@ -563,9 +581,9 @@ app.post('/api/auth/change-password', authenticate, (req, res) => {
 /**
  * Get all users
  */
-app.get('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
+app.get('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const users = getAllUsers();
+    const users = await getAllUsers();
     res.json({ users });
   } catch (error) {
     console.error('❌ Get users error:', error);
@@ -579,9 +597,9 @@ app.get('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res
 /**
  * Get user by ID
  */
-app.get('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
+app.get('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const user = getUserById(req.params.userId);
+    const user = await getUserById(req.params.userId);
     if (!user) {
       return res.status(404).json({ 
         error: 'User not found' 
@@ -690,9 +708,9 @@ app.put('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (
  * Delete user (hard delete - permanently remove)
  * Requires user to be deactivated for at least 45 days
  */
-app.delete('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
+app.delete('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const result = hardDeleteUser(req.params.userId, false);
+    const result = await hardDeleteUser(req.params.userId, false);
     
     console.log(`✅ User permanently deleted: ${req.params.userId} by ${req.user.username}`);
     res.json({ 
@@ -712,10 +730,10 @@ app.delete('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN)
 /**
  * Get days since deactivation for a user
  */
-app.get('/api/users/:userId/deactivation-info', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
+app.get('/api/users/:userId/deactivation-info', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const daysSinceDeactivation = getDaysSinceDeactivation(req.params.userId);
-    const user = getUserById(req.params.userId);
+    const daysSinceDeactivation = await getDaysSinceDeactivation(req.params.userId);
+    const user = await getUserById(req.params.userId);
     
     if (!user) {
       return res.status(404).json({ 
@@ -2391,13 +2409,13 @@ app.post('/api/generate-ssp', async (req, res) => {
               // Only add if not placeholder (meaningful data)
               if (titleValue && titleValue !== OSCAL_EMPTY_PLACEHOLDER) {
                 implementationProps.push({
-                  name: "catalog-control-title",
+                name: "catalog-control-title",
                   value: titleValue
                 });
               }
               if (descValue && descValue !== OSCAL_EMPTY_PLACEHOLDER) {
                 implementationProps.push({
-                  name: "catalog-control-description",
+                name: "catalog-control-description",
                   value: descValue
                 });
               }
@@ -2430,7 +2448,7 @@ app.post('/api/generate-ssp', async (req, res) => {
             const customProps = [];
             // Only include custom props if "No Additional Properties" is NOT selected
             if (!validationOptions.additionalProperties) {
-              Object.keys(customFieldsMapping).forEach(field => {
+            Object.keys(customFieldsMapping).forEach(field => {
                 const rawValue = control[field];
                 // Include field if it has any value (even empty string will get placeholder)
                 if (rawValue !== undefined && rawValue !== null) {
@@ -2439,12 +2457,12 @@ app.post('/api/generate-ssp', async (req, res) => {
                     : sanitizeOSCALString(String(rawValue), true);
                   
                   // Always add - sanitizeOSCALString returns placeholder for empty values
-                  customProps.push({
-                    name: customFieldsMapping[field],
+                customProps.push({
+                  name: customFieldsMapping[field],
                     value: sanitizedValue
-                  });
-                }
-              });
+                });
+              }
+            });
             }
             
             implementedReq.props = sanitizeProps([...catalogProps, ...implementationProps, ...customProps]);
@@ -2504,7 +2522,7 @@ app.post('/api/generate-ssp', async (req, res) => {
     if (!sanitizedSSP || !sanitizedSSP['system-security-plan']) {
       throw new Error('SSP sanitization resulted in empty document');
     }
-    
+
     // Add FIPS 140-2 compliant integrity hash before returning
     try {
       console.log('🔐 Attempting to add integrity hash to SSP...');
@@ -2669,6 +2687,488 @@ app.post('/api/generate-excel', async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to generate Excel',
       details: error.message 
+    });
+  }
+});
+
+// ============================================================================
+// Async Job Queue Endpoints
+// ============================================================================
+
+/**
+ * Create async PDF export job
+ * POST /api/jobs/pdf
+ * Returns job ID immediately, client polls for completion
+ */
+app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
+  try {
+    const { controls, systemInfo, metadata } = req.body;
+    
+    const jobId = createJob(
+      JOB_TYPE.PDF_EXPORT,
+      { controls, systemInfo, metadata },
+      {
+        userId: req.user?.id,
+        username: req.user?.username,
+        ip: req.ip
+      }
+    );
+    
+    res.json({
+      success: true,
+      jobId,
+      message: 'PDF export job created',
+      statusUrl: `/api/jobs/${jobId}`,
+      downloadUrl: `/api/jobs/${jobId}/download`
+    });
+  } catch (error) {
+    console.error('Error creating PDF job:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create PDF export job',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Create async Excel export job
+ * POST /api/jobs/excel
+ */
+app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
+  try {
+    const { controls, systemInfo } = req.body;
+    
+    const jobId = createJob(
+      JOB_TYPE.EXCEL_EXPORT,
+      { controls, systemInfo },
+      {
+        userId: req.user?.id,
+        username: req.user?.username,
+        ip: req.ip
+      }
+    );
+    
+    res.json({
+      success: true,
+      jobId,
+      message: 'Excel export job created',
+      statusUrl: `/api/jobs/${jobId}`,
+      downloadUrl: `/api/jobs/${jobId}/download`
+    });
+  } catch (error) {
+    console.error('Error creating Excel job:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create Excel export job',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Create async CCM export job
+ * POST /api/jobs/ccm
+ */
+app.post('/api/jobs/ccm', optionalAuth, async (req, res) => {
+  try {
+    const { controls, systemInfo } = req.body;
+    
+    const jobId = createJob(
+      JOB_TYPE.CCM_EXPORT,
+      { controls, systemInfo },
+      {
+        userId: req.user?.id,
+        username: req.user?.username,
+        ip: req.ip
+      }
+    );
+    
+    res.json({
+      success: true,
+      jobId,
+      message: 'CCM export job created',
+      statusUrl: `/api/jobs/${jobId}`,
+      downloadUrl: `/api/jobs/${jobId}/download`
+    });
+  } catch (error) {
+    console.error('Error creating CCM job:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create CCM export job',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Get job status
+ * GET /api/jobs/:jobId
+ */
+app.get('/api/jobs/:jobId', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = getJob(jobId);
+    
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      job
+    });
+  } catch (error) {
+    console.error('Error getting job status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get job status',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Download job result
+ * GET /api/jobs/:jobId/download
+ */
+app.get('/api/jobs/:jobId/download', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = getJob(jobId);
+    
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found'
+      });
+    }
+    
+    if (job.status !== JOB_STATUS.COMPLETED) {
+      return res.status(400).json({
+        success: false,
+        error: 'Job not completed yet',
+        status: job.status,
+        progress: job.progress
+      });
+    }
+    
+    const result = getJobResult(jobId);
+    
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job result not found'
+      });
+    }
+    
+    // Set appropriate content type and filename based on job type
+    let contentType, filename;
+    
+    switch (job.type) {
+      case JOB_TYPE.PDF_EXPORT:
+        contentType = 'application/pdf';
+        filename = 'compliance-report.pdf';
+        break;
+        
+      case JOB_TYPE.EXCEL_EXPORT:
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        filename = 'ssp-export.xlsx';
+        break;
+        
+      case JOB_TYPE.CCM_EXPORT:
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        filename = 'cloud-control-matrix.xlsx';
+        break;
+        
+      default:
+        contentType = 'application/octet-stream';
+        filename = 'download';
+    }
+    
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    res.send(result);
+  } catch (error) {
+    console.error('Error downloading job result:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to download job result',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * List all jobs (with optional filtering)
+ * GET /api/jobs?status=completed&type=pdf-export
+ */
+app.get('/api/jobs', authenticate, async (req, res) => {
+  try {
+    const { status, type } = req.query;
+    
+    // Regular users can only see their own jobs
+    const filters = {
+      status,
+      type
+    };
+    
+    if (req.user.role !== ROLES.ADMIN) {
+      filters.userId = req.user.id;
+    }
+    
+    const jobs = listJobs(filters);
+    
+    res.json({
+      success: true,
+      count: jobs.length,
+      jobs
+    });
+  } catch (error) {
+    console.error('Error listing jobs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list jobs',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Delete a job
+ * DELETE /api/jobs/:jobId
+ */
+app.delete('/api/jobs/:jobId', authenticate, (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = getJob(jobId);
+    
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found'
+      });
+    }
+    
+    // Only admin or job owner can delete
+    if (req.user.role !== ROLES.ADMIN && job.metadata?.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this job'
+      });
+    }
+    
+    deleteJob(jobId);
+    
+    res.json({
+      success: true,
+      message: 'Job deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting job:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete job',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Cleanup old jobs (admin only)
+ * POST /api/jobs/cleanup
+ */
+app.post('/api/jobs/cleanup', requireRole(ROLES.ADMIN), (req, res) => {
+  try {
+    const cleanedCount = cleanupOldJobs();
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${cleanedCount} old jobs`
+    });
+  } catch (error) {
+    console.error('Error cleaning up jobs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cleanup jobs',
+      details: error.message
+    });
+  }
+});
+
+// ============================================================================
+// Debug State Inspection Endpoints (Development/Debugging)
+// ============================================================================
+
+/**
+ * Get debug state statistics
+ * GET /api/debug/state/stats
+ */
+app.get('/api/debug/state/stats', requireRole(ROLES.ADMIN), (req, res) => {
+  try {
+    const stats = getStateStats();
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    console.error('Error getting state stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get state stats',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * List debug state files
+ * GET /api/debug/state/list?sessionId=xxx&action=xxx&since=xxx
+ */
+app.get('/api/debug/state/list', requireRole(ROLES.ADMIN), (req, res) => {
+  try {
+    const { sessionId, action, since } = req.query;
+    const states = listStates({ sessionId, action, since });
+    
+    res.json({
+      success: true,
+      count: states.length,
+      states
+    });
+  } catch (error) {
+    console.error('Error listing states:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list states',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Get specific debug state file
+ * GET /api/debug/state/:filename
+ */
+app.get('/api/debug/state/:filename', requireRole(ROLES.ADMIN), async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const state = await getState(filename);
+    
+    if (!state) {
+      return res.status(404).json({
+        success: false,
+        error: 'State file not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      state
+    });
+  } catch (error) {
+    console.error('Error getting state:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get state',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Delete debug state file
+ * DELETE /api/debug/state/:filename
+ */
+app.delete('/api/debug/state/:filename', requireRole(ROLES.ADMIN), (req, res) => {
+  try {
+    const { filename } = req.params;
+    const deleted = deleteState(filename);
+    
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: 'State file not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'State file deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting state:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete state',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Cleanup old debug state files
+ * POST /api/debug/state/cleanup
+ */
+app.post('/api/debug/state/cleanup', requireRole(ROLES.ADMIN), (req, res) => {
+  try {
+    const cleanedCount = cleanupOldStates();
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${cleanedCount} old state files`
+    });
+  } catch (error) {
+    console.error('Error cleaning up states:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cleanup states',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Save current state snapshot (manual)
+ * POST /api/debug/state/save
+ */
+app.post('/api/debug/state/save', requireRole(ROLES.ADMIN), async (req, res) => {
+  try {
+    const { sessionId, action, state, metadata } = req.body;
+    
+    if (!sessionId || !action || !state) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: sessionId, action, state'
+      });
+    }
+    
+    const filePath = await saveState(sessionId, action, state, {
+      ...metadata,
+      manualSave: true,
+      savedBy: req.user.username
+    });
+    
+    if (!filePath) {
+      return res.status(500).json({
+        success: false,
+        error: 'Debug state is disabled or save failed'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'State saved successfully',
+      filePath
+    });
+  } catch (error) {
+    console.error('Error saving state:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save state',
+      details: error.message
     });
   }
 });
@@ -3001,7 +3501,102 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
     }
     
-    // Ollama or Mistral API test connection (requires URL)
+    // Mistral API test connection (different from Ollama)
+    if (provider === 'mistral-api') {
+      if (!apiToken || !apiToken.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'API Token is required for Mistral AI API'
+        });
+      }
+      
+      // Test Mistral API with a simple request
+      try {
+        console.log(`   Testing Mistral API: ${url}`);
+        const testResponse = await axios.post(url, {
+          model: 'mistral-small-latest',
+          messages: [
+            {
+              role: 'user',
+              content: 'Test connection. Reply with OK.'
+            }
+          ],
+          max_tokens: 10
+        }, {
+          timeout: 15000,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiToken.trim()}`
+          }
+        });
+        
+        console.log(`✅ Mistral API connection successful`);
+        
+        // Mistral API available models (as of Dec 2024)
+        const mistralModels = [
+          'mistral-small-latest',
+          'mistral-medium-latest',
+          'mistral-large-latest',
+          'open-mistral-7b',
+          'open-mistral-nemo',
+          'open-mixtral-8x7b',
+          'open-mixtral-8x22b',
+          'codestral-latest',
+          'mistral-embed'
+        ];
+        
+        return res.json({
+          success: true,
+          message: 'Mistral API connection successful',
+          details: {
+            provider: 'mistral-api',
+            url: url,
+            models: mistralModels,
+            recommendedModel: 'mistral-small-latest',
+            testResponse: testResponse.data?.choices?.[0]?.message?.content || 'Response received'
+          }
+        });
+      } catch (error) {
+        console.error(`❌ Mistral API connection failed:`, error.message);
+        
+        let errorMessage = 'Mistral API connection failed';
+        let errorDetails = {};
+        
+        if (error.response) {
+          errorMessage = `Mistral API returned error ${error.response.status}`;
+          errorDetails = {
+            status: error.response.status,
+            statusText: error.response.statusText,
+            data: error.response.data
+          };
+          
+          if (error.response.status === 401) {
+            errorMessage = 'Invalid API Token - please check your Mistral API key';
+          } else if (error.response.status === 429) {
+            errorMessage = 'Rate limit exceeded - please wait and try again';
+          }
+        } else if (error.code === 'ETIMEDOUT') {
+          errorMessage = 'Connection timeout to Mistral API';
+          errorDetails = {
+            code: error.code,
+            message: 'Request timed out - check your internet connection'
+          };
+        } else {
+          errorDetails = {
+            code: error.code,
+            message: error.message
+          };
+        }
+        
+        return res.status(500).json({
+          success: false,
+          error: errorMessage,
+          details: errorDetails
+        });
+      }
+    }
+    
+    // Ollama test connection (requires URL)
     if (!url || !url.trim()) {
       return res.status(400).json({ 
         success: false,
@@ -3012,9 +3607,9 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // Parse and normalize the URL
     let fullUrl = url.trim();
     
-    // Add protocol if missing (default to http for ollama, https for mistral-api)
+    // Add protocol if missing (default to http for ollama)
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-      fullUrl = provider === 'mistral-api' ? `https://${fullUrl}` : `http://${fullUrl}`;
+      fullUrl = `http://${fullUrl}`;
     }
     
     // Validate URL format
@@ -3043,10 +3638,10 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     }
     
     try {
-      // Test 1: Check if service is reachable and fetch available models
+      // Test 1: Check if Ollama service is reachable and fetch available models
       // Handle URLs that may or may not end with /
       const tagsUrl = fullUrl.endsWith('/') ? `${fullUrl}api/tags` : `${fullUrl}/api/tags`;
-      console.log(`   Testing: ${tagsUrl}`);
+      console.log(`   Testing Ollama: ${tagsUrl}`);
       
       const response = await axios.get(tagsUrl, {
         timeout: 10000,
@@ -3108,8 +3703,9 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       
       res.json({
         success: true,
-        message: 'AI Engine connection successful',
+        message: 'Ollama connection successful',
         details: {
+          provider: 'ollama',
           url: fullUrl,
           reachable: true,
           models: modelNames,
@@ -3248,13 +3844,13 @@ app.get('*', (req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server is running on http://0.0.0.0:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
   console.log(`Server timeout: ${serverTimeout}ms (${serverTimeout/1000}s)`);
   
   // Initialize default users on startup
-  initializeDefaultUsers();
+  await initializeDefaultUsers();
   
   // Set server timeout to allow for long-running AI requests
   server.timeout = serverTimeout;
@@ -3264,7 +3860,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   // Run auto-cleanup immediately on startup
   console.log('🧹 Running initial user cleanup...');
   try {
-    const cleanupResult = autoCleanupDeactivatedUsers();
+    const cleanupResult = await autoCleanupDeactivatedUsers();
     if (cleanupResult.deletedCount > 0) {
       console.log(`✅ Auto-cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
     } else {
@@ -3283,10 +3879,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     
     const msUntilCleanup = tomorrow.getTime() - now.getTime();
     
-    setTimeout(() => {
+    setTimeout(async () => {
       console.log('🧹 Running scheduled user cleanup...');
       try {
-        const cleanupResult = autoCleanupDeactivatedUsers();
+        const cleanupResult = await autoCleanupDeactivatedUsers();
         if (cleanupResult.deletedCount > 0) {
           console.log(`✅ Scheduled cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
         }
@@ -3295,10 +3891,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
       }
       
       // Schedule next cleanup (24 hours later)
-      setInterval(() => {
+      setInterval(async () => {
         console.log('🧹 Running scheduled user cleanup...');
         try {
-          const cleanupResult = autoCleanupDeactivatedUsers();
+          const cleanupResult = await autoCleanupDeactivatedUsers();
           if (cleanupResult.deletedCount > 0) {
             console.log(`✅ Scheduled cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
           }

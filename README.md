@@ -372,8 +372,6 @@ The application uses the following ports:
 
 - **Backend Server**: `3020` (default, configurable via `PORT` env var)
 - **Frontend Dev Server**: `3021` (configured in `vite.config.js`)
-- **Blue Deployment**: `8120` (optional blue-green deployment)
-- **Green Deployment**: `8121` (optional blue-green deployment)
 - **Ollama AI Service**: `11434` (if using local AI)
 
 Change the backend port by setting the `PORT` environment variable:
@@ -480,12 +478,6 @@ OSCAL_Reports/
 │   ├── DEPLOYMENT.md                 # Deployment guide (Docker, TrueNAS, SMB)
 │   ├── CONFIGURATION.md              # Configuration documentation
 │   └── OSCAL_Compliance_Tool_Demo.pptx # Demo presentation
-│
-├── blue/                             # Blue deployment landing page
-│   └── index.html                    # Redirect to Port 8120 (Blue-Green strategy)
-│
-├── green/                            # Green deployment landing page
-│   └── index.html                    # Redirect to Port 8121 (Blue-Green strategy)
 │
 ├── sample_output/                    # Sample outputs
 │   ├── AEMGovAu_ComplianceReport_Sample_2025-11-20.json

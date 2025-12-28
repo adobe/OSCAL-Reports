@@ -5,6 +5,9 @@
   padding: 1rem;
   box-shadow: 0 4px 6px var(--shadow);
   margin-bottom: 1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .controls-toolbar {
