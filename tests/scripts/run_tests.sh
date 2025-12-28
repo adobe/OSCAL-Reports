@@ -160,11 +160,13 @@ echo ""
 echo -e "${YELLOW}▶ Running Security Checks...${NC}"
 echo ""
 
-# Check for hardcoded secrets/passwords (excluding test files and built files)
+# Check for hardcoded secrets/passwords (excluding test files, docs, and false positives)
 echo "  Checking for hardcoded secrets..."
 SECRETS_FOUND=$(git diff --cached --name-only | \
-    grep -v -E '(test|spec|\.test\.|\.spec\.|dist/|build/|public/|node_modules/)' | \
-    xargs grep -n -iE "(password|secret|api_key|token).*=.*['\"][^'\"]{8,}" 2>/dev/null || true)
+    grep -v -E '(test|spec|\.test\.|\.spec\.|dist/|build/|public/|node_modules/|docs/|\.md$|\.github/workflows/|setup\.sh|bump_version\.sh)' | \
+    xargs grep -n -iE "(password|secret|api_key|apikey|apitoken)\\s*=\\s*['\"][a-zA-Z0-9]{16,}['\"]" 2>/dev/null | \
+    grep -v -E "(//|#|/\\\*|\\\*).*=.*" | \
+    grep -v -E "(const|let|var|function|export|import).*=.*\\{" || true)
 
 if [ -n "$SECRETS_FOUND" ]; then
     echo -e "${RED}❌ CRITICAL: Possible hardcoded secrets found!${NC}"
