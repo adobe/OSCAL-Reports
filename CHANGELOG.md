@@ -1,53 +1,79 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to the OSCAL Report Generator V2 will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2025-12-29
-
-### Added
-- Comprehensive testing infrastructure with Jest and Playwright
-- Automated test suite with pre-commit hooks
-- Backend unit tests (21 tests) for authentication and RBAC
-- Backend integration tests (4 tests) for API endpoints
-- Playwright E2E testing framework and documentation
-- Tests documentation (TESTING.md, PLAYWRIGHT_QUICK_GUIDE.md, RECORDING_TESTS.md)
-- Backend utilities: atomic file operations (atomicWrite.js)
-- Job queue system for background operations (jobQueue.js)
-- Debug state manager for server-side debugging (debugStateManager.js)
-- Version bumping script (bump_version.sh)
-- Contributing guidelines (.github/CONTRIBUTING.md)
-- Pull request template (.github/PULL_REQUEST_TEMPLATE.md)
-- Docker and deployment ignore files (.dockerignore, .deployignore)
-
-### Changed
-- Consolidated documentation into 4 comprehensive files (BEST_PRACTICES.md, QUALITY_ASSURANCE.md, DEPLOYMENT_GUIDE.md, ARCHITECTURE.md)
-- Improved UI layout: increased control tile width for better content fit
-- Enhanced horizontal padding and spacing in control items (1.5rem)
-- Improved status badge and expand button positioning
-- Updated backend services to use async/await properly
-- Enhanced configManager with atomic file operations
-- Enhanced userManager with PBKDF2 password hashing
-- Improved security checks to reduce false positives in pre-commit hooks
-- Updated all package.json files with latest dependencies
-
-### Fixed
-- Control item layout issues (status badges and buttons overflowing)
-- CSS layout problems in ControlItem.css, ControlItemCCM.css, ControlsList.css
-- Async/await errors in backend authentication middleware
-- Security check false positives for variable names and documentation
+## [1.3.1] - 2026-01-06
 
 ### Removed
-- blue/ and green/ folders (cleanup)
-- Old scattered test files (moved to tests/ folder)
-- docs/CONFIGURATION.md (merged into DEPLOYMENT.md)
+- Removed `deploy-to-smb.sh` script (no longer needed with TrueNAS automation)
+- Removed SMB deployment documentation from DEPLOYMENT.md
 
-## [1.2.7] - 2025-12-XX
+### Fixed
+- Fixed pre-commit hook bug that allowed commits without version bumps
+- Pre-commit hook now properly compares version numbers instead of just checking if package.json was modified
+
+### Added
+- Added `VERSION_NOTES.md` to document version management and pre-commit hook fix
 
 ### Changed
-- Version update for AI Telemetry Logging
-- OpenTelemetry standards compliance
-- Enhanced logging features with automatic log rotation
+- Updated documentation to remove all references to deploy-to-smb.sh
+
+## [1.3.0] - 2026-01-06
+
+### Breaking Changes
+- **License Change**: Migrated from MIT to GPL-3.0-or-later
+  - Updated LICENSE file with GNU GPL v3.0
+  - Updated all 58 source files with new license headers
+  - Added license link to application footer
+
+### Added
+- **TrueNAS Blue-Green Deployment Automation**:
+  - Enhanced `build_on_truenas.sh` with comprehensive Docker cleanup
+  - Added `--no-cache` flag to prevent Docker layer caching issues
+  - Implemented aggressive old image removal
+  - Auto-detection of Blue/Green instances based on directory name
+  - Port configuration: Green=3019, Blue=3020
+  - Monthly staggered update schedule support
+  - Version-aware builds (only rebuilds if version changed)
+  - Git integration (uses existing repos, pulls updates)
+
+- **Documentation**:
+  - Added `docs/CRON_SETUP.md` for cron configuration reference
+  - Added `docs/TRUENAS_DEPLOYMENT.md` for complete deployment guide
+  - Added `docs/TRUENAS_QUICK_SETUP.md` for quick start
+  - Reorganized all .md files into `docs/` folder
+  - Test documentation moved to `tests/docs/`
+
+- **UI/UX Improvements**:
+  - Added "License" link to application footer
+  - Updated Footer component with version 1.3.0
+
+### Fixed
+- Fixed Docker image caching issues causing old versions (1.2.6) to persist
+- Fixed status badge and button placement in control tiles
+- Fixed control item overflow issues
+- Improved control item layout and spacing
+
+### Changed
+- Updated all copyright notices to 2025
+- Updated README.md with GPL license information and badge
+- Updated all port references in documentation (Green=3019, Blue=3020)
+
+## [1.2.7] - 2024-12-29
+
+### Added
+- AI telemetry logging system
+- User management improvements
+- Session management enhancements
+
+### Fixed
+- Various bug fixes and stability improvements
+
+---
+
+**Copyright (C) 2025 Mukesh Kesharwani**  
+**License:** GPL-3.0-or-later
 

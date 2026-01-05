@@ -531,7 +531,6 @@ OSCAL_Reports/
 │
 ├── package.json                      # Root package (dev scripts)
 ├── setup.sh                          # Setup script
-├── deploy-to-smb.sh                  # SMB deployment
 ├── build_on_truenas.sh               # TrueNAS build script
 ├── reactivate-admin.sh               # Admin reactivation
 ├── docker-compose.yml                # Docker Compose (root)

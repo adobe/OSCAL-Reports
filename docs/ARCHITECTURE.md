@@ -996,7 +996,6 @@ OSCAL_Reports/
 │
 ├── package.json                      # Root package (dev scripts)
 ├── setup.sh                          # Setup script
-├── deploy-to-smb.sh                  # SMB deployment script
 ├── build_on_truenas.sh               # TrueNAS build script
 ├── reactivate-admin.sh               # Admin reactivation utility
 ├── docker-compose.yml                # Docker Compose (root, includes Ollama)
@@ -1167,7 +1166,6 @@ config/
 - `backend/configManager.js` - Updated to use `config/app/config.json`
 - `backend/auth/userManager.js` - Updated to use `config/app/users.json`
 - `setup.sh` - Copies config files from `config/` to needed locations
-- `deploy-to-smb.sh` - Preserves config files during deployment
 - `Dockerfile` - Copies config files into Docker image
 
 #### 6. **API Gateway Integration**
