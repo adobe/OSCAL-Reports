@@ -7,7 +7,7 @@
  * @module jobQueue
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright 2025 Mukesh Kesharwani
- * @license MIT
+ * @license GPL-3.0-or-later
  */
 
 import { v4 as uuidv4 } from 'uuid';

@@ -4,8 +4,8 @@
  * Part of OSCAL Report Generator V2
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license MIT
+ * @copyright Copyright (C) 2025 Mukesh Kesharwani
+ * @license GPL-3.0-or-later
  */
 
 import React from 'react';
@@ -19,7 +19,7 @@ import './Footer.css';
 export const Footer = () => {
   // Get build info from Vite environment
   const buildInfo = import.meta.env.VITE_BUILD_TIME || 'Development Build';
-  const version = '1.2.7';  // Should match package.json version
+  const version = '1.3.0';  // Should match package.json version
   const currentYear = new Date().getFullYear();
   
   return (
@@ -72,6 +72,15 @@ export const Footer = () => {
             title="View on GitHub"
           >
             GitHub
+          </a>
+          <span className="divider">•</span>
+          <a 
+            href="https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            title="GPL-3.0-or-later License"
+          >
+            License
           </a>
         </div>
         

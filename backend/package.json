@@ -4,6 +4,8 @@
   "description": "Backend API for Keekar's OSCAL SOA/SSP/CCM Generator",
   "main": "server.js",
   "type": "module",
+  "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",

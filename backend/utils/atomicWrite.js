@@ -6,7 +6,7 @@
  * @module atomicWrite
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright 2025 Mukesh Kesharwani
- * @license MIT
+ * @license GPL-3.0-or-later
  * 
  * @description
  * This module implements atomic file writes using the following pattern:

@@ -3,7 +3,7 @@
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license MIT
+ * @license GPL-3.0-or-later
  * 
  * Inspired by roscal (https://github.com/gborough/roscal) and NIST approaches
  * 

@@ -3,7 +3,7 @@
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license MIT
+ * @license GPL-3.0-or-later
  * 
  * Main application component that manages the workflow for creating and editing
  * OSCAL-compliant System Security Plans (SSP), Statement of Applicability (SOA),

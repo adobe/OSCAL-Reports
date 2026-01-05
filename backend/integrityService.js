@@ -3,7 +3,7 @@
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license MIT
+ * @license GPL-3.0-or-later
  * 
  * Provides FIPS 140-2 compliant file integrity checking for OSCAL exports.
  * Uses SHA-256 (FIPS 180-4 approved) for cryptographic hashing.

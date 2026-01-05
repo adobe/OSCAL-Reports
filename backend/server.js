@@ -3,7 +3,7 @@
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license MIT
+ * @license GPL-3.0-or-later
  * 
  * Main Express server for the OSCAL Report Generator application.
  * Provides API endpoints for catalog fetching, SSP generation, and various export formats.

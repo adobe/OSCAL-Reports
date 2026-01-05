@@ -2,9 +2,9 @@
 
 **A comprehensive web application for generating compliance documentation from OSCAL catalogs**
 
-Version 1.2.7 | December 2025
+Version 1.3.0 | December 2025
 
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ---
 
@@ -59,7 +59,50 @@ open http://localhost:3021
 
 ### TrueNAS Server Deployment
 
-For deployment on **nas.keekar.com** or other TrueNAS servers:
+#### Automated Blue-Green Deployment (Recommended)
+
+For automated deployments on **nas.keekar.com** or other TrueNAS servers with auto-updates from GitHub:
+
+```bash
+# Quick setup (see docs/TRUENAS_QUICK_SETUP.md for details)
+cd /mnt/pool1/Documents/KACI-Apps
+
+# Clone for Blue instance (Port 3020)
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
+cd OSCAL-Report-Generator-Blue
+chmod +x build_on_truenas.sh
+./build_on_truenas.sh
+
+# Clone for Green instance (Port 3019)
+cd ..
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
+cd OSCAL-Report-Generator-Green
+chmod +x build_on_truenas.sh
+./build_on_truenas.sh
+
+# Setup cron for monthly staggered updates
+crontab -e
+# Green (1st, 3rd, 5th Sunday at 2 AM):
+# 0 2 1-7,15-21,29-31 * 0 cd /path/to/OSCAL-Report-Generator-Green && ./build_on_truenas.sh >> /var/log/oscal-green-deploy.log 2>&1
+# Blue (2nd, 4th Sunday at 2 AM):
+# 0 2 8-14,22-28 * 0 cd /path/to/OSCAL-Report-Generator-Blue && ./build_on_truenas.sh >> /var/log/oscal-blue-deploy.log 2>&1
+```
+
+**Features:**
+- 🔄 Auto-detects Blue/Green instance from directory name
+- 📊 Compares versions (local, running, GitHub)
+- 🚀 Only builds/deploys if version changes
+- ⏰ Monthly staggered updates (Green: 1st/3rd/5th Sun, Blue: 2nd/4th Sun)
+- 🔌 Separate ports (Blue: 3020, Green: 3019)
+- 🛡️ High availability (never updates both simultaneously)
+
+**Documentation:**
+- **Quick Start**: [docs/TRUENAS_QUICK_SETUP.md](docs/TRUENAS_QUICK_SETUP.md)
+- **Complete Guide**: [docs/TRUENAS_DEPLOYMENT.md](docs/TRUENAS_DEPLOYMENT.md)
+
+#### Manual TrueNAS Deployment
+
+For manual deployment without Docker:
 
 1. **Build the Frontend**
    ```bash
@@ -494,7 +537,7 @@ OSCAL_Reports/
 ├── docker-compose.yml                # Docker Compose (root)
 ├── Dockerfile                        # Dockerfile (root)
 ├── truenas-app.yaml                  # TrueNAS config (root)
-├── LICENSE                           # MIT License
+├── LICENSE                           # GPL-3.0-or-later License
 └── README.md                         # This file
 ```
 
@@ -730,9 +773,13 @@ Contributions are welcome! Please follow these steps:
 
 ## 📄 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE](LICENSE) file for details.
 
-**Copyright (c) 2025 Mukesh Kesharwani**
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+**Copyright (C) 2025 Mukesh Kesharwani**
 
 ---
 
@@ -755,19 +802,26 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) file for 
 
 ## 📚 Documentation
 
-This project maintains 3 essential documentation files:
+This project maintains comprehensive documentation:
 
 1. **[README.md](README.md)** - This file - Overview, quick start, and features
 2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture, API endpoints, AI telemetry
-3. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment guide (Docker, TrueNAS, SMB)
-4. **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Configuration reference
+3. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment guide (Docker, general deployment)
+4. **[docs/TRUENAS_DEPLOYMENT.md](docs/TRUENAS_DEPLOYMENT.md)** - TrueNAS automated Blue-Green deployment
+5. **[docs/TRUENAS_QUICK_SETUP.md](docs/TRUENAS_QUICK_SETUP.md)** - TrueNAS quick start (5 minutes)
+6. **[docs/CRON_SETUP.md](docs/CRON_SETUP.md)** - Cron configuration reference
+7. **[docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md)** - Best practices and implementation guidelines
+8. **[docs/QUALITY_ASSURANCE.md](docs/QUALITY_ASSURANCE.md)** - QA processes and testing
 
 ### Quick Links
 
+- **TrueNAS Setup**: [docs/TRUENAS_QUICK_SETUP.md](docs/TRUENAS_QUICK_SETUP.md)
+- **TrueNAS Deployment**: [docs/TRUENAS_DEPLOYMENT.md](docs/TRUENAS_DEPLOYMENT.md)
+- **Cron Configuration**: [docs/CRON_SETUP.md](docs/CRON_SETUP.md)
 - **AI Telemetry Logging**: [ARCHITECTURE.md - AI Telemetry](docs/ARCHITECTURE.md#ai-telemetry-logging-v127)
 - **API Documentation**: [ARCHITECTURE.md - API Endpoints](docs/ARCHITECTURE.md)
 - **Deployment Guides**: [DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- **Configuration**: [CONFIGURATION.md](docs/CONFIGURATION.md)
+- **Testing**: [tests/docs/TESTING.md](tests/docs/TESTING.md)
 
 ---
 
