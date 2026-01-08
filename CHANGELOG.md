@@ -5,6 +5,61 @@ All notable changes to the OSCAL Report Generator V2 will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-08
+
+### Added
+- **Self-Registration Feature**:
+  - Users can now self-register with their email address on the login page
+  - Auto-generated 12-character passwords sent via configured email service
+  - New users automatically receive "User" role
+  - IP-based rate limiting (3 registrations per hour per IP)
+  - Comprehensive email blacklist system with 45-day cooldown
+  
+- **Automatic User Cleanup**:
+  - Scheduled daily job checks for inactive self-registered users
+  - Users inactive for 45+ days are automatically deactivated
+  - Deactivated email addresses added to blacklist (45-day cooldown)
+  - Only affects self-registered users, admin-created users unaffected
+  
+- **User Activity Tracking**:
+  - Added `lastLoginAt` field to track user login activity
+  - Added `createdVia` field to distinguish self-registered vs admin-created users
+  - Login timestamp automatically updated on successful authentication
+  
+- **New Backend Components**:
+  - Email blacklist manager (`backend/auth/emailBlacklist.js`)
+  - Rate limiter middleware (`backend/middleware/rateLimiter.js`)
+  - User cleanup job (`backend/jobs/userCleanup.js`)
+  - Self-registration API endpoint (`POST /api/auth/self-register`)
+  
+- **Configuration Files**:
+  - `config/app/email_blacklist.json` for storing blacklisted emails
+  - `config/app/rate_limit.json` for rate limit tracking
+
+### Changed
+- **Login Page Redesign**:
+  - Removed default test credentials panel
+  - Added self-registration form with email input
+  - Updated UI to reflect registration-based access model
+  - Added inactivity policy information for users
+  
+- **Documentation Updates**:
+  - Replaced "Default Credentials" section with "User Registration"
+  - Added self-registration security documentation
+  - Updated README with 45-day inactivity policy
+  - Platform Admin access instructions clarified
+
+### Fixed
+- Fixed missing `await` in user creation endpoint causing undefined password issue
+- Fixed duplicate `sessionToken` key in AuthContext
+- Added explicit `Content-Type: application/json` header to API requests
+
+### Security
+- Rate limiting prevents registration spam/abuse
+- Email validation and uniqueness checks
+- Automated cleanup prevents dormant account accumulation
+- Only "User" role can be self-assigned (Platform Admin requires manual creation)
+
 ## [1.3.1] - 2026-01-06
 
 ### Removed

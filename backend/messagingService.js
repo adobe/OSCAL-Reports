@@ -65,7 +65,7 @@ async function sendEmail(to, username, password, fullName, emailConfig) {
     const nodemailer = await import('nodemailer');
     
     // Create transporter
-    const transporter = nodemailer.createTransport({
+    const transporterConfig = {
       host: emailConfig.smtpHost,
       port: emailConfig.smtpPort,
       secure: emailConfig.smtpSecure, // true for 465, false for other ports
@@ -73,7 +73,18 @@ async function sendEmail(to, username, password, fullName, emailConfig) {
         user: emailConfig.smtpUser,
         pass: emailConfig.smtpPassword
       }
-    });
+    };
+    
+    // Add STARTTLS support for port 587
+    if (!emailConfig.smtpSecure && emailConfig.smtpPort === 587) {
+      transporterConfig.requireTLS = true;
+      transporterConfig.tls = {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false // Allow self-signed certificates
+      };
+    }
+    
+    const transporter = nodemailer.createTransport(transporterConfig);
     
     // Verify connection
     await transporter.verify();
@@ -252,7 +263,7 @@ export async function testEmailConfig(emailConfig) {
     const nodemailer = await import('nodemailer');
     
     // Create transporter
-    const transporter = nodemailer.createTransport({
+    const transporterConfig = {
       host: emailConfig.smtpHost,
       port: emailConfig.smtpPort,
       secure: emailConfig.smtpSecure,
@@ -260,7 +271,18 @@ export async function testEmailConfig(emailConfig) {
         user: emailConfig.smtpUser,
         pass: emailConfig.smtpPassword
       }
-    });
+    };
+    
+    // Add STARTTLS support for port 587
+    if (!emailConfig.smtpSecure && emailConfig.smtpPort === 587) {
+      transporterConfig.requireTLS = true;
+      transporterConfig.tls = {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false // Allow self-signed certificates
+      };
+    }
+    
+    const transporter = nodemailer.createTransport(transporterConfig);
     
     // Verify connection
     await transporter.verify();

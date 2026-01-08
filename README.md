@@ -423,14 +423,22 @@ Change the backend port by setting the `PORT` environment variable:
 PORT=8080 node server.js
 ```
 
-### Default Credentials
+### User Registration
 
-Default user passwords are generated using timestamp format: `username#$DDMMYYHH`
+The application supports self-service user registration:
 
-- **Format**: `username#$DDMMYYHH` (DD=Day, MM=Month, YY=Year, HH=Hour)
-- **Example**: `user#$27112514` (November 27, 2025 at 14:00)
-- **Location**: Check `credentials.txt` file after setup/build
-- **Login UI**: Default passwords displayed on login page
+#### Self-Registration
+- Users can register with their email address on the login page
+- Auto-generated 12-character passwords sent via email
+- New users receive "User" role by default
+- Rate limited to 3 registrations per IP per hour
+- **Inactivity Policy**: Accounts inactive for 45+ days are automatically deactivated
+- **Email Cooldown**: Deactivated email addresses cannot re-register for 45 days
+
+#### Platform Admin Access
+- Platform Admin accounts must be created manually by system administrators
+- Contact your system administrator for Platform Admin credentials
+- Admins can create additional users through the User Management interface
 
 ---
 
@@ -675,10 +683,11 @@ Response: { "success": true }
   - Random 16-byte salt per password
   - 32-byte (256-bit) key length
   - Format: `pbkdf2$sha256$iterations$salt$hash`
-- **Timestamp-Based Default Passwords**: Default credentials use format `username#$DDMMYYHH`
-  - Generated based on build/startup timestamp
-  - More secure than static default passwords
-  - Displayed in login UI and credentials file
+- **Self-Registration Security**:
+  - IP-based rate limiting (3 registrations per hour)
+  - Email validation and uniqueness checks
+  - 45-day inactivity policy with automatic deactivation
+  - Email blacklist with 45-day cooldown period
 - **Automatic Password Migration**: Legacy SHA-256 passwords automatically migrate to PBKDF2 on login
 
 ### Configuration Security

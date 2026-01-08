@@ -290,6 +290,12 @@ function MessagingConfiguration({ embedded = false }) {
                   />
                   Use SSL/TLS (check for port 465)
                 </label>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
+                  <strong>Port Configuration Guide:</strong><br/>
+                  • Port 587 (STARTTLS): Uncheck SSL/TLS ✓<br/>
+                  • Port 465 (SSL/TLS): Check SSL/TLS ✓<br/>
+                  • Port 25 (Plain SMTP): Uncheck SSL/TLS
+                </div>
               </div>
 
               <div className="form-row">

@@ -160,7 +160,8 @@ export const AuthProvider = ({ children }) => {
     if (!sessionToken) return {};
     return {
       headers: {
-        'Authorization': `Bearer ${sessionToken}`
+        'Authorization': `Bearer ${sessionToken}`,
+        'Content-Type': 'application/json'
       }
     };
   };
@@ -181,7 +182,6 @@ export const AuthProvider = ({ children }) => {
     logout,
     changePassword,
     getAuthConfig,
-    sessionToken,
     hasPermission,
     // Direct permission helpers
     canEditSettings: () => hasPermission(PERMISSIONS.canEditSettings),

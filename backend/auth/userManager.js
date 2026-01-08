@@ -446,6 +446,15 @@ export async function authenticateUser(username, password) {
   
   console.log(`✅ All checks passed for user: ${username}`);
   
+  // Update last login timestamp
+  const userIndex = users.findIndex(u => u.username === username);
+  if (userIndex !== -1) {
+    users[userIndex].lastLoginAt = new Date().toISOString();
+    await saveUsers(users);
+    // Update the local reference
+    userByUsername.lastLoginAt = users[userIndex].lastLoginAt;
+  }
+  
   // Generate session token
   const sessionToken = generateSessionToken();
   const sessionData = {
@@ -571,7 +580,9 @@ export async function createUser(userData, generatedPassword = null) {
     role: userData.role,
     fullName: userData.fullName || userData.username.split('@')[0],
     createdAt: new Date().toISOString(),
-    isActive: true
+    isActive: true,
+    lastLoginAt: null, // Will be set on first login
+    createdVia: userData.createdVia || 'admin-created' // Track registration source
   };
   
   users.push(newUser);

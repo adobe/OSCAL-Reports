@@ -63,6 +63,10 @@ import {
   cleanupOldStates,
   getStateStats
 } from './debugStateManager.js';
+import { isEmailBlacklisted, addToBlacklist } from './auth/emailBlacklist.js';
+import { registrationRateLimiter } from './middleware/rateLimiter.js';
+import { sendUserCredentials } from './messagingService.js';
+import { scheduleUserCleanup } from './jobs/userCleanup.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -443,6 +447,107 @@ app.get('/api/auth/diagnostic', (req, res) => {
 // ===== AUTHENTICATION & AUTHORIZATION ENDPOINTS =====
 
 /**
+ * Self-registration endpoint
+ * Allows users to create an account with their email
+ * Password is auto-generated and sent via email
+ */
+app.post('/api/auth/self-register', registrationRateLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    console.log(`📝 Self-registration request received for: ${email}`);
+    
+    // 1. Validate email format
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format',
+        message: 'Please provide a valid email address'
+      });
+    }
+    
+    // 2. Check if email is blacklisted (45-day cooldown)
+    const blacklistEntry = await isEmailBlacklisted(email);
+    if (blacklistEntry) {
+      const daysRemaining = Math.ceil((new Date(blacklistEntry.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
+      console.log(`⚠️ Email is blacklisted: ${email} (expires in ${daysRemaining} days)`);
+      return res.status(403).json({
+        success: false,
+        error: 'Email not available',
+        message: `This email address cannot be used for registration. It will become available in ${daysRemaining} days.`,
+        reason: blacklistEntry.reason
+      });
+    }
+    
+    // 3. Check if user already exists
+    const existingUsers = await getAllUsers();
+    const existingUser = existingUsers.find(u => 
+      u.email.toLowerCase() === email.toLowerCase() ||
+      u.username.toLowerCase() === email.toLowerCase()
+    );
+    
+    if (existingUser) {
+      console.log(`⚠️ User already exists with email: ${email}`);
+      return res.status(409).json({
+        success: false,
+        error: 'User already exists',
+        message: 'An account with this email address already exists. Please login or use a different email.'
+      });
+    }
+    
+    // 4. Generate password
+    const generatedPassword = generatePassword(12);
+    
+    // 5. Create user with self-registration flag
+    const userData = {
+      username: email,
+      email: email,
+      role: ROLES.USER, // Self-registered users always get 'User' role
+      fullName: email.split('@')[0], // Use email prefix as default full name
+      createdVia: 'self-registration'
+    };
+    
+    const newUser = await createUser(userData, generatedPassword);
+    console.log(`✅ Self-registered user created: ${newUser.username}`);
+    
+    // 6. Send credentials via email
+    const sendResult = await sendUserCredentials(
+      newUser.email,
+      newUser.username,
+      newUser.plainPassword,
+      newUser.fullName
+    );
+    
+    if (!sendResult.success) {
+      console.error(`❌ Failed to send credentials email: ${sendResult.error}`);
+      // User was created but email failed - return warning
+      return res.status(201).json({
+        success: true,
+        warning: 'Account created but email delivery failed',
+        message: 'Your account has been created, but we could not send your password via email. Please contact the administrator for assistance.',
+        email: email
+      });
+    }
+    
+    // 7. Return success
+    console.log(`✅ Self-registration completed successfully for: ${email}`);
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful! Your password has been sent to your email address.',
+      email: email
+    });
+    
+  } catch (error) {
+    console.error('❌ Self-registration error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Registration failed',
+      message: error.message || 'An error occurred during registration. Please try again later.'
+    });
+  }
+});
+
+/**
  * Login endpoint
  */
 app.post('/api/auth/login', async (req, res) => {
@@ -633,7 +738,7 @@ app.post('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (r
     const generatedPassword = generatePassword(12);
     
     // Create user with generated password
-    const newUser = createUser({ username, email, role, fullName }, generatedPassword);
+    const newUser = await createUser({ username, email, role, fullName }, generatedPassword);
     
     console.log(`✅ User created: ${newUser.username} (${newUser.role}) by ${req.user.username}`);
     
@@ -3908,5 +4013,8 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   };
   
   scheduleAutoCleanup();
+  
+  // Schedule inactive user cleanup (runs daily, checks for 45-day inactivity)
+  scheduleUserCleanup(); // Runs every 24 hours
 });
 
