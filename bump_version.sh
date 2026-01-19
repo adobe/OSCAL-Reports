@@ -11,7 +11,7 @@
 #
 # This script:
 # - Updates version in all 3 package.json files (root, backend, frontend)
-# - Appends changelog entry to CHANGELOG.md
+# - Appends changelog entry to docs/CHANGELOG.md
 # - Creates a git commit with the version bump
 # - Optionally creates a git tag
 
@@ -125,9 +125,9 @@ update_changelog() {
   local message="$2"
   local date=$(date +"%Y-%m-%d")
   
-  # Create CHANGELOG.md if it doesn't exist
-  if [ ! -f "CHANGELOG.md" ]; then
-    cat > CHANGELOG.md << EOF
+  # Create docs/CHANGELOG.md if it doesn't exist
+  if [ ! -f "docs/CHANGELOG.md" ]; then
+    cat > docs/CHANGELOG.md << EOF
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -136,14 +136,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 EOF
-    print_info "Created CHANGELOG.md"
+    print_info "Created docs/CHANGELOG.md"
   fi
   
   # Create temporary file with new entry
   local temp_file=$(mktemp)
   
   # Read existing changelog
-  cat CHANGELOG.md > "$temp_file"
+  cat docs/CHANGELOG.md > "$temp_file"
   
   # Insert new entry after the header (after first empty line following headers)
   local new_entry="
@@ -169,10 +169,10 @@ EOF
     END {
       if (!inserted) print entry
     }
-  ' "$temp_file" > CHANGELOG.md
+  ' "$temp_file" > docs/CHANGELOG.md
   
   rm "$temp_file"
-  print_success "Updated: CHANGELOG.md"
+  print_success "Updated: docs/CHANGELOG.md"
 }
 
 # ============================================================================
@@ -233,7 +233,7 @@ update_package_json "frontend/package.json" "$NEW_VERSION"
 echo ""
 print_header "Updating Changelog"
 
-# Update CHANGELOG.md
+# Update docs/CHANGELOG.md
 update_changelog "$NEW_VERSION" "$CHANGELOG_MESSAGE"
 
 echo ""
@@ -242,7 +242,7 @@ print_header "Git Operations"
 # Check if git is available and we're in a git repository
 if command -v git &> /dev/null && [ -d .git ]; then
   # Stage changes
-  git add package.json backend/package.json frontend/package.json CHANGELOG.md 2>/dev/null || true
+  git add package.json backend/package.json frontend/package.json docs/CHANGELOG.md 2>/dev/null || true
   print_success "Staged version files"
   
   # Create commit
@@ -254,7 +254,7 @@ Updated files:
 - package.json
 - backend/package.json
 - frontend/package.json
-- CHANGELOG.md"
+- docs/CHANGELOG.md"
   
   git commit -m "$COMMIT_MESSAGE" 2>/dev/null || print_warning "No changes to commit (files may be unchanged)"
   print_success "Created commit"
