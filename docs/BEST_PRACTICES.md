@@ -1732,6 +1732,270 @@ function pc_cleanup_expired_overrides(&$state) {
 
 ---
 
+## Dependency Security & Vulnerability Management
+
+### ✅ **Regular Dependency Audits**
+
+**Why:** Third-party dependencies are a common source of security vulnerabilities. Regular audits help identify and fix issues before they become problems.
+
+**Best Practices:**
+
+```bash
+# Run security audit regularly
+npm audit
+
+# Fix vulnerabilities automatically (where safe)
+npm audit fix
+
+# For breaking changes, review and update manually
+npm audit fix --force  # ⚠️ Use with caution
+
+# Check for outdated packages
+npm outdated
+```
+
+**Frequency:**
+- **Weekly:** Run `npm audit` in development
+- **Before releases:** Always audit before production deployment
+- **On alerts:** Check immediately when GitHub Security Alerts notify you
+
+---
+
+### ✅ **Handling Known Vulnerabilities (qs CVE Example)**
+
+**Real Example:** CVE in `qs` dependency (v1.4.2 fix)
+
+**Problem:**
+- `qs@6.14.0` had a Denial-of-Service vulnerability
+- Memory exhaustion via malicious array limit bypass
+- Affected endpoint: Any using query string parsing
+
+**Solution Applied:**
+```json
+{
+  "dependencies": {
+    "qs": ">=6.14.1"
+  },
+  "overrides": {
+    "qs": ">=6.14.1"
+  }
+}
+```
+
+**Why Two Locations?**
+1. **`dependencies`** - Direct dependency
+2. **`overrides`** - Forces ALL transitive dependencies to use safe version
+
+**Verification:**
+```bash
+# Check all instances of qs in dependency tree
+npm list qs
+
+# Should show:
+# ├─┬ express@4.x.x
+# │ └── qs@6.14.1  ✅ (was 6.14.0)
+# └── qs@6.14.1  ✅
+
+# Verify no vulnerable versions
+npm audit | grep -i "qs"
+# Should return 0 matches
+```
+
+---
+
+### ✅ **Preventing Similar Vulnerabilities**
+
+**Lessons from qs CVE:**
+
+1. **Always check transitive dependencies**
+   ```bash
+   npm list <package-name>
+   # Shows the entire dependency tree
+   ```
+
+2. **Use `overrides` for security patches**
+   ```json
+   {
+     "overrides": {
+       "vulnerable-package": ">=safe-version"
+     }
+   }
+   ```
+
+3. **Update CHANGELOG** with vulnerability fixes
+   ```markdown
+   ## [1.4.2] - 2026-01-14
+   ### Security
+   - Fixed CVE in `qs` dependency (DoS vulnerability)
+   ```
+
+4. **Test after patching**
+   ```bash
+   npm install
+   npm test
+   npm audit
+   ```
+
+---
+
+### ✅ **npm Overrides Pattern**
+
+**When to Use:**
+- Security vulnerability in transitive dependency
+- Need to force a specific version across all packages
+- Waiting for upstream packages to update
+
+**How to Use:**
+```json
+{
+  "name": "oscal-report-generator",
+  "version": "1.5.0",
+  "dependencies": {
+    "package-with-vulnerable-dep": "^1.0.0"
+  },
+  "overrides": {
+    "vulnerable-nested-package": ">=2.0.1"
+  }
+}
+```
+
+**Effect:**
+- Forces `vulnerable-nested-package@2.0.1` even if `package-with-vulnerable-dep` specifies an older version
+- Applies to ALL transitive dependencies
+- Works with npm 8.3.0+
+
+---
+
+### ✅ **Security Checklist for Dependencies**
+
+Before adding a new dependency:
+
+- [ ] Check npm audit score: `npm audit <package-name>`
+- [ ] Review GitHub security advisories
+- [ ] Check last updated date (avoid abandoned packages)
+- [ ] Review license compatibility
+- [ ] Check bundle size (for frontend deps)
+- [ ] Verify it's maintained (recent commits/releases)
+- [ ] Look for known CVEs
+
+**Red Flags:**
+- ❌ Last updated > 2 years ago
+- ❌ Known critical vulnerabilities
+- ❌ No tests in repository
+- ❌ Abandoned (no maintainer response)
+- ❌ Incompatible license
+
+---
+
+### ✅ **Automated Security Monitoring**
+
+**GitHub Security Alerts (Recommended):**
+- Automatically enabled for public repositories
+- Notifies you of known vulnerabilities
+- Provides Dependabot PRs to fix issues
+
+**Enable for Private Repos:**
+1. Go to repo Settings → Security & analysis
+2. Enable "Dependabot alerts"
+3. Enable "Dependabot security updates" (auto-PRs)
+
+**Configure `.github/dependabot.yml`:**
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+```
+
+---
+
+### ✅ **Emergency Response Process**
+
+When a critical vulnerability is discovered:
+
+1. **Assess Impact**
+   ```bash
+   # Check if we use the vulnerable package
+   npm list <vulnerable-package>
+   
+   # Check vulnerability severity
+   npm audit | grep -A 5 "<vulnerable-package>"
+   ```
+
+2. **Apply Fix Immediately**
+   ```bash
+   # Update to safe version
+   npm install <package>@safe-version
+   
+   # Or use override
+   # Add to package.json overrides
+   
+   npm install
+   ```
+
+3. **Test Thoroughly**
+   ```bash
+   npm test
+   npm audit
+   # Manual testing of affected features
+   ```
+
+4. **Bump Version (Patch)**
+   ```bash
+   ./bump_version.sh patch "Security: Fix CVE-XXXX in <package>"
+   ```
+
+5. **Deploy ASAP**
+   ```bash
+   git push origin main
+   # Deploy to production immediately
+   ```
+
+6. **Document in CHANGELOG**
+   ```markdown
+   ## [1.X.Y] - Date
+   ### Security
+   - Fixed CVE-XXXX in <package> (Description)
+   ```
+
+---
+
+### ✅ **Best Practices Summary**
+
+**DO:**
+- ✅ Run `npm audit` before every release
+- ✅ Use `overrides` to force secure versions
+- ✅ Keep dependencies reasonably up-to-date
+- ✅ Enable GitHub Dependabot alerts
+- ✅ Document security fixes in CHANGELOG
+- ✅ Test after updating dependencies
+- ✅ Review transitive dependencies
+
+**DON'T:**
+- ❌ Ignore npm audit warnings
+- ❌ Use `npm audit fix --force` without review
+- ❌ Add dependencies without checking security
+- ❌ Disable security alerts
+- ❌ Let dependencies go years without updates
+- ❌ Skip testing after security patches
+
+---
+
+**Reference - qs Vulnerability Fix (v1.4.2):**
+- **CVE:** Denial-of-Service via memory exhaustion
+- **Affected:** `qs@6.14.0` and earlier
+- **Fixed:** `qs@6.14.1+`
+- **Root Cause:** `arrayLimit` option didn't enforce limit for bracket notation
+- **Impact:** Malicious requests could cause server crashes
+- **Resolution:** Updated to `qs@6.14.1` via direct dependency + overrides
+- **Files Changed:** `package.json`, `backend/package.json`
+- **Verification:** `npm list qs` shows no vulnerable versions
+
+---
+
 ## Performance Optimization
 
 ### ✅ **Avoid filter_configure() Unless Necessary**

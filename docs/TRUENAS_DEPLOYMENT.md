@@ -4,6 +4,12 @@
 
 This guide explains how to set up automated Blue-Green deployment for OSCAL Report Generator V2 on TrueNAS with automatic updates from GitHub.
 
+**⚠️ Important - Repository Access:**
+- TrueNAS deployments use the **personal repository**: `https://github.com/keekar2022/OSCAL-Reports.git`
+- The Adobe repository (`https://github.com/AdobeManagedServices/oscal.git`) requires VPN access
+- TrueNAS servers **cannot** access the Adobe VPN, so we use the public personal repository
+- See `docs/DUAL_REPO_SETUP.md` for complete dual-repository workflow documentation
+
 ## Blue-Green Deployment Architecture
 
 The system supports two parallel instances running simultaneously with staggered monthly updates:
@@ -57,14 +63,14 @@ ssh mkesharw@NAS01
 # Navigate to apps directory
 cd /mnt/pool1/Documents/KACI-Apps
 
-# Clone for Blue instance
-git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Blue
+# Clone for Blue instance (using personal repo - no VPN required)
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
 git checkout main
 
-# Clone for Green instance
+# Clone for Green instance (using personal repo - no VPN required)
 cd ..
-git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Green
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
 git checkout main
 ```
@@ -379,7 +385,7 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue
 git remote -v
 
 # Reset Git remote
-git remote set-url origin https://github.com/AdobeManagedServices/oscal.git
+git remote set-url origin https://github.com/keekar2022/OSCAL-Reports.git
 
 # Manual fetch
 git fetch origin main

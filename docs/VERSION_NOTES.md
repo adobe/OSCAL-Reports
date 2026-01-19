@@ -2,9 +2,9 @@
 
 ## Current Status
 
-**Current Version:** 1.3.0  
-**Released:** January 6, 2026  
-**Status:** ✅ Released to GitHub
+**Current Version:** 1.5.0  
+**Released:** January 19, 2026  
+**Status:** ✅ Released to GitHub (Personal & Adobe repos)
 
 ---
 
@@ -119,8 +119,13 @@ Given a version number MAJOR.MINOR.PATCH (e.g., 2.1.3):
 
 | Version | Date | Type | Description |
 |---------|------|------|-------------|
+| 1.5.0 | 2026-01-19 | Minor | Role management UI in User Management page |
+| 1.4.2 | 2026-01-14 | Patch | Security fix: CVE in `qs` dependency (DoS vulnerability) |
+| 1.4.1 | 2026-01-14 | Patch | Reverse proxy support (trust proxy setting) |
+| 1.4.0 | 2026-01-13 | Minor | Self-registration, 45-day inactivity policy, rate limiting |
+| 1.3.1 | 2026-01-06 | Patch | TrueNAS automation enhancements, Docker cleanup |
 | 1.3.0 | 2026-01-06 | Major* | License change (MIT→GPL), TrueNAS automation, UI fixes |
-| 1.3.0 | 2024-12-29 | Minor | Previous version bump |
+| 1.2.7 | 2024-12-29 | Minor | Previous version bump |
 
 \* Should have been 2.0.0 due to breaking license change
 
@@ -160,12 +165,36 @@ git checkout backend/server.js
 
 ---
 
+## Dual Repository Setup (Added v1.4.2)
+
+**Important:** As of v1.4.2, the project is maintained in two repositories:
+
+1. **Adobe Repository** (Primary): https://github.com/AdobeManagedServices/oscal
+   - Requires Adobe VPN access
+   - Used for corporate development and collaboration
+   - Protected by branch rules (requires PRs)
+
+2. **Personal Repository** (Mirror): https://github.com/keekar2022/OSCAL-Reports
+   - Public access (no VPN required)
+   - Used for TrueNAS deployments
+   - Direct push allowed
+
+**Why Two Repos?**
+- TrueNAS servers cannot access Adobe VPN
+- `build_on_truenas.sh` pulls from personal repository
+- Changes are synced between both repositories
+
+See `docs/DUAL_REPO_SETUP.md` for complete workflow documentation.
+
+---
+
 ## Contact
 
 For questions about version management:
 - Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
-- Repository: https://github.com/AdobeManagedServices/oscal
+- Adobe Repository: https://github.com/AdobeManagedServices/oscal
+- Personal Repository: https://github.com/keekar2022/OSCAL-Reports
 
 ---
 
-**Last Updated:** January 6, 2026
+**Last Updated:** January 19, 2026
