@@ -57,7 +57,9 @@ log() {
 # ============================================================================
 
 # Git repository configuration
-GIT_REPO="https://github.com/AdobeManagedServices/oscal.git"
+# NOTE: TrueNAS uses personal repo (no VPN required)
+# Adobe repo is VPN-only: https://github.com/AdobeManagedServices/oscal.git
+GIT_REPO="https://github.com/keekar2022/OSCAL-Reports.git"
 GIT_BRANCH="main"
 
 # Script directory
