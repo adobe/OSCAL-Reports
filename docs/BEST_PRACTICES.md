@@ -5199,7 +5199,7 @@ export const Footer = () => {
         <span className="divider">•</span>
         <a href="/docs/DEPLOYMENT.md" target="_blank">Deployment</a>
         <span className="divider">•</span>
-        <a href="https://github.com/keekar2022/OSCAL-Reports" target="_blank">GitHub</a>
+        <a href="https://github.com/AdobeManagedServices/oscal" target="_blank">GitHub</a>
       </div>
       <div className="footer-build-info">
         Build: {buildInfo}

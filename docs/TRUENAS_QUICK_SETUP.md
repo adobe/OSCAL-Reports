@@ -9,13 +9,13 @@ ssh mkesharw@NAS01
 cd /mnt/pool1/Documents/KACI-Apps
 
 # Blue instance
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
+git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
 chmod +x build_on_truenas.sh
 
 # Green instance
 cd ..
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
+git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
 chmod +x build_on_truenas.sh
 ```

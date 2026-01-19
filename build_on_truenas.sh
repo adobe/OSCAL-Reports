@@ -57,7 +57,7 @@ log() {
 # ============================================================================
 
 # Git repository configuration
-GIT_REPO="https://github.com/keekar2022/OSCAL-Reports.git"
+GIT_REPO="https://github.com/AdobeManagedServices/oscal.git"
 GIT_BRANCH="main"
 
 # Script directory

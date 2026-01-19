@@ -164,7 +164,7 @@ git checkout backend/server.js
 
 For questions about version management:
 - Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
-- Repository: https://github.com/keekar2022/OSCAL-Reports
+- Repository: https://github.com/AdobeManagedServices/oscal
 
 ---
 

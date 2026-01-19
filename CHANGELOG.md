@@ -5,6 +5,23 @@ All notable changes to the OSCAL Report Generator V2 will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-01-14
+
+### Fixed
+- **Reverse Proxy Support**:
+  - Added `app.set('trust proxy', true)` to Express configuration
+  - Enables proper authentication through SQUID, Nginx, Apache, and other reverse proxies
+  - Fixes "No authentication token provided" error when behind proxy
+  - Enhanced CORS configuration for proxy authentication headers
+  - Enables correct client IP detection for rate limiting behind proxy
+  - Properly handles X-Forwarded-For, X-Real-IP, and X-Forwarded-Proto headers
+
+### Changed
+- **CORS Configuration**:
+  - Explicitly allows Authorization and X-Session-Token headers
+  - Enables credentials forwarding through proxy
+  - Allows all standard HTTP methods (GET, POST, PUT, DELETE, OPTIONS, PATCH)
+
 ## [1.4.0] - 2026-01-08
 
 ### Added
