@@ -75,7 +75,19 @@ const PORT = process.env.PORT || 3020;
 // This is longer than the AI service timeout (180s) to account for overhead
 const serverTimeout = 240000; // 240 seconds
 
-app.use(cors());
+// Trust proxy headers when behind reverse proxy (SQUID, Nginx, etc.)
+// This ensures correct IP address detection and proper header handling
+app.set('trust proxy', true);
+
+// Configure CORS to allow authentication headers through reverse proxy
+app.use(cors({
+  origin: true, // Allow all origins (can be restricted to specific domains if needed)
+  credentials: true, // Allow cookies and authentication headers
+  exposedHeaders: ['Authorization', 'X-Session-Token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token', 'X-Requested-With'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
+}));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 

@@ -58,13 +58,13 @@ ssh mkesharw@NAS01
 cd /mnt/pool1/Documents/KACI-Apps
 
 # Clone for Blue instance
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
+git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
 git checkout main
 
 # Clone for Green instance
 cd ..
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
+git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
 git checkout main
 ```
@@ -379,7 +379,7 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue
 git remote -v
 
 # Reset Git remote
-git remote set-url origin https://github.com/keekar2022/OSCAL-Reports.git
+git remote set-url origin https://github.com/AdobeManagedServices/oscal.git
 
 # Manual fetch
 git fetch origin main
@@ -513,7 +513,7 @@ docker network create oscal-network
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/keekar2022/OSCAL-Reports/issues
+- GitHub Issues: https://github.com/AdobeManagedServices/oscal/issues
 - Email: mukesh.kesharwani@adobe.com
 - Documentation: See `docs/` directory
 

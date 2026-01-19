@@ -96,8 +96,8 @@ ${BLUE}Documentation:${NC}
   docs/DEPLOYMENT.md  - Deployment guides
 
 ${BLUE}Support:${NC}
-  GitHub: https://github.com/keekar2022/OSCAL-Reports
-  Issues: https://github.com/keekar2022/OSCAL-Reports/issues
+  GitHub: https://github.com/AdobeManagedServices/oscal
+  Issues: https://github.com/AdobeManagedServices/oscal/issues
 
 EOF
 }
