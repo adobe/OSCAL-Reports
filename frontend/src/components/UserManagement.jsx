@@ -170,6 +170,34 @@ function UserManagement({ onClose }) {
     }
   };
 
+  const handleRoleChange = async (userId, username, currentRole, newRole) => {
+    if (currentRole === newRole) return;
+    
+    const roleDisplayNames = {
+      [ROLES.USER]: 'User',
+      [ROLES.ASSESSOR]: 'Assessor',
+      [ROLES.PLATFORM_ADMIN]: 'Platform Admin'
+    };
+    
+    if (!confirm(`⚠️ CHANGE USER ROLE\n\nAre you sure you want to change "${username}"'s role from "${roleDisplayNames[currentRole]}" to "${roleDisplayNames[newRole]}"?\n\nThis will immediately affect their permissions.`)) {
+      // Reset the dropdown to current role
+      loadUsers();
+      return;
+    }
+    
+    try {
+      await axios.put(`/api/users/${userId}`, 
+        { role: newRole }, 
+        getAuthConfig()
+      );
+      alert(`✅ Role updated successfully\n\n"${username}" is now a ${roleDisplayNames[newRole]}`);
+      loadUsers();
+    } catch (err) {
+      alert('❌ ' + (err.response?.data?.message || 'Failed to update role'));
+      loadUsers();
+    }
+  };
+
   if (loading) {
     return (
       <div className="user-management-container">
@@ -319,9 +347,16 @@ function UserManagement({ onClose }) {
                 <td>{user.fullName || '-'}</td>
                 <td>{user.email}</td>
                 <td>
-                  <span className={`role-badge role-${user.role.toLowerCase().replace(' ', '-')}`}>
-                    {user.role === 'Platform Admin' ? 'Admin' : user.role}
-                  </span>
+                  <select
+                    className={`role-select role-${user.role.toLowerCase().replace(' ', '-')}`}
+                    value={user.role}
+                    onChange={(e) => handleRoleChange(user.id, user.username, user.role, e.target.value)}
+                    title="Change user role"
+                  >
+                    <option value={ROLES.USER}>User</option>
+                    <option value={ROLES.ASSESSOR}>Assessor</option>
+                    <option value={ROLES.PLATFORM_ADMIN}>Platform Admin</option>
+                  </select>
                 </td>
                 <td>
                   <span className={`status-badge ${user.isActive ? 'active' : 'inactive'}`}>
