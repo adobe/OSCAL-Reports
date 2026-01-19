@@ -436,6 +436,32 @@ echo ""
 log "Deployment completed successfully at $(date)"
 
 # ============================================================================
+# FIX GIT REPOSITORY OWNERSHIP
+# ============================================================================
+
+# Fix ownership of git repository files so regular user can run git commands
+# This prevents "Permission denied" errors when running git pull without sudo
+print_header "🔧 Fixing Git Repository Ownership"
+if [ -d ".git" ]; then
+  REPO_OWNER=$(stat -f "%Su" .git 2>/dev/null || stat -c "%U" .git 2>/dev/null || echo "unknown")
+  CURRENT_USER=$(whoami)
+  
+  if [ "$REPO_OWNER" != "$CURRENT_USER" ] && [ "$CURRENT_USER" = "root" ]; then
+    # If running as root, fix ownership to the original directory owner
+    ORIGINAL_OWNER=$(stat -f "%Su" . 2>/dev/null || stat -c "%U" . 2>/dev/null || echo "unknown")
+    if [ "$ORIGINAL_OWNER" != "root" ] && [ "$ORIGINAL_OWNER" != "unknown" ]; then
+      print_info "Fixing repository ownership: root → $ORIGINAL_OWNER"
+      chown -R "$ORIGINAL_OWNER:$ORIGINAL_OWNER" "$SCRIPT_DIR" 2>/dev/null || true
+      print_success "Repository ownership fixed"
+    fi
+  else
+    print_success "Repository ownership is correct ($REPO_OWNER)"
+  fi
+else
+  print_warning "Not a git repository - skipping ownership fix"
+fi
+
+# ============================================================================
 # CRON JOB SETUP INSTRUCTIONS
 # ============================================================================
 
