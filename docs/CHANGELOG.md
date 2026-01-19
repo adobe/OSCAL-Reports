@@ -5,6 +5,23 @@ All notable changes to the OSCAL Report Generator V2 will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-01-14
+
+### Fixed
+- **Security Vulnerability**:
+  - Fixed CVE in `qs` dependency (Denial-of-Service via memory exhaustion)
+  - Updated `qs` to version >= 6.14.1 (from vulnerable 6.14.0)
+  - The `arrayLimit` option now properly enforces limits for bracket notation (`a[]=1&a[]=2`)
+  - Prevents malicious requests from causing memory exhaustion and server crashes
+  - Added `qs >= 6.14.1` as direct dependency in both root and backend package.json
+
+### Changed
+- **Documentation Organization**:
+  - Moved `CHANGELOG.md` from root to `docs/CHANGELOG.md`
+  - Moved `VERSION_NOTES.md` from root to `docs/VERSION_NOTES.md`
+  - Updated `bump_version.sh` to reference new locations
+  - All `.md` files (except README.md) now in `docs/` folder for better organization
+
 ## [1.4.1] - 2026-01-14
 
 ### Fixed
