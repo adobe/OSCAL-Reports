@@ -1,5 +1,7 @@
 # TrueNAS Quick Setup Guide
 
+**⚠️ Important:** This guide uses the personal repository (`https://github.com/keekar2022/OSCAL-Reports.git`) because TrueNAS cannot access the Adobe VPN. See `docs/DUAL_REPO_SETUP.md` for details.
+
 ## 🚀 Quick Start (5 Minutes)
 
 ### 1. Clone Repository (Both Instances)
@@ -8,14 +10,14 @@
 ssh mkesharw@NAS01
 cd /mnt/pool1/Documents/KACI-Apps
 
-# Blue instance
-git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Blue
+# Blue instance (using personal repo - no VPN required)
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
 chmod +x build_on_truenas.sh
 
-# Green instance
+# Green instance (using personal repo - no VPN required)
 cd ..
-git clone https://github.com/AdobeManagedServices/oscal.git OSCAL-Report-Generator-Green
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
 chmod +x build_on_truenas.sh
 ```
