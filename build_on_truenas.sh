@@ -147,6 +147,109 @@ fi
 print_success "Git repository initialized"
 
 # ============================================================================
+# CONFIG PERSISTENCE CHECK (MANDATORY)
+# ============================================================================
+
+print_header "🛡️ Config Persistence Verification"
+
+log "Verifying configuration persistence setup..."
+
+CONFIG_DIR="${SCRIPT_DIR}/config/app"
+CONFIG_FILES=("users.json" "config.json" "email_blacklist.json" "rate_limit.json")
+PERSISTENCE_FAILED=false
+
+# Check 1: Config directory exists
+if [ ! -d "$CONFIG_DIR" ]; then
+  print_warning "Config directory missing, creating..."
+  mkdir -p "$CONFIG_DIR"
+  print_success "Created: $CONFIG_DIR"
+else
+  print_success "Config directory exists"
+fi
+
+# Check 2: Verify config files and track status
+FILES_EXIST=0
+for file in "${CONFIG_FILES[@]}"; do
+  if [ -f "${CONFIG_DIR}/${file}" ]; then
+    FILES_EXIST=$((FILES_EXIST + 1))
+    SIZE=$(stat -f%z "${CONFIG_DIR}/${file}" 2>/dev/null || stat -c%s "${CONFIG_DIR}/${file}" 2>/dev/null)
+    print_success "Found: ${file} (${SIZE} bytes)"
+  fi
+done
+
+if [ $FILES_EXIST -gt 0 ]; then
+  print_success "Found $FILES_EXIST configuration file(s)"
+  print_info "Configuration will persist through rebuild"
+else
+  print_warning "No existing configuration files found"
+  print_info "Application will use defaults on first startup"
+fi
+
+# Check 3: Verify volume mount if container is running
+RUNNING_CONTAINER=$(docker ps --filter "name=${CONTAINER_NAME}" --format "{{.ID}}" 2>/dev/null)
+
+if [ -n "$RUNNING_CONTAINER" ]; then
+  print_info "Checking volume mount on running container..."
+  
+  MOUNTS=$(docker inspect "$RUNNING_CONTAINER" --format '{{json .Mounts}}' 2>/dev/null)
+  
+  if echo "$MOUNTS" | grep -q "/app/config"; then
+    print_success "Config volume is mounted correctly"
+    
+    # Verify files are accessible in container
+    ACCESSIBLE_COUNT=0
+    for file in "${CONFIG_FILES[@]}"; do
+      if docker exec "$RUNNING_CONTAINER" test -f "/app/config/app/${file}" 2>/dev/null; then
+        ACCESSIBLE_COUNT=$((ACCESSIBLE_COUNT + 1))
+      fi
+    done
+    
+    if [ $ACCESSIBLE_COUNT -gt 0 ]; then
+      print_success "Container can access $ACCESSIBLE_COUNT config file(s)"
+    fi
+  else
+    print_error "Config volume is NOT mounted!"
+    print_warning "Configuration will be LOST on rebuild"
+    PERSISTENCE_FAILED=true
+  fi
+fi
+
+# Check 4: Migrate legacy files if they exist
+LEGACY_FILES=(
+  "${SCRIPT_DIR}/backend/auth/users.json"
+  "${SCRIPT_DIR}/backend/config.json"
+)
+
+for legacy_file in "${LEGACY_FILES[@]}"; do
+  if [ -f "$legacy_file" ]; then
+    filename=$(basename "$legacy_file")
+    new_location="${CONFIG_DIR}/${filename}"
+    
+    if [ ! -f "$new_location" ]; then
+      print_warning "Legacy config found: $filename"
+      print_info "Migrating to volume-mounted location..."
+      cp "$legacy_file" "$new_location"
+      chmod 600 "$new_location"
+      mv "$legacy_file" "${legacy_file}.migrated_$(date +%Y%m%d_%H%M%S)"
+      print_success "Migrated: $filename"
+    fi
+  fi
+done
+
+# Final persistence check
+echo ""
+if [ "$PERSISTENCE_FAILED" = true ]; then
+  print_error "CRITICAL: Configuration persistence check FAILED"
+  print_error "Config will be lost on rebuild. Please fix volume mount."
+  exit 1
+fi
+
+print_success "✓ Configuration persistence verified"
+print_info "All config files in: $CONFIG_DIR"
+print_info "Volume mount: \${SCRIPT_DIR}/config → /app/config"
+echo ""
+
+# ============================================================================
 # VERSION DETECTION
 # ============================================================================
 
