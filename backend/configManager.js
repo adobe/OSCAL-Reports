@@ -120,6 +120,7 @@ function loadConfig() {
  * Save configuration to file
  * 
  * Uses atomic write operations to prevent config corruption on crashes.
+ * Returns verification object with save status and disk verification.
  */
 async function saveConfig(config) {
   try {
@@ -170,7 +171,8 @@ async function saveConfig(config) {
     };
     
     // Add metadata
-    configToSave.lastModified = new Date().toISOString();
+    const saveTimestamp = new Date().toISOString();
+    configToSave.lastModified = saveTimestamp;
     
     // Preserve version if it exists
     if (config.version) {
@@ -184,10 +186,105 @@ async function saveConfig(config) {
     await atomicWriteJSON(CONFIG_FILE, configToSave, { backup: true });
     
     console.log('✅ Configuration saved successfully (atomic write)');
-    return true;
+    
+    // DISK VERIFICATION: Read back from disk to ensure save was successful
+    console.log('🔍 Verifying config was written to disk...');
+    const verifiedConfig = verifyConfigOnDisk(configToSave);
+    
+    if (verifiedConfig.success) {
+      console.log('✅ Disk verification successful - config matches what was saved');
+      return {
+        success: true,
+        verified: true,
+        timestamp: saveTimestamp,
+        configPath: CONFIG_FILE,
+        message: 'Configuration saved and verified on disk'
+      };
+    } else {
+      console.warn('⚠️ Disk verification found discrepancies:', verifiedConfig.discrepancies);
+      return {
+        success: true,
+        verified: false,
+        timestamp: saveTimestamp,
+        configPath: CONFIG_FILE,
+        discrepancies: verifiedConfig.discrepancies,
+        message: 'Configuration saved but verification found discrepancies'
+      };
+    }
   } catch (error) {
     console.error('❌ Error saving configuration:', error.message);
-    return false;
+    return {
+      success: false,
+      verified: false,
+      error: error.message,
+      message: 'Failed to save configuration'
+    };
+  }
+}
+
+/**
+ * Verify that config on disk matches what was intended to be saved
+ * Reads back from disk and compares critical fields
+ */
+function verifyConfigOnDisk(expectedConfig) {
+  try {
+    if (!fs.existsSync(CONFIG_FILE)) {
+      return {
+        success: false,
+        discrepancies: ['Config file does not exist on disk']
+      };
+    }
+    
+    const diskData = fs.readFileSync(CONFIG_FILE, 'utf8');
+    const diskConfig = JSON.parse(diskData);
+    const discrepancies = [];
+    
+    // Verify critical email settings
+    if (expectedConfig.messagingConfig?.email) {
+      const expected = expectedConfig.messagingConfig.email;
+      const actual = diskConfig.messagingConfig?.email || {};
+      
+      if (expected.enabled !== actual.enabled) {
+        discrepancies.push('email.enabled mismatch');
+      }
+      if (expected.smtpHost !== actual.smtpHost) {
+        discrepancies.push('email.smtpHost mismatch');
+      }
+      if (expected.smtpPort !== actual.smtpPort) {
+        discrepancies.push('email.smtpPort mismatch');
+      }
+      if (expected.smtpUser !== actual.smtpUser) {
+        discrepancies.push('email.smtpUser mismatch');
+      }
+    }
+    
+    // Verify critical AI settings
+    if (expectedConfig.aiConfig) {
+      const expected = expectedConfig.aiConfig;
+      const actual = diskConfig.aiConfig || {};
+      
+      if (expected.enabled !== actual.enabled) {
+        discrepancies.push('aiConfig.enabled mismatch');
+      }
+      if (expected.url !== actual.url) {
+        discrepancies.push('aiConfig.url mismatch');
+      }
+    }
+    
+    // Verify publishedSoaUrl
+    if (expectedConfig.publishedSoaUrl !== diskConfig.publishedSoaUrl) {
+      discrepancies.push('publishedSoaUrl mismatch');
+    }
+    
+    return {
+      success: discrepancies.length === 0,
+      discrepancies: discrepancies.length > 0 ? discrepancies : undefined
+    };
+  } catch (error) {
+    return {
+      success: false,
+      discrepancies: [`Verification error: ${error.message}`]
+    };
   }
 }
 
