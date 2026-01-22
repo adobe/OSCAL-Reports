@@ -10,6 +10,8 @@ Choose the deployment option that best fits your needs.
 
 ### I want...
 
+**✅ Testing environment for testers** → Railway (FREE) ⭐ **NEW!**
+
 **✅ Free/cheap hosting** → Heroku (free tier) or Google Cloud Run ($5/mo)
 
 **✅ Simplest setup** → DigitalOcean App Platform ($5/mo)
@@ -24,7 +26,32 @@ Choose the deployment option that best fits your needs.
 
 ## 📊 All Deployment Options
 
-### Option 1: Cloud Platforms (Recommended for Production)
+### Option 1: Testing Environment (for Testers) - FREE ⭐
+
+**Automatic testing environment for functional testing**
+
+| Platform | Cost | Availability | Best For |
+|----------|------|--------------|----------|
+| 🚂 **Railway** | FREE | 24/7 | Tester access |
+| 🌐 **Ngrok + Runner** | FREE | 5 hours/session | Quick tests |
+
+**✅ Pros:**
+- Testers get immediate access after CI/CD
+- Public URL automatically provided
+- No manual deployment needed
+- Perfect for functional testing
+- FREE (Railway $5 credit or GitHub Actions)
+
+**❌ Cons:**
+- Not for production use
+- Railway: $5/month credit limit
+- Ngrok: 5-6 hour time limit
+
+**Perfect for:** Giving testers a URL to test immediately after deployment
+
+**Setup:** See `docs/TESTING_ENVIRONMENT_SETUP.md`
+
+### Option 2: Cloud Platforms (Recommended for Production)
 
 | Platform | Cost | Setup Time | Best For |
 |----------|------|------------|----------|
@@ -49,7 +76,7 @@ Choose the deployment option that best fits your needs.
 
 **Setup:** See `docs/CLOUD_DEPLOYMENT.md`
 
-### Option 2: TrueNAS (Current Setup)
+### Option 3: TrueNAS (Current Setup)
 
 **Cost:** Free (your own hardware)  
 **Setup Time:** 20 minutes
@@ -69,7 +96,7 @@ Choose the deployment option that best fits your needs.
 
 **Setup:** See `docs/DEPLOYMENT.md`
 
-### Option 3: GitHub Container Registry Only
+### Option 4: GitHub Container Registry Only
 
 **Cost:** Free  
 **Setup Time:** 0 minutes (already configured)
