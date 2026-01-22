@@ -53,18 +53,27 @@ gh pr create --base main --title "Release v1.x.x"
 
 ---
 
+## 🔒 CRITICAL RULE (Strictly Enforced)
+
+**⛔ ONLY Pre_Prod can merge to main**
+
+All other branches are BLOCKED from merging to main. No exceptions.
+
+---
+
 ## ❌ Don't Do This
 
-- ❌ Development/Quality_Test → main (direct)
+- ❌ **ANY branch (except Pre_Prod) → main** (STRICTLY BLOCKED)
 - ❌ Push directly to main or Pre_Prod
 - ❌ Force push to protected branches
 
 ## ✅ Do This
 
 - ✅ Use Pull Requests for everything
-- ✅ Follow the branch hierarchy
+- ✅ **Recommended flow:** Development/Quality_Test → Pre_Prod → main
 - ✅ Test in Pre_Prod before main
 - ✅ Get code reviews
+- ✅ Cross-branch merges allowed (except to main)
 
 ---
 

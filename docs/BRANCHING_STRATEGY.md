@@ -290,21 +290,33 @@ gh pr create --base Pre_Prod --title "Merge QA improvements"
 
 ## ⚠️ Important Rules
 
+### 🔒 CRITICAL RULE - STRICTLY ENFORCED:
+
+**⛔ Only Pre_Prod can merge to main**
+
+This is the ONE hard rule that is strictly enforced:
+- ❌ Development → main (BLOCKED)
+- ❌ Quality_Test → main (BLOCKED)
+- ❌ Any other branch → main (BLOCKED)
+- ✅ Pre_Prod → main (ALLOWED)
+
+All PRs to `main` must come from `Pre_Prod` - no exceptions.
+
+---
+
 ### ❌ NEVER Do These:
 
-1. **Never merge Development → main directly**
-   - Always go through Pre_Prod first
+1. **Never merge ANY branch → main directly**
+   - ONLY Pre_Prod can merge to main
+   - This rule is strictly enforced by automated checks
 
-2. **Never merge Quality_Test → main directly**
-   - Always go through Pre_Prod first
-
-3. **Never push directly to main**
+2. **Never push directly to main**
    - Always use Pull Requests
 
-4. **Never push directly to Pre_Prod**
+3. **Never push directly to Pre_Prod**
    - Always use Pull Requests
 
-5. **Never force push to protected branches**
+4. **Never force push to protected branches**
    - main, Pre_Prod are protected
 
 ### ✅ ALWAYS Do These:
@@ -319,11 +331,30 @@ gh pr create --base Pre_Prod --title "Merge QA improvements"
 3. **Always test in Pre_Prod before main**
    - Validate in staging environment
 
-4. **Always follow the hierarchy**
-   - Development/Quality_Test → Pre_Prod → main
+4. **Always follow the recommended hierarchy**
+   - Recommended: Development/Quality_Test → Pre_Prod → main
+   - Critical: ONLY Pre_Prod → main (strictly enforced)
 
 5. **Always add meaningful commit messages**
    - Describe what and why, not how
+
+---
+
+### ✨ Flexible Cross-Branch Merging
+
+While we recommend the standard flow (Development/Quality_Test → Pre_Prod → main), you have flexibility for other cross-branch merges:
+
+**Allowed (with guidance):**
+- ✅ Development ↔ Quality_Test (if intentional)
+- ✅ Feature branches → Development/Quality_Test/Pre_Prod
+- ✅ Any branch → Pre_Prod (recommended for hotfixes)
+- ✅ Sync merges (main → Pre_Prod → Development/Quality_Test)
+
+**BLOCKED:**
+- ❌ ANY branch (except Pre_Prod) → main
+
+**Best Practice:**
+Follow the recommended flow for better tracking and organization, but cross-branch merges are not blocked if you have a valid reason.
 
 ---
 

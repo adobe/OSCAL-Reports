@@ -1,5 +1,11 @@
 name: Deploy Testing Environment
 
+# IMPORTANT: This workflow only runs on AdobeManagedServices/OSCAL-Reports
+# The personal repository (keekar2022/OSCAL-Reports) does not have:
+# - GitLab runner access
+# - NGROK_AUTHTOKEN secret
+# Therefore, ngrok-related deployments are restricted to the Adobe repository
+
 on:
   workflow_dispatch:
     inputs:
@@ -51,14 +57,16 @@ jobs:
   # GitHub Runner + Ngrok (5 Hour Testing Environment)
   ###############################################################################
   # Note: Railway deployment removed - action not allowed by organization
+  # Note: Only runs on Adobe repository where GitLab runner and ngrok secrets are available
   ###############################################################################
   deploy-runner-test:
     name: Deploy on Runner with Ngrok (5 Hours)
     runs-on: ubuntu-latest
     needs: [tests]
     if: |
-      (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-      github.event_name == 'workflow_dispatch'
+      github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
+      ((github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+      github.event_name == 'workflow_dispatch')
     
     steps:
       - name: 📥 Checkout code
@@ -224,7 +232,7 @@ jobs:
     name: Notify Testers
     runs-on: ubuntu-latest
     needs: [deploy-runner-test]
-    if: success()
+    if: success() && github.repository == 'AdobeManagedServices/OSCAL-Reports'
     
     steps:
       - name: 📧 Create Tester Notification

@@ -39,34 +39,34 @@ jobs:
             fi
           fi
           
-          # Rule 2: Only Development and Quality_Test can merge to Pre_Prod
+          # Rule 2: Recommended flow for Pre_Prod (INFO only - allows flexibility)
           if [[ "$BASE" == "Pre_Prod" ]]; then
-            if [[ "$HEAD" != "Development" && "$HEAD" != "Quality_Test" && ! "$HEAD" =~ ^(feature|fix|hotfix|test)/ ]]; then
-              VALID="false"
-              MESSAGE="⚠️ WARNING: Only 'Development' or 'Quality_Test' branches should merge to 'Pre_Prod'.\n\n"
+            if [[ "$HEAD" == "Development" || "$HEAD" == "Quality_Test" ]]; then
+              MESSAGE="✅ Valid: $HEAD → Pre_Prod (Staging) - Recommended flow"
+            elif [[ "$HEAD" =~ ^(feature|fix|hotfix|test)/ ]]; then
+              MESSAGE="ℹ️ INFO: Feature/fix branch merging to Pre_Prod.\n\n"
               MESSAGE+="Current PR: $HEAD → Pre_Prod\n\n"
-              MESSAGE+="Recommended flow:\n"
-              MESSAGE+="  1. Merge your changes to 'Development' or 'Quality_Test' first\n"
-              MESSAGE+="  2. Then create PR from Development/Quality_Test → Pre_Prod\n\n"
-              MESSAGE+="If this is a hotfix or emergency, you may proceed with admin approval."
+              MESSAGE+="💡 Recommended flow:\n"
+              MESSAGE+="  Development/Quality_Test → Pre_Prod → main\n\n"
+              MESSAGE+="⚠️ You may proceed, but consider merging to Development/Quality_Test first for better workflow tracking."
             else
-              MESSAGE="✅ Valid: $HEAD → Pre_Prod (Staging)"
+              MESSAGE="ℹ️ INFO: Cross-branch merge to Pre_Prod.\n\n"
+              MESSAGE+="Current PR: $HEAD → Pre_Prod\n\n"
+              MESSAGE+="Ensure this change has been properly tested."
             fi
           fi
           
-          # Rule 3: Development and Quality_Test should not merge to each other
+          # Rule 3: Cross-branch merging guidance (INFO only - no blocking)
           if [[ "$BASE" == "Development" && "$HEAD" == "Quality_Test" ]]; then
-            VALID="false"
-            MESSAGE="❌ ERROR: 'Quality_Test' should not merge to 'Development'.\n\n"
-            MESSAGE+="These are parallel branches that both merge to Pre_Prod.\n\n"
-            MESSAGE+="Please merge to 'Pre_Prod' instead."
+            MESSAGE="ℹ️ INFO: Quality_Test → Development merge.\n\n"
+            MESSAGE+="💡 Typical flow: Both Development and Quality_Test merge to Pre_Prod.\n\n"
+            MESSAGE+="You may proceed if this cross-merge is intentional."
           fi
           
           if [[ "$BASE" == "Quality_Test" && "$HEAD" == "Development" ]]; then
-            VALID="false"
-            MESSAGE="❌ ERROR: 'Development' should not merge to 'Quality_Test'.\n\n"
-            MESSAGE+="These are parallel branches that both merge to Pre_Prod.\n\n"
-            MESSAGE+="Please merge to 'Pre_Prod' instead."
+            MESSAGE="ℹ️ INFO: Development → Quality_Test merge.\n\n"
+            MESSAGE+="💡 Typical flow: Both Development and Quality_Test merge to Pre_Prod.\n\n"
+            MESSAGE+="You may proceed if this cross-merge is intentional."
           fi
           
           # Rule 4: Feature/fix branches should target Development or Quality_Test

@@ -195,4 +195,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Version Management Guide
+
+### Semantic Versioning
+
+Given a version number MAJOR.MINOR.PATCH (e.g., 2.1.3):
+
+**MAJOR (X.y.z)** - Incompatible API changes or breaking changes:
+- License changes (MIT → GPL)
+- API endpoint changes
+- Removing features
+- Changing data formats
+- Breaking configuration changes
+
+**MINOR (x.Y.z)** - New features, backwards-compatible:
+- New API endpoints (keeping old ones)
+- New features that don't break existing functionality
+- Significant improvements
+- New optional configuration
+
+**PATCH (x.y.Z)** - Backwards-compatible bug fixes:
+- Bug fixes
+- Security patches
+- Documentation updates
+- Performance improvements (non-breaking)
+- Dependency updates
+
+### Bumping Versions
+
+Use the `bump_version.sh` script for all version changes:
+
+```bash
+# For breaking changes
+./bump_version.sh major "Description of breaking changes"
+
+# For new features
+./bump_version.sh minor "Description of new features"
+
+# For bug fixes
+./bump_version.sh patch "Description of bug fix"
+```
+
+### Dual Repository Setup
+
+**Important:** The project is maintained in two repositories:
+
+1. **Adobe Repository** (Primary): https://github.com/AdobeManagedServices/oscal
+   - Requires Adobe VPN access
+   - Used for corporate development and collaboration
+   - Protected by branch rules (requires PRs)
+
+2. **Personal Repository** (Mirror): https://github.com/keekar2022/OSCAL-Reports
+   - Public access (no VPN required)
+   - Used for TrueNAS deployments
+   - Direct push allowed
+
+See `docs/DUAL_REPO_SETUP.md` for complete workflow documentation.
+
+---
+
 For detailed implementation history, see `docs/archive/IMPLEMENTATION_HISTORY.md`
