@@ -1,0 +1,186 @@
+name: Branch Protection Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate-branch-flow:
+    name: Validate Branch Flow
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check branch protection rules
+        id: check
+        run: |
+          echo "Base branch: ${{ github.base_ref }}"
+          echo "Head branch: ${{ github.head_ref }}"
+          
+          BASE="${{ github.base_ref }}"
+          HEAD="${{ github.head_ref }}"
+          
+          # Initialize validation result
+          VALID="true"
+          MESSAGE=""
+          
+          # Rule 1: Only Pre_Prod can merge to main
+          if [[ "$BASE" == "main" ]]; then
+            if [[ "$HEAD" != "Pre_Prod" ]]; then
+              VALID="false"
+              MESSAGE="❌ ERROR: Only 'Pre_Prod' branch can merge to 'main'.\n\nCurrent PR: $HEAD → main\n\n"
+              MESSAGE+="Required flow:\n"
+              MESSAGE+="  Development/Quality_Test → Pre_Prod → main\n\n"
+              MESSAGE+="Please close this PR and create a PR to 'Pre_Prod' instead."
+            else
+              MESSAGE="✅ Valid: Pre_Prod → main (Production Release)"
+            fi
+          fi
+          
+          # Rule 2: Only Development and Quality_Test can merge to Pre_Prod
+          if [[ "$BASE" == "Pre_Prod" ]]; then
+            if [[ "$HEAD" != "Development" && "$HEAD" != "Quality_Test" && ! "$HEAD" =~ ^(feature|fix|hotfix|test)/ ]]; then
+              VALID="false"
+              MESSAGE="⚠️ WARNING: Only 'Development' or 'Quality_Test' branches should merge to 'Pre_Prod'.\n\n"
+              MESSAGE+="Current PR: $HEAD → Pre_Prod\n\n"
+              MESSAGE+="Recommended flow:\n"
+              MESSAGE+="  1. Merge your changes to 'Development' or 'Quality_Test' first\n"
+              MESSAGE+="  2. Then create PR from Development/Quality_Test → Pre_Prod\n\n"
+              MESSAGE+="If this is a hotfix or emergency, you may proceed with admin approval."
+            else
+              MESSAGE="✅ Valid: $HEAD → Pre_Prod (Staging)"
+            fi
+          fi
+          
+          # Rule 3: Development and Quality_Test should not merge to each other
+          if [[ "$BASE" == "Development" && "$HEAD" == "Quality_Test" ]]; then
+            VALID="false"
+            MESSAGE="❌ ERROR: 'Quality_Test' should not merge to 'Development'.\n\n"
+            MESSAGE+="These are parallel branches that both merge to Pre_Prod.\n\n"
+            MESSAGE+="Please merge to 'Pre_Prod' instead."
+          fi
+          
+          if [[ "$BASE" == "Quality_Test" && "$HEAD" == "Development" ]]; then
+            VALID="false"
+            MESSAGE="❌ ERROR: 'Development' should not merge to 'Quality_Test'.\n\n"
+            MESSAGE+="These are parallel branches that both merge to Pre_Prod.\n\n"
+            MESSAGE+="Please merge to 'Pre_Prod' instead."
+          fi
+          
+          # Rule 4: Feature/fix branches should target Development or Quality_Test
+          if [[ "$HEAD" =~ ^(feature|fix)/ && "$BASE" != "Development" && "$BASE" != "Pre_Prod" ]]; then
+            MESSAGE="ℹ️ INFO: Feature/fix branches typically target 'Development' branch.\n\n"
+            MESSAGE+="Current target: $BASE\n"
+            MESSAGE+="Consider: Development"
+          fi
+          
+          if [[ "$HEAD" =~ ^test/ && "$BASE" != "Quality_Test" && "$BASE" != "Pre_Prod" ]]; then
+            MESSAGE="ℹ️ INFO: Test branches typically target 'Quality_Test' branch.\n\n"
+            MESSAGE+="Current target: $BASE\n"
+            MESSAGE+="Consider: Quality_Test"
+          fi
+          
+          # Output results
+          echo "valid=$VALID" >> $GITHUB_OUTPUT
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Print to console
+          echo "================================"
+          echo "Branch Flow Validation"
+          echo "================================"
+          echo -e "$MESSAGE"
+          echo "================================"
+          
+          # Fail if validation fails
+          if [[ "$VALID" == "false" ]]; then
+            exit 1
+          fi
+      
+      - name: 📝 Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = `${{ steps.check.outputs.message }}`;
+            const valid = '${{ steps.check.outputs.valid }}';
+            
+            const body = `## 🌳 Branch Protection Check
+            
+${message}
+
+---
+
+### 📋 Branching Strategy
+
+Our branching flow:
+\`\`\`
+Development  ─────┐
+                  ├──> Pre_Prod ─────> main (Production)
+Quality_Test ─────┘
+\`\`\`
+
+**Rules:**
+- ✅ Development/Quality_Test → Pre_Prod
+- ✅ Pre_Prod → main
+- ❌ Development/Quality_Test → main (direct merge blocked)
+- ❌ Development ↔ Quality_Test (parallel branches)
+
+**Documentation**: See \`docs/BRANCHING_STRATEGY.md\`
+
+${valid === 'false' ? '⚠️ **This PR violates branch protection rules. Please update the target branch.**' : ''}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+      
+      - name: ✅ Validation Complete
+        if: success()
+        run: |
+          echo "✅ Branch flow validation passed!"
+          echo "This PR follows the branching strategy."
+      
+      - name: ❌ Validation Failed
+        if: failure()
+        run: |
+          echo "❌ Branch flow validation failed!"
+          echo "Please review the branching strategy in docs/BRANCHING_STRATEGY.md"
+          exit 1
+
+  deployment-check:
+    name: Check Deployment Stage
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Identify deployment stage
+        run: |
+          BASE="${{ github.base_ref }}"
+          
+          case "$BASE" in
+            "main")
+              echo "🏭 Deployment: PRODUCTION"
+              echo "⚠️  High impact - review carefully!"
+              ;;
+            "Pre_Prod")
+              echo "🧪 Deployment: STAGING (Pre-Production)"
+              echo "ℹ️  Will deploy to staging environment"
+              ;;
+            "Development")
+              echo "🔧 Deployment: DEVELOPMENT"
+              echo "ℹ️  Development testing only"
+              ;;
+            "Quality_Test")
+              echo "✅ Deployment: QA TESTING"
+              echo "ℹ️  QA validation environment"
+              ;;
+            *)
+              echo "ℹ️  Deployment: None (feature branch)"
+              ;;
+          esac
