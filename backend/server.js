@@ -1144,7 +1144,7 @@ app.get('/api/settings', optionalAuth, (req, res) => {
 });
 
 // Save settings (Platform Admin only)
-app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), (req, res) => {
+app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
   try {
     const incomingConfig = req.body;
     
