@@ -11,12 +11,14 @@ on:
           - production
           - staging
         default: 'staging'
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
+  # Note: Auto-deployment disabled. Requires Azure credentials.
+  # Use workflow_dispatch (manual trigger) instead.
+  # push:
+  #   branches:
+  #     - main
+  #   paths-ignore:
+  #     - 'docs/**'
+  #     - '**.md'
 
 jobs:
   ###############################################################################
