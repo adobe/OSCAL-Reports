@@ -98,8 +98,24 @@ crontab -e
 - 🛡️ High availability (never updates both simultaneously)
 
 **Documentation:**
-- **Complete Deployment Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- **GitHub Actions CI/CD**: [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md)
+- **🎯 Deployment Options**: [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) - **Start Here!**
+- **☁️ Cloud Deployment**: [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md)
+- **🚀 TrueNAS Deployment**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **🤖 GitHub Actions CI/CD**: [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md)
+
+### Cloud Deployment Options ☁️
+
+**Deploy to cloud platforms automatically when you push to main:**
+
+| Platform | Cost/Month | Setup Time | Guide |
+|----------|------------|------------|-------|
+| 🔴 **Google Cloud Run** | $5-10 | 10 min | [Setup](docs/CLOUD_DEPLOYMENT.md#google-cloud-run) |
+| 🟢 **DigitalOcean** | $5 | 10 min | [Setup](docs/CLOUD_DEPLOYMENT.md#digitalocean-app-platform) |
+| 🟣 **Heroku** | $0-7 | 5 min | [Setup](docs/CLOUD_DEPLOYMENT.md#heroku) |
+| 🔵 **Azure Web App** | $13 | 15 min | [Setup](docs/CLOUD_DEPLOYMENT.md#azure-web-app) |
+| 🟠 **AWS ECS** | $15-20 | 30 min | [Setup](docs/CLOUD_DEPLOYMENT.md#aws-ecs) |
+
+**See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for detailed comparison and recommendations.**
 
 ### GitHub Actions CI/CD 🤖
 
