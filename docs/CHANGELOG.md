@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.3] - 2026-01-22
+
+### Fixed
+- Updated GitHub Actions artifact upload from deprecated v3 to v4
+- Fixed bash script error in update_best_practices.sh (removed 'local' keyword used outside function)
+- Resolved Frontend Tests workflow failure due to deprecated actions
+- Resolved Best practices update script failure
+
 ## [Unreleased]
 
 ### Added
