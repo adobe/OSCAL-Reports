@@ -30,6 +30,8 @@ function Settings() {
   const [saveMessage, setSaveMessage] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
   
   const isReadOnly = !canEditSettings();
 
@@ -51,7 +53,13 @@ function Settings() {
       // Always set publishedSoaUrl, even if empty string
       setPublishedSoaUrl(config.publishedSoaUrl || '');
       
+      // Set last modified timestamp if available
+      if (config.lastModified) {
+        setLastSaved(config.lastModified);
+      }
+      
       console.log('✅ Settings loaded from server');
+      setVerificationStatus(null); // Clear verification on reload
     } catch (error) {
       console.error('Error loading settings from server:', error);
       setSaveMessage('⚠️ Could not load settings from server. Using defaults.');
@@ -127,14 +135,38 @@ function Settings() {
       console.log('✅ Saved config from server:', response.data.config);
       
       if (response.data.success) {
+        // Handle verification status
+        const verification = response.data.verification;
+        if (verification) {
+          setVerificationStatus({
+            verified: verification.verified,
+            timestamp: verification.timestamp,
+            configPath: verification.configPath,
+            discrepancies: verification.discrepancies,
+            warning: verification.warning
+          });
+          setLastSaved(verification.timestamp);
+          
+          if (verification.verified) {
+            setSaveMessage('✅ Settings saved and verified on disk');
+          } else {
+            setSaveMessage('⚠️ Settings saved but verification found issues - please re-save');
+            console.warn('Verification discrepancies:', verification.discrepancies);
+          }
+        } else {
+          setSaveMessage('✅ Settings saved successfully on server!');
+        }
+        
         // Dispatch event to notify other components
         window.dispatchEvent(new Event('gatewaysUpdated'));
         
         // Reload settings from server to ensure UI is in sync
         await loadSettings();
         
-        setSaveMessage('✅ Settings saved successfully on server!');
-        setTimeout(() => setSaveMessage(''), 3000);
+        setTimeout(() => {
+          setSaveMessage('');
+          setVerificationStatus(null);
+        }, 8000);
       } else {
         throw new Error(response.data.error || 'Failed to save settings');
       }
@@ -318,6 +350,42 @@ function Settings() {
       {saveMessage && (
         <div className={`save-message ${saveMessage.includes('✅') ? 'success' : saveMessage.includes('🔄') ? 'info' : 'error'}`}>
           {saveMessage}
+        </div>
+      )}
+
+      {/* Config Verification Status */}
+      {verificationStatus && (
+        <div className={`verification-status ${verificationStatus.verified ? 'verified' : 'warning'}`}>
+          <div className="verification-header">
+            {verificationStatus.verified ? (
+              <>
+                <span className="verification-icon">✅</span>
+                <strong>Disk Verification Passed</strong>
+              </>
+            ) : (
+              <>
+                <span className="verification-icon">⚠️</span>
+                <strong>Disk Verification Warning</strong>
+              </>
+            )}
+          </div>
+          <div className="verification-details">
+            <div>Saved at: {new Date(verificationStatus.timestamp).toLocaleString()}</div>
+            <div>Location: {verificationStatus.configPath}</div>
+            {verificationStatus.discrepancies && (
+              <div className="verification-warning">
+                Issues found: {verificationStatus.discrepancies.join(', ')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Last Saved Indicator */}
+      {lastSaved && !verificationStatus && (
+        <div className="last-saved-indicator">
+          <span className="last-saved-icon">💾</span>
+          <span>Last saved: {new Date(lastSaved).toLocaleString()}</span>
         </div>
       )}
 

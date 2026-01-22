@@ -938,23 +938,29 @@ app.get('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req
 /**
  * Save SSO configuration
  */
-app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
+app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
     const ssoConfig = req.body;
     const currentConfig = loadConfig();
     
     currentConfig.ssoConfig = ssoConfig;
-    const success = saveConfig(currentConfig);
+    const saveResult = await saveConfig(currentConfig);
     
-    if (success) {
+    if (saveResult.success) {
       console.log(`✅ SSO config saved by ${req.user.username}`);
       res.json({ 
         success: true,
-        message: 'SSO configuration saved successfully' 
+        message: saveResult.message || 'SSO configuration saved successfully',
+        verification: {
+          verified: saveResult.verified,
+          timestamp: saveResult.timestamp,
+          discrepancies: saveResult.discrepancies
+        }
       });
     } else {
       res.status(500).json({ 
-        error: 'Failed to save SSO configuration' 
+        error: 'Failed to save SSO configuration',
+        details: saveResult.error
       });
     }
   } catch (error) {
@@ -1202,23 +1208,41 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), (r
       });
     }
     
-    // Save configuration
-    const success = saveConfig(newConfig);
+    // Save configuration with disk verification
+    const saveResult = await saveConfig(newConfig);
     
-    if (success) {
+    if (saveResult.success) {
       console.log('✅ Settings saved successfully');
       const savedConfig = loadConfig();
       console.log('✅ Verified saved publishedSoaUrl:', savedConfig.publishedSoaUrl);
-      console.log('✅ Full saved config:', JSON.stringify(savedConfig, null, 2));
-      res.json({ 
+      
+      // Construct detailed response with verification info
+      const response = { 
         success: true,
-        message: 'Settings saved successfully',
-        config: savedConfig
-      });
+        message: saveResult.message || 'Settings saved successfully',
+        config: savedConfig,
+        verification: {
+          verified: saveResult.verified,
+          timestamp: saveResult.timestamp,
+          configPath: saveResult.configPath
+        }
+      };
+      
+      // Include discrepancies if verification found issues
+      if (saveResult.discrepancies) {
+        response.verification.discrepancies = saveResult.discrepancies;
+        response.verification.warning = 'Config saved but verification found discrepancies';
+        console.warn('⚠️ Config verification discrepancies:', saveResult.discrepancies);
+      } else {
+        console.log('✅ Config verified on disk - all fields match');
+      }
+      
+      res.json(response);
     } else {
-      console.error('❌ Failed to save config');
+      console.error('❌ Failed to save config:', saveResult.error);
       res.status(500).json({ 
-        error: 'Failed to save settings' 
+        error: 'Failed to save settings',
+        details: saveResult.error 
       });
     }
   } catch (error) {

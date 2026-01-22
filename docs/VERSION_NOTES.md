@@ -2,8 +2,8 @@
 
 ## Current Status
 
-**Current Version:** 1.5.0  
-**Released:** January 19, 2026  
+**Current Version:** 1.6.0  
+**Released:** January 22, 2026  
 **Status:** ✅ Released to GitHub (Personal & Adobe repos)
 
 ---
@@ -119,6 +119,7 @@ Given a version number MAJOR.MINOR.PATCH (e.g., 2.1.3):
 
 | Version | Date | Type | Description |
 |---------|------|------|-------------|
+| 1.6.0 | 2026-01-22 | Minor | Config persistence check, Beta release banner, All vulnerabilities fixed |
 | 1.5.0 | 2026-01-19 | Minor | Role management UI in User Management page |
 | 1.4.2 | 2026-01-14 | Patch | Security fix: CVE in `qs` dependency (DoS vulnerability) |
 | 1.4.1 | 2026-01-14 | Patch | Reverse proxy support (trust proxy setting) |
@@ -197,4 +198,4 @@ For questions about version management:
 
 ---
 
-**Last Updated:** January 19, 2026
+**Last Updated:** January 22, 2026
