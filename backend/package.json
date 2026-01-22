@@ -1,6 +1,6 @@
 {
   "name": "oscal-ssp-backend",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "Backend API for Keekar's OSCAL SOA/SSP/CCM Generator",
   "main": "server.js",
   "type": "module",
