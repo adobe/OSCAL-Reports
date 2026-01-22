@@ -1,6 +1,13 @@
 name: Deploy Testing Environment
 
 on:
+  workflow_dispatch:
+    inputs:
+      duration_hours:
+        description: 'How long to keep environment running (hours)'
+        required: false
+        type: number
+        default: 5
   push:
     branches:
       - main
