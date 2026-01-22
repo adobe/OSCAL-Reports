@@ -233,6 +233,48 @@
   color: #c62828;
 }
 
+/* Beta Release Banner */
+.beta-release-banner {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.beta-link {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  transition: all 0.3s ease;
+  animation: flash 2s ease-in-out infinite;
+}
+
+.beta-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+  animation-play-state: paused;
+}
+
+.beta-link:active {
+  transform: translateY(0);
+}
+
+/* Flashing animation */
+@keyframes flash {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
+  }
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .login-container {
@@ -257,6 +299,11 @@
 
   .self-registration-panel {
     padding: 1rem 1.5rem 1.5rem 1.5rem;
+  }
+  
+  .beta-link {
+    font-size: 0.85rem;
+    padding: 0.65rem 1.25rem;
   }
 }
 

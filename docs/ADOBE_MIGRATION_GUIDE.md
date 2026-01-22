@@ -337,7 +337,7 @@ After updating git remotes, deployments will automatically pull from Adobe repos
 
 - **Main README**: [README.md](../README.md)
 - **TrueNAS Deployment**: [TRUENAS_DEPLOYMENT.md](TRUENAS_DEPLOYMENT.md)
-- **Quick Setup**: [TRUENAS_QUICK_SETUP.md](TRUENAS_QUICK_SETUP.md)
+- **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Best Practices**: [BEST_PRACTICES.md](BEST_PRACTICES.md)
 
 ---

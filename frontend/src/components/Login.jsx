@@ -152,6 +152,17 @@ const Login = () => {
               Accounts inactive for 45+ days are automatically deactivated.
             </div>
             
+            <div className="beta-release-banner">
+              <a 
+                href="https://keekar.3utilities.com" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="beta-link"
+              >
+                🚀 Try Beta Release & Give Feedback
+              </a>
+            </div>
+            
             {registrationMessage && (
               <div className={`registration-message ${registrationSuccess ? 'success' : 'error'}`}>
                 {registrationMessage}
