@@ -86,7 +86,7 @@ jobs:
     needs: [build]
     environment:
       name: ${{ inputs.environment || 'production' }}
-      url: https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net
+      # Note: Environment URL cannot use secrets. Set manually in GitHub UI if needed.
     
     steps:
       - name: 🔐 Azure Login
