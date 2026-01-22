@@ -1,0 +1,301 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OSCAL Report Generator - Security Validation Rules",
+  "version": "1.0.0",
+  "lastUpdated": "2026-01-22",
+  "description": "Comprehensive security vulnerability detection rules",
+  
+  "vulnerabilityPatterns": {
+    "authentication": [
+      {
+        "id": "SEC-AUTH-001",
+        "severity": "critical",
+        "pattern": "(password|passwd)\\s*===?\\s*['\"][^'\"]+['\"]",
+        "description": "Hardcoded password comparison",
+        "recommendation": "Use secure password hashing (bcrypt, argon2, pbkdf2)",
+        "cwe": "CWE-259"
+      },
+      {
+        "id": "SEC-AUTH-002",
+        "severity": "high",
+        "pattern": "Math\\.random\\(\\)",
+        "description": "Weak random number generation for security purposes",
+        "recommendation": "Use crypto.randomBytes() for security-sensitive randomness",
+        "cwe": "CWE-338"
+      },
+      {
+        "id": "SEC-AUTH-003",
+        "severity": "high",
+        "pattern": "jwt\\.sign\\([^,]*,\\s*['\"][^'\"]{1,15}['\"]",
+        "description": "Weak JWT secret (less than 16 characters)",
+        "recommendation": "Use strong secrets (32+ characters) from environment variables",
+        "cwe": "CWE-326"
+      }
+    ],
+    
+    "injection": [
+      {
+        "id": "SEC-INJ-001",
+        "severity": "critical",
+        "pattern": "\\beval\\s*\\(",
+        "description": "Use of eval() function",
+        "recommendation": "Remove eval() - it allows arbitrary code execution",
+        "cwe": "CWE-95"
+      },
+      {
+        "id": "SEC-INJ-002",
+        "severity": "critical",
+        "pattern": "new Function\\s*\\(",
+        "description": "Dynamic function creation",
+        "recommendation": "Avoid dynamic function creation with user input",
+        "cwe": "CWE-95"
+      },
+      {
+        "id": "SEC-INJ-003",
+        "severity": "critical",
+        "pattern": "exec\\([^)]*\\$\\{",
+        "description": "Command injection vulnerability",
+        "recommendation": "Never use string interpolation in exec(). Use array syntax.",
+        "cwe": "CWE-78"
+      },
+      {
+        "id": "SEC-INJ-004",
+        "severity": "high",
+        "pattern": "innerHTML\\s*=\\s*.*\\$\\{",
+        "description": "XSS vulnerability via innerHTML",
+        "recommendation": "Use textContent or sanitize input with DOMPurify",
+        "cwe": "CWE-79"
+      },
+      {
+        "id": "SEC-INJ-005",
+        "severity": "high",
+        "pattern": "dangerouslySetInnerHTML",
+        "description": "React XSS risk",
+        "recommendation": "Sanitize content or use safe rendering methods",
+        "cwe": "CWE-79"
+      }
+    ],
+    
+    "dataExposure": [
+      {
+        "id": "SEC-EXP-001",
+        "severity": "critical",
+        "pattern": "(api[_-]?key|apikey|access[_-]?token|private[_-]?key|secret[_-]?key)\\s*=\\s*['\"][a-zA-Z0-9+/=]{20,}['\"]",
+        "description": "Hardcoded API key or token",
+        "recommendation": "Use environment variables and .env files (not committed)",
+        "cwe": "CWE-798"
+      },
+      {
+        "id": "SEC-EXP-002",
+        "severity": "high",
+        "pattern": "console\\.(log|info|debug|warn)\\([^)]*password[^)]*\\)",
+        "description": "Password logging",
+        "recommendation": "Never log sensitive data like passwords",
+        "cwe": "CWE-532"
+      },
+      {
+        "id": "SEC-EXP-003",
+        "severity": "high",
+        "pattern": "res\\.(send|json)\\([^)]*error\\.stack",
+        "description": "Stack trace exposure",
+        "recommendation": "Don't expose stack traces in production responses",
+        "cwe": "CWE-209"
+      },
+      {
+        "id": "SEC-EXP-004",
+        "severity": "medium",
+        "pattern": "app\\.use\\(cors\\(\\)\\)",
+        "description": "CORS enabled for all origins",
+        "recommendation": "Restrict CORS to specific trusted origins",
+        "cwe": "CWE-346"
+      }
+    ],
+    
+    "cryptography": [
+      {
+        "id": "SEC-CRYPTO-001",
+        "severity": "high",
+        "pattern": "crypto\\.createHash\\(['\"]md5['\"]\\)",
+        "description": "Use of weak MD5 hash",
+        "recommendation": "Use SHA-256 or stronger (SHA-384, SHA-512)",
+        "cwe": "CWE-327"
+      },
+      {
+        "id": "SEC-CRYPTO-002",
+        "severity": "high",
+        "pattern": "crypto\\.createHash\\(['\"]sha1['\"]\\)",
+        "description": "Use of weak SHA-1 hash",
+        "recommendation": "Use SHA-256 or stronger",
+        "cwe": "CWE-327"
+      },
+      {
+        "id": "SEC-CRYPTO-003",
+        "severity": "medium",
+        "pattern": "crypto\\.createCipher\\(",
+        "description": "Use of deprecated createCipher",
+        "recommendation": "Use createCipheriv with explicit IV",
+        "cwe": "CWE-326"
+      }
+    ],
+    
+    "fileSystem": [
+      {
+        "id": "SEC-FS-001",
+        "severity": "critical",
+        "pattern": "fs\\.(readFile|writeFile|unlink)[^)]*\\$\\{.*\\}",
+        "description": "Path traversal vulnerability",
+        "recommendation": "Validate and sanitize file paths. Use path.join() safely.",
+        "cwe": "CWE-22"
+      },
+      {
+        "id": "SEC-FS-002",
+        "severity": "high",
+        "pattern": "fs\\.chmod\\([^,]*,\\s*0o?777",
+        "description": "Overly permissive file permissions",
+        "recommendation": "Use restrictive permissions (e.g., 0o644 for files, 0o755 for dirs)",
+        "cwe": "CWE-732"
+      },
+      {
+        "id": "SEC-FS-003",
+        "severity": "medium",
+        "pattern": "fs\\..*Sync\\s*\\(",
+        "description": "Synchronous file operations",
+        "recommendation": "Use async operations to prevent blocking",
+        "cwe": "CWE-400"
+      }
+    ],
+    
+    "network": [
+      {
+        "id": "SEC-NET-001",
+        "severity": "high",
+        "pattern": "https?://[^/]*\\$\\{",
+        "description": "URL injection vulnerability",
+        "recommendation": "Validate and sanitize URLs. Use URL() constructor.",
+        "cwe": "CWE-918"
+      },
+      {
+        "id": "SEC-NET-002",
+        "severity": "high",
+        "pattern": "rejectUnauthorized:\\s*false",
+        "description": "TLS certificate validation disabled",
+        "recommendation": "Never disable certificate validation in production",
+        "cwe": "CWE-295"
+      },
+      {
+        "id": "SEC-NET-003",
+        "severity": "medium",
+        "pattern": "app\\.listen\\(\\d+\\)",
+        "description": "Server binding to all interfaces",
+        "recommendation": "Bind to specific interface (e.g., '127.0.0.1' or '0.0.0.0' explicitly)",
+        "cwe": "CWE-200"
+      }
+    ],
+    
+    "regex": [
+      {
+        "id": "SEC-REGEX-001",
+        "severity": "medium",
+        "pattern": "new RegExp\\([^)]*\\$\\{",
+        "description": "ReDoS vulnerability (Regular Expression Denial of Service)",
+        "recommendation": "Avoid user input in regex patterns",
+        "cwe": "CWE-1333"
+      },
+      {
+        "id": "SEC-REGEX-002",
+        "severity": "medium",
+        "pattern": "\\.(match|exec|test)\\([^)]*\\$\\{.*\\}.*[*+]+",
+        "description": "Potential ReDoS with user-controlled input",
+        "recommendation": "Validate input length and complexity before regex operations",
+        "cwe": "CWE-1333"
+      }
+    ],
+    
+    "dependencies": [
+      {
+        "id": "SEC-DEP-001",
+        "severity": "high",
+        "files": ["package.json"],
+        "check": "outdated_dependencies",
+        "description": "Outdated dependencies with known vulnerabilities",
+        "recommendation": "Run 'npm audit fix' and update dependencies regularly"
+      },
+      {
+        "id": "SEC-DEP-002",
+        "severity": "medium",
+        "files": ["package-lock.json"],
+        "check": "lock_file_integrity",
+        "description": "Package lock file integrity",
+        "recommendation": "Commit package-lock.json to ensure consistent installs"
+      }
+    ]
+  },
+  
+  "filePatterns": {
+    "sensitiveFiles": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "id_rsa",
+      "id_dsa",
+      "credentials.json",
+      "secrets.json",
+      "private.key",
+      "*.p12",
+      "*.pfx"
+    ],
+    "configFiles": [
+      "config.json",
+      "database.json",
+      "aws-config.json"
+    ]
+  },
+  
+  "excludePatterns": [
+    "test_cases/**",
+    "node_modules/**",
+    "*.test.js",
+    "*.test.jsx",
+    "*.spec.js",
+    "*.spec.jsx",
+    "docs/**",
+    "*.md"
+  ],
+  
+  "dynamicRules": {
+    "enabled": true,
+    "description": "Rules that can be automatically updated from security databases",
+    "sources": [
+      {
+        "name": "OWASP Top 10",
+        "url": "https://owasp.org/www-project-top-ten/",
+        "updateFrequency": "monthly"
+      },
+      {
+        "name": "CWE Top 25",
+        "url": "https://cwe.mitre.org/top25/",
+        "updateFrequency": "quarterly"
+      },
+      {
+        "name": "npm audit",
+        "command": "npm audit --json",
+        "updateFrequency": "daily"
+      }
+    ]
+  },
+  
+  "enforcement": {
+    "blockOnCritical": true,
+    "blockOnHigh": true,
+    "warnOnMedium": true,
+    "infoOnLow": true
+  },
+  
+  "reporting": {
+    "format": "detailed",
+    "includeCWE": true,
+    "includeRecommendations": true,
+    "groupBySeverity": true
+  }
+}

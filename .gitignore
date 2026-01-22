@@ -46,9 +46,10 @@ Desktop.ini
 .classpath
 .settings/
 
-# Test coverage
+# Test coverage (but keep test_cases/ directory - it contains test code & validation scripts)
 coverage/
 .nyc_output/
+# NOTE: test_cases/ folder IS committed to git - it contains test files & validation scripts
 
 # Temporary files
 tmp/

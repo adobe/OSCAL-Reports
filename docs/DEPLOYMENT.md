@@ -1,19 +1,19 @@
-# 🚀 OSCAL Report Generator - Deployment Guide
+# 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.2.7  
-**Author**: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>  
-**Last Updated**: December 2025
+**Version**: 1.6.2+  
+**Last Updated**: January 2026  
+**Author**: Mukesh Kesharwani
 
 ---
 
 ## 📋 Table of Contents
 
 1. [Quick Start](#quick-start)
-2. [Configuration Management](#configuration-management)
+2. [Local Development](#local-development)
 3. [Docker Deployment](#docker-deployment)
 4. [TrueNAS Deployment](#truenas-deployment)
-5. [SMB/Network Share Deployment](#smbnetwork-share-deployment)
-6. [Production Configuration](#production-configuration)
+5. [Automated Deployments](#automated-deployments)
+6. [Configuration Management](#configuration-management)
 7. [Troubleshooting](#troubleshooting)
 
 ---
@@ -25,123 +25,109 @@
 - **Node.js** 20+ (for local development)
 - **Docker** (for containerized deployment)
 - **Modern web browser** (Chrome, Firefox, Safari, Edge)
+- **Git** (for deployment automation)
 
-### Local Development
+### 5-Minute Setup
 
 ```bash
-# Clone the repository
-cd OSCAL-Report-Generator-1.2.7
+# 1. Clone repository
+git clone https://github.com/keekar2022/OSCAL-Reports.git
+cd OSCAL-Reports
 
-# Run setup script
+# 2. Run setup
 chmod +x setup.sh
 ./setup.sh
 
-# Start development server (both frontend and backend)
+# 3. Start application
 npm run dev
 
-# Access application
-# Frontend dev server (with hot reload):
-open http://localhost:3021
-
-# Or backend directly (production build):
-open http://localhost:3020
+# 4. Access
+open http://localhost:3021  # Dev server with hot reload
+open http://localhost:3020  # Production build
 ```
 
 ---
 
-## Configuration Management
+## Local Development
 
-### Configuration Directory Structure
+### Initial Setup
 
-All configuration files are centralized in the `config/` directory:
+```bash
+# Install dependencies for all modules
+npm run install:all
 
-```
-config/
-├── app/          # Application runtime configuration files
-│   ├── config.json    # Application settings (SSO, messaging, API gateways, etc.)
-│   └── users.json     # User accounts and authentication data
-│
-└── build/        # Build and deployment configuration files
-    ├── docker-compose.yml   # Docker Compose configuration for local deployment
-    ├── truenas-app.yaml     # TrueNAS Docker App configuration
-    └── Dockerfile           # Docker build instructions
+# Or install individually
+npm install          # Root dependencies
+cd backend && npm install
+cd frontend && npm install
 ```
 
-### Security and Access Control
+### Development Modes
 
-**⚠️ IMPORTANT**: The `config/app/` directory contains sensitive data including:
-- User credentials (FIPS 140-2 compliant PBKDF2 hashed passwords)
-- API keys and secrets
-- SMTP credentials
-- SSO configuration
+**Full Stack Development** (Recommended):
+```bash
+npm run dev
+# Runs both frontend (3021) and backend (3020) concurrently
+```
 
-**Password Storage Format:**
-- Passwords are stored using PBKDF2 with SHA-256 (FIPS 140-2 compliant)
-- Format: `pbkdf2$sha256$100000$salt$hash`
-- 100,000 iterations, random 16-byte salt per password
-- Legacy SHA-256 passwords automatically migrate to PBKDF2 on login
+**Backend Only**:
+```bash
+cd backend
+npm run dev
+# Backend on http://localhost:3020
+```
 
-**This directory should be encrypted and have restricted access controls applied.**
+**Frontend Only**:
+```bash
+cd frontend
+npm run dev
+# Frontend dev server on http://localhost:3021
+# Proxies API calls to backend on 3020
+```
 
-#### Recommended Security Measures
+### Testing
 
-1. **File System Encryption**: Apply encryption at the filesystem level for the `config/app/` directory
-2. **Access Control**: Restrict read/write permissions to authorized users only
-3. **Backup Encryption**: Ensure backups of this directory are also encrypted
-4. **Version Control**: These files are excluded from git (see `.gitignore`)
+```bash
+# Run all tests
+./test_cases/scripts/run_tests.sh
 
-### File Migration
-
-The application automatically migrates configuration files from legacy locations:
-- `backend/config.json` → `config/app/config.json`
-- `backend/auth/users.json` → `config/app/users.json`
-
-Migration happens automatically on first run. Legacy files are removed after successful migration.
-
-### Configuration File Locations
-
-**Runtime Locations** (for application execution):
-- Primary: `config/app/config.json` and `config/app/users.json`
-- Legacy (backward compatibility): `backend/config.json` and `backend/auth/users.json`
-
-**Build Locations** (for Docker/build processes):
-- `docker-compose.yml` (copied from `config/build/docker-compose.yml`)
-- `truenas-app.yaml` (copied from `config/build/truenas-app.yaml`)
-- `Dockerfile` (copied from `config/build/Dockerfile`)
+# Run specific test suites
+cd backend
+npm run test:unit        # Unit tests
+npm run test:integration # Integration tests
+npm run test:e2e         # E2E tests
+npm run test:coverage    # With coverage report
+```
 
 ---
 
 ## Docker Deployment
 
-### Build Docker Image
+### Basic Docker Setup
 
 ```bash
-# Build the image
-docker build -t oscal-report-generator:1.2.7 .
+# Build image
+docker build -t oscal-report-generator:latest .
 
-# Run the container
+# Run container
 docker run -d \
-  --name oscal-generator \
+  --name oscal-app \
   -p 3020:3020 \
-  -e NODE_ENV=production \
-  -e PORT=3020 \
-  oscal-report-generator:1.2.7
+  -v $(pwd)/config:/app/config \
+  oscal-report-generator:latest
 
-# Verify it's running
-curl http://localhost:3020/health
+# View logs
+docker logs -f oscal-app
 
-# Expected response:
-# {"status":"healthy","service":"Keekar's OSCAL SOA/SSP/CCM Generator"}
+# Stop container
+docker stop oscal-app && docker rm oscal-app
 ```
 
-### Docker Compose (with Ollama AI)
+### Docker Compose
 
 ```bash
-# Start all services
+# Start services
 docker-compose up -d
-
-# Check status
-docker-compose ps
 
 # View logs
 docker-compose logs -f
@@ -150,240 +136,246 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### Configuration Persistence
+
+**IMPORTANT**: Always mount the config directory to persist user data:
+
+```bash
+docker run -d \
+  -v /path/on/host/config:/app/config \
+  -p 3020:3020 \
+  oscal-report-generator:latest
+```
+
 ---
 
 ## TrueNAS Deployment
 
-### Method 1: Quick Start (GUI - 5 Minutes)
+### Overview
 
-**Target Server**: http://nas.keekar.com:3020
+For TrueNAS deployments, we use:
+- **Blue-Green deployment** strategy for zero-downtime updates
+- **Personal GitHub repo** (no VPN required on TrueNAS)
+- **Automated monthly updates** via cron
+- **Persistent configuration** across rebuilds
 
-**Port Configuration**:
-- Application Port: 3020 (backend API and frontend)
-- Ollama AI Service: 11434 (if using local AI)
+### Quick Setup (TrueNAS)
 
-#### 1. Build Docker Image (On Your PC)
-
-```bash
-cd /path/to/OSCAL-Report-Generator-1.2.7
-docker build -t oscal-report-generator:latest .
-docker save -o oscal-report-generator.tar oscal-report-generator:latest
-```
-
-#### 2. Transfer to TrueNAS
-
-```bash
-scp oscal-report-generator.tar admin@nas.keekar.com:/mnt/tank/
-```
-
-#### 3. Load on TrueNAS
-
-```bash
-ssh admin@nas.keekar.com
-docker load -i /mnt/tank/oscal-report-generator.tar
-```
-
-#### 4. Deploy via GUI
-
-1. Open: `http://nas.keekar.com/ui/apps/available`
-2. Click: **"Launch Docker Image"** or **"Custom App"**
-3. Fill in:
-
-```yaml
-Application Name: oscal-report-generator
-
-Container Image:
-  Repository: oscal-report-generator
-  Tag: latest
-  Pull Policy: Never
-
-Port Forwarding:
-  Container Port: 3020
-  Node Port: 3020
-
-Environment Variables:
-  NODE_ENV: production
-  PORT: 3020
-  OLLAMA_URL: http://ollama:11434  # if using Ollama
-
-Health Check:
-  Type: HTTP
-  Path: /health
-  Port: 3020
-  Initial Delay: 40 seconds
-```
-
-4. Click **"Save"** → Wait for **"Running"** status
-
-#### 5. Access
-
-```
-http://nas.keekar.com:3020
-```
-
-### Method 2: Using YAML Configuration
-
-#### 1. Copy Configuration File
-
-```bash
-cp truenas-app.yaml /mnt/tank/apps/oscal-generator/
-```
-
-#### 2. Deploy via TrueNAS CLI
+**⚠️ Important**: Uses personal repo (`github.com/keekar2022/OSCAL-Reports`) - no VPN required
 
 ```bash
 # SSH into TrueNAS
-ssh admin@nas.keekar.com
+ssh mkesharw@NAS01
+cd /mnt/pool1/Documents/KACI-Apps
 
-# Navigate to app directory
-cd /mnt/tank/apps/oscal-generator/
-
-# Deploy using docker-compose
-docker-compose -f truenas-app.yaml up -d
-```
-
-#### 3. Verify Deployment
-
-```bash
-# Check running containers
-docker ps
-
-# Check logs
-docker logs oscal-report-generator
-
-# Test health endpoint
-curl http://localhost:3020/health
-```
-
-### Method 3: Using TrueNAS Build Script
-
-For automated builds directly on TrueNAS:
-
-```bash
-# Make the script executable
+# Clone Blue instance (Port 3020)
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
+cd OSCAL-Report-Generator-Blue
 chmod +x build_on_truenas.sh
+./build_on_truenas.sh
 
-# Run the build script
+# Clone Green instance (Port 3019)
+cd /mnt/pool1/Documents/KACI-Apps
+git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
+cd OSCAL-Report-Generator-Green
+chmod +x build_on_truenas.sh
 ./build_on_truenas.sh
 ```
 
-The script will:
-- ✅ Install dependencies
-- ✅ Build frontend
-- ✅ Create Docker image
-- ✅ Deploy container
-- ✅ Configure health checks
+### Blue-Green Deployment Strategy
 
-### TrueNAS Configuration Parameters
+**Why Blue-Green?**
+- ✅ Zero-downtime deployments
+- ✅ Instant rollback capability
+- ✅ Test new version before switching
+- ✅ High availability (never both down)
 
-| Parameter | Value | Adjustable? | Notes |
-|-----------|-------|-------------|-------|
-| **Application Name** | oscal-report-generator | ✅ Yes | Any valid name |
-| **Container Port** | 3020 | ❌ No (fixed) | Application listens on 3020 |
-| **External Port** | 3020 | ✅ Yes | Map to any available port |
-| **Ollama Port** | 11434 | ❌ No (if using) | For local AI |
-| **CPU Limit** | 2 cores | ✅ Yes | Minimum 1 core |
-| **Memory Limit** | 2GB | ✅ Yes | Minimum 1GB |
-| **NODE_ENV** | production | ✅ Yes | Use 'production' |
-| **Health Check Path** | /health | ❌ No | Fixed endpoint |
+**Ports**:
+- Blue: http://nas.keekar.com:3020
+- Green: http://nas.keekar.com:3019
 
-### TrueNAS Checklist
+**Deployment Pattern**:
+```
+Month 1:
+  Week 1 (1st Sun) → Deploy to Green
+  Week 2 (2nd Sun) → Deploy to Blue
+  Week 3 (3rd Sun) → Deploy to Green
+  Week 4 (4th Sun) → Deploy to Blue
+  Week 5 (5th Sun) → Deploy to Green (if exists)
+```
 
-- [ ] Docker image built
-- [ ] Image transferred to TrueNAS
-- [ ] Image loaded in TrueNAS
-- [ ] App deployed via GUI/YAML
-- [ ] Port 3020 accessible
-- [ ] Health check passing
-- [ ] Application interface loads
-- [ ] Default credentials retrieved from `credentials.txt`
+### What build_on_truenas.sh Does
+
+The automated build script:
+
+1. **Detects Instance**: Identifies Blue or Green from directory name
+2. **Config Persistence**: Verifies config volume is mounted correctly
+3. **Version Check**: Compares local, running, and GitHub versions
+4. **Smart Build**: Only rebuilds if version changed
+5. **Zero Downtime**: Gracefully stops container, rebuilds, starts
+6. **Verification**: Checks container is running and healthy
+
+```bash
+# Manual deployment
+cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
+./build_on_truenas.sh
+
+# What happens:
+# ✓ Config persistence verified
+# ✓ Current version: 1.6.2
+# ✓ GitHub version: 1.6.2
+# ✓ Versions match - no build needed
+```
+
+### Configuration Persistence on TrueNAS
+
+**Config Directory Structure**:
+```
+/mnt/pool1/Documents/KACI-Apps/
+├── OSCAL-Report-Generator-Blue/
+│   └── config/
+│       └── app/
+│           ├── config.json         # Application settings
+│           ├── users.json          # User accounts
+│           ├── email_blacklist.json
+│           └── rate_limit.json
+└── OSCAL-Report-Generator-Green/
+    └── config/
+        └── app/
+            ├── config.json
+            ├── users.json
+            ├── email_blacklist.json
+            └── rate_limit.json
+```
+
+**Volume Mount**:
+```bash
+# In build_on_truenas.sh:
+-v "${SCRIPT_DIR}/config:/app/config"
+```
+
+This ensures:
+- ✅ Users persist across rebuilds
+- ✅ Settings persist across rebuilds
+- ✅ Independent configs for Blue/Green
+- ✅ Easy backup/restore
 
 ---
 
-## Production Configuration
+## Automated Deployments
+
+### Cron Setup (Monthly Updates)
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add these lines for monthly staggered updates:
+# Green: 1st, 3rd, and 5th Sunday at 2 AM
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./build_on_truenas.sh >> /var/log/oscal-green-deploy.log 2>&1
+
+# Blue: 2nd and 4th Sunday at 2 AM
+0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./build_on_truenas.sh >> /var/log/oscal-blue-deploy.log 2>&1
+```
+
+### Cron Syntax Explained
+
+**Green Instance**: `0 2 1-7,15-21,29-31 * 0`
+- Minute: `0` (top of hour)
+- Hour: `2` (2 AM)
+- Day of Month: `1-7,15-21,29-31` (1st, 3rd, 5th week)
+- Month: `*` (every month)
+- Day of Week: `0` (Sunday)
+
+**Blue Instance**: `0 2 8-14,22-28 * 0`
+- Day of Month: `8-14,22-28` (2nd, 4th week)
+- All other fields same as Green
+
+### Viewing Deployment Logs
+
+```bash
+# Real-time monitoring
+tail -f /var/log/oscal-green-deploy.log
+tail -f /var/log/oscal-blue-deploy.log
+
+# View last deployment
+tail -100 /var/log/oscal-green-deploy.log
+
+# Check cron status
+crontab -l
+systemctl status cron  # or 'crond' on some systems
+```
+
+### Manual Force Rebuild
+
+```bash
+# Force rebuild regardless of version
+cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
+FORCE_BUILD=true ./build_on_truenas.sh
+
+# Or modify the script temporarily
+./build_on_truenas.sh --force  # (if implemented)
+```
+
+---
+
+## Configuration Management
+
+### Initial Configuration
+
+After first deployment, configure via web UI:
+
+1. **Access Application**: http://nas.keekar.com:3020 (or :3019)
+2. **Default Admin**: 
+   - Username: `admin`
+   - Password: `admin` (⚠️ Change immediately!)
+3. **Configure Settings**:
+   - Email/SMTP settings
+   - AI integration (optional)
+   - Published SOA URL
+   - API Gateways
+
+### Configuration Files
+
+**Location**: `config/app/`
+
+**Files**:
+```
+config.json              # Main application config
+users.json               # User accounts (hashed passwords)
+email_blacklist.json     # Blocked email domains
+rate_limit.json          # API rate limiting rules
+```
+
+### Backup Configuration
+
+```bash
+# Backup (before deployment)
+cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue
+cp -r config config.backup.$(date +%Y%m%d)
+
+# Restore (if needed)
+rm -rf config
+mv config.backup.20260122 config
+docker restart oscal-report-generator-blue
+```
 
 ### Environment Variables
 
-Create a `.env` file (or set in your deployment):
+For sensitive configuration, use environment variables:
 
 ```bash
-# Application
-NODE_ENV=production
-PORT=3020                    # Backend server port
+# In .env file (not committed to git)
+SMTP_PASSWORD=your_smtp_password
+JWT_SECRET=your_jwt_secret
+AI_API_KEY=your_ai_api_key
 
-# AI Integration (Optional)
-OLLAMA_URL=http://localhost:11434   # For local Ollama AI
-
-# OR for AWS Bedrock (Cloud AI)
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-key
-AWS_SECRET_ACCESS_KEY=your-secret
-BEDROCK_MODEL_ID=mistral.mistral-large-2402-v1:0
-
-# Email (optional)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@domain.com
-SMTP_PASSWORD=your-password
-
-# Security
-BUILD_TIMESTAMP=2025-12-16T20:00:00.000Z
-```
-
-### Security Configuration
-
-1. **Copy configuration templates**:
-   ```bash
-   cp config/app/config.json.example config/app/config.json
-   cp config/app/users.json.example config/app/users.json
-   ```
-
-2. **Set file permissions**:
-   ```bash
-   chmod 600 config/app/config.json
-   chmod 600 config/app/users.json
-   chmod 600 backend/auth/users.json
-   ```
-
-3. **Change default passwords** immediately after first login!
-   - Check `credentials.txt` for initial passwords
-   - Format: `username#DDMMYYHH` (timestamp-based)
-
-### Reverse Proxy Setup (Nginx)
-
-```nginx
-server {
-    listen 80;
-    server_name oscal.yourdomain.com;
-
-    # Main application
-    location / {
-        proxy_pass http://localhost:3020;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Increase timeout for AI operations
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 300s;
-    }
-}
-```
-
-### SSL/TLS Configuration
-
-```bash
-# Using Let's Encrypt
-sudo certbot --nginx -d oscal.yourdomain.com
-
-# Manual certificate
-sudo cp your-cert.crt /etc/ssl/certs/
-sudo cp your-key.key /etc/ssl/private/
+# In docker run
+docker run -d \
+  --env-file .env \
+  -v $(pwd)/config:/app/config \
+  -p 3020:3020 \
+  oscal-report-generator:latest
 ```
 
 ---
@@ -392,139 +384,168 @@ sudo cp your-key.key /etc/ssl/private/
 
 ### Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Port already in use** | Change port in environment variables or docker config |
-| **App won't start** | Check logs: `docker logs oscal-generator` or `tail -f backend.log` |
-| **Can't access web UI** | Verify firewall rules, check port forwarding |
-| **Health check fails** | Increase initial delay to 60 seconds |
-| **Permission denied** | Check file permissions: `chmod 600 config/app/*` |
-| **Module not found** | Run `npm install` in backend and frontend directories |
-| **Database/Config errors** | Copy `.example` files to actual config files |
-
-### Debug Commands
+#### Issue: Container won't start
 
 ```bash
-# Check if app is running
-curl http://localhost:3020/health
+# Check container logs
+docker logs oscal-report-generator-green
 
-# Check Docker container logs
-docker logs -f oscal-generator
+# Check if port is in use
+netstat -tuln | grep 3019
+lsof -i :3019
 
-# Check Node.js process
-ps aux | grep node
+# Remove and recreate
+docker stop oscal-report-generator-green
+docker rm oscal-report-generator-green
+cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
+./build_on_truenas.sh
+```
 
-# Check port usage
-lsof -i :3020        # Backend
-lsof -i :3021        # Frontend dev
-lsof -i :11434       # Ollama AI
-netstat -an | grep 3020
+#### Issue: Config not persisting
 
-# Verify file permissions
+```bash
+# Verify volume mount
+docker inspect oscal-report-generator-green | grep -A 10 Mounts
+
+# Check config directory permissions
 ls -la config/app/
+chmod 755 config/app
+chmod 644 config/app/*.json
 
-# Test AI connectivity (if using Ollama)
-curl http://localhost:11434/api/tags
-
-# Test AWS Bedrock (if using)
-# Check backend logs for connection attempts
-docker logs oscal-generator | grep -i bedrock
+# Verify files exist
+cat config/app/users.json
 ```
 
-### Performance Tuning
+#### Issue: Can't access application
 
 ```bash
-# Increase Node.js memory limit
-NODE_OPTIONS="--max-old-space-size=4096" node server.js
+# Check if container is running
+docker ps | grep oscal
 
-# Enable compression
-# Add to server.js:
-app.use(compression());
-
-# Use PM2 for production
-npm install -g pm2
-pm2 start backend/server.js --name oscal-generator
-pm2 startup
-pm2 save
-```
-
-### Logs Location
-
-- **Application logs**: Check console output or redirect to file
-- **Docker logs**: `docker logs oscal-generator`
-- **TrueNAS logs**: GUI → Apps → Select App → Logs
-- **Build logs**: `credentials.txt` contains build timestamp
-
----
-
-## Upgrade Guide
-
-### Upgrading from Previous Version
-
-```bash
-# Backup configuration
-cp config/app/config.json config/app/config.json.backup
-cp config/app/users.json config/app/users.json.backup
-
-# Pull latest code
-git pull origin main
-
-# Rebuild frontend
-cd frontend
-npm install
-npm run build
-cp -r dist ../backend/public
-
-# Update backend dependencies
-cd ../backend
-npm install
-
-# Restart application
-# Docker:
-docker-compose down && docker-compose up -d
-# Direct:
-pkill -f "node server.js" && NODE_ENV=production node server.js &
-```
-
----
-
-## Monitoring
-
-### Health Check
-
-```bash
-# Basic health check
+# Check if service is listening
 curl http://localhost:3020/health
 
-# Expected response
-{
-  "status": "healthy",
-  "service": "Keekar's OSCAL SOA/SSP/CCM Generator"
-}
+# Check firewall
+sudo ufw status
+sudo ufw allow 3020/tcp
 ```
 
-### Resource Monitoring
+#### Issue: Automatic updates not running
 
 ```bash
-# Docker stats
-docker stats oscal-generator
+# Verify cron entries
+crontab -l | grep oscal
 
-# System resources
-top -p $(pgrep -f "node server.js")
+# Check cron logs
+grep CRON /var/log/syslog | grep oscal
+
+# Test script manually
+cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
+./build_on_truenas.sh
+
+# Ensure script is executable
+chmod +x build_on_truenas.sh
 ```
+
+#### Issue: Wrong version deployed
+
+```bash
+# Check package.json version
+grep '"version"' package.json
+
+# Check git remote
+git remote -v
+
+# Force update from GitHub
+git fetch origin
+git reset --hard origin/main
+./build_on_truenas.sh
+```
+
+### Health Checks
+
+```bash
+# Application health endpoint
+curl http://localhost:3020/health
+
+# Docker container health
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# Check logs for errors
+docker logs --tail 100 oscal-report-generator-green | grep -i error
+
+# Check resource usage
+docker stats oscal-report-generator-green --no-stream
+```
+
+### Performance Issues
+
+```bash
+# Check container resources
+docker stats --no-stream
+
+# Increase container memory (if needed)
+docker run -d \
+  --memory="2g" \
+  --cpus="2" \
+  # ... other options
+
+# Check disk space
+df -h
+du -sh /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-*
+```
+
+---
+
+## Production Checklist
+
+### Pre-Deployment
+
+- [ ] Backup current configuration
+- [ ] Review changelog for breaking changes
+- [ ] Test in development environment
+- [ ] Verify all tests pass
+- [ ] Update documentation if needed
+
+### Deployment
+
+- [ ] Deploy to one instance (Blue or Green)
+- [ ] Verify deployment successful
+- [ ] Test critical functionality
+- [ ] Monitor logs for errors
+- [ ] Switch traffic if needed
+
+### Post-Deployment
+
+- [ ] Verify application health
+- [ ] Check configuration persistence
+- [ ] Test user authentication
+- [ ] Monitor resource usage
+- [ ] Update deployment log
+
+---
+
+## Additional Resources
+
+- **Architecture**: See `docs/ARCHITECTURE.md`
+- **Best Practices**: See `docs/BEST_PRACTICES.md`
+- **Testing Guide**: See `test_cases/TESTING_GUIDE.md`
+- **Validation System**: See `docs/VALIDATION_SYSTEM.md`
+- **Dual Repo Setup**: See `docs/DUAL_REPO_SETUP.md`
+- **Version History**: See `docs/VERSION_NOTES.md`
 
 ---
 
 ## Support
 
-For deployment issues or questions:
-
-- **Email**: mukesh.kesharwani@adobe.com
-- **Documentation**: See README.md and SECURITY.md
-- **GitHub**: Check repository for updates
+For issues or questions:
+1. Check troubleshooting section above
+2. Review documentation in `docs/` folder
+3. Check GitHub issues
+4. Contact development team
 
 ---
 
-**Document Version**: 1.2.7  
-**Last Updated**: December 16, 2025
-
+**Last Updated**: January 22, 2026  
+**Maintainer**: Mukesh Kesharwani <mkesharw@adobe.com>  
+**License**: GPL-3.0-or-later

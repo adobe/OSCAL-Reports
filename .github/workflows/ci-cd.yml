@@ -107,33 +107,20 @@ jobs:
         with:
           node-version: '20.x'
       
-      - name: 🔍 Check for hardcoded secrets
+      - name: 📦 Install dependencies
         run: |
-          echo "Scanning for hardcoded secrets..."
-          if git grep -iE "(password|secret|api_key|token).*=.*['\"][^'\"]{8,}" -- '*.js' '*.jsx' '*.json' ':!package-lock.json' ':!node_modules'; then
-            echo "❌ CRITICAL: Hardcoded secrets detected!"
-            exit 1
-          else
-            echo "✅ No hardcoded secrets found"
-          fi
+          cd backend && npm ci && cd ..
+          cd frontend && npm ci && cd ..
       
-      - name: 🔍 Check for console.log statements
+      - name: 🛡️ Run comprehensive validation
         run: |
-          echo "Checking for console.log statements..."
-          if git grep -n "console\.log" -- '*.js' '*.jsx' ':!*.test.js' ':!*.test.jsx' ':!node_modules'; then
-            echo "⚠️ Warning: console.log statements found"
-            # Don't fail, just warn
-          else
-            echo "✅ No console.log statements found"
-          fi
+          chmod +x test_cases/scripts/validate_best_practices.sh
+          ./test_cases/scripts/validate_best_practices.sh
       
-      - name: 📏 Check file sizes
+      - name: 🔄 Update best practices from npm audit
         run: |
-          echo "Checking for large files..."
-          find . -type f -size +1M -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" | while read file; do
-            size=$(du -h "$file" | cut -f1)
-            echo "⚠️ Large file detected: $file ($size)"
-          done
+          chmod +x test_cases/scripts/update_best_practices.sh
+          ./test_cases/scripts/update_best_practices.sh
       
       - name: 🔒 Run npm audit (Backend)
         working-directory: ./backend
