@@ -11,12 +11,14 @@ on:
           - production
           - staging
         default: 'staging'
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
+  # Note: Auto-deployment disabled. Requires Azure credentials.
+  # Use workflow_dispatch (manual trigger) instead.
+  # push:
+  #   branches:
+  #     - main
+  #   paths-ignore:
+  #     - 'docs/**'
+  #     - '**.md'
 
 jobs:
   ###############################################################################
@@ -86,7 +88,7 @@ jobs:
     needs: [build]
     environment:
       name: ${{ inputs.environment || 'production' }}
-      url: https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net
+      # Note: Environment URL cannot use secrets. Set manually in GitHub UI if needed.
     
     steps:
       - name: 🔐 Azure Login

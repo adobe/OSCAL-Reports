@@ -167,10 +167,10 @@ app.post('/api/debug-integrity', async (req, res) => {
 });
 
 // Get default credentials (for frontend display)
-app.get('/api/auth/default-credentials', (req, res) => {
+app.get('/api/auth/default-credentials', async (req, res) => {
   try {
     // Get actual users to determine their password timestamps
-    const users = getAllUsers();
+    const users = await getAllUsers();
     
     const defaultPasswords = {};
     const defaultUsernames = ['admin', 'user', 'assessor'];
