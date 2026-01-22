@@ -9,12 +9,12 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../tests/backend/jest.config.js --rootDir=../tests/backend",
-    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../tests/backend/jest.config.js --rootDir=../tests/backend --watch",
-    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../tests/backend/jest.config.js --rootDir=../tests/backend --coverage",
-    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../tests/backend/jest.config.js --rootDir=../tests/backend unit",
-    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../tests/backend/jest.config.js --rootDir=../tests/backend integration",
-    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../tests/backend/jest.config.js --rootDir=../tests/backend e2e"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend --coverage",
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend unit",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend integration",
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend e2e"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.952.0",

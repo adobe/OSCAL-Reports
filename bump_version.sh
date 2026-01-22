@@ -237,12 +237,27 @@ print_header "Updating Changelog"
 update_changelog "$NEW_VERSION" "$CHANGELOG_MESSAGE"
 
 echo ""
+print_header "Updating Best Practices & Security Rules"
+
+# Update validation rules from npm audit and recent commits
+if [ -f "test_cases/scripts/update_best_practices.sh" ]; then
+  print_info "Running best practices update..."
+  bash test_cases/scripts/update_best_practices.sh || print_warning "Failed to update best practices (non-critical)"
+  
+  # Stage any updated validation files
+  git add .validation/learnings.json 2>/dev/null || true
+  print_success "Best practices updated and staged"
+else
+  print_warning "update_best_practices.sh not found, skipping"
+fi
+
+echo ""
 print_header "Git Operations"
 
 # Check if git is available and we're in a git repository
 if command -v git &> /dev/null && [ -d .git ]; then
   # Stage changes
-  git add package.json backend/package.json frontend/package.json docs/CHANGELOG.md 2>/dev/null || true
+  git add package.json backend/package.json frontend/package.json docs/CHANGELOG.md .validation/learnings.json 2>/dev/null || true
   print_success "Staged version files"
   
   # Create commit

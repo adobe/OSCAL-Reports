@@ -61,7 +61,7 @@ jobs:
             backend/package.json \
             backend/package-lock.json \
             --exclude=backend/node_modules \
-            --exclude=backend/tests
+            --exclude=backend/test_cases
           
           # Create frontend archive
           tar -czf oscal-frontend-${{ steps.version.outputs.version }}.tar.gz \
@@ -79,9 +79,9 @@ jobs:
             *.md \
             *.sh \
             --exclude=backend/node_modules \
-            --exclude=backend/tests \
+            --exclude=backend/test_cases \
             --exclude=frontend/node_modules \
-            --exclude=frontend/tests
+            --exclude=frontend/test_cases
       
       - name: 🎉 Create GitHub Release
         uses: softprops/action-gh-release@v1

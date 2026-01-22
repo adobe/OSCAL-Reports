@@ -5,7 +5,7 @@ This folder contains all test-related files for the OSCAL Report Generator V2 pr
 ## 📁 Directory Structure
 
 ```
-tests/
+test_cases/
 ├── backend/                    # Backend tests
 │   ├── unit/                   # Unit tests
 │   │   ├── auth.test.js        # Authentication tests
@@ -43,7 +43,7 @@ From the project root:
 
 ```bash
 # Run all tests
-./tests/scripts/run_tests.sh
+./test_cases/scripts/run_tests.sh
 
 # Run specific test suites
 cd backend && npm run test:unit
@@ -163,7 +163,7 @@ Tests run automatically:
 
 1. **Pre-commit**: Via git hook (`.git/hooks/pre-commit`)
 2. **GitHub Actions**: On push/PR (`.github/workflows/ci-cd.yml`)
-3. **Manual**: Via `./tests/scripts/run_tests.sh`
+3. **Manual**: Via `./test_cases/scripts/run_tests.sh`
 
 ---
 
@@ -171,7 +171,7 @@ Tests run automatically:
 
 ### Method 1: .dockerignore
 ```
-tests/
+test_cases/
 *.test.js
 *.spec.js
 jest.config.js
@@ -181,7 +181,7 @@ jest.config.js
 ```json
 {
   "scripts": {
-    "build": "rsync -av --exclude='tests/' . ./dist/"
+    "build": "rsync -av --exclude='test_cases/' . ./dist/"
   }
 }
 ```
@@ -193,7 +193,7 @@ include:
   - backend/**/*.js
   - frontend/dist/**
 exclude:
-  - tests/**
+  - test_cases/**
   - **/*.test.js
 ```
 
@@ -201,16 +201,14 @@ exclude:
 
 ## 📚 Documentation
 
-- **[TESTING.md](docs/TESTING.md)** - Comprehensive testing guide
-- **[TESTING_QUICK_START.md](docs/TESTING_QUICK_START.md)** - Quick reference
-- **[TEST_IMPLEMENTATION_SUMMARY.md](docs/TEST_IMPLEMENTATION_SUMMARY.md)** - Implementation details
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Complete testing guide (includes quick start, Playwright, implementation details)
 
 ---
 
 ## 🛠️ Development Workflow
 
 1. **Write Code** → Write accompanying tests
-2. **Run Tests** → `npm test` or `./tests/scripts/run_tests.sh`
+2. **Run Tests** → `npm test` or `./test_cases/scripts/run_tests.sh`
 3. **Check Coverage** → Ensure > 80%
 4. **Commit** → Pre-commit hook runs tests automatically
 5. **Push** → CI/CD runs full test suite
@@ -236,7 +234,7 @@ cd frontend && npm install
 ### Permission Denied
 ```bash
 # Make test script executable
-chmod +x tests/scripts/run_tests.sh
+chmod +x test_cases/scripts/run_tests.sh
 ```
 
 ---
@@ -265,7 +263,7 @@ chmod +x tests/scripts/run_tests.sh
 ## 📞 Support
 
 For questions or issues:
-1. Check [docs/TESTING.md](docs/TESTING.md)
+1. Check [TESTING_GUIDE.md](TESTING_GUIDE.md)
 2. Review test examples in this folder
 3. Contact the development team
 

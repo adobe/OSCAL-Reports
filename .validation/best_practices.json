@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OSCAL Report Generator - Best Practices Validation Rules",
+  "version": "1.0.0",
+  "lastUpdated": "2026-01-22",
+  "description": "Comprehensive best practices and coding standards for the OSCAL Report Generator project",
+  
+  "categories": {
+    "code_quality": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-CQ-001",
+          "name": "No console.log in production code",
+          "severity": "warning",
+          "pattern": "console\\.log",
+          "exclude": ["*.test.js", "*.test.jsx", "*.spec.js", "*.spec.jsx", "test_cases/", "node_modules/", "dist/", "build/"],
+          "message": "console.log statements should not be used in production code. Use proper logging instead.",
+          "autoFix": false
+        },
+        {
+          "id": "BP-CQ-002",
+          "name": "No debugger statements",
+          "severity": "error",
+          "pattern": "debugger;",
+          "exclude": ["*.test.js", "test_cases/", "node_modules/"],
+          "message": "debugger statements must be removed before committing",
+          "autoFix": false
+        },
+        {
+          "id": "BP-CQ-003",
+          "name": "TODO/FIXME tracking",
+          "severity": "info",
+          "pattern": "(TODO|FIXME):",
+          "exclude": ["*.md", "test_cases/", "docs/", "node_modules/"],
+          "message": "TODO/FIXME comments found - consider creating GitHub issues",
+          "autoFix": false
+        },
+        {
+          "id": "BP-CQ-004",
+          "name": "Proper error handling",
+          "severity": "warning",
+          "pattern": "catch\\s*\\(\\w+\\)\\s*\\{\\s*\\}",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "Empty catch blocks should include error handling or logging",
+          "autoFix": false
+        },
+        {
+          "id": "BP-CQ-005",
+          "name": "Use async/await properly",
+          "severity": "error",
+          "pattern": "async\\s+\\w+\\s*\\([^)]*\\)\\s*\\{[^}]*await[^}]*\\}",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "Async functions using await must have proper error handling",
+          "autoFix": false,
+          "check": "custom",
+          "customCheck": "check_async_error_handling"
+        }
+      ]
+    },
+    
+    "security": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-SEC-001",
+          "name": "No hardcoded secrets",
+          "severity": "critical",
+          "pattern": "(password|secret|api_key|apikey|apitoken|private_key|access_token)\\s*=\\s*['\"][a-zA-Z0-9]{16,}['\"]",
+          "exclude": ["test_cases/", "*.test.js", "*.md", "setup.sh", "bump_version.sh", ".github/workflows/", "node_modules/"],
+          "message": "Hardcoded secrets detected! Use environment variables instead.",
+          "autoFix": false
+        },
+        {
+          "id": "BP-SEC-002",
+          "name": "No eval() usage",
+          "severity": "critical",
+          "pattern": "\\beval\\s*\\(",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "eval() is dangerous and should never be used",
+          "autoFix": false
+        },
+        {
+          "id": "BP-SEC-003",
+          "name": "SQL injection prevention",
+          "severity": "error",
+          "pattern": "\\$\\{.*\\}.*INTO|INSERT.*\\$\\{",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "Potential SQL injection vulnerability - use parameterized queries",
+          "autoFix": false
+        },
+        {
+          "id": "BP-SEC-004",
+          "name": "XSS prevention",
+          "severity": "warning",
+          "pattern": "innerHTML\\s*=",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "Direct innerHTML assignment can lead to XSS. Use textContent or sanitize input.",
+          "autoFix": false
+        },
+        {
+          "id": "BP-SEC-005",
+          "name": "Sensitive file detection",
+          "severity": "critical",
+          "files": [".env", "credentials.json", "private.key", "*.pem", "id_rsa"],
+          "message": "Sensitive file detected! These should never be committed.",
+          "autoFix": false
+        }
+      ]
+    },
+    
+    "documentation": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-DOC-001",
+          "name": "Function documentation",
+          "severity": "info",
+          "pattern": "^\\s*(export\\s+)?(async\\s+)?function\\s+\\w+",
+          "exclude": ["test_cases/", "node_modules/", "*.test.js"],
+          "message": "Complex functions should have JSDoc comments",
+          "autoFix": false,
+          "check": "custom",
+          "customCheck": "check_function_documentation"
+        },
+        {
+          "id": "BP-DOC-002",
+          "name": "README update check",
+          "severity": "info",
+          "files": ["README.md"],
+          "message": "Consider updating README.md if you added new features",
+          "autoFix": false
+        }
+      ]
+    },
+    
+    "file_management": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-FM-001",
+          "name": "File size limit",
+          "severity": "warning",
+          "maxSize": "1MB",
+          "exclude": ["*.jpg", "*.png", "*.pdf", "*.zip", "*.tar.gz", "node_modules/", "*.pptx"],
+          "message": "Large files detected - consider optimization or Git LFS",
+          "autoFix": false
+        },
+        {
+          "id": "BP-FM-002",
+          "name": "Line length limit",
+          "severity": "info",
+          "maxLineLength": 120,
+          "exclude": ["*.md", "*.json", "test_cases/", "node_modules/"],
+          "message": "Lines exceeding 120 characters reduce readability",
+          "autoFix": false
+        },
+        {
+          "id": "BP-FM-003",
+          "name": "Binary files check",
+          "severity": "warning",
+          "exclude": ["*.jpg", "*.png", "*.gif", "*.pdf", "*.ico", "*.woff", "*.woff2", "*.ttf", "*.eot", "*.pptx"],
+          "message": "Binary files detected - ensure they are necessary",
+          "autoFix": false
+        }
+      ]
+    },
+    
+    "testing": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-TEST-001",
+          "name": "Test files for new features",
+          "severity": "warning",
+          "message": "New features should include corresponding test files",
+          "autoFix": false,
+          "check": "custom",
+          "customCheck": "check_test_coverage"
+        },
+        {
+          "id": "BP-TEST-002",
+          "name": "Test naming convention",
+          "severity": "info",
+          "pattern": "\\.test\\.(js|jsx|ts|tsx)$|\\.spec\\.(js|jsx|ts|tsx)$",
+          "message": "Test files should follow naming convention: *.test.js or *.spec.js",
+          "autoFix": false
+        }
+      ]
+    },
+    
+    "git_hygiene": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-GIT-001",
+          "name": "No large commits",
+          "severity": "info",
+          "maxFilesChanged": 50,
+          "message": "Large commits are hard to review - consider breaking into smaller commits",
+          "autoFix": false
+        },
+        {
+          "id": "BP-GIT-002",
+          "name": "Commit message quality",
+          "severity": "info",
+          "message": "Commit messages should be descriptive and follow conventional commits",
+          "autoFix": false
+        },
+        {
+          "id": "BP-GIT-003",
+          "name": "No merge conflicts",
+          "severity": "critical",
+          "pattern": "<<<<<<< HEAD|=======|>>>>>>>",
+          "message": "Unresolved merge conflicts detected",
+          "autoFix": false
+        }
+      ]
+    },
+    
+    "performance": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-PERF-001",
+          "name": "Avoid synchronous operations",
+          "severity": "warning",
+          "pattern": "Sync\\s*\\(",
+          "exclude": ["test_cases/", "node_modules/", "setup.sh"],
+          "message": "Synchronous file operations can block the event loop",
+          "autoFix": false
+        },
+        {
+          "id": "BP-PERF-002",
+          "name": "Proper async patterns",
+          "severity": "info",
+          "pattern": "\\.then\\(\\).then\\(\\).then\\(",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "Consider using async/await instead of deep promise chains",
+          "autoFix": false
+        }
+      ]
+    },
+    
+    "dependencies": {
+      "enabled": true,
+      "rules": [
+        {
+          "id": "BP-DEP-001",
+          "name": "Package.json sync",
+          "severity": "error",
+          "files": ["package.json", "backend/package.json", "frontend/package.json"],
+          "message": "Version numbers must be synchronized across all package.json files",
+          "autoFix": false,
+          "check": "custom",
+          "customCheck": "check_version_sync"
+        },
+        {
+          "id": "BP-DEP-002",
+          "name": "Dependency audit",
+          "severity": "warning",
+          "message": "Run npm audit regularly to check for vulnerabilities",
+          "autoFix": false
+        }
+      ]
+    }
+  },
+  
+  "customChecks": {
+    "check_async_error_handling": {
+      "description": "Verify async functions have try-catch blocks",
+      "implementation": "Check if async functions contain try-catch or .catch()"
+    },
+    "check_function_documentation": {
+      "description": "Check if exported functions have JSDoc comments",
+      "implementation": "Look for /** */ comments before function declarations"
+    },
+    "check_test_coverage": {
+      "description": "Verify new code has accompanying tests",
+      "implementation": "Check if new .js files have corresponding .test.js files"
+    },
+    "check_version_sync": {
+      "description": "Ensure all package.json versions match",
+      "implementation": "Compare version fields in root, backend, and frontend package.json"
+    }
+  },
+  
+  "enforcement": {
+    "preCommit": true,
+    "prePush": false,
+    "ci": true,
+    "blockOnCritical": true,
+    "blockOnError": true,
+    "warnOnly": ["info", "warning"]
+  },
+  
+  "reporting": {
+    "format": "console",
+    "verbose": false,
+    "showRuleIds": true,
+    "groupByFile": true
+  }
+}
