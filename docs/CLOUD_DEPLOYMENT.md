@@ -9,12 +9,13 @@ This guide explains how to deploy the OSCAL Report Generator to various cloud pl
 ## 📋 Table of Contents
 
 1. [Azure Web App](#azure-web-app)
-2. [AWS ECS (Elastic Container Service)](#aws-ecs)
-3. [AWS EKS (Elastic Kubernetes Service)](#aws-eks)
-4. [Google Cloud Run](#google-cloud-run)
-5. [Heroku](#heroku)
-6. [DigitalOcean App Platform](#digitalocean-app-platform)
-7. [Comparison Table](#comparison-table)
+2. [AWS EC2 (Virtual Machine)](#aws-ec2)
+3. [AWS ECS (Elastic Container Service)](#aws-ecs)
+4. [AWS EKS (Elastic Kubernetes Service)](#aws-eks)
+5. [Google Cloud Run](#google-cloud-run)
+6. [Heroku](#heroku)
+7. [DigitalOcean App Platform](#digitalocean-app-platform)
+8. [Comparison Table](#comparison-table)
 
 ---
 
@@ -91,6 +92,348 @@ The workflow `.github/workflows/deploy-azure.yml` is already created.
 URL: `https://oscal-report-generator.azurewebsites.net`
 
 **Cost**: ~$13/month (B1 plan)
+
+---
+
+## AWS EC2
+
+### Prerequisites
+
+- AWS account
+- SSH key pair
+- Basic Linux knowledge
+- GitHub repository access
+
+### Overview
+
+AWS EC2 provides virtual machines with full control. Choose EC2 if you:
+- Want full control over the server environment
+- Need to run additional services alongside the app
+- Prefer traditional VM-based deployment
+- Want the simplest AWS option without container complexity
+
+### Setup Steps
+
+#### 1. Create EC2 Instance
+
+**Via AWS Console:**
+
+1. Go to **EC2 Dashboard** → **Launch Instance**
+2. Configure instance:
+   - **Name**: oscal-report-generator
+   - **AMI**: Ubuntu 22.04 LTS
+   - **Instance type**: t3.micro (or t3.small for better performance)
+   - **Key pair**: Create new or select existing
+   - **Network**: Default VPC
+   - **Security group**: 
+     - SSH (22) from your IP
+     - HTTP (80) from anywhere
+     - Custom TCP (3020) from anywhere
+   - **Storage**: 20 GB gp3
+
+3. Click **Launch Instance**
+
+**Via AWS CLI:**
+
+```bash
+# Configure AWS CLI
+aws configure
+
+# Create security group
+aws ec2 create-security-group \
+  --group-name oscal-sg \
+  --description "OSCAL Report Generator security group" \
+  --vpc-id vpc-xxxxxxxx
+
+# Add security group rules
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxxxxxx \
+  --protocol tcp --port 22 --cidr 0.0.0.0/0
+
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxxxxxx \
+  --protocol tcp --port 80 --cidr 0.0.0.0/0
+
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxxxxxx \
+  --protocol tcp --port 3020 --cidr 0.0.0.0/0
+
+# Launch instance
+aws ec2 run-instances \
+  --image-id ami-0c55b159cbfafe1f0 \
+  --instance-type t3.micro \
+  --key-name your-key-pair \
+  --security-group-ids sg-xxxxxxxx \
+  --block-device-mappings DeviceName=/dev/sda1,Ebs={VolumeSize=20} \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=oscal-report-generator}]'
+```
+
+#### 2. Install Docker on EC2
+
+```bash
+# SSH into instance
+ssh -i your-key.pem ubuntu@ec2-xx-xx-xx-xx.compute-1.amazonaws.com
+
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# Add user to docker group
+sudo usermod -aG docker ubuntu
+
+# Start Docker
+sudo systemctl enable docker
+sudo systemctl start docker
+
+# Verify installation
+docker --version
+
+# Exit and reconnect for group changes
+exit
+ssh -i your-key.pem ubuntu@ec2-xx-xx-xx-xx.compute-1.amazonaws.com
+```
+
+#### 3. Deploy Application
+
+```bash
+# Pull Docker image
+docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+
+# Run container
+docker run -d \
+  --name oscal-report-generator \
+  --restart unless-stopped \
+  -p 80:3020 \
+  -p 3020:3020 \
+  -e NODE_ENV=production \
+  ghcr.io/adobemanagedservices/oscal-report-generator:latest
+
+# Verify container is running
+docker ps
+
+# Check logs
+docker logs oscal-report-generator
+
+# Test locally
+curl http://localhost:3020/health
+```
+
+#### 4. Optional: Setup Nginx Reverse Proxy
+
+```bash
+# Install Nginx
+sudo apt install nginx -y
+
+# Create Nginx configuration
+sudo tee /etc/nginx/sites-available/oscal << 'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://localhost:3020;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# Enable site
+sudo ln -s /etc/nginx/sites-available/oscal /etc/nginx/sites-enabled/
+sudo rm /etc/nginx/sites-enabled/default
+
+# Test and restart Nginx
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### 5. Optional: Setup SSL with Let's Encrypt
+
+```bash
+# Install Certbot
+sudo apt install certbot python3-certbot-nginx -y
+
+# Get SSL certificate (replace with your domain)
+sudo certbot --nginx -d your-domain.com
+
+# Certificate auto-renewal is configured automatically
+```
+
+#### 6. Create Update Script
+
+```bash
+# Create update script
+cat > ~/update-oscal.sh << 'EOF'
+#!/bin/bash
+echo "Updating OSCAL Report Generator..."
+
+# Pull latest image
+docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+
+# Stop and remove old container
+docker stop oscal-report-generator
+docker rm oscal-report-generator
+
+# Run new container
+docker run -d \
+  --name oscal-report-generator \
+  --restart unless-stopped \
+  -p 80:3020 \
+  -p 3020:3020 \
+  -e NODE_ENV=production \
+  ghcr.io/adobemanagedservices/oscal-report-generator:latest
+
+# Clean up old images
+docker image prune -f
+
+echo "Update complete!"
+docker logs --tail 50 oscal-report-generator
+EOF
+
+# Make executable
+chmod +x ~/update-oscal.sh
+
+# Run update
+./update-oscal.sh
+```
+
+#### 7. Configure GitHub Actions (Optional)
+
+Create `.github/workflows/deploy-ec2.yml`:
+
+```yaml
+name: Deploy to AWS EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Pull latest image
+            docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+            
+            # Stop and remove old container
+            docker stop oscal-report-generator || true
+            docker rm oscal-report-generator || true
+            
+            # Run new container
+            docker run -d \
+              --name oscal-report-generator \
+              --restart unless-stopped \
+              -p 80:3020 \
+              -p 3020:3020 \
+              -e NODE_ENV=production \
+              ghcr.io/adobemanagedservices/oscal-report-generator:latest
+            
+            # Clean up
+            docker image prune -f
+            
+            # Show status
+            docker ps
+            docker logs --tail 20 oscal-report-generator
+
+      - name: Verify Deployment
+        run: |
+          sleep 10
+          curl -f http://${{ secrets.EC2_HOST }}/health || exit 1
+```
+
+**Required GitHub Secrets:**
+- `EC2_HOST`: Your EC2 public IP or domain
+- `EC2_SSH_KEY`: Private SSH key content
+
+#### 8. Access Your Application
+
+**Public URL:**
+- With Nginx: `http://your-ec2-public-ip` or `http://your-domain.com`
+- Direct: `http://your-ec2-public-ip:3020`
+
+**Get Public IP:**
+```bash
+# From AWS Console
+aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=oscal-report-generator" \
+  --query 'Reservations[*].Instances[*].PublicIpAddress' \
+  --output text
+```
+
+### Cost Breakdown
+
+**EC2 Instance:**
+- **t3.micro** (1 vCPU, 1GB RAM): ~$7.50/month
+- **t3.small** (2 vCPU, 2GB RAM): ~$15/month (recommended)
+- **t3.medium** (2 vCPU, 4GB RAM): ~$30/month (high performance)
+
+**Storage:**
+- 20 GB gp3 EBS volume: ~$1.60/month
+
+**Data Transfer:**
+- First 100 GB/month: FREE
+- Additional: $0.09/GB
+
+**Elastic IP (optional):**
+- FREE while instance running
+- $3.60/month if not attached
+
+**Total Estimated Cost:**
+- **Minimal (t3.micro)**: ~$9-10/month
+- **Recommended (t3.small)**: ~$17-20/month
+- **High Performance (t3.medium)**: ~$32-35/month
+
+### Pros & Cons
+
+**✅ Pros:**
+- Full control over server environment
+- Simple, traditional deployment model
+- No container orchestration complexity
+- Can run multiple services on same instance
+- Easy to SSH and debug
+- Cost-effective for single applications
+- Can use Spot Instances for 70% savings
+
+**❌ Cons:**
+- Manual server management required
+- No automatic scaling (without additional setup)
+- Responsible for security updates
+- Single point of failure (without load balancer)
+- Need to manage backups manually
+
+### Best Practices
+
+1. **Enable CloudWatch monitoring**
+2. **Set up automated backups** (AMI snapshots)
+3. **Use Elastic IP** for consistent addressing
+4. **Configure auto-start** for Docker containers
+5. **Set up log rotation** for Docker logs
+6. **Use IAM roles** instead of access keys
+7. **Enable AWS Systems Manager** for easier management
+8. **Consider Auto Scaling Group** for high availability
 
 ---
 
@@ -679,6 +1022,7 @@ Use DigitalOcean GitHub Action for automated deployments.
 | Platform | Cost/Month | Setup Difficulty | Best For |
 |----------|------------|------------------|----------|
 | **Azure Web App** | ~$13 | Medium | Enterprise, Microsoft ecosystem |
+| **AWS EC2** | ~$10-20 | Easy | Full control, traditional VMs |
 | **AWS ECS** | ~$15-20 | Hard | AWS ecosystem, containerized apps |
 | **AWS EKS** | ~$98-128 | Very Hard | Kubernetes users, multi-cloud strategy |
 | **Google Cloud Run** | ~$5-10 | Easy | Pay-per-use, serverless |
@@ -694,6 +1038,9 @@ Use DigitalOcean GitHub Action for automated deployments.
 
 ### For Production (Small)
 **→ DigitalOcean App Platform** ($5/month, simple)
+
+### For Full Control/Traditional VMs
+**→ AWS EC2** ($10-20/month, simple VM deployment with full control)
 
 ### For Production (Enterprise)
 **→ Azure Web App** (if using Microsoft) or **AWS ECS** (if using AWS containers)
