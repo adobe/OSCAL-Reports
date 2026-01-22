@@ -30,24 +30,30 @@ Choose the deployment option that best fits your needs.
 
 **Automatic testing environment for functional testing**
 
+**⚠️ Active Solution: GitHub Runner + Ngrok** (Railway not allowed by organization)
+
 | Platform | Cost | Availability | Best For |
 |----------|------|--------------|----------|
-| 🚂 **Railway** | FREE | 24/7 | Tester access |
-| 🌐 **Ngrok + Runner** | FREE | 5 hours/session | Quick tests |
+| 🌐 **Ngrok + Runner** | FREE | 5 hours/session | Functional testing |
 
 **✅ Pros:**
 - Testers get immediate access after CI/CD
 - Public URL automatically provided
-- No manual deployment needed
+- Runs on GitHub infrastructure (organization-approved)
+- No external service accounts needed (except free Ngrok)
 - Perfect for functional testing
-- FREE (Railway $5 credit or GitHub Actions)
+- Completely FREE (GitHub Actions + Ngrok free tier)
 
 **❌ Cons:**
 - Not for production use
-- Railway: $5/month credit limit
-- Ngrok: 5-6 hour time limit
+- 5-6 hour time limit per deployment
+- New URL for each deployment
+- Uses GitHub Actions minutes
 
-**Perfect for:** Giving testers a URL to test immediately after deployment
+**Perfect for:** 
+- Giving testers a temporary URL to test immediately after deployment
+- Organizations with restrictions on external services
+- Quick validation before manual production deployment
 
 **Setup:** See `docs/TESTING_ENVIRONMENT_SETUP.md`
 
@@ -56,7 +62,8 @@ Choose the deployment option that best fits your needs.
 | Platform | Cost | Setup Time | Best For |
 |----------|------|------------|----------|
 | 🔵 **Azure Web App** | $13/mo | 15 min | Microsoft ecosystem |
-| 🟠 **AWS ECS** | $15-20/mo | 30 min | AWS ecosystem |
+| 🟠 **AWS ECS** | $15-20/mo | 30 min | AWS containers |
+| 🟠 **AWS EKS** | $98-128/mo | 60 min | Kubernetes users |
 | 🔴 **Google Cloud Run** | $5-10/mo | 10 min | Pay-per-use, serverless |
 | 🟣 **Heroku** | $0-7/mo | 5 min | Quick testing |
 | 🟢 **DigitalOcean** | $5/mo | 10 min | Simple & affordable |
@@ -193,11 +200,18 @@ docker run -d -p 3020:3020 ghcr.io/adobemanagedservices/oscal-report-generator:l
 - Very simple setup
 - Good performance
 
-### Enterprise Production
+### Enterprise Production (AWS/Azure)
 **→ Azure Web App or AWS ECS**
 - Professional SLAs
 - Enterprise support
 - Compliance certifications
+
+### Kubernetes Infrastructure
+**→ AWS EKS**
+- Already using Kubernetes
+- Multi-cloud portability
+- Advanced orchestration needs
+- Rich K8s ecosystem
 
 ### On-Premises (Internal Use)
 **→ TrueNAS (current setup)**
@@ -258,6 +272,12 @@ gcloud run deploy oscal-report-generator \
 
 ### Q: What if I just want Docker images built?
 **A:** Already done! Every push to main builds and pushes to `ghcr.io`. Pull and run anywhere.
+
+### Q: Should I use AWS ECS or AWS EKS?
+**A:** 
+- **Use ECS** if you want simpler AWS-native container management (~$15-20/month)
+- **Use EKS** if you already use Kubernetes or need K8s portability (~$98-128/month)
+- EKS costs more but provides Kubernetes ecosystem and multi-cloud capability
 
 ---
 

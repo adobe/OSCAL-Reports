@@ -10,10 +10,11 @@ This guide explains how to deploy the OSCAL Report Generator to various cloud pl
 
 1. [Azure Web App](#azure-web-app)
 2. [AWS ECS (Elastic Container Service)](#aws-ecs)
-3. [Google Cloud Run](#google-cloud-run)
-4. [Heroku](#heroku)
-5. [DigitalOcean App Platform](#digitalocean-app-platform)
-6. [Comparison Table](#comparison-table)
+3. [AWS EKS (Elastic Kubernetes Service)](#aws-eks)
+4. [Google Cloud Run](#google-cloud-run)
+5. [Heroku](#heroku)
+6. [DigitalOcean App Platform](#digitalocean-app-platform)
+7. [Comparison Table](#comparison-table)
 
 ---
 
@@ -191,6 +192,274 @@ The workflow `.github/workflows/deploy-aws.yml` is already created.
 URL: `http://your-load-balancer-dns.us-east-1.elb.amazonaws.com`
 
 **Cost**: ~$15-20/month (Fargate + ALB)
+
+---
+
+## AWS EKS
+
+### Prerequisites
+
+- AWS account
+- AWS CLI and kubectl installed
+- eksctl CLI (optional but recommended)
+- GitHub repository access
+
+### Overview
+
+AWS EKS provides managed Kubernetes clusters. Choose EKS if you:
+- Already use Kubernetes in your infrastructure
+- Need Kubernetes-native features and ecosystem
+- Want portability across cloud providers
+- Require advanced orchestration capabilities
+
+### Setup Steps
+
+#### 1. Create EKS Cluster
+
+**Option A: Using eksctl (Recommended)**
+
+```bash
+# Install eksctl
+brew install eksctl
+
+# Create EKS cluster (this takes ~15 minutes)
+eksctl create cluster \
+  --name oscal-cluster \
+  --region us-east-1 \
+  --node-type t3.small \
+  --nodes 2 \
+  --nodes-min 1 \
+  --nodes-max 3 \
+  --managed
+
+# Update kubeconfig
+aws eks update-kubeconfig --name oscal-cluster --region us-east-1
+```
+
+**Option B: Using AWS CLI (Advanced)**
+
+```bash
+# Create cluster (control plane only)
+aws eks create-cluster \
+  --name oscal-cluster \
+  --role-arn arn:aws:iam::ACCOUNT_ID:role/eks-cluster-role \
+  --resources-vpc-config subnetIds=subnet-xxx,subnet-yyy,securityGroupIds=sg-xxx
+
+# Wait for cluster to be active
+aws eks wait cluster-active --name oscal-cluster
+
+# Create node group
+aws eks create-nodegroup \
+  --cluster-name oscal-cluster \
+  --nodegroup-name oscal-nodes \
+  --node-role arn:aws:iam::ACCOUNT_ID:role/eks-node-role \
+  --subnets subnet-xxx subnet-yyy \
+  --instance-types t3.small \
+  --scaling-config minSize=1,maxSize=3,desiredSize=2
+```
+
+#### 2. Create Kubernetes Deployment Files
+
+Create `k8s/deployment.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oscal-report-generator
+  labels:
+    app: oscal-report-generator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oscal-report-generator
+  template:
+    metadata:
+      labels:
+        app: oscal-report-generator
+    spec:
+      containers:
+      - name: oscal-report-generator
+        image: ghcr.io/adobemanagedservices/oscal-report-generator:latest
+        ports:
+        - containerPort: 3020
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3020"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3020
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3020
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oscal-report-generator
+spec:
+  type: LoadBalancer
+  selector:
+    app: oscal-report-generator
+  ports:
+  - port: 80
+    targetPort: 3020
+    protocol: TCP
+```
+
+#### 3. Deploy to EKS
+
+```bash
+# Apply deployment
+kubectl apply -f k8s/deployment.yaml
+
+# Check deployment status
+kubectl get deployments
+kubectl get pods
+kubectl get services
+
+# Get Load Balancer URL
+kubectl get service oscal-report-generator -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+#### 4. Configure GitHub Secrets
+
+Add these secrets to your GitHub repository:
+
+- `AWS_ACCESS_KEY_ID`: Your AWS access key
+- `AWS_SECRET_ACCESS_KEY`: Your AWS secret key
+- `AWS_REGION`: `us-east-1` (or your region)
+- `EKS_CLUSTER_NAME`: `oscal-cluster`
+
+#### 5. Create GitHub Actions Workflow
+
+Create `.github/workflows/deploy-eks.yml`:
+
+```yaml
+name: Deploy to AWS EKS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl rollout status deployment/oscal-report-generator
+          kubectl get services oscal-report-generator
+
+      - name: Get service URL
+        run: |
+          echo "Application URL:"
+          kubectl get service oscal-report-generator -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+#### 6. Optional: Use Fargate for Serverless
+
+For serverless pods without managing nodes:
+
+```bash
+# Create Fargate profile
+eksctl create fargateprofile \
+  --cluster oscal-cluster \
+  --name oscal-profile \
+  --namespace default
+
+# Deploy using same deployment.yaml
+kubectl apply -f k8s/deployment.yaml
+```
+
+#### 7. Access Your Application
+
+Get the Load Balancer URL:
+
+```bash
+kubectl get service oscal-report-generator
+```
+
+URL: `http://xxx.us-east-1.elb.amazonaws.com`
+
+### Cost Breakdown
+
+**EKS Control Plane:** $73/month ($0.10/hour × 730 hours)
+
+**Option A: EC2 Worker Nodes**
+- 2× t3.small nodes: ~$30/month ($0.0208/hour × 2 × 730 hours)
+- Application Load Balancer: ~$16/month
+- EBS volumes (20GB each): ~$4/month
+- Data transfer: ~$5/month
+- **Total: ~$128/month**
+
+**Option B: Fargate (Serverless)**
+- vCPU: $0.04048/hour per vCPU
+- Memory: $0.004445/hour per GB
+- For 0.5 vCPU, 1GB RAM, 2 pods, 24/7:
+  - vCPU cost: ~$29.55/month
+  - Memory cost: ~$6.50/month
+- Application Load Balancer: ~$16/month
+- **Total: ~$125/month**
+
+**Option C: Minimal Setup (1 node, t3.micro)**
+- 1× t3.micro node: ~$7.50/month
+- Application Load Balancer: ~$16/month
+- EBS volume (20GB): ~$2/month
+- **Total: ~$98/month**
+
+**⚠️ Note:** EKS is more expensive than ECS Fargate (~$15-20/month) but provides:
+- Kubernetes portability
+- Rich ecosystem and tooling
+- Advanced orchestration features
+- Multi-cloud strategy support
 
 ---
 
@@ -410,7 +679,8 @@ Use DigitalOcean GitHub Action for automated deployments.
 | Platform | Cost/Month | Setup Difficulty | Best For |
 |----------|------------|------------------|----------|
 | **Azure Web App** | ~$13 | Medium | Enterprise, Microsoft ecosystem |
-| **AWS ECS** | ~$15-20 | Hard | AWS ecosystem, advanced needs |
+| **AWS ECS** | ~$15-20 | Hard | AWS ecosystem, containerized apps |
+| **AWS EKS** | ~$98-128 | Very Hard | Kubernetes users, multi-cloud strategy |
 | **Google Cloud Run** | ~$5-10 | Easy | Pay-per-use, serverless |
 | **Heroku** | $0-7 | Very Easy | Quick deployments, testing |
 | **DigitalOcean** | ~$5 | Easy | Simple, affordable hosting |
@@ -426,7 +696,10 @@ Use DigitalOcean GitHub Action for automated deployments.
 **→ DigitalOcean App Platform** ($5/month, simple)
 
 ### For Production (Enterprise)
-**→ Azure Web App** (if using Microsoft) or **AWS ECS** (if using AWS)
+**→ Azure Web App** (if using Microsoft) or **AWS ECS** (if using AWS containers)
+
+### For Kubernetes Users
+**→ AWS EKS** (if already using Kubernetes or need portability)
 
 ### For Serverless/Auto-scaling
 **→ Google Cloud Run** (best serverless experience)

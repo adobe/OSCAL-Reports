@@ -27,121 +27,37 @@ GitHub Push → Tests Pass → Deploy to Testing Environment → Notify Testers
 
 ---
 
-## 🎯 Two Options
+## 🎯 Selected Option: GitHub Runner + Ngrok
 
-### Option 1: Railway (Recommended) - FREE
+**⚠️ Note**: Railway.app is not available for use in this organization.
 
-**Pros:**
-- ✅ Completely free ($5/month credit, enough for testing)
-- ✅ Environment stays up 24/7
-- ✅ Professional URLs
-- ✅ Simple setup (5 minutes)
-- ✅ No workflow time limits
-- ✅ SSL/HTTPS included
-
-**Cons:**
-- ⚠️ Requires Railway account (free)
-- ⚠️ $5/month credit limit (plenty for testing)
-
-**Cost:** FREE (within $5 monthly credit)
-
-### Option 2: GitHub Runner + Ngrok
+### GitHub Runner + Ngrok (Active Solution)
 
 **Pros:**
-- ✅ Runs on GitHub infrastructure
-- ✅ No external service needed
-- ✅ Complete control
+- ✅ Runs on GitHub infrastructure (organization-approved)
+- ✅ No external service accounts needed
+- ✅ Complete control over deployment
+- ✅ Temporary testing environment (5 hours)
+- ✅ Free (uses GitHub Actions minutes)
 
 **Cons:**
 - ⚠️ Maximum 6 hours (GitHub workflow limit)
 - ⚠️ Uses GitHub Actions minutes
-- ⚠️ Ngrok free tier has limitations
+- ⚠️ Ngrok free tier has some limitations
 - ⚠️ Environment shuts down after time limit
+- ⚠️ New URL for each deployment
 
 **Cost:** FREE (uses GitHub Actions minutes)
 
----
-
-## 🚀 Setup: Option 1 - Railway (Recommended)
-
-### Step 1: Create Railway Account
-
-1. Go to https://railway.app
-2. Sign up with GitHub (free)
-3. You get **$5/month free credit** (plenty for testing)
-
-### Step 2: Create Railway Project
-
-```bash
-# Install Railway CLI (optional)
-npm install -g @railway/cli
-
-# Or use Railway dashboard
-```
-
-**Via Railway Dashboard:**
-
-1. Log in to Railway
-2. Click **New Project**
-3. Select **Deploy from GitHub repo**
-4. Choose: `AdobeManagedServices/OSCAL-Reports`
-5. Railway will detect Dockerfile automatically
-6. Configure:
-   - **Name**: `oscal-report-generator-testing`
-   - **Branch**: `main`
-   - **Auto-deploy**: ON
-7. Add environment variables:
-   ```
-   PORT=3020
-   NODE_ENV=production
-   ```
-8. Click **Deploy**
-
-### Step 3: Get Railway Token
-
-1. Go to Railway Dashboard
-2. Click **Account Settings**
-3. Go to **Tokens**
-4. Click **Create New Token**
-5. Give it a name: `github-actions`
-6. Copy the token
-
-### Step 4: Configure GitHub Secrets
-
-1. Go to your GitHub repo: **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Add:
-   - **Name**: `RAILWAY_TOKEN`
-   - **Value**: Your Railway token from Step 3
-
-### Step 5: Enable Workflow
-
-The workflow `.github/workflows/deploy-test-environment.yml` is already created!
-
-**It will automatically:**
-1. Run tests
-2. Deploy to Railway if tests pass
-3. Provide testing URL to testers
-4. Notify team (if configured)
-
-### Step 6: Test It
-
-1. Push a change to `main` branch:
-   ```bash
-   git commit --allow-empty -m "test: Trigger testing environment"
-   git push origin main
-   ```
-
-2. Watch workflow in **Actions** tab
-
-3. Get testing URL from workflow output:
-   - URL format: `https://oscal-report-generator-testing.up.railway.app`
-
-4. Share URL with testers!
+**Best For:**
+- Organizations with restrictions on external services
+- Temporary testing needs (5 hour windows)
+- Functional testing by human testers
+- Quick validation before production deployment
 
 ---
 
-## 🚀 Setup: Option 2 - GitHub Runner + Ngrok
+## 🚀 Setup: GitHub Runner + Ngrok
 
 ### Step 1: Create Ngrok Account
 
@@ -156,39 +72,47 @@ The workflow `.github/workflows/deploy-test-environment.yml` is already created!
    - **Name**: `NGROK_AUTHTOKEN`
    - **Value**: Your ngrok auth token
 
-### Step 3: Enable Workflow
+### Step 3: Workflow is Already Configured
 
-Edit `.github/workflows/deploy-test-environment.yml`:
+The workflow `.github/workflows/deploy-test-environment.yml` is already configured to use Ngrok!
 
-Change line 135:
-```yaml
-# FROM:
-if: false  # Disabled by default
+**The workflow automatically:**
+1. Runs all tests
+2. Builds Docker container
+3. Starts application on GitHub runner
+4. Creates Ngrok tunnel
+5. Provides public testing URL
+6. Keeps environment running for 5 hours
+7. Shuts down automatically
 
-# TO:
-if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-```
+### Step 4: Test the Setup
 
-And disable Railway deployment (line 54):
-```yaml
-# FROM:
-if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+1. Push a change to `main` branch (or use empty commit for testing):
+   ```bash
+   git commit --allow-empty -m "test: Trigger testing environment"
+   git push origin main
+   ```
 
-# TO:
-if: false  # Use Ngrok instead
-```
+2. Watch the workflow in GitHub **Actions** tab
 
-### Step 4: Test It
+3. The workflow will:
+   - Run all tests
+   - Build Docker image
+   - Start application
+   - Create Ngrok tunnel
+   - Provide testing URL (e.g., `https://abc123.ngrok-free.app`)
+   - Keep running for 5 hours
+   - Shut down automatically
 
-Push to main → Workflow will:
-1. Run tests
-2. Start Docker container
-3. Create ngrok tunnel
-4. Provide URL (e.g., `https://abc123.ngrok.io`)
-5. Keep running for 5 hours
-6. Shut down automatically
+4. Get the testing URL from the workflow output in the "📝 Get Ngrok URL" step
 
-**Important:** Workflow must complete within 6 hours (GitHub limit).
+5. Share the URL with your testers immediately
+
+**Important Notes:**
+- URL is unique for each deployment
+- Environment shuts down after 5 hours
+- Workflow must complete within 6 hours (GitHub limit)
+- New deployment = new URL
 
 ---
 
@@ -306,7 +230,7 @@ open http://nas.keekar.com:3019
 
 | Environment | Purpose | URL | Deployment | Uptime |
 |-------------|---------|-----|------------|--------|
-| **Testing** | Functional testing | https://...railway.app | Automatic | Always on |
+| **Testing** | Functional testing | https://...ngrok-free.app | Automatic | 5 hours |
 | **Production (Green)** | Live users | http://nas.keekar.com:3019 | Manual | Always on |
 | **Production (Blue)** | Live users | http://nas.keekar.com:3020 | Manual | Always on |
 
@@ -334,50 +258,40 @@ open http://nas.keekar.com:3019
 
 ## 💰 Cost Analysis
 
-### Railway (Option 1):
+### GitHub Runner + Ngrok (Selected Option):
 
 **Free Tier:**
-- $5/month free credit
-- Testing instance uses ~$2-3/month
-- **Total: $0** (within free credit)
+- ✅ GitHub Actions: Free for public repos (2,000 minutes/month for private)
+- ✅ Ngrok: 1 tunnel free (40 connections/minute)
+- ✅ 5 hours per deployment session
+- **Total Cost: $0**
 
-**If exceed free tier:**
-- $0.000231/GB-hour
-- ~$3-5/month for testing instance
+**GitHub Actions Usage:**
+- ~5-6 hours per deployment
+- ~360 minutes per deployment
+- Can run ~5 deployments/month on free private repo tier
+- Unlimited on public repos
 
-### GitHub Runner + Ngrok (Option 2):
+**Ngrok Free Tier:**
+- 1 online ngrok process
+- 40 connections/minute
+- Random tunnel URL (changes each time)
+- Sufficient for testing purposes
 
-**Free Tier:**
-- GitHub Actions: Free for public repos
-- Ngrok: 1 tunnel free
-- 5 hours per deployment
-- **Total: $0**
+**If you need more:**
+- GitHub Actions: $0.008/minute for private repos
+- Ngrok Personal: $8/month (custom domains, more connections)
 
-**Limitations:**
-- Max 6 hours per workflow
-- Limited to 1 tunnel on free tier
+**Cost Comparison:**
+- **This setup**: FREE
+- **Railway**: Not allowed by organization
+- **Azure/AWS**: $13-128/month (production-grade)
+
+**Best for:** Organizations with limited budgets and testing needs
 
 ---
 
 ## 🐛 Troubleshooting
-
-### Railway Issues:
-
-**Deployment fails:**
-```bash
-# Check Railway logs
-railway logs
-
-# Check build logs in Railway dashboard
-```
-
-**App not starting:**
-```bash
-# Verify environment variables in Railway dashboard
-# Check Dockerfile builds locally:
-docker build -t test .
-docker run -p 3020:3020 test
-```
 
 ### Ngrok Issues:
 
@@ -451,16 +365,16 @@ docker run -p 3020:3020 test
 
 ## ✅ Quick Start Checklist
 
-- [ ] Choose deployment option (Railway or Ngrok)
-- [ ] Create account (Railway or Ngrok)
-- [ ] Get API token/auth token
-- [ ] Add token to GitHub Secrets
-- [ ] Configure notification method (Slack/Email/Teams)
+- [ ] Create Ngrok account (free)
+- [ ] Get Ngrok auth token
+- [ ] Add `NGROK_AUTHTOKEN` to GitHub Secrets
+- [ ] Workflow is already configured (no changes needed)
+- [ ] Configure notification method (Slack/Email/Teams) - Optional
 - [ ] Test deployment with empty commit
-- [ ] Verify testing URL works
+- [ ] Get testing URL from workflow output
 - [ ] Share URL with testers
 - [ ] Document testing process
-- [ ] Set up production deployment procedure
+- [ ] Set up production deployment procedure to TrueNAS
 
 ---
 
@@ -468,23 +382,32 @@ docker run -p 3020:3020 test
 
 **You now have:**
 
-✅ Automatic testing environment after every push  
-✅ Public URL for testers  
-✅ 24/7 availability (Railway) or 5-hour sessions (Ngrok)  
+✅ Automatic testing environment on GitHub infrastructure  
+✅ Public URL for testers (via Ngrok tunnel)  
+✅ 5-hour testing sessions (configurable)  
 ✅ Automatic notifications to testers  
-✅ Manual control over production  
+✅ Manual control over production deployment  
+✅ No external service accounts required (except free Ngrok)
 
 **Workflow:**
 ```
-Code Push → Tests → Deploy to Testing → Testers Validate → Manual Deploy to TrueNAS
+Code Push → Tests → Deploy to Testing (Ngrok) → Testers Validate → Manual Deploy to TrueNAS
 ```
 
 **Next Steps:**
-1. Choose Railway (recommended) or Ngrok
-2. Follow setup steps above
-3. Configure notifications
-4. Test the workflow
-5. Share testing URL with team
+1. Create free Ngrok account
+2. Get auth token and add to GitHub Secrets
+3. Test with empty commit
+4. Get testing URL from workflow output
+5. Share URL with testers
+6. Configure optional notifications (Slack/Email)
+
+**Key Points:**
+- ⏰ Testing environment runs for 5 hours per deployment
+- 🔄 New URL generated for each deployment
+- 🆓 Completely free (GitHub Actions + Ngrok free tier)
+- ✅ Runs on GitHub infrastructure (organization-approved)
+- 🚀 Production stays on TrueNAS with manual deployment
 
 ---
 
