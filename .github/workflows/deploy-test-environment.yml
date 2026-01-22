@@ -1,0 +1,382 @@
+name: Deploy Testing Environment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ###############################################################################
+  # Run Tests
+  ###############################################################################
+  tests:
+    name: Run All Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: 📦 Install dependencies
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+      
+      - name: 🧪 Run backend tests
+        working-directory: ./backend
+        run: |
+          npm run test:unit
+          npm run test:integration
+      
+      - name: 🏗️ Build frontend
+        working-directory: ./frontend
+        run: npm run build
+
+  ###############################################################################
+  # Deploy to Railway (Free Testing Environment)
+  ###############################################################################
+  deploy-railway-test:
+    name: Deploy to Railway (Testing)
+    runs-on: ubuntu-latest
+    needs: [tests]
+    if: false  # Disabled - Organization does not allow Railway
+    environment:
+      name: testing
+      url: https://oscal-report-generator-testing.up.railway.app
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🚀 Deploy to Railway
+        uses: bervProject/railway-deploy@main
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: oscal-report-generator-testing
+      
+      - name: ⏰ Keep deployment alive for 5 hours
+        run: |
+          echo "🌐 Testing Environment Deployed!"
+          echo "URL: https://oscal-report-generator-testing.up.railway.app"
+          echo ""
+          echo "⏰ This environment will be available for testers."
+          echo "Production deployment to TrueNAS should be done manually."
+      
+      - name: 📝 Create Testing Summary
+        run: |
+          cat > testing-summary.md << EOF
+          # ✅ Testing Environment Ready!
+          
+          ## 🌐 Testing URL
+          **URL**: https://oscal-report-generator-testing.up.railway.app
+          
+          ## 👥 For Testers
+          
+          This is a **testing environment** deployed automatically after all tests passed.
+          
+          ### Access Information:
+          - **URL**: https://oscal-report-generator-testing.up.railway.app
+          - **Health Check**: https://oscal-report-generator-testing.up.railway.app/health
+          - **Version**: $(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          - **Deployed**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          
+          ### Credentials
+          Download from workflow artifacts: [Credentials](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ### Testing Checklist
+          - [ ] Login functionality
+          - [ ] Create new SSP
+          - [ ] Load existing report
+          - [ ] Export to JSON
+          - [ ] Export to Excel
+          - [ ] Export to PDF
+          - [ ] AI integration (if configured)
+          - [ ] Settings persistence
+          - [ ] User management
+          
+          ### Report Issues
+          If you find any issues during testing:
+          1. Document the issue
+          2. Include steps to reproduce
+          3. Create GitHub issue or notify development team
+          
+          ---
+          
+          ## 🏭 Production Deployment
+          
+          **⚠️ This is NOT production!** 
+          
+          For production deployment to TrueNAS:
+          \`\`\`bash
+          ssh mkesharw@NAS01
+          cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
+          git pull origin main
+          ./build_on_truenas.sh
+          \`\`\`
+          
+          Production URLs:
+          - Blue: http://nas.keekar.com:3020
+          - Green: http://nas.keekar.com:3019
+          
+          ---
+          
+          **Deployed By**: ${{ github.actor }}
+          **Commit**: ${{ github.sha }}
+          **Workflow**: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+          
+          cat testing-summary.md >> $GITHUB_STEP_SUMMARY
+      
+      - name: 📤 Upload Testing Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: testing-environment-summary
+          path: testing-summary.md
+          retention-days: 7
+
+  ###############################################################################
+  # GitHub Runner + Ngrok (5 Hour Testing Environment)
+  ###############################################################################
+  deploy-runner-test:
+    name: Deploy on Runner with Ngrok (5 Hours)
+    runs-on: ubuntu-latest
+    needs: [tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🐳 Build Docker Image
+        run: |
+          docker build -t oscal-test:latest \
+            --build-arg BUILD_TIMESTAMP="$(date -Iseconds)" \
+            --build-arg PORT=3020 .
+      
+      - name: 🚀 Start Application
+        run: |
+          docker run -d \
+            --name oscal-test \
+            -p 3020:3020 \
+            oscal-test:latest
+          
+          # Wait for app to start
+          echo "Waiting for application to start..."
+          sleep 10
+          
+          # Check health
+          curl http://localhost:3020/health
+      
+      - name: 🌐 Setup Ngrok Tunnel
+        uses: ngrok/ngrok-action@v1
+        with:
+          authtoken: ${{ secrets.NGROK_AUTHTOKEN }}
+          port: 3020
+          region: us
+      
+      - name: 📝 Get Ngrok URL
+        id: ngrok-url
+        run: |
+          # Wait for ngrok to start
+          sleep 5
+          
+          # Get ngrok URL
+          NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          echo "url=$NGROK_URL" >> $GITHUB_OUTPUT
+          echo "🌐 Testing URL: $NGROK_URL"
+      
+      - name: 📧 Notify Testers
+        run: |
+          cat > testing-notification.md << EOF
+          # 🧪 Testing Environment Active!
+          
+          ## 🌐 Testing URL (Active for 5 hours)
+          **URL**: ${{ steps.ngrok-url.outputs.url }}
+          
+          ## ⏰ Availability
+          - **Started**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - **Active Until**: $(date -u -d '+5 hours' '+%Y-%m-%d %H:%M:%S UTC')
+          - **Duration**: 5 hours
+          
+          ## 👥 For Testers
+          
+          This temporary testing environment is now available at:
+          **${{ steps.ngrok-url.outputs.url }}**
+          
+          ### Quick Access:
+          - Application: ${{ steps.ngrok-url.outputs.url }}
+          - Health Check: ${{ steps.ngrok-url.outputs.url }}/health
+          
+          ### Default Credentials
+          Check workflow artifacts for default credentials.
+          
+          ### Testing Guidelines
+          1. Test all major functionality
+          2. Document any issues found
+          3. Complete testing within 5 hours
+          4. Report findings before environment shuts down
+          
+          ---
+          
+          ⚠️ **Important**: This is a temporary environment and will shut down automatically after 5 hours.
+          
+          EOF
+          
+          cat testing-notification.md >> $GITHUB_STEP_SUMMARY
+      
+      - name: ⏰ Keep Environment Running (5 Hours)
+        run: |
+          echo "🕐 Testing environment will remain active for 5 hours..."
+          echo "Testers can access at: ${{ steps.ngrok-url.outputs.url }}"
+          echo ""
+          echo "Monitoring application health..."
+          
+          # Keep running for 5 hours (18000 seconds)
+          END_TIME=$(($(date +%s) + 18000))
+          
+          while [ $(date +%s) -lt $END_TIME ]; do
+            # Check if app is still running
+            if docker ps | grep -q oscal-test; then
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3020/health)
+              if [ "$STATUS" -eq "200" ]; then
+                echo "✅ [$(date '+%Y-%m-%d %H:%M:%S')] Application healthy"
+              else
+                echo "⚠️  [$(date '+%Y-%m-%d %H:%M:%S')] Application may have issues (HTTP $STATUS)"
+              fi
+            else
+              echo "❌ [$(date '+%Y-%m-%d %H:%M:%S')] Container stopped unexpectedly"
+              break
+            fi
+            
+            # Check every 5 minutes
+            sleep 300
+          done
+          
+          echo ""
+          echo "⏰ 5 hours elapsed. Shutting down testing environment..."
+      
+      - name: 🧹 Cleanup
+        if: always()
+        run: |
+          echo "Stopping and removing container..."
+          docker stop oscal-test || true
+          docker rm oscal-test || true
+          echo "✅ Cleanup complete"
+
+  ###############################################################################
+  # Notify Testers
+  ###############################################################################
+  notify-testers:
+    name: Notify Testers
+    runs-on: ubuntu-latest
+    needs: [deploy-runner-test]
+    if: success()
+    
+    steps:
+      - name: 📧 Create Tester Notification
+        run: |
+          cat > tester-notification.md << EOF
+          # 📢 New Build Ready for Testing!
+          
+          ## 🌐 Testing Environment (Active for 5 Hours)
+          
+          A new version has been deployed to the testing environment and is ready for functional testing.
+          
+          ### Access Information:
+          - **URL**: Check the [workflow output](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for the Ngrok URL
+          - **Environment**: Testing (GitHub Runner + Ngrok)
+          - **Build**: #${{ github.run_number }}
+          - **Commit**: ${{ github.sha }}
+          - **Active Until**: 5 hours from deployment
+          
+          ### What's New:
+          See the [commit diff](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) for changes in this build.
+          
+          ### Testing Instructions:
+          1. Get the testing URL from the workflow output (Ngrok tunnel URL)
+          2. Access the environment immediately (it will shut down after 5 hours)
+          3. Perform functional testing on key features
+          4. Document any anomalies or issues
+          5. Report findings via GitHub Issues
+          
+          ### ⚠️ Important:
+          - This testing environment is temporary (5 hours)
+          - Complete testing within the time window
+          - The environment will shut down automatically
+          - Production deployment to TrueNAS is done manually
+          
+          ### Need Help?
+          - View [Testing Summary](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - Check workflow artifacts for credentials
+          
+          EOF
+          
+          cat tester-notification.md >> $GITHUB_STEP_SUMMARY
+          
+          # This can be sent via email, Slack, Teams, etc.
+          # See optional notification steps below
+      
+      # Optional: Send email to testers
+      # Uncomment and configure if needed
+      # - name: 📧 Email Notification to Testers
+      #   uses: dawidd6/action-send-mail@v3
+      #   with:
+      #     server_address: smtp.gmail.com
+      #     server_port: 587
+      #     username: ${{ secrets.SMTP_USERNAME }}
+      #     password: ${{ secrets.SMTP_PASSWORD }}
+      #     subject: '🧪 New Build Ready for Testing - OSCAL Report Generator'
+      #     to: testers@example.com
+      #     from: GitHub Actions <noreply@github.com>
+      #     body: file://tester-notification.md
+      #     convert_markdown: true
+      
+      # Optional: Send Slack notification to testers
+      # Uncomment and configure if needed
+      # - name: 📱 Slack Notification to Testers
+      #   uses: slackapi/slack-github-action@v1
+      #   with:
+      #     webhook: ${{ secrets.SLACK_TESTERS_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "🧪 New build ready for testing!",
+      #         "blocks": [
+      #           {
+      #             "type": "section",
+      #             "text": {
+      #               "type": "mrkdwn",
+      #               "text": "*New Build Ready for Testing*\n\n*URL*: https://oscal-report-generator-testing.up.railway.app\n*Build*: #${{ github.run_number }}\n\nPlease perform functional testing and report any issues."
+      #             }
+      #           },
+      #           {
+      #             "type": "actions",
+      #             "elements": [
+      #               {
+      #                 "type": "button",
+      #                 "text": {
+      #                   "type": "plain_text",
+      #                   "text": "Open Testing Environment"
+      #                 },
+      #                 "url": "https://oscal-report-generator-testing.up.railway.app"
+      #               },
+      #               {
+      #                 "type": "button",
+      #                 "text": {
+      #                   "type": "plain_text",
+      #                   "text": "View Build Details"
+      #                 },
+      #                 "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #               }
+      #             ]
+      #           }
+      #         ]
+      #       }
