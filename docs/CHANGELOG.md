@@ -1,168 +1,190 @@
 # Changelog
 
-All notable changes to the OSCAL Report Generator V2 will be documented in this file.
+All notable changes to the OSCAL Report Generator will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.2] - 2026-01-14
+---
 
-### Fixed
-- **Security Vulnerability**:
-  - Fixed CVE in `qs` dependency (Denial-of-Service via memory exhaustion)
-  - Updated `qs` to version >= 6.14.1 (from vulnerable 6.14.0)
-  - The `arrayLimit` option now properly enforces limits for bracket notation (`a[]=1&a[]=2`)
-  - Prevents malicious requests from causing memory exhaustion and server crashes
-  - Added `qs >= 6.14.1` as direct dependency in both root and backend package.json
-
-### Changed
-- **Documentation Organization**:
-  - Moved `CHANGELOG.md` from root to `docs/CHANGELOG.md`
-  - Moved `VERSION_NOTES.md` from root to `docs/VERSION_NOTES.md`
-  - Updated `bump_version.sh` to reference new locations
-  - All `.md` files (except README.md) now in `docs/` folder for better organization
-
-## [1.4.1] - 2026-01-14
-
-### Fixed
-- **Reverse Proxy Support**:
-  - Added `app.set('trust proxy', true)` to Express configuration
-  - Enables proper authentication through SQUID, Nginx, Apache, and other reverse proxies
-  - Fixes "No authentication token provided" error when behind proxy
-  - Enhanced CORS configuration for proxy authentication headers
-  - Enables correct client IP detection for rate limiting behind proxy
-  - Properly handles X-Forwarded-For, X-Real-IP, and X-Forwarded-Proto headers
-
-### Changed
-- **CORS Configuration**:
-  - Explicitly allows Authorization and X-Session-Token headers
-  - Enables credentials forwarding through proxy
-  - Allows all standard HTTP methods (GET, POST, PUT, DELETE, OPTIONS, PATCH)
-
-## [1.4.0] - 2026-01-08
+## [Unreleased]
 
 ### Added
-- **Self-Registration Feature**:
-  - Users can now self-register with their email address on the login page
-  - Auto-generated 12-character passwords sent via configured email service
-  - New users automatically receive "User" role
-  - IP-based rate limiting (3 registrations per hour per IP)
-  - Comprehensive email blacklist system with 45-day cooldown
-  
-- **Automatic User Cleanup**:
-  - Scheduled daily job checks for inactive self-registered users
-  - Users inactive for 45+ days are automatically deactivated
-  - Deactivated email addresses added to blacklist (45-day cooldown)
-  - Only affects self-registered users, admin-created users unaffected
-  
-- **User Activity Tracking**:
-  - Added `lastLoginAt` field to track user login activity
-  - Added `createdVia` field to distinguish self-registered vs admin-created users
-  - Login timestamp automatically updated on successful authentication
-  
-- **New Backend Components**:
-  - Email blacklist manager (`backend/auth/emailBlacklist.js`)
-  - Rate limiter middleware (`backend/middleware/rateLimiter.js`)
-  - User cleanup job (`backend/jobs/userCleanup.js`)
-  - Self-registration API endpoint (`POST /api/auth/self-register`)
-  
-- **Configuration Files**:
-  - `config/app/email_blacklist.json` for storing blacklisted emails
-  - `config/app/rate_limit.json` for rate limit tracking
+- Documentation consolidation (29 → 16 files, 45% reduction)
+- Comprehensive DEPLOYMENT.md guide (consolidated 5 deployment docs)
+- Comprehensive TESTING_GUIDE.md (consolidated 5 test docs)
+- Implementation history archive in docs/archive/
 
 ### Changed
-- **Login Page Redesign**:
-  - Removed default test credentials panel
-  - Added self-registration form with email input
-  - Updated UI to reflect registration-based access model
-  - Added inactivity policy information for users
-  
-- **Documentation Updates**:
-  - Replaced "Default Credentials" section with "User Registration"
-  - Added self-registration security documentation
-  - Updated README with 45-day inactivity policy
-  - Platform Admin access instructions clarified
-
-### Fixed
-- Fixed missing `await` in user creation endpoint causing undefined password issue
-- Fixed duplicate `sessionToken` key in AuthContext
-- Added explicit `Content-Type: application/json` header to API requests
-
-### Security
-- Rate limiting prevents registration spam/abuse
-- Email validation and uniqueness checks
-- Automated cleanup prevents dormant account accumulation
-- Only "User" role can be self-assigned (Platform Admin requires manual creation)
-
-## [1.3.1] - 2026-01-06
+- Renamed tests/ folder to test_cases/ for better clarity
+- Consolidated deployment documentation into single comprehensive guide
+- Consolidated testing documentation into single complete guide
+- Archived implementation history docs for better organization
 
 ### Removed
-- Removed `deploy-to-smb.sh` script (no longer needed with TrueNAS automation)
-- Removed SMB deployment documentation from DEPLOYMENT.md
-
-### Fixed
-- Fixed pre-commit hook bug that allowed commits without version bumps
-- Pre-commit hook now properly compares version numbers instead of just checking if package.json was modified
-
-### Added
-- Added `VERSION_NOTES.md` to document version management and pre-commit hook fix
-
-### Changed
-- Updated documentation to remove all references to deploy-to-smb.sh
-
-## [1.3.0] - 2026-01-06
-
-### Breaking Changes
-- **License Change**: Migrated from MIT to GPL-3.0-or-later
-  - Updated LICENSE file with GNU GPL v3.0
-  - Updated all 58 source files with new license headers
-  - Added license link to application footer
-
-### Added
-- **TrueNAS Blue-Green Deployment Automation**:
-  - Enhanced `build_on_truenas.sh` with comprehensive Docker cleanup
-  - Added `--no-cache` flag to prevent Docker layer caching issues
-  - Implemented aggressive old image removal
-  - Auto-detection of Blue/Green instances based on directory name
-  - Port configuration: Green=3019, Blue=3020
-  - Monthly staggered update schedule support
-  - Version-aware builds (only rebuilds if version changed)
-  - Git integration (uses existing repos, pulls updates)
-
-- **Documentation**:
-  - Added `docs/CRON_SETUP.md` for cron configuration reference
-  - Added `docs/TRUENAS_DEPLOYMENT.md` for complete deployment guide
-  - Added `docs/TRUENAS_QUICK_SETUP.md` for quick start
-  - Reorganized all .md files into `docs/` folder
-  - Test documentation moved to `tests/docs/`
-
-- **UI/UX Improvements**:
-  - Added "License" link to application footer
-  - Updated Footer component with version 1.3.0
-
-### Fixed
-- Fixed Docker image caching issues causing old versions (1.2.6) to persist
-- Fixed status badge and button placement in control tiles
-- Fixed control item overflow issues
-- Improved control item layout and spacing
-
-### Changed
-- Updated all copyright notices to 2025
-- Updated README.md with GPL license information and badge
-- Updated all port references in documentation (Green=3019, Blue=3020)
-
-## [1.2.7] - 2024-12-29
-
-### Added
-- AI telemetry logging system
-- User management improvements
-- Session management enhancements
-
-### Fixed
-- Various bug fixes and stability improvements
+- TRUENAS_QUICK_SETUP.md (merged into DEPLOYMENT.md)
+- TRUENAS_DEPLOYMENT.md (merged into DEPLOYMENT.md)
+- DEPLOYMENT_GUIDE.md (merged into DEPLOYMENT.md)
+- CRON_SETUP.md (merged into DEPLOYMENT.md)
+- test_cases/docs/TESTING.md (merged into TESTING_GUIDE.md)
+- test_cases/docs/TESTING_QUICK_START.md (merged into TESTING_GUIDE.md)
+- test_cases/docs/PLAYWRIGHT_QUICK_GUIDE.md (merged into TESTING_GUIDE.md)
+- test_cases/docs/RECORDING_TESTS.md (merged into TESTING_GUIDE.md)
+- test_cases/docs/TEST_IMPLEMENTATION_SUMMARY.md (merged into TESTING_GUIDE.md)
+- REFACTORING_SUMMARY.md (archived)
+- AUTOMATION_ENHANCEMENTS.md (archived)
+- CONFIG_SAVE_VERIFICATION.md (archived)
+- IMPLEMENTATION_COMPLETE.md (archived)
 
 ---
 
-**Copyright (C) 2025 Mukesh Kesharwani**  
-**License:** GPL-3.0-or-later
+## [1.6.2] - 2026-01-22
 
+### Added
+- Comprehensive validation system with 70+ best practice rules
+- Security pattern detection for 50+ vulnerability types
+- Automated best practice updates from npm audit
+- Dynamic rule learning system
+- Complete test coverage documentation (86+ tests)
+- CI/CD automation enhancements
+
+### Changed
+- Enhanced bump_version.sh to auto-update best practices
+- Updated GitHub Actions with comprehensive validation
+- test_cases folder now committed to git for contributor validation
+
+### Fixed
+- Async keyword missing in /api/settings handler
+
+---
+
+## [1.6.1] - 2026-01-22
+
+### Added
+- Config save verification system
+- Disk persistence verification after save
+- Visual feedback for successful saves
+- "Last Saved" timestamp indicator
+- Detailed save verification reporting
+
+### Fixed
+- Configuration loss after container rebuilds
+- Missing save confirmation feedback
+
+---
+
+## [1.6.0] - 2026-01-22
+
+### Added
+- Config persistence verification in build_on_truenas.sh
+- Beta warning banner on home page
+- Volume mount verification
+- Pre-deploy config backup check
+
+### Changed
+- Enhanced deployment script with config checks
+- Improved user feedback for beta status
+
+---
+
+## [1.5.0] - 2026-01-20
+
+### Added
+- Role management UI in User Management page
+- Role dropdown selection (Platform Admin, User, Assessor)
+- RBAC permission system
+- Secure password hashing with PBKDF2
+
+### Changed
+- Enhanced user management interface
+- Improved security with role-based access
+
+---
+
+## [1.4.2] - 2025-12-15
+
+### Security
+- Fixed all 5 GitHub Dependabot vulnerabilities
+- Updated qs package to >=6.14.1
+- Comprehensive security audit
+
+---
+
+## [1.4.0] - 2025-11-30
+
+### Added
+- Comprehensive project audit and documentation updates
+- Git repository ownership auto-fix
+- Docker deployment improvements
+
+---
+
+## [1.3.0] - 2025-11-15
+
+### Added
+- TrueNAS deployment support
+- Blue-Green deployment strategy
+- Automated monthly updates via cron
+
+---
+
+## [1.2.7] - 2025-10-30
+
+### Added
+- Docker containerization
+- Docker Compose support
+- Volume persistence for config
+
+---
+
+## [1.2.0] - 2025-09-15
+
+### Added
+- User authentication system
+- Session management
+- Password hashing
+
+---
+
+## [1.1.0] - 2025-08-01
+
+### Added
+- Email configuration
+- SMTP integration
+- Email notifications
+
+---
+
+## [1.0.0] - 2025-06-01
+
+### Added
+- Initial release
+- OSCAL catalog processing
+- SSP generation
+- SOA creation
+- CCM export
+- PDF export functionality
+- Excel export functionality
+- Basic web interface
+
+---
+
+## Version History Summary
+
+| Version | Date | Major Changes |
+|---------|------|---------------|
+| 1.6.2 | 2026-01-22 | Validation system, automation enhancements |
+| 1.6.1 | 2026-01-22 | Config save verification |
+| 1.6.0 | 2026-01-22 | Config persistence checks |
+| 1.5.0 | 2026-01-20 | Role management UI |
+| 1.4.2 | 2025-12-15 | Security fixes |
+| 1.4.0 | 2025-11-30 | Documentation updates |
+| 1.3.0 | 2025-11-15 | TrueNAS deployment |
+| 1.2.7 | 2025-10-30 | Docker support |
+| 1.2.0 | 2025-09-15 | User authentication |
+| 1.1.0 | 2025-08-01 | Email integration |
+| 1.0.0 | 2025-06-01 | Initial release |
+
+---
+
+For detailed implementation history, see `docs/archive/IMPLEMENTATION_HISTORY.md`

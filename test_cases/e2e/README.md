@@ -47,7 +47,7 @@ npx playwright codegen http://localhost:3021
 #### Save the Generated Code
 
 1. Copy the generated code from Playwright Inspector
-2. Paste it into a test file in `tests/e2e/`
+2. Paste it into a test file in `test_cases/e2e/`
 3. Add assertions and clean up as needed
 4. Run the test!
 
@@ -191,7 +191,7 @@ npx playwright test
 npx playwright test --headed
 
 # Run specific test file
-npx playwright test tests/e2e/login.spec.js
+npx playwright test test_cases/e2e/login.spec.js
 
 # Debug mode (step through tests)
 npx playwright test --debug

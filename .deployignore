@@ -2,7 +2,7 @@
 # Add this file to your deployment scripts to exclude test files
 
 # Test directories
-tests/
+test_cases/
 
 # Test files
 **/*.test.js

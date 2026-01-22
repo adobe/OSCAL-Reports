@@ -1,6 +1,6 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-generator",
-  "version": "1.4.2",
+  "version": "1.6.2",
   "description": "Keekar's OSCAL SOA/SSP/CCM Generator - Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
@@ -21,7 +21,6 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
-    "aws-sdk": "^2.1692.0",
     "express": "^5.1.0",
     "qs": ">=6.14.1"
   },

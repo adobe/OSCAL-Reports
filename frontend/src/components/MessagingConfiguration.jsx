@@ -17,6 +17,8 @@ function MessagingConfiguration({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
   const [messagingConfig, setMessagingConfig] = useState({
     enabled: false,
     channel: 'email',
@@ -67,7 +69,14 @@ function MessagingConfiguration({ embedded = false }) {
         }
       };
       setMessagingConfig(config);
+      
+      // Set last modified timestamp if available
+      if (response.data.lastModified) {
+        setLastSaved(response.data.lastModified);
+      }
+      
       setMessage('');
+      setVerificationStatus(null);
     } catch (error) {
       console.error('Failed to load messaging config:', error);
       setMessage('⚠️ Failed to load messaging configuration');
@@ -84,6 +93,8 @@ function MessagingConfiguration({ embedded = false }) {
 
     try {
       setSaving(true);
+      setVerificationStatus(null);
+      
       const response = await axios.get('/api/settings', getAuthConfig());
       const currentConfig = response.data;
       
@@ -92,12 +103,41 @@ function MessagingConfiguration({ embedded = false }) {
         messagingConfig: messagingConfig
       };
 
-      await axios.post('/api/settings', updatedConfig, getAuthConfig());
-      setMessage('✅ Messaging configuration saved successfully');
-      setTimeout(() => setMessage(''), 3000);
+      const saveResponse = await axios.post('/api/settings', updatedConfig, getAuthConfig());
+      
+      // Handle verification status
+      const verification = saveResponse.data.verification;
+      if (verification) {
+        setVerificationStatus({
+          verified: verification.verified,
+          timestamp: verification.timestamp,
+          configPath: verification.configPath,
+          discrepancies: verification.discrepancies,
+          warning: verification.warning
+        });
+        setLastSaved(verification.timestamp);
+        
+        if (verification.verified) {
+          setMessage('✅ Configuration saved and verified on disk');
+        } else {
+          setMessage('⚠️ Configuration saved but verification found issues - please check and re-save');
+          console.warn('Verification discrepancies:', verification.discrepancies);
+        }
+      } else {
+        setMessage('✅ Messaging configuration saved successfully');
+      }
+      
+      // Reload config to ensure UI shows what's actually on disk
+      await loadMessagingConfig();
+      
+      setTimeout(() => {
+        setMessage('');
+        setVerificationStatus(null);
+      }, 8000);
     } catch (error) {
       console.error('Failed to save messaging config:', error);
       setMessage('❌ Failed to save messaging configuration: ' + (error.response?.data?.error || error.message));
+      setVerificationStatus({ verified: false, error: true });
     } finally {
       setSaving(false);
     }
@@ -176,6 +216,42 @@ function MessagingConfiguration({ embedded = false }) {
       {message && (
         <div className={`message ${message.includes('✅') ? 'success' : message.includes('⚠️') ? 'warning' : 'error'}`}>
           {message}
+        </div>
+      )}
+
+      {/* Config Verification Status */}
+      {verificationStatus && (
+        <div className={`verification-status ${verificationStatus.verified ? 'verified' : 'warning'}`}>
+          <div className="verification-header">
+            {verificationStatus.verified ? (
+              <>
+                <span className="verification-icon">✅</span>
+                <strong>Disk Verification Passed</strong>
+              </>
+            ) : (
+              <>
+                <span className="verification-icon">⚠️</span>
+                <strong>Disk Verification Warning</strong>
+              </>
+            )}
+          </div>
+          <div className="verification-details">
+            <div>Saved at: {new Date(verificationStatus.timestamp).toLocaleString()}</div>
+            <div>Location: {verificationStatus.configPath}</div>
+            {verificationStatus.discrepancies && (
+              <div className="verification-warning">
+                Issues found: {verificationStatus.discrepancies.join(', ')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Last Saved Indicator */}
+      {lastSaved && !verificationStatus && (
+        <div className="last-saved-indicator">
+          <span className="last-saved-icon">💾</span>
+          <span>Last saved: {new Date(lastSaved).toLocaleString()}</span>
         </div>
       )}
 
