@@ -141,6 +141,42 @@ crontab -e
 
 **Manual deployment available via GitHub Actions UI** - see [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md) for details.
 
+### Branching Strategy 🌳
+
+**Three-tier branching model for progressive testing:**
+
+```
+Development  ──┐
+               ├──> Pre_Prod ──> main (Production)
+Quality_Test ──┘
+```
+
+**Branch Rules:**
+- ✅ **Development/Quality_Test → Pre_Prod**: Active development and QA testing
+- ✅ **Pre_Prod → main**: Production releases only
+- ❌ **Direct merges to main**: Blocked (must go through Pre_Prod)
+- 🔒 **Protected branches**: main and Pre_Prod require PR reviews
+
+**Quick Commands:**
+```bash
+# Start new feature
+git checkout Development
+git checkout -b feature/my-feature
+gh pr create --base Development
+
+# Deploy to staging
+git checkout Development
+gh pr create --base Pre_Prod
+
+# Deploy to production
+git checkout Pre_Prod
+gh pr create --base main
+```
+
+**Documentation:**
+- 📖 **Full Guide**: [docs/BRANCHING_STRATEGY.md](docs/BRANCHING_STRATEGY.md)
+- ⚡ **Quick Reference**: [.github/BRANCHING_QUICKSTART.md](.github/BRANCHING_QUICKSTART.md)
+
 #### Manual TrueNAS Deployment
 
 For manual deployment without Docker:

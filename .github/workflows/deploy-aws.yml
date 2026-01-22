@@ -11,12 +11,14 @@ on:
           - production
           - staging
         default: 'staging'
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
+  # Note: Auto-deployment disabled. Requires AWS credentials.
+  # Use workflow_dispatch (manual trigger) instead.
+  # push:
+  #   branches:
+  #     - main
+  #   paths-ignore:
+  #     - 'docs/**'
+  #     - '**.md'
 
 jobs:
   ###############################################################################
@@ -81,7 +83,7 @@ jobs:
     needs: [build]
     environment:
       name: ${{ inputs.environment || 'production' }}
-      url: http://${{ secrets.AWS_LOAD_BALANCER_DNS }}
+      # Note: Environment URL cannot use secrets. Set manually in GitHub UI if needed.
     
     steps:
       - name: 📥 Checkout code

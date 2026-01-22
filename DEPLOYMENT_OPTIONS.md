@@ -62,6 +62,7 @@ Choose the deployment option that best fits your needs.
 | Platform | Cost | Setup Time | Best For |
 |----------|------|------------|----------|
 | 🔵 **Azure Web App** | $13/mo | 15 min | Microsoft ecosystem |
+| 🟠 **AWS EC2** | $10-20/mo | 20 min | Full control, traditional VMs |
 | 🟠 **AWS ECS** | $15-20/mo | 30 min | AWS containers |
 | 🟠 **AWS EKS** | $98-128/mo | 60 min | Kubernetes users |
 | 🔴 **Google Cloud Run** | $5-10/mo | 10 min | Pay-per-use, serverless |
@@ -71,15 +72,17 @@ Choose the deployment option that best fits your needs.
 **✅ Pros:**
 - Public URL automatically provided
 - High availability (99.9%+ uptime)
-- Auto-scaling capabilities
-- Managed infrastructure
-- SSL/HTTPS included
+- Auto-scaling capabilities (most platforms)
+- Managed infrastructure (container platforms)
+- SSL/HTTPS included (most platforms)
 - Professional hosting
+- Full control available (EC2)
 
 **❌ Cons:**
 - Monthly recurring cost
 - Requires cloud account
 - External dependency
+- Server management needed (EC2)
 
 **Setup:** See `docs/CLOUD_DEPLOYMENT.md`
 
@@ -200,6 +203,14 @@ docker run -d -p 3020:3020 ghcr.io/adobemanagedservices/oscal-report-generator:l
 - Very simple setup
 - Good performance
 
+### Full Server Control
+**→ AWS EC2**
+- $10-20/month
+- Traditional VM deployment
+- SSH access for debugging
+- Run multiple services
+- Full customization
+
 ### Enterprise Production (AWS/Azure)
 **→ Azure Web App or AWS ECS**
 - Professional SLAs
@@ -223,7 +234,7 @@ docker run -d -p 3020:3020 ghcr.io/adobemanagedservices/oscal-report-generator:l
 
 ## 🚀 Quick Start: Deploy to Cloud in 15 Minutes
 
-### Example: Google Cloud Run (Easiest + Cheapest)
+### Example 1: Google Cloud Run (Easiest + Cheapest)
 
 ```bash
 # 1. Install Google Cloud CLI
@@ -247,6 +258,34 @@ gcloud run deploy oscal-report-generator \
 ```
 
 **Cost:** ~$5-10/month (pay per use)
+
+### Example 2: AWS EC2 (Full Control)
+
+```bash
+# 1. Launch EC2 instance (t3.small, Ubuntu 22.04)
+# Via AWS Console: EC2 → Launch Instance
+
+# 2. SSH into instance
+ssh -i your-key.pem ubuntu@ec2-xx-xx-xx-xx.compute-1.amazonaws.com
+
+# 3. Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker ubuntu
+exit
+
+# 4. Reconnect and deploy
+ssh -i your-key.pem ubuntu@ec2-xx-xx-xx-xx.compute-1.amazonaws.com
+docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+docker run -d --name oscal-report-generator --restart unless-stopped \
+  -p 80:3020 -p 3020:3020 -e NODE_ENV=production \
+  ghcr.io/adobemanagedservices/oscal-report-generator:latest
+
+# 5. Access your app
+# http://your-ec2-public-ip or http://your-ec2-public-ip:3020
+```
+
+**Cost:** ~$10-20/month (t3.small instance)
 
 ---
 
@@ -273,11 +312,19 @@ gcloud run deploy oscal-report-generator \
 ### Q: What if I just want Docker images built?
 **A:** Already done! Every push to main builds and pushes to `ghcr.io`. Pull and run anywhere.
 
-### Q: Should I use AWS ECS or AWS EKS?
+### Q: Should I use AWS EC2, ECS, or EKS?
 **A:** 
+- **Use EC2** if you want full control, traditional VMs, or need to SSH into servers (~$10-20/month)
 - **Use ECS** if you want simpler AWS-native container management (~$15-20/month)
 - **Use EKS** if you already use Kubernetes or need K8s portability (~$98-128/month)
-- EKS costs more but provides Kubernetes ecosystem and multi-cloud capability
+- EC2 is simplest, ECS is best for containers, EKS is for Kubernetes users
+
+### Q: Is EC2 better than container platforms?
+**A:** It depends on your needs:
+- **EC2 Pros**: Full control, SSH access, familiar Linux server, can run multiple apps
+- **EC2 Cons**: Manual updates, security patches, no auto-scaling out of box
+- **Containers Pros**: Automated deployments, easy scaling, immutable infrastructure
+- **Containers Cons**: Less control, learning curve for some teams
 
 ---
 

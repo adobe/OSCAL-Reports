@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, Pre_Prod, Development, Quality_Test ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, Pre_Prod, Development, Quality_Test ]
 
 jobs:
   ###############################################################################
@@ -45,12 +45,14 @@ jobs:
         working-directory: ./backend
         run: npm run test:coverage
       
-      - name: 📤 Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+      # Note: codecov/codecov-action is not allowed by organization policy
+      # Coverage reports are generated locally and can be viewed in artifacts
+      - name: 📤 Upload coverage report as artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: ./backend/coverage/lcov.info
-          flags: backend
           name: backend-coverage
+          path: ./backend/coverage/
+          retention-days: 7
 
   ###############################################################################
   # Frontend Tests
@@ -83,7 +85,7 @@ jobs:
         run: npm run build
       
       - name: 📤 Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-build-${{ matrix.node-version }}
           path: frontend/dist
