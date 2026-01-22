@@ -9,9 +9,11 @@ tests/
 ├── backend/                    # Backend tests
 │   ├── unit/                   # Unit tests
 │   │   ├── auth.test.js        # Authentication tests
-│   │   └── roles.test.js       # RBAC tests
+│   │   ├── roles.test.js       # RBAC tests
+│   │   └── async-handlers.test.js  # Async/await validation tests
 │   ├── integration/            # Integration tests
-│   │   └── api.test.js         # API endpoint tests
+│   │   ├── api.test.js         # API endpoint tests
+│   │   └── settings-api.test.js    # Settings API async tests
 │   ├── e2e/                    # End-to-end tests
 │   │   └── userflow.test.js    # User workflow tests
 │   ├── jest.config.js          # Jest configuration
@@ -112,12 +114,12 @@ open coverage/index.html
 ### 1. Unit Tests (`unit/`)
 Test individual functions and components in isolation.
 
-**Example**: Password hashing, RBAC permissions
+**Example**: Password hashing, RBAC permissions, async handler validation
 
 ### 2. Integration Tests (`integration/`)
 Test how multiple components work together.
 
-**Example**: API endpoints, database operations
+**Example**: API endpoints, database operations, settings API async operations
 
 ### 3. End-to-End Tests (`e2e/`)
 Test complete user workflows.
