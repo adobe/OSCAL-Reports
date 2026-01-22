@@ -9,11 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.6.3] - 2026-01-22
 
+### Security
+- **CRITICAL FIX**: Updated lodash from 4.17.21 to 4.17.23 to fix prototype pollution vulnerability (CVE-pending)
+  - Added npm overrides to force lodash >=4.17.23 in all dependencies
+  - Vulnerability affected _.unset and _.omit functions
+  - Transitive dependency via concurrently@8.2.2
+  - All npm audit checks now pass (0 vulnerabilities)
+
 ### Fixed
 - Updated GitHub Actions artifact upload from deprecated v3 to v4
 - Fixed bash script error in update_best_practices.sh (removed 'local' keyword used outside function)
 - Resolved Frontend Tests workflow failure due to deprecated actions
 - Resolved Best practices update script failure
+
+### Changed
+- Restricted test environment & ngrok deployment workflows to Adobe repository only
+  - Added repository checks to deploy-test-environment.yml workflow
+  - Personal repository (keekar2022/OSCAL-Reports) gracefully skips ngrok deployments
+  - Adobe repository (AdobeManagedServices/OSCAL-Reports) retains full functionality
+  - Created comprehensive documentation in docs/REPOSITORY_WORKFLOW_RESTRICTIONS.md
 
 ## [Unreleased]
 
