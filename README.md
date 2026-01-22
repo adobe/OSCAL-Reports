@@ -99,6 +99,31 @@ crontab -e
 
 **Documentation:**
 - **Complete Deployment Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **GitHub Actions CI/CD**: [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md)
+
+### GitHub Actions CI/CD 🤖
+
+**Automated deployment when changes are pushed to main branch:**
+
+- ✅ **Automatic Testing**: Unit, integration, and E2E tests
+- 🐳 **Docker Image Building**: Automatic containerization to GitHub Container Registry
+- 🚀 **Deployment Ready**: Build artifacts with deployment instructions
+- 📧 **Notifications**: Status updates with deployment URLs to owners and contributors
+- 🔒 **Security Scanning**: Dependency audits and vulnerability checks
+
+**What happens on push to main:**
+1. All tests run automatically
+2. Docker image is built and pushed to `ghcr.io`
+3. Deployment instructions are generated with URLs
+4. Notifications sent to repository owner and committer
+5. Credentials available in workflow artifacts
+
+**Access deployed application:**
+- 🔵 **Blue Instance**: http://nas.keekar.com:3020
+- 🟢 **Green Instance**: http://nas.keekar.com:3019
+- 📦 **Docker Image**: `ghcr.io/adobemanagedservices/oscal-report-generator:latest`
+
+**Manual deployment available via GitHub Actions UI** - see [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md) for details.
 
 #### Manual TrueNAS Deployment
 

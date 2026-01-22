@@ -205,50 +205,363 @@ jobs:
           fi
 
   ###############################################################################
-  # Deployment (only on main branch)
+  # Build and Push Docker Image
+  ###############################################################################
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests, code-quality, version-check, integration-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      image-tag: ${{ steps.extract-version.outputs.image-tag }}
+      registry-url: ${{ steps.extract-version.outputs.registry-url }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📝 Extract version
+        id: extract-version
+        run: |
+          VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "image-tag=ghcr.io/${{ github.repository_owner }}/oscal-report-generator:$VERSION" >> $GITHUB_OUTPUT
+          echo "registry-url=ghcr.io/${{ github.repository_owner }}/oscal-report-generator" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📦 Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          build-args: |
+            BUILD_TIMESTAMP=${{ github.event.head_commit.timestamp }}
+            PORT=3020
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/oscal-report-generator:${{ steps.extract-version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/oscal-report-generator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.extract-version.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      
+      - name: 📤 Extract credentials from image
+        id: extract-credentials
+        run: |
+          # Create temporary container to extract credentials
+          docker pull ghcr.io/${{ github.repository_owner }}/oscal-report-generator:${{ steps.extract-version.outputs.version }}
+          docker create --name temp-oscal ghcr.io/${{ github.repository_owner }}/oscal-report-generator:${{ steps.extract-version.outputs.version }}
+          docker cp temp-oscal:/app/credentials.txt credentials.txt || echo "No credentials file found"
+          docker rm temp-oscal
+          
+          # Store credentials in output (masked)
+          if [ -f credentials.txt ]; then
+            ADMIN_PASS=$(grep "Password:" credentials.txt | head -1 | awk '{print $2}')
+            echo "::add-mask::$ADMIN_PASS"
+            echo "admin-password=$ADMIN_PASS" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📤 Upload credentials as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-credentials-${{ steps.extract-version.outputs.version }}
+          path: credentials.txt
+          retention-days: 7
+  
+  ###############################################################################
+  # Deploy to Production
   ###############################################################################
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality, version-check, integration-test]
+    needs: [build-and-push]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
       
-      - name: 🚀 Deploy notification
+      - name: 🚀 Deployment Instructions
+        id: deploy-info
         run: |
-          echo "🎉 All tests passed! Ready for deployment."
-          echo "Version: $(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')"
+          VERSION="${{ needs.build-and-push.outputs.version }}"
+          IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          REGISTRY_URL="${{ needs.build-and-push.outputs.registry-url }}"
+          
+          echo "deployment-url=http://nas.keekar.com:3020" >> $GITHUB_OUTPUT
+          echo "image-url=$REGISTRY_URL:$VERSION" >> $GITHUB_OUTPUT
+          
+          echo "🎉 Docker image built and pushed successfully!"
+          echo ""
+          echo "📦 Image Details:"
+          echo "  - Version: $VERSION"
+          echo "  - Image: $IMAGE_TAG"
+          echo "  - Latest: ${REGISTRY_URL}:latest"
+          echo ""
+          echo "🚀 Deployment Options:"
+          echo ""
+          echo "1️⃣ TrueNAS Deployment (Recommended):"
+          echo "   SSH into TrueNAS and run:"
+          echo "   cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green"
+          echo "   git pull origin main"
+          echo "   ./build_on_truenas.sh"
+          echo ""
+          echo "2️⃣ Manual Docker Deployment:"
+          echo "   docker pull ${IMAGE_TAG}"
+          echo "   docker stop oscal-app || true"
+          echo "   docker rm oscal-app || true"
+          echo "   docker run -d --name oscal-app -p 3020:3020 -v \$(pwd)/config:/app/config ${IMAGE_TAG}"
+          echo ""
+          echo "3️⃣ Docker Compose:"
+          echo "   docker-compose pull"
+          echo "   docker-compose up -d"
+          echo ""
+          echo "🌐 Access URLs:"
+          echo "  - Blue Instance: http://nas.keekar.com:3020"
+          echo "  - Green Instance: http://nas.keekar.com:3019"
+          echo ""
+          echo "📋 Next Steps:"
+          echo "  1. Deploy to TrueNAS using build_on_truenas.sh"
+          echo "  2. Test deployment at http://nas.keekar.com:3020"
+          echo "  3. Check credentials in workflow artifacts"
+          echo "  4. Change default passwords immediately"
       
-      # Add your deployment steps here
-      # Examples:
-      # - Deploy to AWS
-      # - Deploy to Azure
-      # - Deploy to Docker registry
-      # - Deploy to Kubernetes
-      # - Create GitHub release
+      # Optional: Trigger TrueNAS deployment via webhook or SSH
+      # Uncomment and configure if you want automatic deployment
+      # - name: 🔔 Trigger TrueNAS Deployment
+      #   run: |
+      #     # Option 1: Via webhook (if configured on TrueNAS)
+      #     curl -X POST ${{ secrets.TRUENAS_WEBHOOK_URL }} \
+      #       -H "Authorization: Bearer ${{ secrets.TRUENAS_WEBHOOK_TOKEN }}" \
+      #       -d '{"version": "${{ needs.build-and-push.outputs.version }}"}'
+      #     
+      #     # Option 2: Via SSH (requires SSH key in secrets)
+      #     # echo "${{ secrets.TRUENAS_SSH_KEY }}" > /tmp/ssh_key
+      #     # chmod 600 /tmp/ssh_key
+      #     # ssh -i /tmp/ssh_key mkesharw@NAS01 'cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && git pull && ./build_on_truenas.sh'
 
   ###############################################################################
-  # Notification
+  # Comprehensive Notifications
   ###############################################################################
-  notify:
-    name: Send Notifications
+  notify-success:
+    name: Notify Deployment Success
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality, version-check]
-    if: always()
+    needs: [deploy, build-and-push]
+    if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
-      - name: 📢 Check status
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📧 Create Deployment Summary
+        id: summary
         run: |
-          if [ "${{ needs.backend-tests.result }}" == "success" ] && \
-             [ "${{ needs.frontend-tests.result }}" == "success" ] && \
-             [ "${{ needs.code-quality.result }}" == "success" ] && \
-             [ "${{ needs.version-check.result }}" == "success" ]; then
-            echo "✅ All checks passed!"
-          else
-            echo "❌ Some checks failed"
-            exit 1
-          fi
+          VERSION="${{ needs.build-and-push.outputs.version }}"
+          IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an')
+          COMMIT_SHA=$(git log -1 --pretty=format:'%h')
+          
+          cat > deployment-summary.md << EOF
+          # 🚀 Deployment Ready - OSCAL Report Generator v$VERSION
+          
+          ## 📦 Build Information
+          - **Version**: $VERSION
+          - **Image**: \`$IMAGE_TAG\`
+          - **Commit**: $COMMIT_SHA - $COMMIT_MSG
+          - **Author**: $COMMIT_AUTHOR
+          - **Workflow**: [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ## 🌐 Deployment URLs
+          - **Blue Instance**: http://nas.keekar.com:3020
+          - **Green Instance**: http://nas.keekar.com:3019
+          - **Docker Image**: https://ghcr.io/${{ github.repository_owner }}/oscal-report-generator:$VERSION
+          
+          ## 🔐 Credentials
+          Download credentials from [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          
+          **⚠️ IMPORTANT**: Change default passwords immediately after first login!
+          
+          ## 📋 Deployment Steps
+          
+          ### Option 1: TrueNAS Deployment (Recommended)
+          \`\`\`bash
+          ssh mkesharw@NAS01
+          cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
+          git pull origin main
+          ./build_on_truenas.sh
+          \`\`\`
+          
+          ### Option 2: Manual Docker Deployment
+          \`\`\`bash
+          docker pull $IMAGE_TAG
+          docker stop oscal-app || true
+          docker rm oscal-app || true
+          docker run -d \\
+            --name oscal-app \\
+            -p 3020:3020 \\
+            -v \$(pwd)/config:/app/config \\
+            $IMAGE_TAG
+          \`\`\`
+          
+          ### Option 3: Docker Compose
+          \`\`\`bash
+          docker-compose pull
+          docker-compose up -d
+          \`\`\`
+          
+          ## ✅ Post-Deployment Checklist
+          - [ ] Deploy to one instance (Blue or Green)
+          - [ ] Verify health endpoint: \`curl http://nas.keekar.com:3020/health\`
+          - [ ] Test login with new credentials
+          - [ ] Check critical functionality
+          - [ ] Monitor logs for errors
+          
+          ## 🔗 Quick Links
+          - [View Changes](${{ github.server_url }}/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }})
+          - [Docker Image](${{ needs.build-and-push.outputs.registry-url }})
+          - [Workflow Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ---
+          
+          **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Deployed By**: ${{ github.actor }}
+          EOF
+          
+          cat deployment-summary.md
+      
+      - name: 📤 Upload Deployment Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-summary-${{ needs.build-and-push.outputs.version }}
+          path: deployment-summary.md
+          retention-days: 30
+      
+      - name: 📝 Create Job Summary
+        run: |
+          cat deployment-summary.md >> $GITHUB_STEP_SUMMARY
+      
+      - name: 📧 Notify via GitHub (Create Issue Comment if from PR)
+        if: github.event.pull_request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.build-and-push.outputs.version }}';
+            const imageTag = '${{ needs.build-and-push.outputs.image-tag }}';
+            
+            const comment = `## 🚀 Deployment Successful!
+            
+            **Version**: ${version}
+            **Docker Image**: \`${imageTag}\`
+            
+            ### 🌐 Test URLs:
+            - Blue: http://nas.keekar.com:3020
+            - Green: http://nas.keekar.com:3019
+            
+            ### 📋 Next Steps:
+            1. SSH into TrueNAS
+            2. Run: \`cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./build_on_truenas.sh\`
+            3. Test at http://nas.keekar.com:3020
+            
+            [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+      
+      # Email notifications (optional - requires email action)
+      # Uncomment and configure if you want email notifications
+      # - name: 📧 Send Email to Repository Owner
+      #   uses: dawidd6/action-send-mail@v3
+      #   with:
+      #     server_address: smtp.gmail.com
+      #     server_port: 587
+      #     username: ${{ secrets.SMTP_USERNAME }}
+      #     password: ${{ secrets.SMTP_PASSWORD }}
+      #     subject: '✅ OSCAL Report Generator v${{ needs.build-and-push.outputs.version }} Deployed'
+      #     to: mukesh.kesharwani@adobe.com
+      #     from: GitHub Actions <noreply@github.com>
+      #     body: file://deployment-summary.md
+      #     convert_markdown: true
+      
+      # Slack notifications (optional - requires webhook)
+      # - name: 📱 Send Slack Notification
+      #   uses: slackapi/slack-github-action@v1
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "🚀 OSCAL Report Generator v${{ needs.build-and-push.outputs.version }} deployed!",
+      #         "blocks": [
+      #           {
+      #             "type": "section",
+      #             "text": {
+      #               "type": "mrkdwn",
+      #               "text": "*OSCAL Report Generator Deployment*\n\n*Version:* ${{ needs.build-and-push.outputs.version }}\n*Status:* ✅ Success\n*URLs:*\n• Blue: http://nas.keekar.com:3020\n• Green: http://nas.keekar.com:3019"
+      #             }
+      #           }
+      #         ]
+      #       }
+  
+  notify-failure:
+    name: Notify Build/Deploy Failure
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests, code-quality, version-check, integration-test]
+    if: failure()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📝 Create Failure Summary
+        run: |
+          cat > failure-summary.md << EOF
+          # ❌ Build/Test Failed - OSCAL Report Generator
+          
+          ## Failed Jobs:
+          - Backend Tests: ${{ needs.backend-tests.result }}
+          - Frontend Tests: ${{ needs.frontend-tests.result }}
+          - Code Quality: ${{ needs.code-quality.result }}
+          - Version Check: ${{ needs.version-check.result }}
+          - Integration Test: ${{ needs.integration-test.result }}
+          
+          ## Details:
+          - **Commit**: ${{ github.sha }}
+          - **Author**: ${{ github.actor }}
+          - **Branch**: ${{ github.ref_name }}
+          
+          ## Actions Required:
+          1. Review [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          2. Fix failing tests/checks
+          3. Push fixes to trigger new build
+          
+          ---
+          **Failed At**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          EOF
+          
+          cat failure-summary.md >> $GITHUB_STEP_SUMMARY
 
