@@ -151,11 +151,14 @@ Development  ──┐
 Quality_Test ──┘
 ```
 
+**🔒 CRITICAL RULE:**
+- **⛔ ONLY Pre_Prod → main** (Strictly enforced - all other branches BLOCKED)
+
 **Branch Rules:**
-- ✅ **Development/Quality_Test → Pre_Prod**: Active development and QA testing
-- ✅ **Pre_Prod → main**: Production releases only
-- ❌ **Direct merges to main**: Blocked (must go through Pre_Prod)
+- ✅ **Development/Quality_Test → Pre_Prod**: Recommended flow
+- ✅ **Cross-branch merging**: Allowed for flexibility (except to main)
 - 🔒 **Protected branches**: main and Pre_Prod require PR reviews
+- 🤖 **Automated checks**: PR validation enforces main branch restriction
 
 **Quick Commands:**
 ```bash
