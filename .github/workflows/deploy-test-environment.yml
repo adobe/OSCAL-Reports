@@ -6,6 +6,12 @@ name: Deploy Testing Environment
 # - NGROK_AUTHTOKEN secret
 # Therefore, ngrok-related deployments are restricted to the Adobe repository
 
+# TESTING STRATEGY:
+# - Triggers on merge to Pre_Prod (staging/testing branch)
+# - Deploys 5-hour testing environment with Ngrok
+# - Allows functional testing before production deployment to main
+# - Aligns with branching strategy: Development/Quality_Test → Pre_Prod (TEST HERE) → main (PRODUCTION)
+
 on:
   workflow_dispatch:
     inputs:
@@ -16,10 +22,10 @@ on:
         default: 5
   push:
     branches:
-      - main
+      - Pre_Prod
   pull_request:
     branches:
-      - main
+      - Pre_Prod
 
 jobs:
   ###############################################################################
@@ -58,6 +64,7 @@ jobs:
   ###############################################################################
   # Note: Railway deployment removed - action not allowed by organization
   # Note: Only runs on Adobe repository where GitLab runner and ngrok secrets are available
+  # Note: Triggers on Pre_Prod merges for staging/testing before production
   ###############################################################################
   deploy-runner-test:
     name: Deploy on Runner with Ngrok (5 Hours)
@@ -65,7 +72,7 @@ jobs:
     needs: [tests]
     if: |
       github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
-      ((github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+      ((github.ref == 'refs/heads/Pre_Prod' && github.event_name == 'push') ||
       github.event_name == 'workflow_dispatch')
     
     steps:
