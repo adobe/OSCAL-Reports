@@ -81,6 +81,14 @@ RUN BUILD_DATE_RAW="${BUILD_TIMESTAMP:-$(date -Iseconds)}" && \
     echo "Delete this file after changing the default credentials." >> credentials.txt && \
     echo "================================================================================" >> credentials.txt
 
+# Copy entrypoint script for volume initialization
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Declare volume for persistent data (config and users)
+# Users should mount this to preserve data across container updates
+VOLUME ["/data"]
+
 # Build argument for port (defaults to 3020 for Blue, 3019 for Green)
 ARG PORT=3020
 
@@ -95,6 +103,9 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 ENV NODE_ENV=production
 ENV PORT=${PORT}
 
-# Start the application
+# Use entrypoint script to handle volume initialization
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Start the application (passed to entrypoint)
 CMD ["node", "server.js"]
 
