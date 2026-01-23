@@ -1,0 +1,297 @@
+groups:
+  - name: "Container Images"
+    description: "Configure Docker image settings"
+  - name: "Application Configuration"
+    description: "Application-specific settings"
+  - name: "Networking"
+    description: "Configure networking and ports"
+  - name: "Storage"
+    description: "Configure persistent storage"
+  - name: "Resources"
+    description: "Resource limits and requests"
+  - name: "Advanced"
+    description: "Advanced configuration options"
+
+questions:
+  # ============================================================================
+  # Container Images
+  # ============================================================================
+  - variable: image.repository
+    group: "Container Images"
+    label: "Docker Image Repository"
+    description: "Docker image repository for OSCAL Report Generator"
+    schema:
+      type: string
+      default: "keekar/oscal_reports"
+      required: true
+
+  - variable: image.tag
+    group: "Container Images"
+    label: "Image Tag"
+    description: "Docker image tag (latest=stable, edge=development)"
+    schema:
+      type: string
+      default: "latest"
+      required: true
+      enum:
+        - value: "latest"
+          description: "Stable production release"
+        - value: "edge"
+          description: "Latest development build"
+
+  - variable: image.pullPolicy
+    group: "Container Images"
+    label: "Image Pull Policy"
+    description: "When to pull the Docker image"
+    schema:
+      type: string
+      default: "IfNotPresent"
+      enum:
+        - value: "IfNotPresent"
+          description: "Only pull if not present locally"
+        - value: "Always"
+          description: "Always pull the latest image"
+        - value: "Never"
+          description: "Never pull, use local image only"
+
+  # ============================================================================
+  # Application Configuration
+  # ============================================================================
+  - variable: app.nodeEnv
+    group: "Application Configuration"
+    label: "Node Environment"
+    description: "Node.js environment mode"
+    schema:
+      type: string
+      default: "production"
+      enum:
+        - value: "production"
+          description: "Production mode (recommended)"
+        - value: "development"
+          description: "Development mode"
+
+  - variable: app.port
+    group: "Application Configuration"
+    label: "Application Port"
+    description: "Internal container port (default: 3020)"
+    schema:
+      type: int
+      default: 3020
+      min: 1024
+      max: 65535
+      required: true
+
+  # ============================================================================
+  # Networking
+  # ============================================================================
+  - variable: service.type
+    group: "Networking"
+    label: "Service Type"
+    description: "Kubernetes service type"
+    schema:
+      type: string
+      default: "NodePort"
+      enum:
+        - value: "NodePort"
+          description: "NodePort (recommended for TrueNAS)"
+        - value: "ClusterIP"
+          description: "ClusterIP (internal only)"
+        - value: "LoadBalancer"
+          description: "LoadBalancer (requires external LB)"
+
+  - variable: service.nodePort
+    group: "Networking"
+    label: "Node Port"
+    description: "Port to access the application externally (30000-32767)"
+    schema:
+      type: int
+      default: 30200
+      min: 30000
+      max: 32767
+      required: true
+      show_if: [["service.type", "=", "NodePort"]]
+
+  - variable: ingress.enabled
+    group: "Networking"
+    label: "Enable Ingress"
+    description: "Enable Ingress controller (requires Traefik/Nginx)"
+    schema:
+      type: boolean
+      default: false
+
+  - variable: ingress.hosts
+    group: "Networking"
+    label: "Ingress Hosts"
+    description: "Configure ingress hostname"
+    schema:
+      type: list
+      default: []
+      show_if: [["ingress.enabled", "=", true]]
+      items:
+        - variable: host
+          label: "Host"
+          schema:
+            type: string
+            default: "oscal.local"
+            required: true
+
+  # ============================================================================
+  # Storage
+  # ============================================================================
+  - variable: persistence.enabled
+    group: "Storage"
+    label: "Enable Persistent Storage"
+    description: "Enable persistent storage for configuration data"
+    schema:
+      type: boolean
+      default: true
+
+  - variable: persistence.storageType
+    group: "Storage"
+    label: "Storage Type"
+    description: "Type of storage to use"
+    schema:
+      type: string
+      default: "hostPath"
+      show_if: [["persistence.enabled", "=", true]]
+      enum:
+        - value: "hostPath"
+          description: "Host Path (direct mount from TrueNAS)"
+        - value: "pvc"
+          description: "Persistent Volume Claim"
+
+  - variable: persistence.hostPath
+    group: "Storage"
+    label: "Host Path"
+    description: "Path on TrueNAS host for configuration storage"
+    schema:
+      type: hostpath
+      required: true
+      default: ""
+      show_if: [["persistence.enabled", "=", true], ["persistence.storageType", "=", "hostPath"]]
+
+  - variable: persistence.size
+    group: "Storage"
+    label: "Storage Size"
+    description: "Size of persistent volume"
+    schema:
+      type: string
+      default: "1Gi"
+      show_if: [["persistence.enabled", "=", true], ["persistence.storageType", "=", "pvc"]]
+      enum:
+        - value: "1Gi"
+          description: "1 GiB"
+        - value: "5Gi"
+          description: "5 GiB"
+        - value: "10Gi"
+          description: "10 GiB"
+
+  - variable: persistence.storageClass
+    group: "Storage"
+    label: "Storage Class"
+    description: "Storage class for PVC (leave empty for default)"
+    schema:
+      type: string
+      default: ""
+      show_if: [["persistence.enabled", "=", true], ["persistence.storageType", "=", "pvc"]]
+
+  # ============================================================================
+  # Resources
+  # ============================================================================
+  - variable: resources.limits.cpu
+    group: "Resources"
+    label: "CPU Limit"
+    description: "Maximum CPU cores (e.g., 1000m = 1 core)"
+    schema:
+      type: string
+      default: "1000m"
+      required: true
+
+  - variable: resources.limits.memory
+    group: "Resources"
+    label: "Memory Limit"
+    description: "Maximum memory (e.g., 1Gi = 1 GiB)"
+    schema:
+      type: string
+      default: "1Gi"
+      required: true
+
+  - variable: resources.requests.cpu
+    group: "Resources"
+    label: "CPU Request"
+    description: "Minimum CPU cores guaranteed"
+    schema:
+      type: string
+      default: "100m"
+      required: true
+
+  - variable: resources.requests.memory
+    group: "Resources"
+    label: "Memory Request"
+    description: "Minimum memory guaranteed"
+    schema:
+      type: string
+      default: "256Mi"
+      required: true
+
+  # ============================================================================
+  # Advanced
+  # ============================================================================
+  - variable: replicaCount
+    group: "Advanced"
+    label: "Replica Count"
+    description: "Number of application instances"
+    schema:
+      type: int
+      default: 1
+      min: 1
+      max: 5
+
+  - variable: healthcheck.enabled
+    group: "Advanced"
+    label: "Enable Health Checks"
+    description: "Enable Kubernetes liveness and readiness probes"
+    schema:
+      type: boolean
+      default: true
+
+  - variable: securityContext.runAsNonRoot
+    group: "Advanced"
+    label: "Run as Non-Root"
+    description: "Run container as non-root user (may cause permission issues)"
+    schema:
+      type: boolean
+      default: false
+
+  - variable: environmentVariables
+    group: "Advanced"
+    label: "Additional Environment Variables"
+    description: "Add custom environment variables"
+    schema:
+      type: list
+      default: []
+      items:
+        - variable: environmentVariable
+          label: "Environment Variable"
+          schema:
+            type: dict
+            attrs:
+              - variable: name
+                label: "Name"
+                schema:
+                  type: string
+                  required: true
+              - variable: value
+                label: "Value"
+                schema:
+                  type: string
+                  required: true
+
+  - variable: podAnnotations
+    group: "Advanced"
+    label: "Pod Annotations"
+    description: "Additional pod annotations (key=value pairs)"
+    schema:
+      type: dict
+      default: {}
+      attrs: []
