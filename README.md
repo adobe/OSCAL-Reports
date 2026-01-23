@@ -61,7 +61,7 @@ open http://localhost:3020
 - ✅ linux/amd64 (Intel/AMD processors)
 - ✅ linux/arm64 (Apple Silicon, ARM servers)
 
-For detailed Docker deployment instructions, see [Docker Hub Setup Guide](docs/DOCKER_HUB_SETUP.md).
+For detailed Docker deployment instructions, see [Docker Hub Guide](docs/DOCKER_HUB_GUIDE.md).
 
 ---
 
