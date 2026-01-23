@@ -64,23 +64,32 @@ async function sendEmail(to, username, password, fullName, emailConfig) {
     // Dynamic import to avoid loading if not needed
     const nodemailer = await import('nodemailer');
     
-    // Create transporter
+    // Create transporter with improved TLS configuration
     const transporterConfig = {
       host: emailConfig.smtpHost,
       port: emailConfig.smtpPort,
-      secure: emailConfig.smtpSecure, // true for 465, false for other ports
+      secure: emailConfig.smtpSecure, // true for 465, false for 587
       auth: {
         user: emailConfig.smtpUser,
         pass: emailConfig.smtpPassword
       }
     };
     
-    // Add STARTTLS support for port 587
-    if (!emailConfig.smtpSecure && emailConfig.smtpPort === 587) {
+    // Add improved TLS configuration based on port
+    if (emailConfig.smtpPort === 587) {
+      // Port 587 with STARTTLS (recommended for Gmail)
       transporterConfig.requireTLS = true;
       transporterConfig.tls = {
         ciphers: 'SSLv3',
-        rejectUnauthorized: false // Allow self-signed certificates
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: false
+      };
+    } else if (emailConfig.smtpPort === 465) {
+      // Port 465 with SSL/TLS - add better TLS config
+      transporterConfig.tls = {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: false,
+        servername: emailConfig.smtpHost // SNI support
       };
     }
     
@@ -262,23 +271,32 @@ export async function testEmailConfig(emailConfig) {
   try {
     const nodemailer = await import('nodemailer');
     
-    // Create transporter
+    // Create transporter with improved TLS configuration
     const transporterConfig = {
       host: emailConfig.smtpHost,
       port: emailConfig.smtpPort,
-      secure: emailConfig.smtpSecure,
+      secure: emailConfig.smtpSecure, // true for 465, false for 587
       auth: {
         user: emailConfig.smtpUser,
         pass: emailConfig.smtpPassword
       }
     };
     
-    // Add STARTTLS support for port 587
-    if (!emailConfig.smtpSecure && emailConfig.smtpPort === 587) {
+    // Add improved TLS configuration based on port
+    if (emailConfig.smtpPort === 587) {
+      // Port 587 with STARTTLS (recommended for Gmail)
       transporterConfig.requireTLS = true;
       transporterConfig.tls = {
         ciphers: 'SSLv3',
-        rejectUnauthorized: false // Allow self-signed certificates
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: false
+      };
+    } else if (emailConfig.smtpPort === 465) {
+      // Port 465 with SSL/TLS - add better TLS config
+      transporterConfig.tls = {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: false,
+        servername: emailConfig.smtpHost // SNI support
       };
     }
     

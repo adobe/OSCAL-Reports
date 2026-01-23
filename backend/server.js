@@ -67,6 +67,11 @@ import { isEmailBlacklisted, addToBlacklist } from './auth/emailBlacklist.js';
 import { registrationRateLimiter } from './middleware/rateLimiter.js';
 import { sendUserCredentials } from './messagingService.js';
 import { scheduleUserCleanup } from './jobs/userCleanup.js';
+import cookieParser from 'cookie-parser';
+import session from 'express-session';
+import csrf from 'csurf';
+import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
+import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS } from './utils/securityConfig.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -90,6 +95,43 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Security Middleware
+// Cookie parser (required for CSRF)
+app.use(cookieParser());
+
+// Session management (required for CSRF)
+app.use(session(SECURITY_CONFIG.session));
+
+// CSRF Protection
+const csrfProtection = csrf({ 
+  cookie: SECURITY_CONFIG.csrf.cookieOptions 
+});
+
+// Conditional CSRF middleware - exempt certain paths
+app.use((req, res, next) => {
+  // Skip CSRF for exempted paths
+  if (CSRF_EXEMPT_PATHS.some(path => req.path.startsWith(path))) {
+    return next();
+  }
+  
+  // Skip CSRF for GET/HEAD/OPTIONS requests (safe methods)
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return next();
+  }
+  
+  // Apply CSRF protection for state-changing requests
+  if (SECURITY_CONFIG.csrf.enabled) {
+    csrfProtection(req, res, next);
+  } else {
+    next();
+  }
+});
+
+// CSRF token endpoint
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 // Serve static files from the public folder (warning page for backend)
 app.use(express.static('public'));
@@ -1024,6 +1066,7 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
 
 /**
  * Fetch SAML metadata from URL
+ * SECURITY: Protected against SSRF attacks with URL validation
  */
 app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
@@ -1036,6 +1079,22 @@ app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFOR
       });
     }
     
+    // SECURITY: Validate URL to prevent SSRF attacks
+    const urlValidation = await validateUrl(metadataUrl, {
+      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+    });
+    
+    if (!urlValidation.valid) {
+      console.warn('🚫 SSRF attempt blocked:', metadataUrl, urlValidation.error);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or blocked URL',
+        details: urlValidation.error,
+        securityReason: 'SSRF_PREVENTION',
+      });
+    }
+    
     if (process.env.NODE_ENV === 'development') {
       console.log(`📥 Fetching SAML metadata from: ${metadataUrl}`);
     }
@@ -1045,7 +1104,7 @@ app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFOR
       rejectUnauthorized: false
     });
     
-    const response = await axios.get(metadataUrl, {
+    const response = await axios.get(urlValidation.url, {
       httpsAgent,
       timeout: 10000
     });
@@ -1255,6 +1314,7 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
 });
 
 // API Proxy endpoint - forwards requests to avoid CORS issues
+// SECURITY: Protected against SSRF attacks with URL validation
 app.post('/api/proxy-fetch', async (req, res) => {
   const { url, method = 'GET', headers = {} } = req.body;
   
@@ -1265,17 +1325,23 @@ app.post('/api/proxy-fetch', async (req, res) => {
     });
   }
 
-  // Validate URL
-  try {
-    new URL(url);
-  } catch (e) {
+  // SECURITY: Validate URL to prevent SSRF attacks
+  const urlValidation = await validateUrl(url, {
+    allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+    allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+  });
+
+  if (!urlValidation.valid) {
+    console.warn('🚫 SSRF attempt blocked in proxy-fetch:', url, urlValidation.error);
     return res.status(400).json({ 
       success: false, 
-      error: 'Invalid URL format' 
+      error: 'Invalid or blocked URL',
+      details: urlValidation.error,
+      securityReason: 'SSRF_PREVENTION',
     });
   }
 
-  console.log(`[API Proxy] Fetching from: ${url}`);
+  console.log(`[API Proxy] Fetching from: ${urlValidation.url}`);
   console.log(`[API Proxy] Method: ${method}`);
 
   try {
@@ -1299,7 +1365,7 @@ app.post('/api/proxy-fetch', async (req, res) => {
     // Use axios instead of fetch for better compatibility
     const response = await axios({
       method: method,
-      url: url,
+      url: urlValidation.url, // Use validated URL
       headers: requestHeaders,
       timeout: 30000, // 30 second timeout
       maxRedirects: 5, // Follow up to 5 redirects
@@ -1383,6 +1449,7 @@ app.post('/api/proxy-fetch', async (req, res) => {
 });
 
 // Fetch OSCAL catalogue from URL
+// SECURITY: Protected against SSRF attacks with URL validation
 app.post('/api/fetch-catalogue', async (req, res) => {
   try {
     const { url } = req.body;
@@ -1391,7 +1458,22 @@ app.post('/api/fetch-catalogue', async (req, res) => {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    const response = await axios.get(url, {
+    // SECURITY: Validate URL to prevent SSRF attacks
+    const urlValidation = await validateUrl(url, {
+      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+    });
+
+    if (!urlValidation.valid) {
+      console.warn('🚫 SSRF attempt blocked in fetch-catalogue:', url, urlValidation.error);
+      return res.status(400).json({ 
+        error: 'Invalid or blocked URL',
+        details: urlValidation.error,
+        securityReason: 'SSRF_PREVENTION',
+      });
+    }
+
+    const response = await axios.get(urlValidation.url, {
       headers: {
         'Accept': 'application/json'
       },
@@ -3651,10 +3733,26 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         });
       }
       
+      // SECURITY: Validate URL to prevent SSRF attacks
+      const urlValidation = await validateUrl(url, {
+        allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+        allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+      });
+      
+      if (!urlValidation.valid) {
+        console.warn('🚫 SSRF attempt blocked in Mistral API test:', url, urlValidation.error);
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid or blocked URL',
+          details: urlValidation.error,
+          securityReason: 'SSRF_PREVENTION',
+        });
+      }
+      
       // Test Mistral API with a simple request
       try {
-        console.log(`   Testing Mistral API: ${url}`);
-        const testResponse = await axios.post(url, {
+        console.log(`   Testing Mistral API: ${urlValidation.url}`);
+        const testResponse = await axios.post(urlValidation.url, {
           model: 'mistral-small-latest',
           messages: [
             {
@@ -3768,6 +3866,25 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     fullUrl = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}` : ''}${urlObj.pathname}`;
     
     console.log(`   URL: ${fullUrl}`);
+    
+    // SECURITY: Validate URL to prevent SSRF attacks
+    const urlValidation = await validateUrl(fullUrl, {
+      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+    });
+    
+    if (!urlValidation.valid) {
+      console.warn('🚫 SSRF attempt blocked in AI test:', fullUrl, urlValidation.error);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or blocked URL',
+        details: urlValidation.error,
+        securityReason: 'SSRF_PREVENTION',
+      });
+    }
+    
+    // Use validated URL for all subsequent requests
+    fullUrl = urlValidation.url;
     
     // Prepare headers with API token if provided
     const headers = {

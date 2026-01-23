@@ -1,20 +1,48 @@
 # TrueNAS App Catalog Integration
 
-This guide explains how to make the OSCAL Report Generator available in TrueNAS SCALE "Discover Apps" catalog.
+This guide explains the OSCAL Report Generator integration with TrueNAS SCALE Apps catalog.
 
-## Overview
+## ✅ Official Catalog Status
 
-TrueNAS SCALE uses Helm charts for its app catalog. To make your app discoverable, you need to:
+**OSCAL Report Generator has been submitted to the official TrueNAS Apps catalog!**
 
-1. Create a Helm chart structure
-2. Define app metadata and configuration options
-3. Either submit to TrueCharts community or host your own catalog
+- **Pull Request**: https://github.com/truenas/apps/pull/4144
+- **Status**: 🚧 Pending approval and merge
+- **Train**: Community
+- **When Available**: After PR approval, the app will appear in the default TrueNAS Apps catalog
 
-## Option 1: Quick Install via Docker Image (Current Method)
+---
 
-Users can currently install your app using the **Custom App** feature in TrueNAS:
+## Installation Options
 
-### Steps for Users:
+### Option 1: Official TrueNAS Apps Catalog (Recommended - After Approval)
+
+Once the PR is approved and merged, users can install directly from the catalog.
+
+**Steps for Users:**
+1. Open TrueNAS SCALE Web UI
+2. Navigate to **Apps** → **Discover Apps**
+3. Search for "**OSCAL Report Generator**"
+4. Click on the app card
+5. Click **Install**
+6. Configure settings and deploy
+
+**Benefits:**
+- ✅ Appears by default in all TrueNAS instances
+- ✅ Automatic update notifications
+- ✅ Professional web UI configuration form
+- ✅ Maintained by TrueNAS community
+- ✅ No manual catalog setup required
+
+---
+
+### Option 2: Quick Install via Custom App (Current Method)
+
+**Use this until the official catalog version is approved.**
+
+Users can install using the **Custom App** feature in TrueNAS:
+
+**Steps:**
 
 1. Open TrueNAS SCALE Web UI
 2. Go to **Apps** → **Discover Apps**
@@ -43,180 +71,128 @@ Users can currently install your app using the **Custom App** feature in TrueNAS
 
 5. Click **Save**
 
-### Access the App:
+**Access the App:**
 - URL: `http://[truenas-ip]:30200`
 - Default credentials are in the Docker image (see Docker Hub setup guide)
 
----
-
-## Option 2: Create TrueNAS Helm Chart (Discoverable App)
-
-To make your app appear in the "Discover Apps" catalog natively, create a Helm chart.
-
-### Chart Structure
-
-```
-truenas-charts/
-└── oscal-report-generator/
-    ├── Chart.yaml              # Chart metadata
-    ├── questions.yaml          # TrueNAS UI configuration form
-    ├── values.yaml             # Default configuration values
-    ├── templates/
-    │   ├── deployment.yaml     # Kubernetes deployment
-    │   ├── service.yaml        # Kubernetes service
-    │   ├── pvc.yaml           # Persistent volume claim (optional)
-    │   └── NOTES.txt          # Post-install instructions
-    └── README.md              # App documentation
-```
-
-### Files to Create
-
-I'll create these files for you in the next steps.
-
----
-
-## Option 3: Submit to TrueCharts Community
-
-[TrueCharts](https://truecharts.org/) is the most popular third-party app catalog for TrueNAS SCALE.
-
-### Steps to Submit:
-
-1. **Fork TrueCharts Repository**:
-   ```bash
-   git clone https://github.com/truecharts/charts.git
-   cd charts
-   ```
-
-2. **Create Your App Chart**:
-   ```bash
-   mkdir -p charts/stable/oscal-report-generator
-   # Copy chart files (see below)
-   ```
-
-3. **Test Locally**:
-   ```bash
-   helm lint charts/stable/oscal-report-generator
-   helm install oscal charts/stable/oscal-report-generator --dry-run
-   ```
-
-4. **Submit Pull Request**:
-   - Follow TrueCharts contribution guidelines
-   - Ensure all required files are present
-   - Wait for community review
-
----
-
-## Option 4: Host Your Own TrueNAS Catalog
-
-Create a custom catalog that users can add to their TrueNAS instance.
-
-### Catalog Structure:
-
-```
-truenas-catalog/
-├── index.yaml              # Catalog index
-└── oscal-report-generator/
-    └── [version]/          # e.g., 1.6.3/
-        └── [chart files]
-```
-
-### Setup Your Catalog:
-
-1. **Create GitHub Repository**: `truenas-catalog`
-
-2. **Add Chart Files**: (See Helm chart structure above)
-
-3. **Generate Index**:
-   ```bash
-   helm repo index . --url https://github.com/keekar2022/truenas-catalog
-   ```
-
-4. **Users Add Your Catalog**:
-   - TrueNAS UI → Apps → Manage Catalogs → Add Catalog
-   - Name: `Keekar Apps`
-   - Repository: `https://github.com/keekar2022/truenas-catalog`
-   - Branch: `main`
-
----
-
-## Recommended Approach
-
-**For Now (Immediate)**: Use **Option 1** - Document "Custom App" installation in your README
-
-**For Future (Discoverability)**: Use **Option 4** - Create your own catalog (gives you full control)
-
-**For Maximum Reach**: Consider **Option 3** - Submit to TrueCharts (requires community approval)
-
----
-
-## Files You Need to Create
-
-I'll create the following files for you:
-
-1. **`truenas-chart/Chart.yaml`** - Chart metadata
-2. **`truenas-chart/questions.yaml`** - TrueNAS configuration UI
-3. **`truenas-chart/values.yaml`** - Default values
-4. **`truenas-chart/templates/deployment.yaml`** - Kubernetes deployment
-5. **`truenas-chart/templates/service.yaml`** - Kubernetes service
-6. **`truenas-chart/templates/NOTES.txt`** - Installation notes
-7. **`docs/TRUENAS_INSTALLATION.md`** - User installation guide
-
----
-
-## Benefits by Approach
-
-### Option 1: Custom App
+**Benefits:**
 - ✅ Works immediately
-- ✅ No chart creation needed
-- ✅ Users control all settings
+- ✅ No waiting for PR approval
+- ✅ Full control over settings
 - ❌ Not discoverable in catalog
 - ❌ Manual configuration required
 
-### Option 2: Own Chart
-- ✅ Full customization control
-- ✅ Professional appearance
-- ✅ Reusable across deployments
-- ⚠️ Requires Helm knowledge
-- ⚠️ Manual catalog setup
+---
 
-### Option 3: TrueCharts
-- ✅ Appears in default catalog
-- ✅ Large user base
-- ✅ Community support
-- ❌ Approval process required
-- ❌ Must follow their standards
+### Option 3: Using Helm Chart Directly
 
-### Option 4: Custom Catalog
-- ✅ Full control
-- ✅ Professional appearance
-- ✅ Easy updates
-- ⚠️ Users must add catalog manually
-- ⚠️ You maintain the catalog
+For advanced users who want to use Helm directly.
+
+See [TRUENAS_INSTALLATION.md](TRUENAS_INSTALLATION.md) for Helm installation instructions.
 
 ---
 
-## Next Steps
+## Contribution to Official Catalog
 
-1. I'll create the Helm chart files for you
-2. I'll create user installation documentation
-3. You can choose which approach to use
-4. I'll help you set up whichever option you prefer
+### What Was Submitted
 
-Let me know if you want me to:
-- Create the full Helm chart structure
-- Create a simple installation guide for "Custom App" method
-- Set up a GitHub repository for your own catalog
+The following files were contributed to the official TrueNAS Apps repository:
+
+**App Structure:**
+```
+ix-dev/community/oscal-report-generator/
+├── app.yaml                    # App metadata
+├── ix_values.yaml              # Static configuration
+├── questions.yaml              # User configuration UI
+├── README.md                   # Short description
+├── app-readme.md               # Detailed app information
+├── .helmignore                 # Ignore patterns
+└── templates/
+    ├── docker-compose.yaml     # Docker Compose template
+    └── test_values/
+        ├── basic-values.yaml   # Basic test config
+        └── hostpath-values.yaml # Host path test config
+```
+
+### Key Features in Official Version
+
+- **AI-Powered Control Suggestions**: Automatically suggest relevant security controls
+- **Multiple Framework Support**: NIST 800-53, ISM, IM8, and more
+- **Multiple Export Formats**: JSON, Excel, PDF, CCM
+- **Modern Web Interface**: User-friendly compliance documentation management
+- **Flexible Storage**: Supports both TrueNAS datasets and host paths
+- **Health Checks**: Automatic container health monitoring
+- **Web Portal**: One-click access to the web interface
+
+### Approval Process
+
+1. **Automated Tests**: GitHub Actions CI validates the app structure
+2. **Code Review**: TrueNAS maintainers review the submission
+3. **Feedback**: Address any requested changes
+4. **Approval**: Once approved, PR is merged
+5. **Availability**: App appears in official catalog after merge
+
+---
+
+## Comparison of Approaches
+
+| Feature | Official Catalog | Custom App | Helm Chart |
+|---------|-----------------|------------|------------|
+| **Availability** | After PR approval | Immediate | Immediate |
+| **Discoverability** | ✅ Yes | ❌ No | ❌ No |
+| **Configuration UI** | ✅ Full UI | ⚠️ Basic | ❌ CLI only |
+| **Updates** | ✅ Automatic | ❌ Manual | ⚠️ Manual |
+| **Setup Time** | ⏱️ 5 min | ⏱️ 10 min | ⏱️ 15 min |
+| **Difficulty** | ⭐ Easy | ⭐⭐ Medium | ⭐⭐⭐ Advanced |
+| **Maintenance** | TrueNAS team | Self | Self |
+
+---
+
+## For End Users
+
+### Current Installation (Before Approval)
+
+Use **Option 2: Custom App** method until the PR is approved.
+
+### Future Installation (After Approval)
+
+Use **Option 1: Official Catalog** for the easiest installation experience.
+
+### Checking PR Status
+
+Monitor the pull request status: https://github.com/truenas/apps/pull/4144
+
+---
+
+## For Developers
+
+### How to Contribute to TrueNAS Apps
+
+If you want to contribute your own app to TrueNAS:
+
+1. **Fork Repository**: https://github.com/truenas/apps
+2. **Create App Structure**: Follow official format
+3. **Test Locally**: Use CI scripts to validate
+4. **Submit PR**: Open pull request to main repository
+5. **Documentation**: See [CONTRIBUTIONS.md](https://github.com/truenas/apps/blob/master/CONTRIBUTIONS.md)
+
+### Local Testing
+
+The converted app files are available in: `truenas-apps-format/oscal-report-generator/`
 
 ---
 
 ## References
 
-- [TrueNAS SCALE Apps Documentation](https://www.truenas.com/docs/scale/scaletutorials/apps/)
-- [TrueCharts Documentation](https://truecharts.org/manual/Quick-Start%20Guides/01-Adding-TrueCharts/)
-- [Helm Charts Documentation](https://helm.sh/docs/topics/charts/)
-- [Kubernetes Documentation](https://kubernetes.io/docs/home/)
+- **Official PR**: https://github.com/truenas/apps/pull/4144
+- **TrueNAS Apps Repository**: https://github.com/truenas/apps
+- **Contribution Guide**: https://github.com/truenas/apps/blob/master/CONTRIBUTIONS.md
+- **TrueNAS SCALE Docs**: https://www.truenas.com/docs/scale/
+- **Docker Hub**: https://hub.docker.com/r/keekar/oscal_reports
+- **GitHub**: https://github.com/keekar2022/OSCAL-Reports
 
 ---
 
-**Last Updated**: January 2026
+**Last Updated**: January 2026  
+**Status**: Submitted to official catalog (PR #4144)  
 **Author**: Mukesh Kesharwani

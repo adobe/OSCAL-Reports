@@ -1,0 +1,115 @@
+# Cursor AI Rules for OSCAL Report Generator
+
+## Documentation Organization
+
+### NEVER create documentation files (.md, .txt) at the repository root
+- All documentation MUST go in the `docs/` folder
+- Exception: Only README.md and LICENSE are allowed at root
+- Temporary troubleshooting files should be deleted after issue resolution
+
+### Proper Documentation Locations:
+- Technical docs → `docs/`
+- GitHub templates → `.github/`
+- Test documentation → `test_cases/`
+- Validation docs → `.validation/`
+
+### DO NOT Create:
+- ❌ No .txt files at root (AI_FIX.txt, CREDENTIALS.txt, etc.)
+- ❌ No troubleshooting .md files at root
+- ❌ No temporary summary files at root
+- ❌ No credential files anywhere (use environment variables)
+
+### When Creating Documentation:
+1. Determine if it's technical, security, deployment, or testing
+2. Place in appropriate `docs/` subdirectory or main `docs/` folder
+3. Update `docs/README.md` index if adding new documentation
+4. Use clear, descriptive filenames
+
+### Security Rules:
+- ❌ NEVER create files containing credentials, passwords, or secrets
+- ❌ NEVER commit sensitive information
+- ✅ Use environment variables for configuration
+- ✅ Reference `config/app/config.json` for app settings
+- ✅ Reference `config/app/users.json` for user data
+
+## Code Organization
+
+### Backend:
+- Server code → `backend/`
+- Utilities → `backend/utils/`
+- Middleware → `backend/middleware/`
+- Authentication → `backend/auth/`
+
+### Frontend:
+- Components → `frontend/src/components/`
+- Services → `frontend/src/services/`
+- Utilities → `frontend/src/utils/`
+
+### Tests:
+- All tests → `test_cases/backend/`
+- Unit tests → `test_cases/backend/unit/`
+- Integration tests → `test_cases/backend/integration/`
+- E2E tests → `test_cases/backend/e2e/`
+
+## File Naming Conventions
+
+### Documentation:
+- Use UPPERCASE for major docs: `SECURITY_FIXES.md`
+- Use descriptive names: `AI_ARCHITECTURE_SECURITY.md` not `AI_FIX.md`
+- Group related docs with prefixes: `TRUENAS_*`, `DOCKER_*`
+
+### Code:
+- camelCase for JavaScript: `userManager.js`, `configManager.js`
+- PascalCase for React components: `UserProfile.jsx`
+- kebab-case for test files: `email-functionality.test.js`
+
+## Workflow Rules
+
+### Branch Strategy:
+- Development → Quality_Test → Pre_Prod → main
+- Never push directly to main
+- All changes require PR and passing tests
+
+### Testing:
+- Always run tests before pushing: `npm run test`
+- Add tests for new features
+- Maintain > 75% code coverage
+
+### Security:
+- All user-supplied URLs MUST use `validateUrl()` from `backend/utils/urlValidator.js`
+- CSRF protection is enabled for state-changing endpoints
+- Session secrets MUST use environment variables
+- Passwords MUST use PBKDF2 hashing (FIPS compliant)
+
+## AI Integration Architecture
+
+### Private IP Policy:
+- AI services (Ollama) are designed to run on private networks
+- Private IPs (192.168.x.x, 10.x.x.x, 172.16.x.x) are ALWAYS allowed
+- This is an architectural decision, not a security bypass
+- Cloud metadata endpoints remain blocked
+
+### Email Configuration:
+- Prefer port 587 (STARTTLS) over 465 (SSL)
+- Email functionality is NOT affected by SSRF/CSRF protections
+- Configuration stored in `config/app/config.json`
+
+## Common Mistakes to Avoid
+
+❌ Creating temporary .txt files at root for troubleshooting
+❌ Creating summary .md files at root instead of docs/
+❌ Hardcoding credentials in code or documentation
+❌ Creating duplicate documentation instead of updating existing
+❌ Bypassing security validations without architectural justification
+❌ Committing node_modules, coverage, or build artifacts
+
+✅ Place all documentation in docs/
+✅ Use environment variables for secrets
+✅ Update existing docs instead of creating new ones
+✅ Clean up temporary files after troubleshooting
+✅ Follow established patterns and conventions
+✅ Run automated tests before committing
+
+## Summary
+
+**Golden Rule:** Keep the repository root clean. Only README.md, LICENSE, and essential config files belong there. Everything else goes in organized subdirectories.
