@@ -2,8 +2,25 @@
 
 **Initial Date**: January 22, 2026  
 **Last Updated**: January 23, 2026  
-**Task**: Restrict test environment and ngrok deployments to Adobe repository only  
-**Status**: ✅ Complete (Updated v1.1)
+**Task**: Configure test environment and ngrok deployments  
+**Status**: ✅ Complete (v1.2)
+
+---
+
+## 🎯 Quick Summary
+
+**Latest Change (v1.2 - January 23, 2026)**: Moved test environment trigger from `main` → `Pre_Prod`
+
+**What it means**:
+- Test environment now auto-deploys when merging to **Pre_Prod** (staging)
+- Production (main) no longer triggers test environment
+- Testing happens BEFORE production, not after
+- Better alignment with three-tier branching strategy
+
+**Why it matters**:
+- Issues caught earlier in staging phase
+- Pre_Prod serves its intended purpose as testing environment
+- Cleaner separation: Pre_Prod = Test, main = Production
 
 ---
 

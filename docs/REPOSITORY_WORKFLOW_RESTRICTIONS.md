@@ -1,7 +1,8 @@
 # Repository-Specific Workflow Restrictions
 
 **Date**: January 22, 2026  
-**Version**: 1.0  
+**Version**: 1.2  
+**Last Updated**: January 23, 2026  
 **Author**: System Administrator
 
 ---
@@ -276,22 +277,102 @@ jobs:
 
 ---
 
+## FAQ: Common Questions
+
+### Q: Why does deployment skip on Pull Requests?
+
+**A: This is correct and expected behavior!**
+
+Deployment workflows are intentionally designed to:
+- ⏭️ **SKIP on Pull Requests** (review stage - validate code)
+- ✅ **RUN after PR is merged** (deployment stage - deploy code)
+
+**Technical Reason**: The workflow condition checks for:
+```yaml
+if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+```
+
+- **Pull Requests**: `event_name` = `pull_request` ❌ → Deployment skipped
+- **After Merge**: `event_name` = `push` ✅ → Deployment runs
+
+**Why This Design?**
+1. **Security**: Code must be reviewed before deployment
+2. **Efficiency**: No wasted deployments on test PRs
+3. **Safety**: Explicit approval required (merge button = deploy approval)
+4. **Clarity**: PR = Review & Test, Merge = Deploy
+
+This is an industry best practice followed by GitHub, Kubernetes, React, and all major projects.
+
+### Q: When does the test environment deploy?
+
+**A: On merges to `Pre_Prod` branch (not `main`)**
+
+**Current Behavior** (v1.2 - January 23, 2026):
+- **Triggers on**: Push to `Pre_Prod` branch (staging/testing)
+- **Does NOT trigger on**: Push to `main` branch (production)
+- **Duration**: 5-hour testing window
+- **Repository**: Adobe only (`AdobeManagedServices/OSCAL-Reports`)
+- **Tool**: Ngrok tunnel with public URL
+
+**Why Pre_Prod instead of main?**
+- Pre_Prod serves as staging/testing environment
+- Testing happens BEFORE production deployment
+- Aligns with three-tier branching strategy: Development → Pre_Prod (TEST) → main (PROD)
+- Issues caught earlier, before reaching production
+
+**Workflow**:
+```
+Development/Quality_Test → Pre_Prod  (🧪 Test environment auto-deploys here)
+                              ↓
+                            main  (🚀 Production deployment, no test env)
+```
+
+### Q: Why doesn't my personal repository deploy the test environment?
+
+**A: Repository restrictions for security and infrastructure**
+
+The ngrok test environment **only works** on `AdobeManagedServices/OSCAL-Reports` because:
+
+**Requirements**:
+- `NGROK_AUTHTOKEN` secret (Adobe repo only)
+- GitLab runner infrastructure (Adobe organization only)
+- 5-hour testing window support
+
+**Personal Repository** (`keekar2022/OSCAL-Reports`):
+- ⏭️ Ngrok deployment gracefully skipped (no error)
+- ✅ All other CI/CD features work normally
+- ✅ Tests, builds, and other workflows run fine
+
+This is by design to prevent deployment failures due to missing infrastructure.
+
+---
+
 ## Related Documentation
 
 - **GitHub Actions Documentation**: [Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
 - **Deployment Guide**: `docs/DEPLOYMENT.md`
 - **CI/CD Guide**: `docs/GITHUB_ACTIONS_DEPLOYMENT.md`
+- **Branching Strategy**: `docs/BRANCHING_STRATEGY.md`
 - **Test Environment Setup**: `.github/workflows/deploy-test-environment.yml`
 
 ---
 
 ## Changelog
 
-### Version 1.0 (January 22, 2026)
-- Initial documentation
+### Version 1.2 (January 23, 2026)
+- **Changed test environment trigger from `main` to `Pre_Prod` branch**
+- Updated workflow to align with three-tier branching strategy
+- Testing now happens in staging (Pre_Prod) before production (main)
+- Added FAQ section for common questions
+- Updated documentation with new trigger behavior
+
+### Version 1.1 (January 22, 2026)
 - Added repository restrictions to ngrok deployment workflow
 - Updated test environment deployment conditions
 - Added tester notification restrictions
+
+### Version 1.0 (January 22, 2026)
+- Initial documentation
 - Documented behavior differences between repositories
 
 ---
