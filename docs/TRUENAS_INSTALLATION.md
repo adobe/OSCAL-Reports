@@ -7,7 +7,7 @@ Complete guide for installing OSCAL Report Generator on TrueNAS SCALE.
 - [Prerequisites](#prerequisites)
 - [Method 1: Custom App (Quick Start)](#method-1-custom-app-quick-start)
 - [Method 2: Using Helm Chart](#method-2-using-helm-chart)
-- [Method 3: Via Custom Catalog](#method-3-via-custom-catalog)
+- [Method 3: From Official TrueNAS Apps Catalog](#method-3-from-official-truenas-apps-catalog)
 - [Post-Installation](#post-installation)
 - [Accessing the Application](#accessing-the-application)
 - [Troubleshooting](#troubleshooting)
@@ -264,58 +264,37 @@ k3s kubectl delete namespace ix-oscal-report-generator
 
 ---
 
-## Method 3: Via Custom Catalog
+## Method 3: From Official TrueNAS Apps Catalog
 
-**Best for**: Organizations managing multiple TrueNAS instances  
-**Time**: 20 minutes (one-time setup)  
-**Difficulty**: Advanced ⭐⭐⭐
+**Best for**: Official installation once the app is approved  
+**Time**: 5 minutes  
+**Difficulty**: Easy ⭐
 
-### Step 1: Create Catalog Repository
+**Status**: 🚧 **Pending Approval** - PR submitted to official TrueNAS Apps catalog
 
-1. **Create GitHub Repository**: `truenas-oscal-catalog`
+Once the pull request is approved and merged, the app will be available in the default TrueNAS Apps catalog.
 
-2. **Add Chart to Repository**:
-   ```
-   truenas-oscal-catalog/
-   ├── index.yaml
-   └── charts/
-       └── oscal-report-generator/
-           └── 1.6.3/
-               ├── Chart.yaml
-               ├── questions.yaml
-               ├── values.yaml
-               └── templates/
-   ```
-
-3. **Generate index.yaml**:
-   ```bash
-   helm repo index . --url https://github.com/[username]/truenas-oscal-catalog
-   git add .
-   git commit -m "Add OSCAL Report Generator chart"
-   git push
-   ```
-
-### Step 2: Add Catalog to TrueNAS
+### Installation Steps (After Approval)
 
 1. **Open TrueNAS Web UI**
-2. Go to **Apps** → **Manage Catalogs**
-3. Click **Add Catalog**
+2. Navigate to **Apps** → **Discover Apps**
+3. Search for "**OSCAL Report Generator**" in the catalog
+4. Click on the app card
+5. Click **Install**
+6. Configure the settings:
+   - Storage location
+   - Port configuration (default: 30200)
+   - Resource limits
+7. Click **Save** to deploy
 
-Configure:
-- **Catalog Name**: `OSCAL Apps`
-- **Repository**: `https://github.com/[username]/truenas-oscal-catalog`
-- **Preferred Trains**: `charts`
-- **Branch**: `main`
+### Current Status
 
-4. Click **Save**
-5. Wait for catalog to sync (1-2 minutes)
+- **Pull Request**: https://github.com/truenas/apps/pull/4144
+- **Status**: Submitted and awaiting review
+- **Train**: Community
+- **When Available**: After PR approval and merge
 
-### Step 3: Install from Catalog
-
-1. Go to **Apps** → **Discover Apps**
-2. You should now see **OSCAL Report Generator** in the catalog
-3. Click on it and configure as needed
-4. Click **Install**
+**Note**: Until the PR is approved, use Method 1 (Custom App) or Method 2 (Helm Chart) for installation.
 
 ---
 
