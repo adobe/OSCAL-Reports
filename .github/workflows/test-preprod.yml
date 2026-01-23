@@ -197,12 +197,14 @@ jobs:
           console.log('✅ Coverage thresholds met');
           " || true
       
+      # Note: codecov/codecov-action is not allowed by Adobe organization policy
+      # Coverage reports are uploaded as artifacts instead
       - name: Upload Coverage Report
-        uses: codecov/codecov-action@v3
+        uses: actions/upload-artifact@v4
         with:
-          files: ./backend/coverage/coverage-final.json
-          flags: preprod
-          fail_ci_if_error: false
+          name: coverage-report-preprod
+          path: ./backend/coverage/
+          retention-days: 30
 
   smoke-tests:
     name: Smoke Tests (Production Config)
@@ -329,7 +331,7 @@ jobs:
           fi
       
       - name: Upload Stress Test Results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: stress-test-results
           path: stress-test-results.txt
@@ -388,7 +390,7 @@ jobs:
       
       - name: Upload Pre-Prod Report
         if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: preprod-gate-report
           path: preprod-report.md

@@ -71,7 +71,7 @@ jobs:
       
       - name: Upload Security Report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: security-test-report
           path: security-report.txt
@@ -111,11 +111,14 @@ jobs:
         env:
           NODE_ENV: test
       
-      - name: Upload Coverage
-        uses: codecov/codecov-action@v3
+      # Note: codecov/codecov-action is not allowed by Adobe organization policy
+      # Coverage reports are uploaded as artifacts instead
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
         with:
-          files: ./backend/coverage/coverage-final.json
-          flags: integration
+          name: coverage-report-quality-test
+          path: ./backend/coverage/
+          retention-days: 14
 
   email-and-messaging-tests:
     name: Email & Messaging Tests
@@ -257,7 +260,7 @@ jobs:
       
       - name: Upload E2E Test Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-test-results
           path: test-results/
@@ -358,7 +361,7 @@ jobs:
       
       - name: Upload Quality Report
         if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: quality-gate-report
           path: quality-report.md
