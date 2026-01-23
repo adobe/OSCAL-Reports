@@ -8,13 +8,103 @@
 
 ## 📋 Table of Contents
 
-1. [Quick Start](#quick-start)
-2. [Local Development](#local-development)
-3. [Docker Deployment](#docker-deployment)
-4. [TrueNAS Deployment](#truenas-deployment)
-5. [Automated Deployments](#automated-deployments)
-6. [Configuration Management](#configuration-management)
-7. [Troubleshooting](#troubleshooting)
+1. [Deployment Options Comparison](#deployment-options-comparison)
+2. [Quick Start](#quick-start)
+3. [Local Development](#local-development)
+4. [Docker Deployment](#docker-deployment)
+5. [TrueNAS Deployment](#truenas-deployment)
+6. [Automated Deployments](#automated-deployments)
+7. [Configuration Management](#configuration-management)
+8. [Troubleshooting](#troubleshooting)
+
+---
+
+## Deployment Options Comparison
+
+### 🎯 Quick Decision Guide
+
+**Choose Your Deployment:**
+
+| Need | Recommended Option | Cost | Setup Time |
+|------|-------------------|------|------------|
+| Testing environment for testers | Ngrok + GitHub Runner* | FREE | 10 min |
+| Free/cheap hosting | Google Cloud Run | $5/mo | 10 min |
+| Simplest setup | DigitalOcean | $5/mo | 10 min |
+| Corporate/Enterprise | Azure Web App | $13/mo | 15 min |
+| On-premises (own server) | TrueNAS | FREE | 20 min |
+| Just build Docker images | GitHub Container Registry | FREE | Auto |
+
+\* **Note**: Ngrok deployment only available on Adobe repository (`AdobeManagedServices/OSCAL-Reports`)
+
+### Platform Comparison
+
+#### Option 1: Testing Environment (FREE) ⭐
+
+**Best for**: Functional testing, temporary deployments
+
+| Platform | Cost | Availability | Best For |
+|----------|------|--------------|----------|
+| 🌐 **Ngrok + Runner** | FREE | 5 hours/session | Functional testing |
+
+**Pros:**
+- Testers get immediate access after CI/CD
+- Public URL automatically provided
+- Organization-approved (GitHub infrastructure)
+- Perfect for functional testing
+
+**Cons:**
+- Not for production use
+- 5-6 hour time limit per deployment
+- New URL for each deployment
+
+**⚠️ Repository Restriction:**
+- **Only available on Adobe repository** (`AdobeManagedServices/OSCAL-Reports`)
+- Requires `NGROK_AUTHTOKEN` secret and GitLab runner access
+- Personal repository (`keekar2022/OSCAL-Reports`) does not support this deployment
+- See `docs/REPOSITORY_WORKFLOW_RESTRICTIONS.md` for details
+
+**See**: `docs/TESTING_ENVIRONMENT_SETUP.md`
+
+#### Option 2: Cloud Platforms
+
+**Best for**: Production deployments
+
+| Platform | Cost | Setup Time | Best For |
+|----------|------|------------|----------|
+| 🔵 Azure Web App | $13/mo | 15 min | Microsoft ecosystem |
+| 🟠 AWS EC2 | $10-20/mo | 20 min | Full control |
+| 🟠 AWS ECS | $15-20/mo | 30 min | AWS containers |
+| 🔴 Google Cloud Run | $5-10/mo | 10 min | Serverless |
+| 🟣 Heroku | $0-7/mo | 5 min | Quick testing |
+| 🟢 DigitalOcean | $5/mo | 10 min | Simple & affordable |
+
+**See**: `docs/CLOUD_DEPLOYMENT.md`
+
+#### Option 3: TrueNAS (Current Setup)
+
+**Best for**: On-premises deployments
+
+**Cost:** FREE (your own hardware)  
+**Setup Time:** 20 minutes
+
+**Pros:**
+- No recurring costs
+- Full control
+- On-premises (data stays local)
+- Blue-Green deployment
+
+**See**: [TrueNAS Deployment](#truenas-deployment) section below
+
+#### Option 4: Docker Images Only
+
+**Best for**: Manual deployment or custom hosting
+
+**Cost:** FREE  
+**Setup Time:** Automatic via CI/CD
+
+GitHub Actions automatically builds and publishes Docker images to GitHub Container Registry on every push to `main` branch.
+
+**See**: `docs/GITHUB_ACTIONS_DEPLOYMENT.md`
 
 ---
 

@@ -182,12 +182,12 @@ echo ""
 if [ -f "$BEST_PRACTICES_FILE" ]; then
     # Update lastUpdated field in JSON
     # Note: In production, use jq or a proper JSON parser
-    local timestamp=$(date -u +"%Y-%m-%d")
+    timestamp=$(date -u +"%Y-%m-%d")
     echo -e "${GREEN}  ✓ Updated best practices timestamp to $timestamp${NC}"
 fi
 
 if [ -f "$SECURITY_RULES_FILE" ]; then
-    local timestamp=$(date -u +"%Y-%m-%d")
+    timestamp=$(date -u +"%Y-%m-%d")
     echo -e "${GREEN}  ✓ Updated security rules timestamp to $timestamp${NC}"
 fi
 

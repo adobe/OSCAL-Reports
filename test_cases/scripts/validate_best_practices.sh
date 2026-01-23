@@ -336,6 +336,100 @@ run_version_check() {
 }
 
 ###############################################################################
+# Documentation Structure Check
+###############################################################################
+
+run_documentation_check() {
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║     📚 DOCUMENTATION STRUCTURE CHECK                                 ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${YELLOW}▶ Checking for misplaced documentation files...${NC}"
+    
+    # Define allowed .md files in root directory
+    local ALLOWED_ROOT_MD_FILES=(
+        "README.md"
+        "LICENSE.md"
+        "CONTRIBUTING.md"
+        "CODE_OF_CONDUCT.md"
+        "SECURITY.md"
+    )
+    
+    # Get all .md files in root (not in subdirectories)
+    local root_md_files=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null | \
+        grep -E '^[^/]+\.md$' || true)
+    
+    # If no staged files, check all existing root .md files
+    if [ -z "$root_md_files" ]; then
+        root_md_files=$(find . -maxdepth 1 -type f -name "*.md" | sed 's|^\./||')
+    fi
+    
+    if [ -n "$root_md_files" ]; then
+        while IFS= read -r file; do
+            local is_allowed=0
+            
+            # Check if file is in allowed list
+            for allowed in "${ALLOWED_ROOT_MD_FILES[@]}"; do
+                if [ "$file" = "$allowed" ]; then
+                    is_allowed=1
+                    break
+                fi
+            done
+            
+            # If not allowed, log a finding
+            if [ $is_allowed -eq 0 ]; then
+                log_finding "ERROR" "DOC-001" "$file" "" \
+                    "Documentation file must be in docs/ folder - move this file to docs/ directory"
+            fi
+        done <<< "$root_md_files"
+    fi
+    
+    # Check for .md files in .github (except specific allowed files)
+    local ALLOWED_GITHUB_MD_FILES=(
+        "CONTRIBUTING.md"
+        "PULL_REQUEST_TEMPLATE.md"
+        "ISSUE_TEMPLATE.md"
+        "BRANCHING_QUICKSTART.md"
+        "DEPLOYMENT_QUICKSTART.md"
+    )
+    
+    local github_md_files=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null | \
+        grep -E '^\.github/[^/]+\.md$' || true)
+    
+    if [ -z "$github_md_files" ]; then
+        github_md_files=$(find .github -maxdepth 1 -type f -name "*.md" 2>/dev/null | sed 's|^\./||' || true)
+    fi
+    
+    if [ -n "$github_md_files" ]; then
+        while IFS= read -r file; do
+            local filename=$(basename "$file")
+            local is_allowed=0
+            
+            # Check if file is in allowed list
+            for allowed in "${ALLOWED_GITHUB_MD_FILES[@]}"; do
+                if [ "$filename" = "$allowed" ]; then
+                    is_allowed=1
+                    break
+                fi
+            done
+            
+            # If not allowed, log a finding
+            if [ $is_allowed -eq 0 ]; then
+                log_finding "ERROR" "DOC-002" "$file" "" \
+                    "Non-standard GitHub documentation file - move to docs/ directory"
+            fi
+        done <<< "$github_md_files"
+    fi
+    
+    # Count properly placed docs
+    local docs_count=$(find docs -type f -name "*.md" 2>/dev/null | wc -l)
+    echo -e "${GREEN}✓${NC} Found $docs_count documentation files in docs/ directory"
+    
+    echo ""
+}
+
+###############################################################################
 # Main Execution
 ###############################################################################
 
@@ -351,6 +445,7 @@ run_code_quality_checks
 run_performance_checks
 run_file_checks
 run_version_check
+run_documentation_check
 
 # Summary
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════════╗${NC}"
