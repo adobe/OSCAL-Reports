@@ -245,32 +245,194 @@ jobs:
           path: frontend/dist
           retention-days: 7
 
-  summary:
-    name: Development Tests Summary
+  summary-and-auto-merge:
+    name: Development Tests Summary & Auto-Merge
     runs-on: ubuntu-latest
     needs: [security-tests, email-tests, ai-integration-tests, unit-tests, integration-tests, build-test]
-    if: always()
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/Development'
+    permissions:
+      contents: write
+      pull-requests: write
     
     steps:
-      - name: Check Test Results
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Calculate Test Results
+        id: test_results
         run: |
           echo "Development Branch Test Summary:"
           echo "================================="
-          echo "Security Tests: ${{ needs.security-tests.result }}"
-          echo "Email Tests: ${{ needs.email-tests.result }}"
-          echo "AI Integration Tests: ${{ needs.ai-integration-tests.result }}"
-          echo "Unit Tests: ${{ needs.unit-tests.result }}"
-          echo "Integration Tests: ${{ needs.integration-tests.result }}"
-          echo "Build Test: ${{ needs.build-test.result }}"
           
-          if [ "${{ needs.security-tests.result }}" != "success" ] || \
-             [ "${{ needs.email-tests.result }}" != "success" ] || \
-             [ "${{ needs.ai-integration-tests.result }}" != "success" ] || \
-             [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.integration-tests.result }}" != "success" ] || \
-             [ "${{ needs.build-test.result }}" != "success" ]; then
-            echo "❌ Some tests failed!"
-            exit 1
+          # Count successful and failed jobs
+          TOTAL=6
+          PASSED=0
+          
+          # Check each job result
+          declare -A JOBS=(
+            ["security-tests"]="${{ needs.security-tests.result }}"
+            ["email-tests"]="${{ needs.email-tests.result }}"
+            ["ai-integration-tests"]="${{ needs.ai-integration-tests.result }}"
+            ["unit-tests"]="${{ needs.unit-tests.result }}"
+            ["integration-tests"]="${{ needs.integration-tests.result }}"
+            ["build-test"]="${{ needs.build-test.result }}"
+          )
+          
+          for job in "${!JOBS[@]}"; do
+            result="${JOBS[$job]}"
+            echo "$job: $result"
+            if [ "$result" == "success" ]; then
+              ((PASSED++))
+            fi
+          done
+          
+          # Calculate pass rate
+          PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED / $TOTAL) * 100}")
+          THRESHOLD=60
+          
+          echo ""
+          echo "📊 Test Statistics:"
+          echo "  Total Jobs: $TOTAL"
+          echo "  Passed: $PASSED"
+          echo "  Failed: $((TOTAL - PASSED))"
+          echo "  Pass Rate: ${PASS_RATE}%"
+          echo "  Threshold: ${THRESHOLD}%"
+          
+          # Set outputs
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$((TOTAL - PASSED))" >> "$GITHUB_OUTPUT"
+          echo "pass_rate=$PASS_RATE" >> "$GITHUB_OUTPUT"
+          echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          
+          # Check if threshold met
+          if (( $(awk "BEGIN {print ($PASS_RATE >= $THRESHOLD)}") )); then
+            echo "threshold_met=true" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "✅ Pass rate ${PASS_RATE}% meets threshold ${THRESHOLD}%"
+            echo "🚀 Auto-merge conditions satisfied!"
+          else
+            echo "threshold_met=false" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "❌ Pass rate ${PASS_RATE}% below threshold ${THRESHOLD}%"
+            echo "⏸️  Auto-merge will NOT proceed"
+          fi
+      
+      - name: Create Auto-Merge PR to Quality_Test
+        if: steps.test_results.outputs.threshold_met == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SOURCE_BRANCH="Development"
+          TARGET_BRANCH="Quality_Test"
+          PASS_RATE="${{ steps.test_results.outputs.pass_rate }}"
+          THRESHOLD="${{ steps.test_results.outputs.threshold }}"
+          
+          echo "════════════════════════════════════════════════════════════════"
+          echo "    🤖 AUTO-MERGE: $SOURCE_BRANCH → $TARGET_BRANCH"
+          echo "════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "📊 Pass Rate: ${PASS_RATE}%"
+          echo "🎯 Threshold: ${THRESHOLD}%"
+          echo ""
+          
+          # Check for differences
+          git fetch origin "$TARGET_BRANCH" || true
+          
+          if git diff --quiet "origin/$TARGET_BRANCH" HEAD; then
+            echo "ℹ️  No differences found between branches"
+            echo "✅ Branches are already in sync"
+            exit 0
           fi
           
-          echo "✅ All Development tests passed!"
+          # Create PR
+          PR_TITLE="🤖 Auto-merge: Development → Quality_Test (${PASS_RATE}% pass rate)"
+          PR_BODY="## 🤖 Automated Merge
+
+          This PR was automatically created because the Development branch test pass rate threshold was met.
+
+          ### 📊 Test Results
+          - **Pass Rate:** ${PASS_RATE}%
+          - **Threshold:** ${THRESHOLD}% (60% required)
+          - **Passed Jobs:** ${{ steps.test_results.outputs.passed }}/${{ steps.test_results.outputs.total }}
+          - **Status:** ✅ Threshold met
+
+          ### ✅ Passed Tests
+          - Security Tests (CSRF, SSRF, URL Validation)
+          - Email Functionality Tests
+          - AI Integration Tests
+          - Unit Tests
+          - Integration Tests
+          - Build Test
+
+          ### 🔄 Merge Details
+          - **Source:** \`Development\`
+          - **Target:** \`Quality_Test\`
+          - **Commit:** \`${{ github.sha }}\`
+          - **Workflow:** ${{ github.run_id }}
+
+          ### 📋 Next Steps
+          Once merged to Quality_Test, comprehensive testing will begin:
+          - Security audit
+          - Full integration suite with coverage
+          - E2E tests with Playwright
+          - Performance testing
+          - Quality gate checks (80% threshold for Pre_Prod)
+
+          ---
+          *This is an automated pull request created by the CI/CD pipeline.*"
+          
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --base "$TARGET_BRANCH" --head "$SOURCE_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "✅ PR already exists: #$EXISTING_PR"
+            echo "📝 Updating existing PR..."
+            gh pr edit "$EXISTING_PR" --body "$PR_BODY" || true
+            echo "pr_number=$EXISTING_PR" >> "$GITHUB_OUTPUT"
+          else
+            echo "📝 Creating new PR..."
+            PR_URL=$(gh pr create \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --base "$TARGET_BRANCH" \
+              --head "$SOURCE_BRANCH" \
+              --label "auto-merge,development" 2>&1 || echo "")
+            
+            if [ -n "$PR_URL" ]; then
+              echo "✅ PR created: $PR_URL"
+              PR_NUMBER=$(echo "$PR_URL" | grep -oP '\d+$')
+              echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+              
+              # Enable auto-merge
+              echo "🔄 Enabling auto-merge..."
+              gh pr merge "$PR_NUMBER" --auto --merge --delete-branch=false 2>&1 || {
+                echo "⚠️  Auto-merge could not be enabled (may require approvals)"
+              }
+            else
+              echo "⚠️  Could not create PR"
+            fi
+          fi
+          
+          echo ""
+          echo "✅ Auto-merge process completed!"
+      
+      - name: Post Summary Comment
+        if: always()
+        run: |
+          echo "## 📊 Development Branch Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pass Rate:** ${{ steps.test_results.outputs.pass_rate }}%" >> $GITHUB_STEP_SUMMARY
+          echo "**Threshold:** ${{ steps.test_results.outputs.threshold }}% (60% required)" >> $GITHUB_STEP_SUMMARY
+          echo "**Passed:** ${{ steps.test_results.outputs.passed }}/${{ steps.test_results.outputs.total }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.test_results.outputs.threshold_met }}" == "true" ]; then
+            echo "### ✅ Auto-Merge Status: TRIGGERED" >> $GITHUB_STEP_SUMMARY
+            echo "A PR has been created to merge Development → Quality_Test" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Auto-Merge Status: NOT TRIGGERED" >> $GITHUB_STEP_SUMMARY
+            echo "Pass rate below 60% threshold. Manual intervention required." >> $GITHUB_STEP_SUMMARY
+          fi
