@@ -3,16 +3,15 @@
  * Tests that state-changing endpoints are protected against CSRF attacks
  */
 
-const request = require('supertest');
+import { describe, it, expect, beforeAll } from '@jest/globals';
+import request from 'supertest';
 
 // Import the app directly for testing
 let app;
 try {
-  // Temporarily set test environment
-  const originalEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'test';
-  app = require('../../../backend/server');
-  process.env.NODE_ENV = originalEnv;
+  // Dynamically import the server module
+  const serverModule = await import('../../../backend/server.js');
+  app = serverModule.default || serverModule;
 } catch (error) {
   console.warn('Could not load server for testing:', error.message);
 }
