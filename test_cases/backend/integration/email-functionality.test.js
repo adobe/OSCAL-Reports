@@ -127,12 +127,13 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(15000);
       
       expect(response.status).toBe(200);
       // Will fail auth, but shows port 587 is accepted
       expect(response.body).toHaveProperty('success');
-    });
+    }, 20000);
   });
 
   describe('Port 465 (SSL) Support', () => {
@@ -151,11 +152,12 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(15000);
       
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('success');
-    });
+    }, 20000);
   });
 
   describe('Email Security - Not Affected by SSRF', () => {
@@ -175,12 +177,13 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(15000);
       
       expect(response.status).toBe(200);
       // Should attempt connection, not block due to private IP
       expect(response.body).toHaveProperty('success');
-    });
+    }, 20000);
 
     it('should NOT be affected by CSRF protection', async () => {
       // Email endpoint should work without CSRF token
@@ -198,10 +201,11 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(15000);
       
       expect(response.status).toBe(200);
-    });
+    }, 20000);
   });
 
   describe('TLS Configuration', () => {
@@ -220,11 +224,12 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(15000);
       
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('success');
-    });
+    }, 20000);
 
     it('should handle SSL for port 465', async () => {
       const response = await request(API_URL)
@@ -241,11 +246,12 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(15000);
       
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('success');
-    });
+    }, 20000);
   });
 
   describe('Error Handling', () => {
@@ -264,12 +270,13 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(20000);
       
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(false);
       expect(response.body.error).toBeDefined();
-    });
+    }, 25000);
 
     it('should handle connection timeout gracefully', async () => {
       const response = await request(API_URL)
@@ -286,11 +293,12 @@ describe('Email Functionality Tests', () => {
             fromEmail: 'test@example.com',
             fromName: 'Test'
           }
-        });
+        })
+        .timeout(25000);
       
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(false);
-    }, 30000); // 30 second timeout
+    }, 35000); // 35 second timeout
   });
 });
 

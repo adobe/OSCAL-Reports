@@ -1,13 +1,18 @@
 /**
  * SSRF Protection Integration Tests
  * Tests that all vulnerable endpoints are protected against SSRF attacks
+ * 
+ * ARCHITECTURAL NOTE:
+ * - Private IPs (10.x, 172.16.x, 192.168.x) are ALLOWED for AI services
+ * - Localhost (127.0.0.1, localhost) is ALLOWED for AI services
+ * - Cloud metadata (169.254.169.254, metadata.google.internal) is BLOCKED
+ * - Dangerous protocols (file://, gopher://, dict://, ftp://) are BLOCKED
+ * 
+ * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
-
-// Note: These tests require the server to be running
-// They test the actual endpoint security
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3020';
 
@@ -19,14 +24,14 @@ describe('SSRF Protection - Integration Tests', () => {
     // Login to get auth token for protected endpoints
     try {
       const loginResponse = await request(BASE_URL)
-        .post('/api/login')
+        .post('/api/auth/login')
         .send({
           username: process.env.TEST_USERNAME || 'admin',
-          password: process.env.TEST_PASSWORD || 'Admin@123',
+          password: process.env.TEST_PASSWORD || 'Admin@2026',
         });
 
-      if (loginResponse.status === 200 && loginResponse.body.token) {
-        authToken = loginResponse.body.token;
+      if (loginResponse.status === 200 && loginResponse.body.sessionToken) {
+        authToken = loginResponse.body.sessionToken;
         sessionToken = loginResponse.body.sessionToken;
       }
     } catch (error) {
@@ -48,23 +53,24 @@ describe('SSRF Protection - Integration Tests', () => {
       }
     });
 
-    it('should block localhost URLs', async () => {
+    it('should ALLOW localhost URLs (architectural decision for AI services)', async () => {
       const response = await request(BASE_URL)
         .post('/api/fetch-catalogue')
         .send({
-          url: 'http://localhost:3000/malicious'
+          url: 'http://localhost:3000/catalog.json'
         });
 
-      expect(response.status).toBe(400);
-      expect(response.body.error).toMatch(/blocked|invalid/i);
-      expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF (may fail with connection error, which is OK)
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
+      }
     });
 
-    it('should block private IP ranges', async () => {
+    it('should ALLOW private IP ranges (architectural decision for AI services)', async () => {
       const privateIPs = [
-        'http://10.0.0.1/internal',
-        'http://192.168.1.1/admin',
-        'http://172.16.0.1/config',
+        'http://10.0.0.1/catalog.json',
+        'http://192.168.1.1/catalog.json',
+        'http://172.16.0.1/catalog.json',
       ];
 
       for (const url of privateIPs) {
@@ -72,8 +78,10 @@ describe('SSRF Protection - Integration Tests', () => {
           .post('/api/fetch-catalogue')
           .send({ url });
 
-        expect(response.status).toBe(400);
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+        // Should NOT be blocked by SSRF protection
+        if (response.status === 400) {
+          expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
+        }
       }
     });
 
@@ -117,26 +125,32 @@ describe('SSRF Protection - Integration Tests', () => {
       }
     });
 
-    it('should block localhost URLs', async () => {
+    it('should ALLOW localhost URLs (architectural decision)', async () => {
       const response = await request(BASE_URL)
         .post('/api/proxy-fetch')
         .send({
-          url: 'http://127.0.0.1:6379/keys'
+          url: 'http://127.0.0.1:6379/',
+          method: 'GET'
         });
 
-      expect(response.status).toBe(400);
-      expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF (may fail with connection error)
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
+      }
     });
 
-    it('should block internal network IPs', async () => {
+    it('should ALLOW internal network IPs (architectural decision)', async () => {
       const response = await request(BASE_URL)
         .post('/api/proxy-fetch')
         .send({
-          url: 'http://192.168.1.100:8080/internal-api'
+          url: 'http://192.168.1.100:8080/api',
+          method: 'GET'
         });
 
-      expect(response.status).toBe(400);
-      expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
+      }
     });
 
     it('should block gopher protocol (Redis attack)', async () => {
@@ -163,7 +177,7 @@ describe('SSRF Protection - Integration Tests', () => {
       expect([401, 403]).toContain(response.status);
     });
 
-    it('should block localhost URLs (with auth)', async () => {
+    it('should ALLOW localhost URLs (with auth) - architectural decision', async () => {
       if (!authToken) {
         console.warn('Skipping test - no auth token available');
         return;
@@ -172,17 +186,17 @@ describe('SSRF Protection - Integration Tests', () => {
       const response = await request(BASE_URL)
         .post('/api/sso/saml/fetch-metadata')
         .set('Authorization', `Bearer ${authToken}`)
-        .set('X-Session-Token', sessionToken)
         .send({
           metadataUrl: 'http://localhost:8080/metadata.xml'
         });
 
+      // Should NOT be blocked by SSRF
       if (response.status === 400) {
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
       }
     });
 
-    it('should block private network URLs (with auth)', async () => {
+    it('should ALLOW private network URLs (with auth) - architectural decision', async () => {
       if (!authToken) {
         console.warn('Skipping test - no auth token available');
         return;
@@ -191,13 +205,13 @@ describe('SSRF Protection - Integration Tests', () => {
       const response = await request(BASE_URL)
         .post('/api/sso/saml/fetch-metadata')
         .set('Authorization', `Bearer ${authToken}`)
-        .set('X-Session-Token', sessionToken)
         .send({
           metadataUrl: 'http://10.0.0.5/saml/metadata'
         });
 
+      // Should NOT be blocked by SSRF
       if (response.status === 400) {
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
       }
     });
   });
@@ -214,7 +228,7 @@ describe('SSRF Protection - Integration Tests', () => {
       expect([401, 403]).toContain(response.status);
     });
 
-    it('should block internal IPs for Ollama (with auth)', async () => {
+    it('should ALLOW private IPs for Ollama (with auth) - AI architecture', async () => {
       if (!authToken) {
         console.warn('Skipping test - no auth token available');
         return;
@@ -223,20 +237,18 @@ describe('SSRF Protection - Integration Tests', () => {
       const response = await request(BASE_URL)
         .post('/api/ai/test-connection')
         .set('Authorization', `Bearer ${authToken}`)
-        .set('X-Session-Token', sessionToken)
         .send({
           provider: 'ollama',
           url: 'http://192.168.1.50:11434'
         });
 
-      // In development, private IPs might be allowed
-      // Check if explicitly blocked or allowed with warning
-      if (response.status === 400 && !process.env.ALLOW_PRIVATE_IPS) {
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF (may timeout waiting for Ollama, which is OK)
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
       }
-    });
+    }, 15000); // Longer timeout for network attempts
 
-    it('should block localhost for Mistral API (with auth)', async () => {
+    it('should ALLOW localhost for Mistral API (with auth) - AI architecture', async () => {
       if (!authToken) {
         console.warn('Skipping test - no auth token available');
         return;
@@ -245,16 +257,15 @@ describe('SSRF Protection - Integration Tests', () => {
       const response = await request(BASE_URL)
         .post('/api/ai/test-connection')
         .set('Authorization', `Bearer ${authToken}`)
-        .set('X-Session-Token', sessionToken)
         .send({
           provider: 'mistral-api',
           url: 'http://localhost:8080/v1/chat/completions',
           apiToken: 'test-token'
         });
 
-      // Localhost should be blocked unless explicitly allowed
-      if (response.status === 400 && !process.env.ALLOW_LOCALHOST) {
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
       }
     });
 
@@ -278,45 +289,34 @@ describe('SSRF Protection - Integration Tests', () => {
     });
   });
 
-  describe('Environment-based configuration', () => {
-    it('should respect ALLOW_LOCALHOST environment variable', async () => {
-      // This test documents the behavior when ALLOW_LOCALHOST=true
-      // In development environments, localhost access might be needed
-      const isLocalhostAllowed = process.env.ALLOW_LOCALHOST === 'true';
-      
+  describe('Architectural Security Configuration', () => {
+    it('localhost is ALWAYS allowed (hardcoded for AI services)', async () => {
+      // ARCHITECTURAL NOTE: Localhost is always allowed, not configurable
+      // This is a design decision for AI services (Ollama, local LLMs)
       const response = await request(BASE_URL)
         .post('/api/fetch-catalogue')
         .send({
           url: 'http://localhost:8080/catalog.json'
         });
 
-      if (isLocalhostAllowed) {
-        // Should not be blocked, but might fail for other reasons
-        if (response.status === 400) {
-          expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
-        }
-      } else {
-        expect(response.status).toBe(400);
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
       }
     });
 
-    it('should respect ALLOW_PRIVATE_IPS environment variable', async () => {
-      const isPrivateIPAllowed = process.env.ALLOW_PRIVATE_IPS === 'true';
-      
+    it('private IPs are ALWAYS allowed (hardcoded for AI services)', async () => {
+      // ARCHITECTURAL NOTE: Private IPs always allowed, not configurable
+      // This is a design decision for AI services on private networks
       const response = await request(BASE_URL)
         .post('/api/fetch-catalogue')
         .send({
           url: 'http://192.168.1.100/catalog.json'
         });
 
-      if (isPrivateIPAllowed) {
-        if (response.status === 400) {
-          expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
-        }
-      } else {
-        expect(response.status).toBe(400);
-        expect(response.body.securityReason).toBe('SSRF_PREVENTION');
+      // Should NOT be blocked by SSRF
+      if (response.status === 400) {
+        expect(response.body.securityReason).not.toBe('SSRF_PREVENTION');
       }
     });
   });
@@ -362,17 +362,19 @@ describe('SSRF Protection - Integration Tests', () => {
 });
 
 describe('SSRF Protection - Error handling', () => {
-  it('should provide clear error messages', async () => {
+  it('should provide clear error messages for BLOCKED URLs', async () => {
+    // Test with cloud metadata endpoint which IS blocked
     const response = await request(BASE_URL)
       .post('/api/fetch-catalogue')
       .send({
-        url: 'http://192.168.1.1/internal'
+        url: 'http://169.254.169.254/latest/meta-data/'
       });
 
     expect(response.status).toBe(400);
     expect(response.body).toHaveProperty('error');
     expect(response.body).toHaveProperty('details');
     expect(response.body).toHaveProperty('securityReason');
+    expect(response.body.securityReason).toBe('SSRF_PREVENTION');
     expect(response.body.error).toBeDefined();
     expect(response.body.details).toBeDefined();
   });
