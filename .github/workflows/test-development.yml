@@ -136,11 +136,14 @@ jobs:
         env:
           NODE_ENV: test
       
-      - name: Upload Coverage
-        uses: codecov/codecov-action@v3
+      # Note: codecov/codecov-action is not allowed by Adobe organization policy
+      # Coverage reports are uploaded as artifacts instead
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
         with:
-          files: ./backend/coverage/coverage-final.json
-          flags: unit
+          name: coverage-report-development
+          path: ./backend/coverage/
+          retention-days: 7
 
   integration-tests:
     name: Integration Tests
@@ -236,7 +239,7 @@ jobs:
           NODE_ENV: test
       
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: frontend/dist
