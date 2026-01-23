@@ -73,6 +73,32 @@ if [ "$1" = "--force" ] || [ "$1" = "-f" ]; then
 fi
 
 # ============================================================================
+# PERSISTENT VOLUME CONFIGURATION (v1.6.5+)
+# ============================================================================
+# Starting with v1.6.5, the application uses persistent volumes to prevent
+# data loss during container updates. This preserves:
+#   - User accounts and passwords
+#   - Configuration settings (email, AI, API gateways)
+#   - User activity history
+#
+# Volume Structure:
+#   Blue Instance:  /mnt/pool/oscal-data-blue
+#   Green Instance: /mnt/pool/oscal-data-green
+#
+# Each instance gets its own volume to prevent conflicts between Blue/Green
+# deployments. If you want to share users between instances, use the
+# export/import API endpoints.
+#
+# IMPORTANT: Update the DATA_VOLUME_PATH below to match your TrueNAS pool
+# ============================================================================
+
+# Persistent data volume path (EDIT THIS for your TrueNAS pool)
+# Default: Uses a subdirectory in the script directory
+# Recommended: Use a path on your TrueNAS pool for better reliability
+# Example: DATA_VOLUME_BASE="/mnt/tank/oscal-data"
+DATA_VOLUME_BASE="${SCRIPT_DIR}/data"
+
+# ============================================================================
 # DEPLOYMENT DETECTION (BLUE-GREEN)
 # ============================================================================
 
@@ -91,12 +117,14 @@ if [[ "$DEPLOYMENT_DIR_NAME" == *"Blue"* ]] || [[ "$SCRIPT_DIR" == *"Blue"* ]]; 
   CONTAINER_NAME="oscal-report-generator-blue"
   DOCKER_IMAGE="oscal-report-generator:blue"
   DEPLOY_COLOR="${BLUE}BLUE${NC}"
+  DATA_VOLUME_PATH="${DATA_VOLUME_BASE}-blue"
 elif [[ "$DEPLOYMENT_DIR_NAME" == *"Green"* ]] || [[ "$SCRIPT_DIR" == *"Green"* ]]; then
   DEPLOYMENT_TYPE="Green"
   CONTAINER_PORT="3019"
   CONTAINER_NAME="oscal-report-generator-green"
   DOCKER_IMAGE="oscal-report-generator:green"
   DEPLOY_COLOR="${GREEN}GREEN${NC}"
+  DATA_VOLUME_PATH="${DATA_VOLUME_BASE}-green"
 else
   # Default fallback
   DEPLOYMENT_TYPE="Default"
@@ -104,10 +132,20 @@ else
   CONTAINER_NAME="oscal-report-generator"
   DOCKER_IMAGE="oscal-report-generator:latest"
   DEPLOY_COLOR="${CYAN}DEFAULT${NC}"
+  DATA_VOLUME_PATH="${DATA_VOLUME_BASE}"
+fi
+
+# Ensure data volume directory exists
+if [ ! -d "$DATA_VOLUME_PATH" ]; then
+  log "Creating persistent data volume directory: $DATA_VOLUME_PATH"
+  mkdir -p "$DATA_VOLUME_PATH"
+  chmod 755 "$DATA_VOLUME_PATH"
+  print_success "Data volume directory created"
 fi
 
 echo ""
 echo "📋 Deployment Configuration:"
+echo "  Data Volume: $DATA_VOLUME_PATH"
 echo "  Instance: $DEPLOY_COLOR"
 echo "  Directory: $DEPLOYMENT_DIR_NAME"
 echo "  Container Name: $CONTAINER_NAME"
@@ -417,6 +455,7 @@ fi
 
 # Start new container
 log "Starting new container..."
+print_info "Mounting persistent volume: ${DATA_VOLUME_PATH} -> /data"
 if docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
@@ -424,7 +463,7 @@ if docker run -d \
   -e PORT="$CONTAINER_PORT" \
   -e NODE_ENV="production" \
   -e DEPLOYMENT_TYPE="$DEPLOYMENT_TYPE" \
-  -v "${SCRIPT_DIR}/config:/app/config" \
+  -v "${DATA_VOLUME_PATH}:/data" \
   -v "${SCRIPT_DIR}/logs:/app/logs" \
   "$DOCKER_IMAGE" 2>&1 | while IFS= read -r line; do log "  [docker] $line"; done; then
   
@@ -539,6 +578,53 @@ echo "  Shell: docker exec -it $CONTAINER_NAME sh"
 echo ""
 
 log "Deployment completed successfully at $(date)"
+
+# ============================================================================
+# VERIFY VOLUME PERSISTENCE
+# ============================================================================
+
+print_header "🔍 Verifying Persistent Volume"
+
+echo "📂 Data Volume Information:"
+echo "  Host Path: $DATA_VOLUME_PATH"
+echo "  Container Path: /data"
+echo ""
+
+if [ -d "$DATA_VOLUME_PATH" ]; then
+  print_success "Volume directory exists"
+  
+  # Check if config and users files exist
+  if docker exec "$CONTAINER_NAME" test -f /data/config.json 2>/dev/null; then
+    print_success "config.json found in volume"
+  else
+    print_warning "config.json not yet created (will be created on first run)"
+  fi
+  
+  if docker exec "$CONTAINER_NAME" test -f /data/users.json 2>/dev/null; then
+    print_success "users.json found in volume"
+  else
+    print_warning "users.json not yet created (will be created on first run)"
+  fi
+  
+  echo ""
+  echo "📊 Volume Status API:"
+  echo "  URL: http://$(hostname -I | awk '{print $1}'):${CONTAINER_PORT}/api/system/volume-status"
+  echo ""
+  echo "💾 Data Persistence:"
+  echo "  ✅ Your config and users will persist across container updates"
+  echo "  ✅ To backup: tar -czf backup.tar.gz -C $DATA_VOLUME_PATH ."
+  echo "  ✅ To restore: tar -xzf backup.tar.gz -C $DATA_VOLUME_PATH"
+  echo ""
+  echo "📖 User Management APIs:"
+  echo "  Export users: GET /api/users/export (Platform Admin)"
+  echo "  Import users: POST /api/users/import (Platform Admin)"
+  echo "  See: docs/DOCKER_VOLUME_MIGRATION.md for full guide"
+else
+  print_error "Volume directory not found: $DATA_VOLUME_PATH"
+  print_warning "Data will not persist across container updates!"
+fi
+
+echo ""
 
 # ============================================================================
 # FIX GIT REPOSITORY OWNERSHIP

@@ -14,10 +14,44 @@ import { atomicWriteJSON } from '../utils/atomicWrite.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Users file path: prioritize config/app/users.json, fallback to backend/auth/users.json for compatibility
+// Users file path priority:
+// 1. Environment variable USERS_PATH (for custom locations)
+// 2. /data/users.json (Docker volume mount - PREFERRED)
+// 3. config/app/users.json (legacy location)
+// 4. backend/auth/users.json (original location, for compatibility)
+const VOLUME_USERS_FILE = '/data/users.json';
 const CONFIG_DIR = path.join(__dirname, '..', '..', 'config', 'app');
 const USERS_FILE = path.join(CONFIG_DIR, 'users.json');
 const LEGACY_USERS_FILE = path.join(__dirname, 'users.json');
+
+/**
+ * Get the users file path based on priority
+ * @returns {string} - Path to users file
+ */
+function getUsersPath() {
+  // 1. Check environment variable
+  if (process.env.USERS_PATH && fs.existsSync(process.env.USERS_PATH)) {
+    return process.env.USERS_PATH;
+  }
+  
+  // 2. Check volume mount (preferred for Docker)
+  if (fs.existsSync(VOLUME_USERS_FILE)) {
+    return VOLUME_USERS_FILE;
+  }
+  
+  // 3. Check config/app directory
+  if (fs.existsSync(USERS_FILE)) {
+    return USERS_FILE;
+  }
+  
+  // 4. Check legacy location
+  if (fs.existsSync(LEGACY_USERS_FILE)) {
+    return LEGACY_USERS_FILE;
+  }
+  
+  // Default: Use volume location for new installations
+  return VOLUME_USERS_FILE;
+}
 
 // In-memory sessions (can be upgraded to Redis/database)
 const sessions = new Map();
@@ -168,40 +202,24 @@ function isValidEmail(email) {
  */
 async function loadUsers() {
   try {
-    // Ensure config directory exists
-    if (!fs.existsSync(CONFIG_DIR)) {
-      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    const usersPath = getUsersPath();
+    
+    // Ensure parent directory exists
+    const usersDir = path.dirname(usersPath);
+    if (!fs.existsSync(usersDir)) {
+      fs.mkdirSync(usersDir, { recursive: true });
     }
     
-    // Try primary location first (config/app/users.json)
-    let usersPath = USERS_FILE;
-    if (!fs.existsSync(USERS_FILE)) {
-      // Fallback to legacy location (backend/auth/users.json)
-      if (fs.existsSync(LEGACY_USERS_FILE)) {
-        console.log('📝 Found legacy users file, migrating to config/app/users.json...');
-        usersPath = LEGACY_USERS_FILE;
-        // Will migrate after reading
-      } else {
-        return [];
-      }
+    // Check if users file exists
+    if (!fs.existsSync(usersPath)) {
+      console.log(`📝 Users file not found at ${usersPath}, will create on initialization`);
+      return [];
     }
 
     const data = fs.readFileSync(usersPath, 'utf-8');
     const users = JSON.parse(data);
     
-    // Migrate legacy users file to new location
-    if (usersPath === LEGACY_USERS_FILE) {
-      console.log('📦 Migrating users to config/app/users.json...');
-      await saveUsers(users);
-      // Optionally remove legacy file after successful migration
-      try {
-        fs.unlinkSync(LEGACY_USERS_FILE);
-        console.log('✅ Legacy users file removed');
-      } catch (err) {
-        console.warn('⚠️ Could not remove legacy users file:', err.message);
-      }
-    }
-    
+    console.log(`✅ Loaded ${users.length} users from ${usersPath}`);
     return users;
   } catch (error) {
     console.error('Error loading users:', error);
@@ -215,27 +233,27 @@ async function loadUsers() {
  */
 async function saveUsers(users) {
   try {
-    // Ensure config directory exists
-    if (!fs.existsSync(CONFIG_DIR)) {
-      fs.mkdirSync(CONFIG_DIR, { recursive: true });
-      console.log(`📁 Created config directory: ${CONFIG_DIR}`);
+    const usersPath = getUsersPath();
+    
+    // Ensure parent directory exists
+    const usersDir = path.dirname(usersPath);
+    if (!fs.existsSync(usersDir)) {
+      fs.mkdirSync(usersDir, { recursive: true });
+      console.log(`📁 Created users directory: ${usersDir}`);
     }
     
     // Check if directory is writable
     try {
-      fs.accessSync(CONFIG_DIR, fs.constants.W_OK);
+      fs.accessSync(usersDir, fs.constants.W_OK);
     } catch (err) {
-      console.error(`❌ Config directory is not writable: ${CONFIG_DIR}`);
+      console.error(`❌ Users directory is not writable: ${usersDir}`);
       console.error(`   Error: ${err.message}`);
-      // Try legacy location as fallback
-      console.log(`   Attempting to use legacy location: ${LEGACY_USERS_FILE}`);
-      await atomicWriteJSON(LEGACY_USERS_FILE, users, { backup: true });
-      return;
+      throw new Error(`Cannot write to users directory: ${usersDir}`);
     }
     
     // Use atomic write operations (crash-resistant)
-    await atomicWriteJSON(USERS_FILE, users, { backup: true });
-    console.log(`💾 Saved ${users.length} users to ${USERS_FILE}`);
+    await atomicWriteJSON(usersPath, users, { backup: true });
+    console.log(`💾 Saved ${users.length} users to ${usersPath}`);
   } catch (error) {
     console.error('Error saving users:', error);
     throw error;
