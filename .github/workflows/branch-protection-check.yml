@@ -112,31 +112,26 @@ jobs:
             const message = `${{ steps.check.outputs.message }}`;
             const valid = '${{ steps.check.outputs.valid }}';
             
-            const body = `## 🌳 Branch Protection Check
-            
-${message}
-
----
-
-### 📋 Branching Strategy
-
-Our branching flow:
-\`\`\`
-Development  ─────┐
-                  ├──> Pre_Prod ─────> main (Production)
-Quality_Test ─────┘
-\`\`\`
-
-**Rules:**
-- ✅ Development/Quality_Test → Pre_Prod
-- ✅ Pre_Prod → main
-- ❌ Development/Quality_Test → main (direct merge blocked)
-- ❌ Development ↔ Quality_Test (parallel branches)
-
-**Documentation**: See \`docs/BRANCHING_STRATEGY.md\`
-
-${valid === 'false' ? '⚠️ **This PR violates branch protection rules. Please update the target branch.**' : ''}
-            `;
+            // Build comment body using string concatenation to avoid YAML conflicts
+            let body = '## 🌳 Branch Protection Check\n\n';
+            body += message + '\n\n';
+            body += '---\n\n';
+            body += '### 📋 Branching Strategy\n\n';
+            body += 'Our branching flow:\n';
+            body += '```\n';
+            body += 'Development  ─────┐\n';
+            body += '                  ├──> Pre_Prod ─────> main (Production)\n';
+            body += 'Quality_Test ─────┘\n';
+            body += '```\n\n';
+            body += '**Rules:**\n';
+            body += '- ✅ Development/Quality_Test → Pre_Prod\n';
+            body += '- ✅ Pre_Prod → main\n';
+            body += '- ❌ Development/Quality_Test → main (direct merge blocked)\n';
+            body += '- ❌ Development ↔ Quality_Test (parallel branches)\n\n';
+            body += '**Documentation**: See `docs/BRANCHING_STRATEGY.md`\n\n';
+            if (valid === 'false') {
+              body += '⚠️ **This PR violates branch protection rules. Please update the target branch.**\n';
+            }
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
