@@ -24,10 +24,15 @@ services:
 
   # OSCAL Report Generator Application
   oscal-generator:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: oscal-report-generator:latest
+    # Use pre-built image from Docker Hub (recommended)
+    image: keekar/oscal_reports:latest
+    
+    # OR build locally (uncomment below and comment above image line)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    # image: oscal-report-generator:latest
+    
     container_name: oscal-report-generator
     restart: unless-stopped
     ports:
