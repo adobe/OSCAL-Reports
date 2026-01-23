@@ -8,6 +8,10 @@ jobs:
   validate-branch-flow:
     name: Validate Branch Flow
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     
     steps:
       - name: 📥 Checkout code
@@ -157,6 +161,8 @@ ${valid === 'false' ? '⚠️ **This PR violates branch protection rules. Please
   deployment-check:
     name: Check Deployment Stage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: 🚀 Identify deployment stage
