@@ -1,18 +1,26 @@
 # Repository Workflow Restriction - Implementation Summary
 
-**Date**: January 22, 2026  
+**Initial Date**: January 22, 2026  
+**Last Updated**: January 23, 2026  
 **Task**: Restrict test environment and ngrok deployments to Adobe repository only  
-**Status**: ✅ Complete
+**Status**: ✅ Complete (Updated v1.1)
 
 ---
 
 ## 📋 Task Overview
 
-Ensure that test environment deployment and ngrok-related workflows are only triggered when code is merged to the main branch of the Adobe repository (`AdobeManagedServices/OSCAL-Reports`) because:
+Ensure that test environment deployment and ngrok-related workflows are only triggered when code is merged to the **Pre_Prod branch** of the Adobe repository (`AdobeManagedServices/OSCAL-Reports`) because:
 
 1. **GitLab runner** is not available at the personal repository (`keekar2022/OSCAL-Reports`)
 2. **NGROK_AUTHTOKEN secret** is not configured in the personal repository
 3. These resources are only available in the Adobe organization
+4. **Pre_Prod serves as staging/testing** before production deployment to main
+
+### Update (January 23, 2026)
+
+**Change**: Moved test environment trigger from `main` to `Pre_Prod` branch to align with three-tier branching strategy where:
+- **Pre_Prod** = Staging/Testing environment (test here with ngrok)
+- **main** = Production deployment only
 
 ---
 
@@ -34,14 +42,14 @@ Added clear documentation at the top of the workflow file:
 
 #### B. Updated `deploy-runner-test` Job Condition
 
-**Before**:
+**Before** (Original):
 ```yaml
 if: |
   (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
   github.event_name == 'workflow_dispatch'
 ```
 
-**After**:
+**After** (v1.0 - January 22, 2026):
 ```yaml
 if: |
   github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
@@ -49,7 +57,18 @@ if: |
   github.event_name == 'workflow_dispatch')
 ```
 
-**Effect**: The ngrok deployment job will now only run on the Adobe repository.
+**Current** (v1.1 - January 23, 2026):
+```yaml
+if: |
+  github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
+  ((github.ref == 'refs/heads/Pre_Prod' && github.event_name == 'push') ||
+  github.event_name == 'workflow_dispatch')
+```
+
+**Effect**: 
+- The ngrok deployment job now only runs on the Adobe repository
+- Triggers on merges to `Pre_Prod` (staging) instead of `main` (production)
+- Aligns with three-tier branching strategy
 
 #### C. Updated `notify-testers` Job Condition
 
@@ -129,7 +148,7 @@ Added detailed warning in the Testing Environment section:
 
 ### On Adobe Repository (`AdobeManagedServices/OSCAL-Reports`)
 
-When code is merged to the `main` branch:
+**When code is merged to `Pre_Prod` branch** (Staging/Testing):
 
 ```
 ✅ Tests Run
@@ -137,18 +156,37 @@ When code is merged to the `main` branch:
 ✅ Ngrok Deployment Starts
 ✅ 5-Hour Testing Environment Active
 ✅ Testers Notified with Ngrok URL
-✅ Full Deployment Pipeline
+✅ Full Testing Pipeline
+```
+
+**When code is merged to `main` branch** (Production):
+
+```
+✅ Tests Run
+✅ Docker Build & Push to Registry
+✅ Production Deployment Instructions Generated
+⏭️  Ngrok Deployment Skipped (testing already done in Pre_Prod)
+✅ Production CI/CD Pipeline
 ```
 
 ### On Personal Repository (`keekar2022/OSCAL-Reports`)
 
-When code is merged to the `main` branch:
+**When code is merged to `Pre_Prod` branch**:
 
 ```
 ✅ Tests Run
 ✅ Docker Build
 ⏭️  Ngrok Deployment Skipped (no error)
 ⏭️  Tester Notifications Skipped
+✅ Other CI/CD Steps Continue Normally
+```
+
+**When code is merged to `main` branch**:
+
+```
+✅ Tests Run
+✅ Docker Build
+⏭️  Ngrok Deployment Skipped (not configured for main anyway)
 ✅ Other CI/CD Steps Continue Normally
 ```
 
@@ -172,8 +210,10 @@ This evaluates to:
 
 ### Workflow Trigger Flow
 
+**For Test Environment (Pre_Prod)**:
+
 ```
-Push to main branch
+Push to Pre_Prod branch
   ↓
 Tests Job Runs (both repos)
   ↓
@@ -181,8 +221,27 @@ Deploy-runner-test Job
   ↓
 Check: github.repository == 'AdobeManagedServices/OSCAL-Reports'?
   ↓
-Yes → Run ngrok deployment
+Yes → Check: github.ref == 'refs/heads/Pre_Prod'?
+  ↓
+  Yes → Run ngrok deployment (5-hour test environment)
+  No  → Skip
 No  → Skip (no error)
+```
+
+**For Production (main)**:
+
+```
+Push to main branch
+  ↓
+Tests Job Runs (both repos)
+  ↓
+Production Deployment Job
+  ↓
+Build Docker images
+Push to GitHub Container Registry
+Generate deployment instructions
+  ↓
+Ngrok deployment does NOT run (testing done in Pre_Prod)
 ```
 
 ---

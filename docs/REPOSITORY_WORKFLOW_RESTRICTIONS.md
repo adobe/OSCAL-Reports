@@ -34,9 +34,12 @@ The OSCAL Reports application is maintained in two repositories:
 
 **Restriction**: This workflow is **ONLY** enabled for the Adobe repository.
 
+**Trigger**: Automatically deploys on merges to `Pre_Prod` branch (staging/testing environment).
+
 **Reason**: 
 - Requires `NGROK_AUTHTOKEN` secret (only available in Adobe repository)
 - Uses GitLab runner infrastructure (only available in Adobe organization)
+- Aligns with three-tier branching strategy: Pre_Prod = staging/testing, main = production
 
 **Implementation**:
 
@@ -44,7 +47,7 @@ The OSCAL Reports application is maintained in two repositories:
 # In deploy-runner-test job:
 if: |
   github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
-  ((github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+  ((github.ref == 'refs/heads/Pre_Prod' && github.event_name == 'push') ||
   github.event_name == 'workflow_dispatch')
 
 # In notify-testers job:
@@ -62,7 +65,26 @@ if: success() && github.repository == 'AdobeManagedServices/OSCAL-Reports'
 
 ---
 
-## Changes Made (January 22, 2026)
+## Change History
+
+### Version 1.2 - January 23, 2026
+
+**Change**: Moved test environment trigger from `main` to `Pre_Prod` branch
+
+**Rationale**:
+- Aligns with three-tier branching strategy
+- Pre_Prod serves as staging/testing environment
+- Main branch reserved for production deployment only
+- Allows testing before final production release
+
+**Impact**:
+- Test environment now auto-deploys on merges to Pre_Prod
+- Production deployment to main remains manual/controlled
+- Better separation of staging vs production
+
+### Version 1.0 - January 22, 2026
+
+**Initial Implementation**: Added repository restrictions for ngrok deployments
 
 ### 1. Added Repository Comment Header
 
@@ -78,20 +100,30 @@ Added clear documentation at the top of the workflow file:
 
 ### 2. Updated Job Conditions
 
-**Before**:
+**Before** (v1.0 - January 22, 2026):
 ```yaml
 if: |
   (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
   github.event_name == 'workflow_dispatch'
 ```
 
-**After**:
+**After** (v1.1 - January 22, 2026):
 ```yaml
 if: |
   github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
   ((github.ref == 'refs/heads/main' && github.event_name == 'push') ||
   github.event_name == 'workflow_dispatch')
 ```
+
+**Current** (v1.2 - January 23, 2026):
+```yaml
+if: |
+  github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
+  ((github.ref == 'refs/heads/Pre_Prod' && github.event_name == 'push') ||
+  github.event_name == 'workflow_dispatch')
+```
+
+**Change**: Moved test environment trigger from `main` to `Pre_Prod` to align with three-tier branching strategy where Pre_Prod serves as staging/testing before production deployment to main.
 
 ### 3. Added Repository Check to Notifications
 
