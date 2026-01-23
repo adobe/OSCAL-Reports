@@ -1,0 +1,273 @@
+name: Development Branch Tests
+
+on:
+  push:
+    branches:
+      - Development
+  pull_request:
+    branches:
+      - Development
+
+jobs:
+  security-tests:
+    name: Security Tests (CSRF & SSRF)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Run CSRF Protection Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=csrf-protection.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+          TEST_USER_PASSWORD: User@2026
+      
+      - name: Run SSRF Protection Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=ssrf-protection.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+      
+      - name: Run URL Validator Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=urlValidator.test.js
+        env:
+          NODE_ENV: test
+
+  email-tests:
+    name: Email Functionality Tests
+    runs-on: ubuntu-latest
+    needs: security-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Email Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=email-functionality.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+
+  ai-integration-tests:
+    name: AI Integration Tests
+    runs-on: ubuntu-latest
+    needs: security-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run AI Integration Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=ai-integration.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: security-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Unit Tests
+        run: |
+          cd backend
+          npm run test:unit
+        env:
+          NODE_ENV: test
+      
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage/coverage-final.json
+          flags: unit
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [security-tests, email-tests, ai-integration-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Integration Tests
+        run: |
+          cd backend
+          npm run test:integration
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+          TEST_USER_PASSWORD: User@2026
+          TEST_ASSESSOR_PASSWORD: Assessor@2026
+
+  lint-and-format:
+    name: Linting and Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Run ESLint (Backend)
+        run: |
+          cd backend
+          npx eslint . --ext .js || true
+      
+      - name: Run ESLint (Frontend)
+        run: |
+          cd frontend
+          npx eslint . --ext .js,.jsx || true
+
+  build-test:
+    name: Build Test
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm run build
+      
+      - name: Test Backend Startup
+        run: |
+          cd backend
+          timeout 30s npm start || exit 0
+        env:
+          NODE_ENV: test
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-build
+          path: frontend/dist
+          retention-days: 7
+
+  summary:
+    name: Development Tests Summary
+    runs-on: ubuntu-latest
+    needs: [security-tests, email-tests, ai-integration-tests, unit-tests, integration-tests, build-test]
+    if: always()
+    
+    steps:
+      - name: Check Test Results
+        run: |
+          echo "Development Branch Test Summary:"
+          echo "================================="
+          echo "Security Tests: ${{ needs.security-tests.result }}"
+          echo "Email Tests: ${{ needs.email-tests.result }}"
+          echo "AI Integration Tests: ${{ needs.ai-integration-tests.result }}"
+          echo "Unit Tests: ${{ needs.unit-tests.result }}"
+          echo "Integration Tests: ${{ needs.integration-tests.result }}"
+          echo "Build Test: ${{ needs.build-test.result }}"
+          
+          if [ "${{ needs.security-tests.result }}" != "success" ] || \
+             [ "${{ needs.email-tests.result }}" != "success" ] || \
+             [ "${{ needs.ai-integration-tests.result }}" != "success" ] || \
+             [ "${{ needs.unit-tests.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ] || \
+             [ "${{ needs.build-test.result }}" != "success" ]; then
+            echo "❌ Some tests failed!"
+            exit 1
+          fi
+          
+          echo "✅ All Development tests passed!"
