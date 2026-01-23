@@ -305,6 +305,36 @@ jobs:
             echo "admin-password=$ADMIN_PASS" >> $GITHUB_OUTPUT
           fi
       
+      - name: 📋 Display credentials in job summary
+        if: always()
+        run: |
+          if [ -f credentials.txt ]; then
+            echo "## 🔐 Default Credentials" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**⚠️ IMPORTANT**: Change these passwords immediately after first login!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat credentials.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📥 How to Access Credentials" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Method 1: Extract from Docker Image (Recommended)**" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "docker pull keekar/oscal_reports:${{ github.ref == 'refs/heads/main' && 'latest' || 'edge' }}" >> $GITHUB_STEP_SUMMARY
+            echo "docker create --name temp-oscal keekar/oscal_reports:${{ github.ref == 'refs/heads/main' && 'latest' || 'edge' }}" >> $GITHUB_STEP_SUMMARY
+            echo "docker cp temp-oscal:/app/credentials.txt ./credentials.txt" >> $GITHUB_STEP_SUMMARY
+            echo "docker rm temp-oscal" >> $GITHUB_STEP_SUMMARY
+            echo "cat credentials.txt" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Method 2: Download Artifact**" >> $GITHUB_STEP_SUMMARY
+            echo "- Scroll down to the \"Artifacts\" section at the bottom of this page" >> $GITHUB_STEP_SUMMARY
+            echo "- Click on \`deployment-credentials-${{ steps.extract-version.outputs.version }}\` to download" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Credentials file not found" >> $GITHUB_STEP_SUMMARY
+          fi
+      
       - name: 📤 Upload credentials as artifact
         uses: actions/upload-artifact@v4
         if: always()

@@ -174,10 +174,36 @@ Where:
 
 ### Finding Credentials
 
+#### Method 1: Extract from Docker Image (Easiest)
+
+```bash
+# Pull the image
+docker pull keekar/oscal_reports:latest  # or :edge
+
+# Create temporary container
+docker create --name temp-oscal keekar/oscal_reports:latest
+
+# Extract credentials file
+docker cp temp-oscal:/app/credentials.txt ./credentials.txt
+
+# View credentials
+cat credentials.txt
+
+# Clean up
+docker rm temp-oscal
+```
+
+#### Method 2: Via GitHub Actions (Requires Repository Access)
+
 1. Go to the [Actions tab](../../actions)
 2. Click on the latest workflow run
-3. Download the `deployment-credentials-v{version}` artifact
-4. Extract and read `credentials.txt`
+3. **View credentials in the job summary** (displayed directly on the page)
+4. Or scroll down to "Artifacts" section and download the `deployment-credentials-v{version}` artifact
+
+**Note**: Artifact download URLs (like `https://github.com/.../artifacts/123456`) do NOT work directly in browsers. You must:
+- Download via the GitHub UI (method above), OR
+- Use GitHub CLI: `gh run download RUN_ID --name deployment-credentials-v{version}`, OR
+- Extract from Docker image (Method 1 - recommended)
 
 ⚠️ **IMPORTANT**: Change default passwords immediately after first login!
 
