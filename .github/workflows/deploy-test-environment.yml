@@ -1,12 +1,31 @@
 name: Deploy Testing Environment
 
+# IMPORTANT: This workflow only runs on AdobeManagedServices/OSCAL-Reports
+# The personal repository (keekar2022/OSCAL-Reports) does not have:
+# - GitLab runner access
+# - NGROK_AUTHTOKEN secret
+# Therefore, ngrok-related deployments are restricted to the Adobe repository
+
+# TESTING STRATEGY:
+# - Triggers on merge to Pre_Prod (staging/testing branch)
+# - Deploys 5-hour testing environment with Ngrok
+# - Allows functional testing before production deployment to main
+# - Aligns with branching strategy: Development/Quality_Test → Pre_Prod (TEST HERE) → main (PRODUCTION)
+
 on:
+  workflow_dispatch:
+    inputs:
+      duration_hours:
+        description: 'How long to keep environment running (hours)'
+        required: false
+        type: number
+        default: 5
   push:
     branches:
-      - main
+      - Pre_Prod
   pull_request:
     branches:
-      - main
+      - Pre_Prod
 
 jobs:
   ###############################################################################
@@ -41,115 +60,20 @@ jobs:
         run: npm run build
 
   ###############################################################################
-  # Deploy to Railway (Free Testing Environment)
-  ###############################################################################
-  deploy-railway-test:
-    name: Deploy to Railway (Testing)
-    runs-on: ubuntu-latest
-    needs: [tests]
-    if: false  # Disabled - Organization does not allow Railway
-    environment:
-      name: testing
-      url: https://oscal-report-generator-testing.up.railway.app
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🚀 Deploy to Railway
-        uses: bervProject/railway-deploy@main
-        with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
-          service: oscal-report-generator-testing
-      
-      - name: ⏰ Keep deployment alive for 5 hours
-        run: |
-          echo "🌐 Testing Environment Deployed!"
-          echo "URL: https://oscal-report-generator-testing.up.railway.app"
-          echo ""
-          echo "⏰ This environment will be available for testers."
-          echo "Production deployment to TrueNAS should be done manually."
-      
-      - name: 📝 Create Testing Summary
-        run: |
-          cat > testing-summary.md << EOF
-          # ✅ Testing Environment Ready!
-          
-          ## 🌐 Testing URL
-          **URL**: https://oscal-report-generator-testing.up.railway.app
-          
-          ## 👥 For Testers
-          
-          This is a **testing environment** deployed automatically after all tests passed.
-          
-          ### Access Information:
-          - **URL**: https://oscal-report-generator-testing.up.railway.app
-          - **Health Check**: https://oscal-report-generator-testing.up.railway.app/health
-          - **Version**: $(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
-          - **Deployed**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-          
-          ### Credentials
-          Download from workflow artifacts: [Credentials](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          ### Testing Checklist
-          - [ ] Login functionality
-          - [ ] Create new SSP
-          - [ ] Load existing report
-          - [ ] Export to JSON
-          - [ ] Export to Excel
-          - [ ] Export to PDF
-          - [ ] AI integration (if configured)
-          - [ ] Settings persistence
-          - [ ] User management
-          
-          ### Report Issues
-          If you find any issues during testing:
-          1. Document the issue
-          2. Include steps to reproduce
-          3. Create GitHub issue or notify development team
-          
-          ---
-          
-          ## 🏭 Production Deployment
-          
-          **⚠️ This is NOT production!** 
-          
-          For production deployment to TrueNAS:
-          \`\`\`bash
-          ssh mkesharw@NAS01
-          cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-          git pull origin main
-          ./build_on_truenas.sh
-          \`\`\`
-          
-          Production URLs:
-          - Blue: http://nas.keekar.com:3020
-          - Green: http://nas.keekar.com:3019
-          
-          ---
-          
-          **Deployed By**: ${{ github.actor }}
-          **Commit**: ${{ github.sha }}
-          **Workflow**: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          EOF
-          
-          cat testing-summary.md >> $GITHUB_STEP_SUMMARY
-      
-      - name: 📤 Upload Testing Summary
-        uses: actions/upload-artifact@v4
-        with:
-          name: testing-environment-summary
-          path: testing-summary.md
-          retention-days: 7
-
-  ###############################################################################
   # GitHub Runner + Ngrok (5 Hour Testing Environment)
+  ###############################################################################
+  # Note: Railway deployment removed - action not allowed by organization
+  # Note: Only runs on Adobe repository where GitLab runner and ngrok secrets are available
+  # Note: Triggers on Pre_Prod merges for staging/testing before production
   ###############################################################################
   deploy-runner-test:
     name: Deploy on Runner with Ngrok (5 Hours)
     runs-on: ubuntu-latest
     needs: [tests]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: |
+      github.repository == 'AdobeManagedServices/OSCAL-Reports' &&
+      ((github.ref == 'refs/heads/Pre_Prod' && github.event_name == 'push') ||
+      github.event_name == 'workflow_dispatch')
     
     steps:
       - name: 📥 Checkout code
@@ -175,21 +99,54 @@ jobs:
           # Check health
           curl http://localhost:3020/health
       
-      - name: 🌐 Setup Ngrok Tunnel
-        uses: ngrok/ngrok-action@v1
-        with:
-          authtoken: ${{ secrets.NGROK_AUTHTOKEN }}
-          port: 3020
-          region: us
+      - name: 🌐 Install Ngrok
+        run: |
+          # Download and install ngrok
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok
+          
+          # Configure ngrok with auth token
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTHTOKEN }}
+          
+          echo "✅ Ngrok installed and configured"
+      
+      - name: 🚀 Start Ngrok Tunnel
+        run: |
+          # Start ngrok in background
+          nohup ngrok http 3020 --log=stdout > ngrok.log 2>&1 &
+          
+          # Wait for ngrok to start
+          echo "Waiting for ngrok to start..."
+          sleep 10
+          
+          # Verify ngrok is running
+          if ! pgrep -x "ngrok" > /dev/null; then
+            echo "❌ Ngrok failed to start"
+            cat ngrok.log
+            exit 1
+          fi
+          
+          echo "✅ Ngrok tunnel started"
       
       - name: 📝 Get Ngrok URL
         id: ngrok-url
         run: |
-          # Wait for ngrok to start
+          # Wait a bit more to ensure API is ready
           sleep 5
           
-          # Get ngrok URL
+          # Get ngrok URL from API
           NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          
+          if [ -z "$NGROK_URL" ] || [ "$NGROK_URL" == "null" ]; then
+            echo "❌ Failed to get ngrok URL"
+            echo "Ngrok API response:"
+            curl -s http://localhost:4040/api/tunnels | jq .
+            echo "Ngrok logs:"
+            cat ngrok.log
+            exit 1
+          fi
+          
           echo "url=$NGROK_URL" >> $GITHUB_OUTPUT
           echo "🌐 Testing URL: $NGROK_URL"
       
@@ -232,15 +189,19 @@ jobs:
           
           cat testing-notification.md >> $GITHUB_STEP_SUMMARY
       
-      - name: ⏰ Keep Environment Running (5 Hours)
+      - name: ⏰ Keep Environment Running
         run: |
-          echo "🕐 Testing environment will remain active for 5 hours..."
+          # Use input duration or default to 5 hours
+          DURATION_HOURS=${{ inputs.duration_hours || 5 }}
+          DURATION_SECONDS=$((DURATION_HOURS * 3600))
+          
+          echo "🕐 Testing environment will remain active for $DURATION_HOURS hours..."
           echo "Testers can access at: ${{ steps.ngrok-url.outputs.url }}"
           echo ""
           echo "Monitoring application health..."
           
-          # Keep running for 5 hours (18000 seconds)
-          END_TIME=$(($(date +%s) + 18000))
+          # Calculate end time
+          END_TIME=$(($(date +%s) + DURATION_SECONDS))
           
           while [ $(date +%s) -lt $END_TIME ]; do
             # Check if app is still running
@@ -261,7 +222,7 @@ jobs:
           done
           
           echo ""
-          echo "⏰ 5 hours elapsed. Shutting down testing environment..."
+          echo "⏰ $DURATION_HOURS hours elapsed. Shutting down testing environment..."
       
       - name: 🧹 Cleanup
         if: always()
@@ -278,7 +239,7 @@ jobs:
     name: Notify Testers
     runs-on: ubuntu-latest
     needs: [deploy-runner-test]
-    if: success()
+    if: success() && github.repository == 'AdobeManagedServices/OSCAL-Reports'
     
     steps:
       - name: 📧 Create Tester Notification

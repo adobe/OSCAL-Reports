@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.3] - 2026-01-22
+
+### Security
+- **CRITICAL FIX**: Updated lodash from 4.17.21 to 4.17.23 to fix prototype pollution vulnerability (CVE-pending)
+  - Added npm overrides to force lodash >=4.17.23 in all dependencies
+  - Vulnerability affected _.unset and _.omit functions
+  - Transitive dependency via concurrently@8.2.2
+  - All npm audit checks now pass (0 vulnerabilities)
+
+### Fixed
+- Updated GitHub Actions artifact upload from deprecated v3 to v4
+- Fixed bash script error in update_best_practices.sh (removed 'local' keyword used outside function)
+- Resolved Frontend Tests workflow failure due to deprecated actions
+- Resolved Best practices update script failure
+
+### Changed
+- Restricted test environment & ngrok deployment workflows to Adobe repository only
+  - Added repository checks to deploy-test-environment.yml workflow
+  - Personal repository (keekar2022/OSCAL-Reports) gracefully skips ngrok deployments
+  - Adobe repository (AdobeManagedServices/OSCAL-Reports) retains full functionality
+  - Created comprehensive documentation in docs/REPOSITORY_WORKFLOW_RESTRICTIONS.md
+
 ## [Unreleased]
 
 ### Added
@@ -184,6 +206,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 1.2.0 | 2025-09-15 | User authentication |
 | 1.1.0 | 2025-08-01 | Email integration |
 | 1.0.0 | 2025-06-01 | Initial release |
+
+---
+
+## Version Management Guide
+
+### Semantic Versioning
+
+Given a version number MAJOR.MINOR.PATCH (e.g., 2.1.3):
+
+**MAJOR (X.y.z)** - Incompatible API changes or breaking changes:
+- License changes (MIT → GPL)
+- API endpoint changes
+- Removing features
+- Changing data formats
+- Breaking configuration changes
+
+**MINOR (x.Y.z)** - New features, backwards-compatible:
+- New API endpoints (keeping old ones)
+- New features that don't break existing functionality
+- Significant improvements
+- New optional configuration
+
+**PATCH (x.y.Z)** - Backwards-compatible bug fixes:
+- Bug fixes
+- Security patches
+- Documentation updates
+- Performance improvements (non-breaking)
+- Dependency updates
+
+### Bumping Versions
+
+Use the `bump_version.sh` script for all version changes:
+
+```bash
+# For breaking changes
+./bump_version.sh major "Description of breaking changes"
+
+# For new features
+./bump_version.sh minor "Description of new features"
+
+# For bug fixes
+./bump_version.sh patch "Description of bug fix"
+```
+
+### Dual Repository Setup
+
+**Important:** The project is maintained in two repositories:
+
+1. **Adobe Repository** (Primary): https://github.com/AdobeManagedServices/oscal
+   - Requires Adobe VPN access
+   - Used for corporate development and collaboration
+   - Protected by branch rules (requires PRs)
+
+2. **Personal Repository** (Mirror): https://github.com/keekar2022/OSCAL-Reports
+   - Public access (no VPN required)
+   - Used for TrueNAS deployments
+   - Direct push allowed
+
+See `docs/DUAL_REPO_SETUP.md` for complete workflow documentation.
 
 ---
 
