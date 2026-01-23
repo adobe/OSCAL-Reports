@@ -213,7 +213,7 @@ jobs:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-tests, code-quality, version-check, integration-test]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/Development') && github.event_name == 'push'
     permissions:
       contents: read
       packages: write
@@ -222,6 +222,7 @@ jobs:
       version: ${{ steps.extract-version.outputs.version }}
       image-tag: ${{ steps.extract-version.outputs.image-tag }}
       registry-url: ${{ steps.extract-version.outputs.registry-url }}
+      dockerhub-tag: ${{ steps.docker-meta.outputs.tags }}
     
     steps:
       - name: 📥 Checkout code
@@ -246,31 +247,54 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: 📦 Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: 🔐 Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
-          context: .
-          push: true
-          build-args: |
-            BUILD_TIMESTAMP=${{ github.event.head_commit.timestamp }}
-            PORT=3020
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: 🏷️ Docker metadata for tags
+        id: docker-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/oscal-report-generator
+            keekar/oscal_reports
           tags: |
-            ghcr.io/${{ github.repository_owner }}/oscal-report-generator:${{ steps.extract-version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/oscal-report-generator:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/Development' }}
+            type=semver,pattern={{version}},value=${{ steps.extract-version.outputs.version }}
+            type=sha,prefix={{branch}}-
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.extract-version.outputs.version }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
       
+      - name: 📦 Build and push Docker image (Multi-registry)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            BUILD_TIMESTAMP=${{ github.event.head_commit.timestamp }}
+            PORT=3020
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
       - name: 📤 Extract credentials from image
         id: extract-credentials
         run: |
-          # Create temporary container to extract credentials
-          docker pull ghcr.io/${{ github.repository_owner }}/oscal-report-generator:${{ steps.extract-version.outputs.version }}
-          docker create --name temp-oscal ghcr.io/${{ github.repository_owner }}/oscal-report-generator:${{ steps.extract-version.outputs.version }}
+          # Wait for image to be available
+          sleep 5
+          
+          # Create temporary container to extract credentials (use Docker Hub image)
+          IMAGE_TAG="keekar/oscal_reports:${{ github.ref == 'refs/heads/main' && 'latest' || 'edge' }}"
+          docker pull $IMAGE_TAG
+          docker create --name temp-oscal $IMAGE_TAG
           docker cp temp-oscal:/app/credentials.txt credentials.txt || echo "No credentials file found"
           docker rm temp-oscal
           
@@ -308,6 +332,7 @@ jobs:
           VERSION="${{ needs.build-and-push.outputs.version }}"
           IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
           REGISTRY_URL="${{ needs.build-and-push.outputs.registry-url }}"
+          DOCKERHUB_TAG="${{ github.ref == 'refs/heads/main' && 'latest' || 'edge' }}"
           
           echo "deployment-url=http://nas.keekar.com:3020" >> $GITHUB_OUTPUT
           echo "image-url=$REGISTRY_URL:$VERSION" >> $GITHUB_OUTPUT
@@ -316,24 +341,27 @@ jobs:
           echo ""
           echo "📦 Image Details:"
           echo "  - Version: $VERSION"
-          echo "  - Image: $IMAGE_TAG"
-          echo "  - Latest: ${REGISTRY_URL}:latest"
+          echo "  - GHCR Image: $IMAGE_TAG"
+          echo "  - Docker Hub: keekar/oscal_reports:$DOCKERHUB_TAG"
+          echo "  - Docker Hub Version: keekar/oscal_reports:$VERSION"
           echo ""
           echo "🚀 Deployment Options:"
           echo ""
-          echo "1️⃣ TrueNAS Deployment (Recommended):"
+          echo "1️⃣ Docker Hub (Public - Easiest for external users):"
+          echo "   docker pull keekar/oscal_reports:$DOCKERHUB_TAG"
+          echo "   docker run -d --name oscal-app -p 3020:3020 -v \$(pwd)/config:/app/config keekar/oscal_reports:$DOCKERHUB_TAG"
+          echo ""
+          echo "2️⃣ TrueNAS Deployment (Recommended for production):"
           echo "   SSH into TrueNAS and run:"
           echo "   cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green"
           echo "   git pull origin main"
           echo "   ./build_on_truenas.sh"
           echo ""
-          echo "2️⃣ Manual Docker Deployment:"
+          echo "3️⃣ GitHub Container Registry (GHCR):"
           echo "   docker pull ${IMAGE_TAG}"
-          echo "   docker stop oscal-app || true"
-          echo "   docker rm oscal-app || true"
           echo "   docker run -d --name oscal-app -p 3020:3020 -v \$(pwd)/config:/app/config ${IMAGE_TAG}"
           echo ""
-          echo "3️⃣ Docker Compose:"
+          echo "4️⃣ Docker Compose:"
           echo "   docker-compose pull"
           echo "   docker-compose up -d"
           echo ""
@@ -341,11 +369,15 @@ jobs:
           echo "  - Blue Instance: http://nas.keekar.com:3020"
           echo "  - Green Instance: http://nas.keekar.com:3019"
           echo ""
+          echo "🐳 Public Docker Hub:"
+          echo "  - https://hub.docker.com/r/keekar/oscal_reports"
+          echo ""
           echo "📋 Next Steps:"
-          echo "  1. Deploy to TrueNAS using build_on_truenas.sh"
-          echo "  2. Test deployment at http://nas.keekar.com:3020"
-          echo "  3. Check credentials in workflow artifacts"
-          echo "  4. Change default passwords immediately"
+          echo "  1. Pull from Docker Hub: docker pull keekar/oscal_reports:$DOCKERHUB_TAG"
+          echo "  2. Deploy to TrueNAS using build_on_truenas.sh"
+          echo "  3. Test deployment at http://nas.keekar.com:3020"
+          echo "  4. Check credentials in workflow artifacts"
+          echo "  5. Change default passwords immediately"
       
       # Optional: Trigger TrueNAS deployment via webhook or SSH
       # Uncomment and configure if you want automatic deployment
@@ -379,6 +411,7 @@ jobs:
         run: |
           VERSION="${{ needs.build-and-push.outputs.version }}"
           IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          DOCKERHUB_TAG="${{ github.ref == 'refs/heads/main' && 'latest' || 'edge' }}"
           COMMIT_MSG=$(git log -1 --pretty=format:'%s')
           COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an')
           COMMIT_SHA=$(git log -1 --pretty=format:'%h')
@@ -388,15 +421,22 @@ jobs:
           
           ## 📦 Build Information
           - **Version**: $VERSION
-          - **Image**: \`$IMAGE_TAG\`
+          - **GHCR Image**: \`$IMAGE_TAG\`
+          - **Docker Hub**: \`keekar/oscal_reports:$DOCKERHUB_TAG\`
           - **Commit**: $COMMIT_SHA - $COMMIT_MSG
           - **Author**: $COMMIT_AUTHOR
           - **Workflow**: [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           
+          ## 🐳 Docker Images Available
+          - **Docker Hub (Public)**: https://hub.docker.com/r/keekar/oscal_reports
+            - \`docker pull keekar/oscal_reports:$DOCKERHUB_TAG\`
+            - \`docker pull keekar/oscal_reports:$VERSION\`
+          - **GitHub Container Registry**: https://ghcr.io/${{ github.repository_owner }}/oscal-report-generator:$VERSION
+            - \`docker pull ghcr.io/${{ github.repository_owner }}/oscal-report-generator:$VERSION\`
+          
           ## 🌐 Deployment URLs
           - **Blue Instance**: http://nas.keekar.com:3020
           - **Green Instance**: http://nas.keekar.com:3019
-          - **Docker Image**: https://ghcr.io/${{ github.repository_owner }}/oscal-report-generator:$VERSION
           
           ## 🔐 Credentials
           Download credentials from [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
@@ -405,7 +445,20 @@ jobs:
           
           ## 📋 Deployment Steps
           
-          ### Option 1: TrueNAS Deployment (Recommended)
+          ### Option 1: Docker Hub (Easiest - Public Access)
+          \`\`\`bash
+          # Pull the latest/edge image from Docker Hub
+          docker pull keekar/oscal_reports:$DOCKERHUB_TAG
+          
+          # Run the container
+          docker run -d \\
+            --name oscal-app \\
+            -p 3020:3020 \\
+            -v \$(pwd)/config:/app/config \\
+            keekar/oscal_reports:$DOCKERHUB_TAG
+          \`\`\`
+          
+          ### Option 2: TrueNAS Deployment (Recommended for Production)
           \`\`\`bash
           ssh mkesharw@NAS01
           cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
@@ -413,7 +466,7 @@ jobs:
           ./build_on_truenas.sh
           \`\`\`
           
-          ### Option 2: Manual Docker Deployment
+          ### Option 3: GitHub Container Registry (GHCR)
           \`\`\`bash
           docker pull $IMAGE_TAG
           docker stop oscal-app || true
@@ -425,7 +478,7 @@ jobs:
             $IMAGE_TAG
           \`\`\`
           
-          ### Option 3: Docker Compose
+          ### Option 4: Docker Compose
           \`\`\`bash
           docker-compose pull
           docker-compose up -d
@@ -440,7 +493,8 @@ jobs:
           
           ## 🔗 Quick Links
           - [View Changes](${{ github.server_url }}/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }})
-          - [Docker Image](${{ needs.build-and-push.outputs.registry-url }})
+          - [Docker Hub Image](https://hub.docker.com/r/keekar/oscal_reports)
+          - [GHCR Image](${{ needs.build-and-push.outputs.registry-url }})
           - [Workflow Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           
           ---
