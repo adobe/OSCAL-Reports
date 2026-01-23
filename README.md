@@ -5,6 +5,9 @@
 Version 1.5.0 | January 2026
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Docker Hub](https://img.shields.io/docker/v/keekar/oscal_reports?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
+[![Docker Pulls](https://img.shields.io/docker/pulls/keekar/oscal_reports?logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
+[![Docker Image Size](https://img.shields.io/docker/image-size/keekar/oscal_reports/latest?logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
 
 ---
 
@@ -28,12 +31,48 @@ Version 1.5.0 | January 2026
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Docker (Easiest - Recommended)
+
+The fastest way to get started is using our pre-built Docker images from Docker Hub:
+
+```bash
+# Pull the latest stable release
+docker pull keekar/oscal_reports:latest
+
+# Run the container
+docker run -d \
+  --name oscal-app \
+  -p 3020:3020 \
+  -v $(pwd)/config:/app/config \
+  keekar/oscal_reports:latest
+
+# Access the application
+open http://localhost:3020
+```
+
+**Available Tags:**
+- `latest` - Stable production release (from `main` branch)
+- `edge` - Latest development build (from `Development` branch)
+- `v{version}` - Specific version (e.g., `v1.5.0`)
+
+**Docker Hub Repository:** https://hub.docker.com/r/keekar/oscal_reports
+
+**Multi-Platform Support:**
+- ✅ linux/amd64 (Intel/AMD processors)
+- ✅ linux/arm64 (Apple Silicon, ARM servers)
+
+For detailed Docker deployment instructions, see [Docker Hub Setup Guide](docs/DOCKER_HUB_SETUP.md).
+
+---
+
+### Option 2: Local Development Setup
+
+#### Prerequisites
 
 - **Node.js** 20+ (for local development)
 - **Modern web browser** (Chrome, Firefox, Safari, Edge)
 
-### Local Development Setup
+#### Setup Steps
 
 ```bash
 # Clone or download the repository
@@ -57,7 +96,9 @@ open http://localhost:3020
 open http://localhost:3021
 ```
 
-### TrueNAS Server Deployment
+---
+
+### Option 3: TrueNAS Server Deployment
 
 #### Automated Blue-Green Deployment (Recommended)
 
