@@ -17,7 +17,7 @@ on:
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-  IMAGE_NAME: oscal-report-generator
+  IMAGE_NAME: oscal_reports
 
 jobs:
   build-and-push:
