@@ -5,6 +5,9 @@
 Version 1.5.0 | January 2026
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Docker Hub](https://img.shields.io/docker/v/keekar/oscal_reports?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
+[![Docker Pulls](https://img.shields.io/docker/pulls/keekar/oscal_reports?logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
+[![Docker Image Size](https://img.shields.io/docker/image-size/keekar/oscal_reports/latest?logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
 
 ---
 
@@ -28,12 +31,48 @@ Version 1.5.0 | January 2026
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Docker (Easiest - Recommended)
+
+The fastest way to get started is using our pre-built Docker images from Docker Hub:
+
+```bash
+# Pull the latest stable release
+docker pull keekar/oscal_reports:latest
+
+# Run the container
+docker run -d \
+  --name oscal-app \
+  -p 3020:3020 \
+  -v $(pwd)/config:/app/config \
+  keekar/oscal_reports:latest
+
+# Access the application
+open http://localhost:3020
+```
+
+**Available Tags:**
+- `latest` - Stable production release (from `main` branch)
+- `edge` - Latest development build (from `Development` branch)
+- `v{version}` - Specific version (e.g., `v1.5.0`)
+
+**Docker Hub Repository:** https://hub.docker.com/r/keekar/oscal_reports
+
+**Multi-Platform Support:**
+- ✅ linux/amd64 (Intel/AMD processors)
+- ✅ linux/arm64 (Apple Silicon, ARM servers)
+
+For detailed Docker deployment instructions, see [Docker Hub Guide](docs/DOCKER_HUB_GUIDE.md).
+
+---
+
+### Option 2: Local Development Setup
+
+#### Prerequisites
 
 - **Node.js** 20+ (for local development)
 - **Modern web browser** (Chrome, Firefox, Safari, Edge)
 
-### Local Development Setup
+#### Setup Steps
 
 ```bash
 # Clone or download the repository
@@ -57,7 +96,9 @@ open http://localhost:3020
 open http://localhost:3021
 ```
 
-### TrueNAS Server Deployment
+---
+
+### Option 3: TrueNAS Server Deployment
 
 #### Automated Blue-Green Deployment (Recommended)
 
@@ -896,9 +937,14 @@ This project maintains comprehensive documentation:
 2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture, API endpoints, AI telemetry
 3. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment guide (Docker, general deployment)
 4. **[docs/TRUENAS_DEPLOYMENT.md](docs/TRUENAS_DEPLOYMENT.md)** - TrueNAS automated Blue-Green deployment
-5. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Complete deployment guide (local, Docker, TrueNAS, cron)
-7. **[docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md)** - Best practices and implementation guidelines
-8. **[docs/QUALITY_ASSURANCE.md](docs/QUALITY_ASSURANCE.md)** - QA processes and testing
+5. **[docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md)** - Best practices and implementation guidelines
+6. **[docs/QUALITY_ASSURANCE.md](docs/QUALITY_ASSURANCE.md)** - QA processes and testing
+7. **[docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md)** - Complete testing strategy and automation
+8. **[docs/TESTING_AUTOMATION_SUMMARY.md](docs/TESTING_AUTOMATION_SUMMARY.md)** - Testing implementation summary
+9. **[docs/TESTING_QUICK_START.md](docs/TESTING_QUICK_START.md)** - Quick testing commands and reference
+10. **[docs/FILE_ORGANIZATION.md](docs/FILE_ORGANIZATION.md)** - Repository organization guidelines
+11. **[docs/SECURITY_FIXES_KODIAK.md](docs/SECURITY_FIXES_KODIAK.md)** - Security fixes and CSRF/SSRF protection
+12. **[docs/AI_ARCHITECTURE_SECURITY.md](docs/AI_ARCHITECTURE_SECURITY.md)** - AI security architecture
 
 ### Quick Links
 
@@ -906,7 +952,10 @@ This project maintains comprehensive documentation:
 - **AI Telemetry Logging**: [ARCHITECTURE.md - AI Telemetry](docs/ARCHITECTURE.md#ai-telemetry-logging-v127)
 - **API Documentation**: [ARCHITECTURE.md - API Endpoints](docs/ARCHITECTURE.md)
 - **Deployment Guides**: [DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- **Testing**: [test_cases/TESTING_GUIDE.md](test_cases/TESTING_GUIDE.md)
+- **Testing Strategy**: [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md)
+- **Testing Quick Start**: [docs/TESTING_QUICK_START.md](docs/TESTING_QUICK_START.md)
+- **File Organization**: [docs/FILE_ORGANIZATION.md](docs/FILE_ORGANIZATION.md)
+- **Testing Guide**: [test_cases/TESTING_GUIDE.md](test_cases/TESTING_GUIDE.md)
 
 ---
 

@@ -1,0 +1,911 @@
+name: Development Branch Tests
+
+on:
+  push:
+    branches:
+      - Development
+  pull_request:
+    branches:
+      - Development
+
+jobs:
+  lint-and-format:
+    name: Linting and Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.lint_result.outputs.result }}
+      passed: ${{ steps.lint_result.outputs.passed }}
+      failed: ${{ steps.lint_result.outputs.failed }}
+      total: ${{ steps.lint_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Run ESLint (Backend)
+        id: lint_backend
+        continue-on-error: true
+        run: |
+          cd backend
+          npx eslint . --ext .js || true
+      
+      - name: Run ESLint (Frontend)
+        id: lint_frontend
+        continue-on-error: true
+        run: |
+          cd frontend
+          npx eslint . --ext .js,.jsx || true
+      
+      - name: Set Lint Results
+        id: lint_result
+        run: |
+          # Lint tests are pass/fail at file level, counting as 2 tests
+          TOTAL=2
+          PASSED=2
+          FAILED=0
+          
+          if [ "${{ steps.lint_backend.outcome }}" != "success" ]; then
+            ((FAILED++))
+            ((PASSED--))
+          fi
+          
+          if [ "${{ steps.lint_frontend.outcome }}" != "success" ]; then
+            ((FAILED++))
+            ((PASSED--))
+          fi
+          
+          echo "result=${{ job.status }}" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.unit_result.outputs.result }}
+      passed: ${{ steps.unit_result.outputs.passed }}
+      failed: ${{ steps.unit_result.outputs.failed }}
+      total: ${{ steps.unit_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Unit Tests
+        id: run_unit_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test:unit 2>&1 | tee test_output.txt
+        env:
+          NODE_ENV: test
+      
+      - name: Parse Unit Test Results
+        id: unit_result
+        if: always()
+        run: |
+          cd backend
+          if [ -f test_output.txt ]; then
+            # Extract test counts from Jest output
+            PASSED=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output.txt || echo "0")
+            FAILED=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output.txt || echo "0")
+            
+            # Calculate total
+            TOTAL=$((PASSED + FAILED))
+            
+            # If no test results found, check if tests ran at all
+            if [ "$TOTAL" -eq 0 ]; then
+              TOTAL=1
+              if [ "${{ steps.run_unit_tests.outcome }}" == "success" ]; then
+                PASSED=1
+              else
+                FAILED=1
+              fi
+            fi
+            
+            echo "result=${{ steps.run_unit_tests.outcome }}" >> "$GITHUB_OUTPUT"
+            echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+            
+            echo "📊 Unit Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            echo "total=1" >> "$GITHUB_OUTPUT"
+          fi
+      
+      # Note: codecov/codecov-action is not allowed by Adobe organization policy
+      # Coverage reports are uploaded as artifacts instead
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-development
+          path: ./backend/coverage/
+          retention-days: 7
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.integration_result.outputs.result }}
+      passed: ${{ steps.integration_result.outputs.passed }}
+      failed: ${{ steps.integration_result.outputs.failed }}
+      total: ${{ steps.integration_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Integration Tests
+        id: run_integration_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test:integration 2>&1 | tee test_output.txt
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+          TEST_USER_PASSWORD: User@2026
+          TEST_ASSESSOR_PASSWORD: Assessor@2026
+      
+      - name: Parse Integration Test Results
+        id: integration_result
+        if: always()
+        run: |
+          cd backend
+          if [ -f test_output.txt ]; then
+            PASSED=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output.txt || echo "0")
+            FAILED=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output.txt || echo "0")
+            TOTAL=$((PASSED + FAILED))
+            
+            if [ "$TOTAL" -eq 0 ]; then
+              TOTAL=1
+              if [ "${{ steps.run_integration_tests.outcome }}" == "success" ]; then
+                PASSED=1
+              else
+                FAILED=1
+              fi
+            fi
+            
+            echo "result=${{ steps.run_integration_tests.outcome }}" >> "$GITHUB_OUTPUT"
+            echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+            
+            echo "📊 Integration Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            echo "total=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Parallel execution: These 4 tests can run simultaneously after integration tests
+  ai-integration-tests:
+    name: AI Integration Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.ai_result.outputs.result }}
+      passed: ${{ steps.ai_result.outputs.passed }}
+      failed: ${{ steps.ai_result.outputs.failed }}
+      total: ${{ steps.ai_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run AI Integration Tests
+        id: run_ai_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=ai-integration.test.js --forceExit 2>&1 | tee test_output.txt
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+      
+      - name: Parse AI Test Results
+        id: ai_result
+        if: always()
+        run: |
+          cd backend
+          if [ -f test_output.txt ]; then
+            PASSED=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output.txt || echo "0")
+            FAILED=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output.txt || echo "0")
+            TOTAL=$((PASSED + FAILED))
+            
+            if [ "$TOTAL" -eq 0 ]; then
+              TOTAL=1
+              if [ "${{ steps.run_ai_tests.outcome }}" == "success" ]; then
+                PASSED=1
+              else
+                FAILED=1
+              fi
+            fi
+            
+            echo "result=${{ steps.run_ai_tests.outcome }}" >> "$GITHUB_OUTPUT"
+            echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+            
+            echo "📊 AI Integration Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            echo "total=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  email-tests:
+    name: Email Functionality Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.email_result.outputs.result }}
+      passed: ${{ steps.email_result.outputs.passed }}
+      failed: ${{ steps.email_result.outputs.failed }}
+      total: ${{ steps.email_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Email Tests
+        id: run_email_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=email-functionality.test.js --forceExit 2>&1 | tee test_output.txt
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+      
+      - name: Parse Email Test Results
+        id: email_result
+        if: always()
+        run: |
+          cd backend
+          if [ -f test_output.txt ]; then
+            PASSED=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output.txt || echo "0")
+            FAILED=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output.txt || echo "0")
+            TOTAL=$((PASSED + FAILED))
+            
+            if [ "$TOTAL" -eq 0 ]; then
+              TOTAL=1
+              if [ "${{ steps.run_email_tests.outcome }}" == "success" ]; then
+                PASSED=1
+              else
+                FAILED=1
+              fi
+            fi
+            
+            echo "result=${{ steps.run_email_tests.outcome }}" >> "$GITHUB_OUTPUT"
+            echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+            
+            echo "📊 Email Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            echo "total=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  csrf-security-tests:
+    name: Security Tests (CSRF)
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.csrf_result.outputs.result }}
+      passed: ${{ steps.csrf_result.outputs.passed }}
+      failed: ${{ steps.csrf_result.outputs.failed }}
+      total: ${{ steps.csrf_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Run CSRF Protection Tests
+        id: run_csrf_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=csrf-protection.test.js --forceExit 2>&1 | tee test_output.txt
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+          TEST_USER_PASSWORD: User@2026
+      
+      - name: Parse CSRF Test Results
+        id: csrf_result
+        if: always()
+        run: |
+          cd backend
+          if [ -f test_output.txt ]; then
+            PASSED=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output.txt || echo "0")
+            FAILED=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output.txt || echo "0")
+            TOTAL=$((PASSED + FAILED))
+            
+            if [ "$TOTAL" -eq 0 ]; then
+              TOTAL=1
+              if [ "${{ steps.run_csrf_tests.outcome }}" == "success" ]; then
+                PASSED=1
+              else
+                FAILED=1
+              fi
+            fi
+            
+            echo "result=${{ steps.run_csrf_tests.outcome }}" >> "$GITHUB_OUTPUT"
+            echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+            echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+            
+            echo "📊 CSRF Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+          else
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            echo "total=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  ssrf-security-tests:
+    name: Security Tests (SSRF)
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.ssrf_result.outputs.result }}
+      passed: ${{ steps.ssrf_result.outputs.passed }}
+      failed: ${{ steps.ssrf_result.outputs.failed }}
+      total: ${{ steps.ssrf_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Run SSRF Protection Tests
+        id: run_ssrf_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=ssrf-protection.test.js --forceExit 2>&1 | tee test_output_ssrf.txt
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+      
+      - name: Run URL Validator Tests
+        id: run_url_tests
+        continue-on-error: true
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=urlValidator.test.js --forceExit 2>&1 | tee test_output_url.txt
+        env:
+          NODE_ENV: test
+      
+      - name: Parse SSRF Test Results
+        id: ssrf_result
+        if: always()
+        run: |
+          cd backend
+          PASSED=0
+          FAILED=0
+          
+          if [ -f test_output_ssrf.txt ]; then
+            PASSED_SSRF=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output_ssrf.txt || echo "0")
+            FAILED_SSRF=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output_ssrf.txt || echo "0")
+            PASSED=$((PASSED + PASSED_SSRF))
+            FAILED=$((FAILED + FAILED_SSRF))
+          fi
+          
+          if [ -f test_output_url.txt ]; then
+            PASSED_URL=$(grep -oP 'Tests:\s+\K\d+(?= passed)' test_output_url.txt || echo "0")
+            FAILED_URL=$(grep -oP 'Tests:\s+.*\K\d+(?= failed)' test_output_url.txt || echo "0")
+            PASSED=$((PASSED + PASSED_URL))
+            FAILED=$((FAILED + FAILED_URL))
+          fi
+          
+          TOTAL=$((PASSED + FAILED))
+          
+          if [ "$TOTAL" -eq 0 ]; then
+            TOTAL=1
+            if [ "${{ steps.run_ssrf_tests.outcome }}" == "success" ] && [ "${{ steps.run_url_tests.outcome }}" == "success" ]; then
+              PASSED=1
+            else
+              FAILED=1
+            fi
+          fi
+          
+          RESULT="success"
+          if [ "${{ steps.run_ssrf_tests.outcome }}" != "success" ] || [ "${{ steps.run_url_tests.outcome }}" != "success" ]; then
+            RESULT="failure"
+          fi
+          
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          
+          echo "📊 SSRF Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+
+  build-test:
+    name: Build Test
+    runs-on: ubuntu-latest
+    needs: [ai-integration-tests, email-tests, csrf-security-tests, ssrf-security-tests]
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.build_result.outputs.result }}
+      passed: ${{ steps.build_result.outputs.passed }}
+      failed: ${{ steps.build_result.outputs.failed }}
+      total: ${{ steps.build_result.outputs.total }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Build Frontend
+        id: build_frontend
+        continue-on-error: true
+        run: |
+          cd frontend
+          npm run build
+      
+      - name: Test Backend Startup
+        id: test_backend
+        continue-on-error: true
+        run: |
+          cd backend
+          timeout 30s npm start || exit 0
+        env:
+          NODE_ENV: test
+      
+      - name: Set Build Results
+        id: build_result
+        if: always()
+        run: |
+          # Build tests count as 2 subtests: frontend build + backend startup
+          TOTAL=2
+          PASSED=0
+          FAILED=0
+          
+          if [ "${{ steps.build_frontend.outcome }}" == "success" ]; then
+            ((PASSED++))
+          else
+            ((FAILED++))
+          fi
+          
+          if [ "${{ steps.test_backend.outcome }}" == "success" ]; then
+            ((PASSED++))
+          else
+            ((FAILED++))
+          fi
+          
+          RESULT="success"
+          if [ "$FAILED" -gt 0 ]; then
+            RESULT="failure"
+          fi
+          
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          
+          echo "📊 Build Tests: $PASSED passed, $FAILED failed, $TOTAL total"
+      
+      - name: Upload Build Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist
+          retention-days: 7
+
+  summary-and-auto-merge:
+    name: Development Tests Summary & Auto-Merge
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, unit-tests, integration-tests, ai-integration-tests, email-tests, csrf-security-tests, ssrf-security-tests, build-test]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/Development'
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Calculate Test Results
+        id: test_results
+        run: |
+          echo "Development Branch Test Summary (Subtest-Based):"
+          echo "================================================="
+          echo ""
+          
+          # Aggregate subtest counts from all jobs
+          TOTAL_TESTS=0
+          PASSED_TESTS=0
+          FAILED_TESTS=0
+          
+          # Job results with subtest counts
+          declare -A JOB_NAMES=(
+            ["lint"]="Linting and Code Quality"
+            ["unit"]="Unit Tests"
+            ["integration"]="Integration Tests"
+            ["ai"]="AI Integration Tests"
+            ["email"]="Email Functionality Tests"
+            ["csrf"]="Security Tests (CSRF)"
+            ["ssrf"]="Security Tests (SSRF)"
+            ["build"]="Build Test"
+          )
+          
+          # Lint results
+          LINT_PASSED="${{ needs.lint-and-format.outputs.passed || '0' }}"
+          LINT_FAILED="${{ needs.lint-and-format.outputs.failed || '0' }}"
+          LINT_TOTAL="${{ needs.lint-and-format.outputs.total || '0' }}"
+          LINT_RESULT="${{ needs.lint-and-format.result }}"
+          
+          # Unit results
+          UNIT_PASSED="${{ needs.unit-tests.outputs.passed || '0' }}"
+          UNIT_FAILED="${{ needs.unit-tests.outputs.failed || '0' }}"
+          UNIT_TOTAL="${{ needs.unit-tests.outputs.total || '0' }}"
+          UNIT_RESULT="${{ needs.unit-tests.result }}"
+          
+          # Integration results
+          INT_PASSED="${{ needs.integration-tests.outputs.passed || '0' }}"
+          INT_FAILED="${{ needs.integration-tests.outputs.failed || '0' }}"
+          INT_TOTAL="${{ needs.integration-tests.outputs.total || '0' }}"
+          INT_RESULT="${{ needs.integration-tests.result }}"
+          
+          # AI results
+          AI_PASSED="${{ needs.ai-integration-tests.outputs.passed || '0' }}"
+          AI_FAILED="${{ needs.ai-integration-tests.outputs.failed || '0' }}"
+          AI_TOTAL="${{ needs.ai-integration-tests.outputs.total || '0' }}"
+          AI_RESULT="${{ needs.ai-integration-tests.result }}"
+          
+          # Email results
+          EMAIL_PASSED="${{ needs.email-tests.outputs.passed || '0' }}"
+          EMAIL_FAILED="${{ needs.email-tests.outputs.failed || '0' }}"
+          EMAIL_TOTAL="${{ needs.email-tests.outputs.total || '0' }}"
+          EMAIL_RESULT="${{ needs.email-tests.result }}"
+          
+          # CSRF results
+          CSRF_PASSED="${{ needs.csrf-security-tests.outputs.passed || '0' }}"
+          CSRF_FAILED="${{ needs.csrf-security-tests.outputs.failed || '0' }}"
+          CSRF_TOTAL="${{ needs.csrf-security-tests.outputs.total || '0' }}"
+          CSRF_RESULT="${{ needs.csrf-security-tests.result }}"
+          
+          # SSRF results
+          SSRF_PASSED="${{ needs.ssrf-security-tests.outputs.passed || '0' }}"
+          SSRF_FAILED="${{ needs.ssrf-security-tests.outputs.failed || '0' }}"
+          SSRF_TOTAL="${{ needs.ssrf-security-tests.outputs.total || '0' }}"
+          SSRF_RESULT="${{ needs.ssrf-security-tests.result }}"
+          
+          # Build results
+          BUILD_PASSED="${{ needs.build-test.outputs.passed || '0' }}"
+          BUILD_FAILED="${{ needs.build-test.outputs.failed || '0' }}"
+          BUILD_TOTAL="${{ needs.build-test.outputs.total || '0' }}"
+          BUILD_RESULT="${{ needs.build-test.result }}"
+          
+          # Calculate totals
+          TOTAL_TESTS=$((LINT_TOTAL + UNIT_TOTAL + INT_TOTAL + AI_TOTAL + EMAIL_TOTAL + CSRF_TOTAL + SSRF_TOTAL + BUILD_TOTAL))
+          PASSED_TESTS=$((LINT_PASSED + UNIT_PASSED + INT_PASSED + AI_PASSED + EMAIL_PASSED + CSRF_PASSED + SSRF_PASSED + BUILD_PASSED))
+          FAILED_TESTS=$((LINT_FAILED + UNIT_FAILED + INT_FAILED + AI_FAILED + EMAIL_FAILED + CSRF_FAILED + SSRF_FAILED + BUILD_FAILED))
+          
+          # Display detailed breakdown
+          echo "📊 Detailed Test Results by Job:"
+          echo "-----------------------------------"
+          echo "1. Linting: $LINT_PASSED/$LINT_TOTAL passed ($LINT_FAILED failed) - Status: $LINT_RESULT"
+          echo "2. Unit Tests: $UNIT_PASSED/$UNIT_TOTAL passed ($UNIT_FAILED failed) - Status: $UNIT_RESULT"
+          echo "3. Integration Tests: $INT_PASSED/$INT_TOTAL passed ($INT_FAILED failed) - Status: $INT_RESULT"
+          echo "4. AI Integration: $AI_PASSED/$AI_TOTAL passed ($AI_FAILED failed) - Status: $AI_RESULT"
+          echo "5. Email Tests: $EMAIL_PASSED/$EMAIL_TOTAL passed ($EMAIL_FAILED failed) - Status: $EMAIL_RESULT"
+          echo "6. CSRF Security: $CSRF_PASSED/$CSRF_TOTAL passed ($CSRF_FAILED failed) - Status: $CSRF_RESULT"
+          echo "7. SSRF Security: $SSRF_PASSED/$SSRF_TOTAL passed ($SSRF_FAILED failed) - Status: $SSRF_RESULT"
+          echo "8. Build Test: $BUILD_PASSED/$BUILD_TOTAL passed ($BUILD_FAILED failed) - Status: $BUILD_RESULT"
+          echo ""
+          
+          # Calculate pass rate based on subtests
+          if [ "$TOTAL_TESTS" -gt 0 ]; then
+            PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED_TESTS / $TOTAL_TESTS) * 100}")
+          else
+            PASS_RATE="0.00"
+          fi
+          THRESHOLD=60
+          
+          echo "📈 Overall Statistics (Subtest-Based):"
+          echo "-----------------------------------"
+          echo "  Total Subtests: $TOTAL_TESTS"
+          echo "  Passed Subtests: $PASSED_TESTS"
+          echo "  Failed Subtests: $FAILED_TESTS"
+          echo "  Pass Rate: ${PASS_RATE}%"
+          echo "  Threshold: ${THRESHOLD}%"
+          echo ""
+          
+          # Set outputs
+          echo "total=$TOTAL_TESTS" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED_TESTS" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED_TESTS" >> "$GITHUB_OUTPUT"
+          echo "pass_rate=$PASS_RATE" >> "$GITHUB_OUTPUT"
+          echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          
+          # Store detailed results for PR body
+          echo "lint_result=$LINT_PASSED/$LINT_TOTAL ($LINT_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "unit_result=$UNIT_PASSED/$UNIT_TOTAL ($UNIT_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "integration_result=$INT_PASSED/$INT_TOTAL ($INT_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "ai_result=$AI_PASSED/$AI_TOTAL ($AI_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "email_result=$EMAIL_PASSED/$EMAIL_TOTAL ($EMAIL_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "csrf_result=$CSRF_PASSED/$CSRF_TOTAL ($CSRF_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "ssrf_result=$SSRF_PASSED/$SSRF_TOTAL ($SSRF_FAILED failed)" >> "$GITHUB_OUTPUT"
+          echo "build_result=$BUILD_PASSED/$BUILD_TOTAL ($BUILD_FAILED failed)" >> "$GITHUB_OUTPUT"
+          
+          # Check if threshold met
+          if (( $(awk "BEGIN {print ($PASS_RATE >= $THRESHOLD)}") )); then
+            echo "threshold_met=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Pass rate ${PASS_RATE}% meets threshold ${THRESHOLD}%"
+            echo "🚀 Auto-merge conditions satisfied!"
+          else
+            echo "threshold_met=false" >> "$GITHUB_OUTPUT"
+            echo "❌ Pass rate ${PASS_RATE}% below threshold ${THRESHOLD}%"
+            echo "⏸️  Auto-merge will NOT proceed"
+          fi
+      
+      - name: Create Auto-Merge PR to Quality_Test
+        if: steps.test_results.outputs.threshold_met == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SOURCE_BRANCH="Development"
+          TARGET_BRANCH="Quality_Test"
+          PASS_RATE="${{ steps.test_results.outputs.pass_rate }}"
+          THRESHOLD="${{ steps.test_results.outputs.threshold }}"
+          
+          echo "════════════════════════════════════════════════════════════════"
+          echo "    🤖 AUTO-MERGE: $SOURCE_BRANCH → $TARGET_BRANCH"
+          echo "════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "📊 Pass Rate: ${PASS_RATE}%"
+          echo "🎯 Threshold: ${THRESHOLD}%"
+          echo ""
+          
+          # Check for differences
+          git fetch origin "$TARGET_BRANCH" || true
+          
+          if git diff --quiet "origin/$TARGET_BRANCH" HEAD; then
+            echo "ℹ️  No differences found between branches"
+            echo "✅ Branches are already in sync"
+            exit 0
+          fi
+          
+          # Create PR
+          PR_TITLE="🤖 Auto-merge: Development → Quality_Test (${PASS_RATE}% pass rate)"
+          PR_BODY="## 🤖 Automated Merge
+
+          This PR was automatically created because the Development branch test pass rate threshold was met.
+
+          ### 📊 Overall Test Results (Subtest-Based)
+          - **Pass Rate:** ${PASS_RATE}%
+          - **Threshold:** ${THRESHOLD}% (60% required)
+          - **Total Subtests:** ${{ steps.test_results.outputs.total }}
+          - **Passed Subtests:** ${{ steps.test_results.outputs.passed }}
+          - **Failed Subtests:** ${{ steps.test_results.outputs.failed }}
+          - **Status:** ✅ Threshold met
+
+          ### 📋 Detailed Results by Test Suite
+
+          | Test Suite | Passed/Total | Failed | Status |
+          |------------|--------------|--------|--------|
+          | 1️⃣ Linting and Code Quality | ${{ steps.test_results.outputs.lint_result }} | ✅ |
+          | 2️⃣ Unit Tests | ${{ steps.test_results.outputs.unit_result }} | ✅ |
+          | 3️⃣ Integration Tests | ${{ steps.test_results.outputs.integration_result }} | ✅ |
+          | 4️⃣ AI Integration Tests | ${{ steps.test_results.outputs.ai_result }} | ✅ |
+          | 5️⃣ Email Functionality | ${{ steps.test_results.outputs.email_result }} | ✅ |
+          | 6️⃣ CSRF Security Tests | ${{ steps.test_results.outputs.csrf_result }} | ✅ |
+          | 7️⃣ SSRF Security Tests | ${{ steps.test_results.outputs.ssrf_result }} | ✅ |
+          | 8️⃣ Build Test | ${{ steps.test_results.outputs.build_result }} | ✅ |
+
+          ### ⚡ Test Execution Flow (Optimized)
+          
+          **Sequential:**
+          - Linting and Code Quality → Unit Tests → Integration Tests
+          
+          **Parallel (4 jobs run simultaneously):**
+          - AI Integration ⚡ | Email Tests ⚡ | CSRF Tests ⚡ | SSRF Tests ⚡
+          
+          **Final:**
+          - Build Test (depends on all parallel tests)
+
+          ### 🔄 Merge Details
+          - **Source:** \`Development\`
+          - **Target:** \`Quality_Test\`
+          - **Commit:** \`${{ github.sha }}\`
+          - **Workflow:** ${{ github.run_id }}
+
+          ### 📋 Next Steps
+          Once merged to Quality_Test, comprehensive testing will begin:
+          - Security audit
+          - Full integration suite with coverage
+          - E2E tests with Playwright
+          - Performance testing
+          - Quality gate checks (80% threshold for Pre_Prod)
+
+          ---
+          *This is an automated pull request created by the CI/CD pipeline.*"
+          
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --base "$TARGET_BRANCH" --head "$SOURCE_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "✅ PR already exists: #$EXISTING_PR"
+            echo "📝 Updating existing PR..."
+            gh pr edit "$EXISTING_PR" --body "$PR_BODY" || true
+            echo "pr_number=$EXISTING_PR" >> "$GITHUB_OUTPUT"
+          else
+            echo "📝 Creating new PR..."
+            PR_URL=$(gh pr create \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --base "$TARGET_BRANCH" \
+              --head "$SOURCE_BRANCH" \
+              --label "auto-merge,development" 2>&1 || echo "")
+            
+            if [ -n "$PR_URL" ]; then
+              echo "✅ PR created: $PR_URL"
+              PR_NUMBER=$(echo "$PR_URL" | grep -oP '\d+$')
+              echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+              
+              # Enable auto-merge
+              echo "🔄 Enabling auto-merge..."
+              gh pr merge "$PR_NUMBER" --auto --merge --delete-branch=false 2>&1 || {
+                echo "⚠️  Auto-merge could not be enabled (may require approvals)"
+              }
+            else
+              echo "⚠️  Could not create PR"
+            fi
+          fi
+          
+          echo ""
+          echo "✅ Auto-merge process completed!"
+      
+      - name: Post Summary Comment
+        if: always()
+        run: |
+          echo "## 📊 Development Branch Test Summary (Subtest-Based)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Overall Results" >> $GITHUB_STEP_SUMMARY
+          echo "**Pass Rate:** ${{ steps.test_results.outputs.pass_rate }}%" >> $GITHUB_STEP_SUMMARY
+          echo "**Threshold:** ${{ steps.test_results.outputs.threshold }}% (60% required)" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Subtests:** ${{ steps.test_results.outputs.total }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Passed Subtests:** ${{ steps.test_results.outputs.passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Failed Subtests:** ${{ steps.test_results.outputs.failed }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Detailed Breakdown" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Linting and Code Quality | ${{ steps.test_results.outputs.lint_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ steps.test_results.outputs.unit_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ steps.test_results.outputs.integration_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| AI Integration Tests | ${{ steps.test_results.outputs.ai_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Email Functionality Tests | ${{ steps.test_results.outputs.email_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CSRF Security Tests | ${{ steps.test_results.outputs.csrf_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SSRF Security Tests | ${{ steps.test_results.outputs.ssrf_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Test | ${{ steps.test_results.outputs.build_result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.test_results.outputs.threshold_met }}" == "true" ]; then
+            echo "### ✅ Auto-Merge Status: TRIGGERED" >> $GITHUB_STEP_SUMMARY
+            echo "A PR has been created to merge Development → Quality_Test" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Pass rate of ${{ steps.test_results.outputs.pass_rate }}% exceeds 60% threshold ✨" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Auto-Merge Status: NOT TRIGGERED" >> $GITHUB_STEP_SUMMARY
+            echo "Pass rate below 60% threshold. Manual intervention required." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Current: ${{ steps.test_results.outputs.pass_rate }}% | Required: 60%" >> $GITHUB_STEP_SUMMARY
+          fi

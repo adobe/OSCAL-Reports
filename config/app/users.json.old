@@ -1,0 +1,129 @@
+[
+  {
+    "id": "f2ae7c44-34d7-430a-a3df-47c99debcff9",
+    "username": "admin",
+    "password": "pbkdf2$sha256$100000$c35d5102dcb971607d8b553563c6bb4d$3ca65007b8e8c631adefc88c6d0513b80ab544a36768e38dd9f0d5e9f72e7231",
+    "email": "admin@example.com",
+    "role": "Platform Admin",
+    "fullName": "Platform Administrator",
+    "createdAt": "2025-12-20T08:23:47.588Z",
+    "isActive": true,
+    "updatedAt": "2026-01-08T05:07:27.063Z"
+  },
+  {
+    "id": "82993191-18fe-40d4-b896-1184456514d6",
+    "username": "user",
+    "password": "pbkdf2$sha256$100000$3db8a2705a604e0e52b10c6ac550789e$e697338a626d77cc23524422456ac2b94bb9784b8e2160f24eb477da1c893116",
+    "email": "user@example.com",
+    "role": "User",
+    "fullName": "Standard User",
+    "createdAt": "2025-12-20T08:23:47.596Z",
+    "isActive": true,
+    "updatedAt": "2026-01-08T05:13:25.385Z",
+    "lastLoginAt": "2026-01-08T05:22:39.616Z"
+  },
+  {
+    "id": "deb3948c-f5f6-4c4a-8362-87f4297d8f20",
+    "username": "assessor",
+    "password": "pbkdf2$sha256$100000$e230b0e0e188be8ee69a5cb6a483a4fc$32f6d4eca0ba36e5f56ec305a73cc8b067359b688d1a602d5d1f32f3c11c9248",
+    "email": "assessor@example.com",
+    "role": "Assessor",
+    "fullName": "Security Assessor",
+    "createdAt": "2025-12-20T08:23:47.605Z",
+    "isActive": true,
+    "updatedAt": "2026-01-08T05:13:32.779Z",
+    "lastLoginAt": "2026-01-08T05:23:59.858Z"
+  },
+  {
+    "id": "e5ff85a0-77e7-40cd-a8e1-2b9ff93e82e7",
+    "username": "mkesharw@adobe.com",
+    "password": "pbkdf2$sha256$100000$c69a9436a984e338185d6f25501d644e$af900f264a3a4f7a11c2c2e33f0f9fc2fba5efa76c3c5c9fd0917a1c10e5487b",
+    "email": "mkesharw@adobe.com",
+    "role": "Platform Admin",
+    "fullName": "Mukesh Kesharwani",
+    "createdAt": "2025-12-20T08:29:12.798Z",
+    "isActive": true,
+    "updatedAt": "2025-12-20T08:29:27.570Z",
+    "lastLoginAt": "2026-01-14T02:58:14.777Z"
+  },
+  {
+    "id": "e4372d5a-b42c-40fd-9306-53feb9cbbfde",
+    "username": "mukesh.kesharwani@adobe.com",
+    "password": "pbkdf2$sha256$100000$4081ede1f6bf63b341d9113a867209b0$c6452927c040811f397485076f1cf41295dc1a864e9c6f7312ac8acc0091e683",
+    "email": "mukesh.kesharwani@adobe.com",
+    "role": "Platform Admin",
+    "fullName": "Mukesh Kesharwani",
+    "createdAt": "2025-12-28T22:09:28.476Z",
+    "isActive": false,
+    "deactivatedAt": "2025-12-28T22:25:54.198Z",
+    "updatedAt": "2025-12-28T22:25:54.198Z"
+  },
+  {
+    "id": "7e7250a4-8af4-4762-af12-7f964e492956",
+    "username": "kesharwani.2026@outlook.com",
+    "password": "pbkdf2$sha256$100000$592a71f7843217a09e510ed491ff27d4$80a34b9c438f426f8b0f80be90457fba0fa5a1f45f32a7a0a5bb176b762b24bc",
+    "email": "kesharwani.2026@outlook.com",
+    "role": "User",
+    "fullName": "Mukesh Kesharwani (Personal)",
+    "createdAt": "2026-01-08T04:50:10.476Z",
+    "isActive": false,
+    "deactivatedAt": "2026-01-08T04:55:29.781Z",
+    "updatedAt": "2026-01-08T04:55:29.781Z"
+  },
+  {
+    "id": "9795165e-3545-479a-bc64-5d3e5b3c99a2",
+    "username": "kesharwani.2025@outlook.com",
+    "password": "pbkdf2$sha256$100000$5c7b10b6f7effe090de7b3c6698cea0c$d2a491a2e31f9a23a992a7ffe7509bfb2649048f131d8e3edea5c38a528ab104",
+    "email": "kesharwani.2025@outlook.com",
+    "role": "User",
+    "fullName": "Mukesh Kesharwani",
+    "createdAt": "2026-01-08T04:56:06.701Z",
+    "isActive": false,
+    "deactivatedAt": "2026-01-08T05:03:34.283Z",
+    "updatedAt": "2026-01-08T05:03:34.284Z"
+  },
+  {
+    "id": "c8feca0c-5cf2-4278-9434-b38cac65ce6d",
+    "username": "kesharwani.2023@outlook.com",
+    "password": "pbkdf2$sha256$100000$0c5525dcb1938306c4a47959954cfede$4e6e1cbab1f9290f8092219ad702f79f1aaa58feb41a436b7dc8a792eb5b1bcd",
+    "email": "kesharwani.2023@outlook.com",
+    "role": "User",
+    "fullName": "Test Debug User",
+    "createdAt": "2026-01-08T05:03:59.755Z",
+    "isActive": true
+  },
+  {
+    "id": "c90be810-1267-4415-b3fb-74217865a4db",
+    "username": "kesharwani.2024@outlook.com",
+    "password": "pbkdf2$sha256$100000$e72abea4ae4ea3cc628f46fdaab58348$9daf1dec80e6f7d28015090fd0563f7b9195335178e1583bac99cb109b950ef8",
+    "email": "kesharwani.2024@outlook.com",
+    "role": "User",
+    "fullName": "Test Debug User 2",
+    "createdAt": "2026-01-08T05:07:22.871Z",
+    "isActive": true
+  },
+  {
+    "id": "9e6cf7bc-2590-4d57-bdc6-2da1021c6ae0",
+    "username": "kesharwani.2022@outlook.com.au",
+    "password": "pbkdf2$sha256$100000$928dd91e180584c92281c9fd4495009b$aeee9a4a368252a3d1671442fb4d15ea695caaa6320716b14c5b33b26aac048e",
+    "email": "kesharwani.2022@outlook.com.au",
+    "role": "User",
+    "fullName": "kesharwani.2022",
+    "createdAt": "2026-01-08T05:28:04.884Z",
+    "isActive": true,
+    "lastLoginAt": null,
+    "createdVia": "self-registration"
+  },
+  {
+    "id": "124e19d7-1262-46b9-95bb-f7054c692b3e",
+    "username": "kesharwani.2021@outlook.com",
+    "password": "pbkdf2$sha256$100000$5be3d1b1e2e7381e624560e7fd16197a$1fe5609f6e842f6a5d483632f4aebda87e105f0882c92b4775843fe3d3572783",
+    "email": "kesharwani.2021@outlook.com",
+    "role": "User",
+    "fullName": "kesharwani.2021",
+    "createdAt": "2026-01-08T05:28:54.892Z",
+    "isActive": true,
+    "lastLoginAt": "2026-01-08T05:29:43.918Z",
+    "createdVia": "self-registration"
+  }
+]

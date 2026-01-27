@@ -105,6 +105,55 @@
           "files": [".env", "credentials.json", "private.key", "*.pem", "id_rsa"],
           "message": "Sensitive file detected! These should never be committed.",
           "autoFix": false
+        },
+        {
+          "id": "BP-SEC-006",
+          "name": "SSRF Prevention - Validate User-Supplied URLs",
+          "severity": "critical",
+          "pattern": "axios\\.(get|post|put|delete)\\(\\s*(req\\.body\\.|req\\.query\\.)(url|URL|Url|endpoint|metadataUrl)",
+          "exclude": ["test_cases/", "node_modules/", "urlValidator.js"],
+          "message": "CRITICAL: User-supplied URLs must be validated using validateUrl() to prevent SSRF attacks. Import from utils/urlValidator.js",
+          "autoFix": false,
+          "mitigation": "Use: const urlValidation = await validateUrl(url, options); if (!urlValidation.valid) return error; axios.get(urlValidation.url)",
+          "references": ["https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"]
+        },
+        {
+          "id": "BP-SEC-007",
+          "name": "SSRF Prevention - No Direct fetch() with User Input",
+          "severity": "critical",
+          "pattern": "fetch\\(\\s*(req\\.body\\.|req\\.query\\.)(url|URL|Url|endpoint)",
+          "exclude": ["test_cases/", "node_modules/", "frontend/"],
+          "message": "CRITICAL: User-supplied URLs in fetch() must be validated to prevent SSRF attacks",
+          "autoFix": false
+        },
+        {
+          "id": "BP-SEC-008",
+          "name": "CSRF Protection - Require CSRF Tokens",
+          "severity": "critical",
+          "pattern": "app\\.(post|put|delete|patch)\\(['\"].*['\"]\\s*,\\s*(?!csrfProtection)(?!authenticate)async",
+          "exclude": ["test_cases/", "node_modules/", "/api/login", "/api/csrf-token", "/health"],
+          "message": "WARNING: State-changing endpoints (POST/PUT/DELETE/PATCH) should use CSRF protection middleware",
+          "autoFix": false,
+          "mitigation": "Use csrfProtection middleware or ensure endpoint is in CSRF_EXEMPT_PATHS list"
+        },
+        {
+          "id": "BP-SEC-009",
+          "name": "SSRF Prevention - Dangerous IP Ranges",
+          "severity": "critical",
+          "pattern": "(169\\.254\\.|127\\.0\\.0\\.|10\\.0\\.0\\.|192\\.168\\.)",
+          "exclude": ["test_cases/", "node_modules/", "*.md", "urlValidator.js", "securityConfig.js", "*.json"],
+          "message": "Hardcoded internal/private IP addresses detected. Consider using environment variables.",
+          "autoFix": false
+        },
+        {
+          "id": "BP-SEC-010",
+          "name": "Certificate Validation Disabled",
+          "severity": "warning",
+          "pattern": "rejectUnauthorized:\\s*false",
+          "exclude": ["test_cases/", "node_modules/"],
+          "message": "Certificate validation is disabled (rejectUnauthorized: false). This should only be used in development.",
+          "autoFix": false,
+          "mitigation": "Use proper SSL certificates in production or conditionally disable based on NODE_ENV"
         }
       ]
     },
