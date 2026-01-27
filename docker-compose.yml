@@ -24,14 +24,23 @@ services:
 
   # OSCAL Report Generator Application
   oscal-generator:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: oscal-report-generator:latest
+    # Use pre-built image from Docker Hub (recommended)
+    image: keekar/oscal_reports:latest
+    
+    # OR build locally (uncomment below and comment above image line)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    # image: oscal-report-generator:latest
+    
     container_name: oscal-report-generator
     restart: unless-stopped
     ports:
       - "${EXTERNAL_PORT:-3020}:3020"
+    volumes:
+      # Persistent volume for config and user data
+      # This ensures your configuration and users persist across container updates
+      - oscal-config-data:/data
     environment:
       - NODE_ENV=production
       - PORT=3020
@@ -65,7 +74,13 @@ services:
       - "traefik.http.services.oscal.loadbalancer.server.port=3020"
 
 volumes:
+  # Persistent storage for Ollama AI models
   ollama-data:
+    driver: local
+  
+  # Persistent storage for OSCAL application config and user data
+  # This volume preserves your settings and users across container updates
+  oscal-config-data:
     driver: local
 
 networks:
