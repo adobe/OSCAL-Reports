@@ -444,8 +444,10 @@ export function cleanupOldJobs() {
   return cleanedCount;
 }
 
-// Auto-cleanup every hour
-setInterval(cleanupOldJobs, 60 * 60 * 1000);
+// Auto-cleanup every hour (unref so it doesn't keep process alive)
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(cleanupOldJobs, 60 * 60 * 1000).unref();
+}
 
 // Initialize on module load
 initJobStorage();
