@@ -112,6 +112,7 @@ jobs:
             const message = `${{ steps.check.outputs.message }}`;
             const valid = '${{ steps.check.outputs.valid }}';
             
+            // Build comment body using string concatenation to avoid YAML conflicts
             let body = '## 🌳 Branch Protection Check\n\n';
             body += message + '\n\n';
             body += '---\n\n';
