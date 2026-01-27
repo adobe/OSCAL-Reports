@@ -162,84 +162,112 @@ Based on previous successful runs:
 
 ### Q5: When calculating 60%, are we considering subtest counts or only top-level counts?
 
-**Answer:** We use **TOP-LEVEL JOB counts only**, not individual test cases.
+**Answer:** ✨ **NOW USING SUBTEST COUNTS!** (Updated 2026-01-28)
 
-#### Counting Method
+The workflow now calculates the 60% threshold based on **individual subtests** within each job, providing much more granular tracking.
 
-```
-Total Jobs: 8
-1. Linting and Code Quality
-2. Unit Tests
-3. Integration Tests
-4. AI Integration Tests
-5. Email Functionality Tests
-6. Security Tests (CSRF)
-7. Security Tests (SSRF)
-8. Build Test
-
-Pass Rate = (Passed Jobs / Total Jobs) × 100
-```
-
-#### Example from Recent Run
+#### New Counting Method (Subtest-Based)
 
 ```
-✅ Lint: PASS
-✅ Unit: PASS
-❌ Integration: FAIL (timeout)
-⏭️ AI Integration: SKIPPED
-⏭️ Email: SKIPPED
-⏭️ CSRF: SKIPPED
-⏭️ SSRF: SKIPPED
-⏭️ Build: SKIPPED
+Each job outputs:
+- passed: Number of subtests that passed
+- failed: Number of subtests that failed
+- total: Total subtests in that job
 
-Result: 2 passed / 8 total = 25% ❌ (below 60% threshold)
+Pass Rate = (Sum of all passed subtests / Sum of all total subtests) × 100
 ```
 
-#### Why Not Count Individual Tests?
+#### Example Calculation
 
-If we counted **subtests** (individual test cases within each job):
+| Job | Passed | Failed | Total |
+|-----|--------|--------|-------|
+| Linting | 2 | 0 | 2 |
+| Unit Tests | 48 | 2 | 50 |
+| Integration | 75 | 17 | 92 |
+| AI Integration | 12 | 3 | 15 |
+| Email Tests | 6 | 2 | 8 |
+| CSRF Security | 18 | 2 | 20 |
+| SSRF Security | 10 | 2 | 12 |
+| Build Test | 2 | 0 | 2 |
+| **TOTAL** | **173** | **28** | **201** |
 
+**Pass Rate:** 173/201 = **86.07%** ✅
+
+#### Benefits of Subtest-Based Calculation
+
+✅ **More granular** - 200+ data points vs 8  
+✅ **Better visibility** - See exact test counts per suite  
+✅ **Automatic scaling** - Adding tests automatically adjusts threshold  
+✅ **Actionable metrics** - Know exactly how many tests failed where  
+✅ **Fairer weighting** - Each test has equal weight  
+
+#### Old vs New Comparison
+
+**Old Method (Job-Based):**
 ```
-Integration Tests job contains: 92 individual test cases
-  - 57 failed
-  - 35 passed
-  
-Unit Tests job contains: ~50 individual test cases
-CSRF Tests job contains: ~20 individual test cases
-... etc
-```
-
-**Total subtests across all jobs: ~250**
-
-This would be problematic:
-- ❌ **Too granular:** One job with 50 failures ruins everything
-- ❌ **Unpredictable:** Adding new tests changes threshold
-- ❌ **Doesn't reflect system health:** 
-  - Could have 90% unit tests pass but security totally broken
-  - Or 90% security tests pass but build broken
-
-**Top-level counting reflects:**
-- ✅ **Overall system health**
-- ✅ **Critical areas** (security, integration, build)
-- ✅ **Stable threshold** regardless of test additions
-- ✅ **Each area gets equal weight**
-
-#### Calculation Examples
-
-**Scenario 1: Integration fails, others pass**
-```
-7 passed / 8 total = 87.5% ✅ (exceeds 60%)
+Integration Tests: FAIL
+Result: Job counts as 0/1 (0%)
+Even if 75/92 tests passed (81.5%)
 ```
 
-**Scenario 2: Multiple failures**
+**New Method (Subtest-Based):**
 ```
-4 passed / 8 total = 50% ❌ (below 60%)
+Integration Tests: 75 passed, 17 failed
+Result: Counts as 75/92 (81.5%)
+Accurate reflection of test health
 ```
 
-**Scenario 3: All pass**
+#### Detailed Output
+
+The workflow now provides detailed metrics:
+
+```markdown
+📊 Detailed Test Results by Job:
+1. Linting: 2/2 passed (0 failed) - Status: success
+2. Unit Tests: 48/50 passed (2 failed) - Status: success
+3. Integration Tests: 75/92 passed (17 failed) - Status: failure
+4. AI Integration: 12/15 passed (3 failed) - Status: success
+5. Email Tests: 6/8 passed (2 failed) - Status: success
+6. CSRF Security: 18/20 passed (2 failed) - Status: success
+7. SSRF Security: 10/12 passed (2 failed) - Status: success
+8. Build Test: 2/2 passed (0 failed) - Status: success
+
+📈 Overall Statistics (Subtest-Based):
+  Total Subtests: 201
+  Passed Subtests: 173
+  Failed Subtests: 28
+  Pass Rate: 86.07%
+  Threshold: 60%
 ```
-8 passed / 8 total = 100% ✅ (exceeds 60%)
+
+#### Scaling Example
+
+When you add new tests:
+
 ```
+Before: 201 total tests, 60% threshold = 121 must pass
+Add 50 new tests
+After: 251 total tests, 60% threshold = 151 must pass
+```
+
+**The threshold automatically adjusts!** No configuration changes needed.
+
+#### Why This Is Better
+
+**Old Problem:**
+- Unit Tests with 50 subtests = 1/8 weight
+- Build Test with 2 subtests = 1/8 weight
+- Unfair weighting
+
+**New Solution:**
+- Unit Tests: 50 subtests = 50/201 weight (24.9%)
+- Build Test: 2 subtests = 2/201 weight (1.0%)
+- Fair weighting based on actual test count
+
+#### See Full Documentation
+
+For complete details on subtest-based calculation:
+- [Subtest-Based Metrics Documentation](./SUBTEST_BASED_METRICS.md)
 
 ---
 
