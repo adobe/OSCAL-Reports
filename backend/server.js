@@ -141,6 +141,150 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'Keekar\'s OSCAL SOA/SSP/CCM Generator' });
 });
 
+/**
+ * Volume status endpoint - Check persistent storage health
+ * GET /api/system/volume-status
+ * 
+ * Returns information about the persistent data volume:
+ * - Whether /data directory exists and is writable
+ * - Config and users file locations and status
+ * - File sizes and last modified timestamps
+ * 
+ * Authentication optional - shows public info if not authenticated,
+ * detailed info if authenticated as Platform Admin
+ */
+app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    const status = {
+      timestamp: new Date().toISOString(),
+      volumeMount: {
+        path: '/data',
+        exists: false,
+        writable: false,
+        type: 'unknown'
+      },
+      config: {
+        path: 'unknown',
+        exists: false,
+        size: 0,
+        lastModified: null
+      },
+      users: {
+        path: 'unknown',
+        exists: false,
+        size: 0,
+        lastModified: null,
+        userCount: 0
+      },
+      persistence: {
+        enabled: false,
+        recommendation: ''
+      }
+    };
+    
+    // Check /data volume mount
+    if (fs.existsSync('/data')) {
+      status.volumeMount.exists = true;
+      
+      try {
+        fs.accessSync('/data', fs.constants.W_OK);
+        status.volumeMount.writable = true;
+        
+        // Try to determine if it's a volume or directory
+        const stats = fs.statSync('/data');
+        status.volumeMount.type = stats.isDirectory() ? 'directory' : 'other';
+      } catch (err) {
+        status.volumeMount.writable = false;
+      }
+    }
+    
+    // Check config file
+    const configPaths = [
+      process.env.CONFIG_PATH,
+      '/data/config.json',
+      path.join(process.cwd(), '..', 'config', 'app', 'config.json'),
+      path.join(process.cwd(), 'config.json')
+    ].filter(Boolean);
+    
+    for (const configPath of configPaths) {
+      if (fs.existsSync(configPath)) {
+        status.config.path = configPath;
+        status.config.exists = true;
+        
+        const stats = fs.statSync(configPath);
+        status.config.size = stats.size;
+        status.config.lastModified = stats.mtime.toISOString();
+        break;
+      }
+    }
+    
+    // Check users file
+    const usersPaths = [
+      process.env.USERS_PATH,
+      '/data/users.json',
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
+      path.join(process.cwd(), 'auth', 'users.json')
+    ].filter(Boolean);
+    
+    for (const usersPath of usersPaths) {
+      if (fs.existsSync(usersPath)) {
+        status.users.path = usersPath;
+        status.users.exists = true;
+        
+        const stats = fs.statSync(usersPath);
+        status.users.size = stats.size;
+        status.users.lastModified = stats.mtime.toISOString();
+        
+        // Count users (only if authenticated as admin)
+        if (req.user && req.user.role === ROLES.PLATFORM_ADMIN) {
+          try {
+            const data = fs.readFileSync(usersPath, 'utf-8');
+            const users = JSON.parse(data);
+            status.users.userCount = users.length;
+          } catch (err) {
+            status.users.userCount = -1; // Error reading
+          }
+        }
+        break;
+      }
+    }
+    
+    // Determine persistence status
+    if (status.config.path.startsWith('/data') && status.users.path.startsWith('/data')) {
+      status.persistence.enabled = true;
+      status.persistence.recommendation = 'Volume persistence is properly configured';
+    } else if (status.volumeMount.exists && status.volumeMount.writable) {
+      status.persistence.enabled = false;
+      status.persistence.recommendation = 'Volume mount exists but files are not using it. Restart container to initialize.';
+    } else {
+      status.persistence.enabled = false;
+      status.persistence.recommendation = 'No persistent volume detected. Data will be lost on container updates. Mount a volume to /data';
+    }
+    
+    // Add disk usage if available and user is admin
+    if (req.user && req.user.role === ROLES.PLATFORM_ADMIN) {
+      try {
+        const { execSync } = await import('child_process');
+        const dfOutput = execSync('df -h /data 2>/dev/null || echo "N/A"').toString();
+        status.diskUsage = dfOutput.trim();
+      } catch (err) {
+        status.diskUsage = 'Unable to determine disk usage';
+      }
+    }
+    
+    res.json(status);
+  } catch (error) {
+    console.error('❌ Volume status check error:', error);
+    res.status(500).json({ 
+      error: 'Failed to check volume status',
+      message: error.message 
+    });
+  }
+});
+
 // Test endpoint to verify suggestion engine is loaded (for debugging)
 app.get('/api/test-suggestions', (req, res) => {
   try {
@@ -948,6 +1092,241 @@ app.post('/api/users/:userId/reset-password', authenticate, requireRole(ROLES.PL
     console.error('❌ Reset password error:', error);
     res.status(400).json({ 
       error: 'Failed to reset password',
+      message: error.message 
+    });
+  }
+});
+
+// ===== USER IMPORT/EXPORT ENDPOINTS (Platform Admin only) =====
+
+/**
+ * Export all users (with hashed passwords for migration)
+ * GET /api/users/export
+ * 
+ * Returns JSON array of all users including hashed passwords for migration purposes.
+ * Requires Platform Admin role.
+ */
+app.get('/api/users/export', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+  try {
+    console.log(`📤 User export requested by ${req.user.username}`);
+    
+    // Load all users (including passwords for migration)
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    // Read users file directly to include passwords
+    let usersData = [];
+    const possiblePaths = [
+      process.env.USERS_PATH,
+      '/data/users.json',
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
+      path.join(process.cwd(), 'auth', 'users.json')
+    ].filter(Boolean);
+    
+    for (const filePath of possiblePaths) {
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        usersData = JSON.parse(data);
+        console.log(`✅ Loaded ${usersData.length} users from ${filePath}`);
+        break;
+      }
+    }
+    
+    // Add export metadata
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      exportedBy: req.user.username,
+      version: '1.0',
+      userCount: usersData.length,
+      users: usersData
+    };
+    
+    res.json(exportData);
+    console.log(`✅ Exported ${usersData.length} users`);
+  } catch (error) {
+    console.error('❌ User export error:', error);
+    res.status(500).json({ 
+      error: 'Failed to export users',
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Import users from exported data
+ * POST /api/users/import
+ * 
+ * Merges imported users with existing users. By default, preserves existing users.
+ * Query params:
+ *   - mode=merge (default): Skip users with duplicate IDs or usernames
+ *   - mode=override: Update existing users if ID matches, create new if not
+ * 
+ * Requires Platform Admin role.
+ */
+app.post('/api/users/import', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+  try {
+    const mode = req.query.mode || 'merge';
+    const importData = req.body;
+    
+    console.log(`📥 User import requested by ${req.user.username} (mode: ${mode})`);
+    
+    // Validate import data structure
+    if (!importData || !Array.isArray(importData.users)) {
+      return res.status(400).json({
+        error: 'Invalid import data',
+        message: 'Expected { users: [...] } structure'
+      });
+    }
+    
+    const importedUsers = importData.users;
+    console.log(`📦 Attempting to import ${importedUsers.length} users`);
+    
+    // Load existing users
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    let existingUsers = [];
+    const possiblePaths = [
+      process.env.USERS_PATH,
+      '/data/users.json',
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
+      path.join(process.cwd(), 'auth', 'users.json')
+    ].filter(Boolean);
+    
+    let usersFilePath = possiblePaths[0];
+    for (const filePath of possiblePaths) {
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        existingUsers = JSON.parse(data);
+        usersFilePath = filePath;
+        console.log(`✅ Loaded ${existingUsers.length} existing users from ${filePath}`);
+        break;
+      }
+    }
+    
+    const results = {
+      mode,
+      total: importedUsers.length,
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      conflicts: [],
+      addedUsers: [],
+      updatedUsers: [],
+      skippedUsers: []
+    };
+    
+    if (mode === 'override') {
+      // Override mode: Update existing or create new
+      importedUsers.forEach(importUser => {
+        const existingIndex = existingUsers.findIndex(u => u.id === importUser.id);
+        
+        if (existingIndex !== -1) {
+          // Update existing user
+          existingUsers[existingIndex] = {
+            ...importUser,
+            updatedAt: new Date().toISOString(),
+            importedAt: new Date().toISOString()
+          };
+          results.updated++;
+          results.updatedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ✏️  Updated: ${importUser.username} (${importUser.id})`);
+        } else {
+          // Check for username conflict
+          const usernameConflict = existingUsers.find(u => u.username === importUser.username);
+          if (usernameConflict) {
+            results.skipped++;
+            results.conflicts.push({
+              reason: 'username_exists',
+              username: importUser.username,
+              existingId: usernameConflict.id,
+              importId: importUser.id
+            });
+            results.skippedUsers.push({
+              username: importUser.username,
+              reason: 'Username already exists with different ID'
+            });
+            console.log(`  ⏭️  Skipped: ${importUser.username} (username conflict)`);
+          } else {
+            // Add new user
+            existingUsers.push({
+              ...importUser,
+              importedAt: new Date().toISOString()
+            });
+            results.added++;
+            results.addedUsers.push({
+              id: importUser.id,
+              username: importUser.username
+            });
+            console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
+          }
+        }
+      });
+    } else {
+      // Merge mode (default): Skip duplicates
+      importedUsers.forEach(importUser => {
+        const idExists = existingUsers.find(u => u.id === importUser.id);
+        const usernameExists = existingUsers.find(u => u.username === importUser.username);
+        
+        if (idExists) {
+          results.skipped++;
+          results.conflicts.push({
+            reason: 'id_exists',
+            id: importUser.id,
+            username: importUser.username
+          });
+          results.skippedUsers.push({
+            username: importUser.username,
+            reason: 'User ID already exists'
+          });
+          console.log(`  ⏭️  Skipped: ${importUser.username} (ID exists)`);
+        } else if (usernameExists) {
+          results.skipped++;
+          results.conflicts.push({
+            reason: 'username_exists',
+            username: importUser.username,
+            existingId: usernameExists.id,
+            importId: importUser.id
+          });
+          results.skippedUsers.push({
+            username: importUser.username,
+            reason: 'Username already exists'
+          });
+          console.log(`  ⏭️  Skipped: ${importUser.username} (username exists)`);
+        } else {
+          // Add new user
+          existingUsers.push({
+            ...importUser,
+            importedAt: new Date().toISOString()
+          });
+          results.added++;
+          results.addedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
+        }
+      });
+    }
+    
+    // Save updated users
+    const { atomicWriteJSON } = await import('./utils/atomicWrite.js');
+    await atomicWriteJSON(usersFilePath, existingUsers, { backup: true });
+    
+    console.log(`✅ Import complete: ${results.added} added, ${results.updated} updated, ${results.skipped} skipped`);
+    
+    res.json({
+      success: true,
+      message: `Import complete: ${results.added} added, ${results.updated} updated, ${results.skipped} skipped`,
+      results
+    });
+  } catch (error) {
+    console.error('❌ User import error:', error);
+    res.status(500).json({ 
+      error: 'Failed to import users',
       message: error.message 
     });
   }

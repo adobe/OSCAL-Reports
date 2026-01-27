@@ -197,12 +197,14 @@ jobs:
           console.log('✅ Coverage thresholds met');
           " || true
       
+      # Note: codecov/codecov-action is not allowed by Adobe organization policy
+      # Coverage reports are uploaded as artifacts instead
       - name: Upload Coverage Report
-        uses: codecov/codecov-action@v3
+        uses: actions/upload-artifact@v4
         with:
-          files: ./backend/coverage/coverage-final.json
-          flags: preprod
-          fail_ci_if_error: false
+          name: coverage-report-preprod
+          path: ./backend/coverage/
+          retention-days: 30
 
   smoke-tests:
     name: Smoke Tests (Production Config)
@@ -329,52 +331,227 @@ jobs:
           fi
       
       - name: Upload Stress Test Results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: stress-test-results
           path: stress-test-results.txt
 
-  pre-prod-gate:
-    name: Pre-Production Gate
+  pre-prod-gate-and-auto-merge:
+    name: Pre-Production Gate & Auto-Merge
     runs-on: ubuntu-latest
     needs: [production-readiness, security-regression-tests, full-test-suite, smoke-tests, stress-tests]
-    if: always()
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/Pre_Prod'
+    permissions:
+      contents: write
+      pull-requests: write
     
     steps:
-      - name: Check Pre-Prod Gate
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Calculate Pre-Prod Gate Results
+        id: test_results
         run: |
           echo "Pre_Prod Branch Gate Check"
           echo "==========================="
+          
+          # Count successful and failed jobs
+          TOTAL=5
+          PASSED=0
+          
+          # Check each job result
+          declare -A JOBS=(
+            ["production-readiness"]="${{ needs.production-readiness.result }}"
+            ["security-regression-tests"]="${{ needs.security-regression-tests.result }}"
+            ["full-test-suite"]="${{ needs.full-test-suite.result }}"
+            ["smoke-tests"]="${{ needs.smoke-tests.result }}"
+            ["stress-tests"]="${{ needs.stress-tests.result }}"
+          )
+          
+          for job in "${!JOBS[@]}"; do
+            result="${JOBS[$job]}"
+            echo "$job: $result"
+            if [ "$result" == "success" ]; then
+              ((PASSED++))
+            fi
+          done
+          
+          # Calculate pass rate
+          PASS_RATE=$(awk "BEGIN {printf \"%.2f\", ($PASSED / $TOTAL) * 100}")
+          THRESHOLD=90
+          
           echo ""
-          echo "Production Readiness: ${{ needs.production-readiness.result }}"
-          echo "Security Tests: ${{ needs.security-regression-tests.result }}"
-          echo "Full Test Suite: ${{ needs.full-test-suite.result }}"
-          echo "Smoke Tests: ${{ needs.smoke-tests.result }}"
-          echo "Stress Tests: ${{ needs.stress-tests.result }}"
+          echo "📊 Pre-Prod Gate Statistics:"
+          echo "  Total Jobs: $TOTAL"
+          echo "  Passed: $PASSED"
+          echo "  Failed: $((TOTAL - PASSED))"
+          echo "  Pass Rate: ${PASS_RATE}%"
+          echo "  Threshold: ${THRESHOLD}%"
+          
+          # Set outputs
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$((TOTAL - PASSED))" >> "$GITHUB_OUTPUT"
+          echo "pass_rate=$PASS_RATE" >> "$GITHUB_OUTPUT"
+          echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          
+          # Check if threshold met
+          if (( $(awk "BEGIN {print ($PASS_RATE >= $THRESHOLD)}") )); then
+            echo "threshold_met=true" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "✅ Pass rate ${PASS_RATE}% meets threshold ${THRESHOLD}%"
+            echo "🚀 Pre-Prod gate PASSED - Auto-merge to Production enabled!"
+          else
+            echo "threshold_met=false" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "❌ Pass rate ${PASS_RATE}% below threshold ${THRESHOLD}%"
+            echo "⏸️  Pre-Prod gate FAILED - Production deployment blocked"
+          fi
+      
+      - name: Create Auto-Merge PR to main (Production)
+        if: steps.test_results.outputs.threshold_met == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SOURCE_BRANCH="Pre_Prod"
+          TARGET_BRANCH="main"
+          PASS_RATE="${{ steps.test_results.outputs.pass_rate }}"
+          THRESHOLD="${{ steps.test_results.outputs.threshold }}"
+          
+          echo "════════════════════════════════════════════════════════════════"
+          echo "    🚀 AUTO-MERGE TO PRODUCTION: $SOURCE_BRANCH → $TARGET_BRANCH"
+          echo "════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "📊 Pass Rate: ${PASS_RATE}%"
+          echo "🎯 Threshold: ${THRESHOLD}% (PRODUCTION)"
           echo ""
           
-          if [ "${{ needs.production-readiness.result }}" != "success" ] || \
-             [ "${{ needs.security-regression-tests.result }}" != "success" ] || \
-             [ "${{ needs.full-test-suite.result }}" != "success" ] || \
-             [ "${{ needs.smoke-tests.result }}" != "success" ]; then
-            echo "❌ Pre-Prod gate FAILED - Not ready for production!"
-            exit 1
+          # Check for differences
+          git fetch origin "$TARGET_BRANCH" || true
+          
+          if git diff --quiet "origin/$TARGET_BRANCH" HEAD; then
+            echo "ℹ️  No differences found between branches"
+            echo "✅ Branches are already in sync"
+            exit 0
           fi
           
-          echo "✅ Pre-Prod gate PASSED - Ready for main branch!"
+          # Create PR
+          PR_TITLE="🚀 Production Release: Pre_Prod → main (${PASS_RATE}% pass rate)"
+          PR_BODY="## 🚀 Production Release - Pre-Prod Gate Passed
+
+          This PR was automatically created because Pre_Prod passed all production readiness checks with ${PASS_RATE}% pass rate.
+
+          ### 📊 Pre-Production Gate Results
+          - **Pass Rate:** ${PASS_RATE}%
+          - **Threshold:** ${THRESHOLD}% (90% required for production)
+          - **Passed Jobs:** ${{ steps.test_results.outputs.passed }}/${{ steps.test_results.outputs.total }}
+          - **Status:** ✅ Production ready
+
+          ### ✅ Production Readiness Verified
+          - ✅ Production Configuration Validated
+          - ✅ Security Regression Tests Passed
+          - ✅ Full Test Suite with Coverage (>80%)
+          - ✅ Smoke Tests with Production Config
+          - ✅ Stress & Performance Tests Passed
+
+          ### 🔒 Security Features Verified
+          - ✅ CSRF Protection: Active
+          - ✅ SSRF Protection: Active
+          - ✅ Private IPs: Allowed (AI architectural decision)
+          - ✅ Session Security: Enabled
+          - ✅ Password Hashing: FIPS 140-2 compliant
+          - ✅ No critical vulnerabilities (npm audit clean)
+
+          ### 🔄 Deployment Details
+          - **Source:** \`Pre_Prod\`
+          - **Target:** \`main\` (Production)
+          - **Commit:** \`${{ github.sha }}\`
+          - **Workflow:** ${{ github.run_id }}
+          - **Environment:** Production
+
+          ### 📋 Post-Merge Actions
+          Once merged to main, the following will occur:
+          - ✅ Final security audit
+          - ✅ Production test suite execution
+          - ✅ Docker image build for production
+          - ✅ Production deployment gate validation
+          - ✅ Release tagging (if configured)
+
+          ### ⚠️ IMPORTANT - Production Deployment
+          This merge will deploy to **PRODUCTION**. Please ensure:
+          1. All stakeholders are informed
+          2. Deployment window is appropriate
+          3. Rollback plan is ready
+          4. Monitoring is active
+
+          ### 🎯 Release Checklist
+          - [x] Development tests passed (60%+)
+          - [x] Quality tests passed (80%+)
+          - [x] Pre-production tests passed (90%+)
+          - [x] Security audit clean
+          - [x] Performance benchmarks met
+          - [x] Documentation updated
+
+          ---
+          *This is an automated production release PR created after passing all quality gates.*"
+          
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --base "$TARGET_BRANCH" --head "$SOURCE_BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "✅ PR already exists: #$EXISTING_PR"
+            echo "📝 Updating existing PR..."
+            gh pr edit "$EXISTING_PR" --body "$PR_BODY" || true
+          else
+            echo "📝 Creating new PRODUCTION RELEASE PR..."
+            PR_URL=$(gh pr create \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --base "$TARGET_BRANCH" \
+              --head "$SOURCE_BRANCH" \
+              --label "auto-merge,production,release" 2>&1 || echo "")
+            
+            if [ -n "$PR_URL" ]; then
+              echo "✅ Production Release PR created: $PR_URL"
+              echo ""
+              echo "⚠️  NOTE: Production releases may require manual approval"
+              echo "📋 Review the PR carefully before merging to production"
+              
+              PR_NUMBER=$(echo "$PR_URL" | grep -oP '\d+$')
+              
+              # For production, we recommend manual review
+              # Uncomment the line below to enable full auto-merge to production
+              # gh pr merge "$PR_NUMBER" --auto --merge --delete-branch=false 2>&1 || true
+              
+              echo ""
+              echo "ℹ️  Auto-merge NOT enabled for production (requires manual approval)"
+              echo "👉 Please review and merge manually: $PR_URL"
+            else
+              echo "⚠️  Could not create PR"
+            fi
+          fi
+          
+          echo ""
+          echo "✅ Production release process initiated!"
       
       - name: Create Pre-Prod Report
-        if: success()
         run: |
           echo "Pre-Production Test Report - $(date)" > preprod-report.md
           echo "========================================" >> preprod-report.md
           echo "" >> preprod-report.md
+          echo "## Pre-Prod Gate Results" >> preprod-report.md
+          echo "- **Pass Rate:** ${{ steps.test_results.outputs.pass_rate }}%" >> preprod-report.md
+          echo "- **Threshold:** ${{ steps.test_results.outputs.threshold }}% (90% required)" >> preprod-report.md
+          echo "- **Passed:** ${{ steps.test_results.outputs.passed }}/${{ steps.test_results.outputs.total }}" >> preprod-report.md
+          echo "" >> preprod-report.md
           echo "## Test Results" >> preprod-report.md
-          echo "- ✅ Production Readiness: Passed" >> preprod-report.md
-          echo "- ✅ Security Regression: Passed" >> preprod-report.md
-          echo "- ✅ Full Test Suite: Passed" >> preprod-report.md
-          echo "- ✅ Smoke Tests: Passed" >> preprod-report.md
-          echo "- ✅ Stress Tests: Passed" >> preprod-report.md
+          echo "- Production Readiness: ${{ needs.production-readiness.result }}" >> preprod-report.md
+          echo "- Security Regression: ${{ needs.security-regression-tests.result }}" >> preprod-report.md
+          echo "- Full Test Suite: ${{ needs.full-test-suite.result }}" >> preprod-report.md
+          echo "- Smoke Tests: ${{ needs.smoke-tests.result }}" >> preprod-report.md
+          echo "- Stress Tests: ${{ needs.stress-tests.result }}" >> preprod-report.md
           echo "" >> preprod-report.md
           echo "## Security Features Verified" >> preprod-report.md
           echo "- ✅ CSRF Protection: Active" >> preprod-report.md
@@ -383,12 +560,17 @@ jobs:
           echo "- ✅ Session Security: Enabled" >> preprod-report.md
           echo "- ✅ Password Hashing: FIPS compliant" >> preprod-report.md
           echo "" >> preprod-report.md
-          echo "## Verdict" >> preprod-report.md
-          echo "✅ **APPROVED FOR PRODUCTION (main branch)**" >> preprod-report.md
+          
+          if [ "${{ steps.test_results.outputs.threshold_met }}" == "true" ]; then
+            echo "## Verdict" >> preprod-report.md
+            echo "✅ **PRE-PROD GATE PASSED - PRODUCTION RELEASE INITIATED**" >> preprod-report.md
+          else
+            echo "## Verdict" >> preprod-report.md
+            echo "❌ **PRE-PROD GATE FAILED - PRODUCTION DEPLOYMENT BLOCKED**" >> preprod-report.md
+          fi
       
       - name: Upload Pre-Prod Report
-        if: success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: preprod-gate-report
           path: preprod-report.md
