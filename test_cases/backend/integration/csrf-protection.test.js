@@ -3,31 +3,20 @@
  * Tests that state-changing endpoints are protected against CSRF attacks
  */
 
-import { describe, it, expect, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
-
-// Import the app directly for testing
-let app;
-try {
-  // Dynamically import the server module
-  const serverModule = await import('../../../backend/server.js');
-  app = serverModule.default || serverModule;
-} catch (error) {
-  console.warn('Could not load server for testing:', error.message);
-}
+import { setupAppTest, cleanup } from '../helpers/testSetup.js';
 
 describe('CSRF Protection - Integration Tests', () => {
+  let app;
   let csrfToken;
   let cookies;
 
   beforeAll(async () => {
-    if (!app) {
-      console.warn('Skipping CSRF tests - server not available');
-      return;
-    }
-
-    // Get CSRF token
     try {
+      app = await setupAppTest();
+      
+      // Get CSRF token
       const response = await request(app)
         .get('/api/csrf-token');
 
@@ -36,8 +25,12 @@ describe('CSRF Protection - Integration Tests', () => {
         cookies = response.headers['set-cookie'];
       }
     } catch (error) {
-      console.warn('Could not fetch CSRF token:', error.message);
+      console.warn('Setup failed:', error.message);
     }
+  });
+
+  afterAll(async () => {
+    await cleanup();
   });
 
   describe('CSRF Token Endpoint', () => {

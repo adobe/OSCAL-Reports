@@ -295,8 +295,10 @@ export function debugStateMiddleware(options = {}) {
   };
 }
 
-// Auto-cleanup every hour
-setInterval(cleanupOldStates, 60 * 60 * 1000);
+// Auto-cleanup every hour (unref so it doesn't keep process alive)
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(cleanupOldStates, 60 * 60 * 1000).unref();
+}
 
 // Initialize on module load
 if (DEBUG_STATE_ENABLED) {
