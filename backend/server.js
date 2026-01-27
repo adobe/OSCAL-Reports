@@ -4481,72 +4481,124 @@ app.get('*', (req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
 
-const server = app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Server is running on http://0.0.0.0:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
-  console.log(`Server timeout: ${serverTimeout}ms (${serverTimeout/1000}s)`);
-  
-  // Initialize default users on startup
-  await initializeDefaultUsers();
-  
-  // Set server timeout to allow for long-running AI requests
-  server.timeout = serverTimeout;
-  server.keepAliveTimeout = serverTimeout;
-  server.headersTimeout = serverTimeout + 1000; // Slightly longer than keepAliveTimeout
-  
-  // Run auto-cleanup immediately on startup
-  console.log('🧹 Running initial user cleanup...');
-  try {
-    const cleanupResult = await autoCleanupDeactivatedUsers();
-    if (cleanupResult.deletedCount > 0) {
-      console.log(`✅ Auto-cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
-    } else {
-      console.log('✅ Auto-cleanup completed: No users to delete');
-    }
-  } catch (error) {
-    console.error('❌ Auto-cleanup error:', error.message);
-  }
-  
-  // Schedule auto-cleanup to run daily at 2 AM
-  const scheduleAutoCleanup = () => {
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(2, 0, 0, 0); // 2 AM
-    
-    const msUntilCleanup = tomorrow.getTime() - now.getTime();
-    
-    setTimeout(async () => {
-      console.log('🧹 Running scheduled user cleanup...');
-      try {
-        const cleanupResult = await autoCleanupDeactivatedUsers();
-        if (cleanupResult.deletedCount > 0) {
-          console.log(`✅ Scheduled cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
-        }
-      } catch (error) {
-        console.error('❌ Scheduled cleanup error:', error.message);
-      }
+// Track timers for cleanup
+const timers = [];
+let server;
+
+// Start server function (can be called from tests or directly)
+const startServer = async () => {
+  return new Promise((resolve) => {
+    server = app.listen(PORT, '0.0.0.0', async () => {
+      console.log(`Server is running on http://0.0.0.0:${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
+      console.log(`Server timeout: ${serverTimeout}ms (${serverTimeout/1000}s)`);
       
-      // Schedule next cleanup (24 hours later)
-      setInterval(async () => {
-        console.log('🧹 Running scheduled user cleanup...');
+      // Initialize default users on startup
+      await initializeDefaultUsers();
+      
+      // Set server timeout to allow for long-running AI requests
+      server.timeout = serverTimeout;
+      server.keepAliveTimeout = serverTimeout;
+      server.headersTimeout = serverTimeout + 1000; // Slightly longer than keepAliveTimeout
+      
+      // Run auto-cleanup immediately on startup (skip in test mode)
+      if (process.env.NODE_ENV !== 'test') {
+        console.log('🧹 Running initial user cleanup...');
         try {
           const cleanupResult = await autoCleanupDeactivatedUsers();
           if (cleanupResult.deletedCount > 0) {
-            console.log(`✅ Scheduled cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
+            console.log(`✅ Auto-cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
+          } else {
+            console.log('✅ Auto-cleanup completed: No users to delete');
           }
         } catch (error) {
-          console.error('❌ Scheduled cleanup error:', error.message);
+          console.error('❌ Auto-cleanup error:', error.message);
         }
-      }, 24 * 60 * 60 * 1000); // 24 hours
-    }, msUntilCleanup);
-    
-    console.log(`⏰ Next auto-cleanup scheduled for: ${tomorrow.toISOString()}`);
-  };
+        
+        // Schedule auto-cleanup to run daily at 2 AM
+        const scheduleAutoCleanup = () => {
+          const now = new Date();
+          const tomorrow = new Date(now);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setHours(2, 0, 0, 0); // 2 AM
+          
+          const msUntilCleanup = tomorrow.getTime() - now.getTime();
+          
+          const cleanupTimer = setTimeout(async () => {
+            console.log('🧹 Running scheduled user cleanup...');
+            try {
+              const cleanupResult = await autoCleanupDeactivatedUsers();
+              if (cleanupResult.deletedCount > 0) {
+                console.log(`✅ Scheduled cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
+              }
+            } catch (error) {
+              console.error('❌ Scheduled cleanup error:', error.message);
+            }
+            
+            // Schedule next cleanup (24 hours later)
+            const dailyCleanupInterval = setInterval(async () => {
+              console.log('🧹 Running scheduled user cleanup...');
+              try {
+                const cleanupResult = await autoCleanupDeactivatedUsers();
+                if (cleanupResult.deletedCount > 0) {
+                  console.log(`✅ Scheduled cleanup completed: ${cleanupResult.deletedCount} user(s) deleted`);
+                }
+              } catch (error) {
+                console.error('❌ Scheduled cleanup error:', error.message);
+              }
+            }, 24 * 60 * 60 * 1000); // 24 hours
+            
+            timers.push(dailyCleanupInterval);
+          }, msUntilCleanup);
+          
+          timers.push(cleanupTimer);
+          console.log(`⏰ Next auto-cleanup scheduled for: ${tomorrow.toISOString()}`);
+        };
+        
+        scheduleAutoCleanup();
+        
+        // Schedule inactive user cleanup (runs daily, checks for 45-day inactivity)
+        scheduleUserCleanup(); // Runs every 24 hours
+      }
+      
+      resolve(server);
+    });
+  });
+};
+
+// Graceful shutdown function
+const closeServer = async () => {
+  console.log('🛑 Shutting down server...');
   
-  scheduleAutoCleanup();
+  // Clear all timers
+  timers.forEach(timer => clearTimeout(timer) || clearInterval(timer));
+  timers.length = 0;
   
-  // Schedule inactive user cleanup (runs daily, checks for 45-day inactivity)
-  scheduleUserCleanup(); // Runs every 24 hours
-});
+  // Close server
+  if (server) {
+    return new Promise((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          console.error('Error closing server:', err);
+          reject(err);
+        } else {
+          console.log('✅ Server closed successfully');
+          resolve();
+        }
+      });
+    });
+  }
+};
+
+// Export app and server control functions
+export default app;
+export { app, server, startServer, closeServer };
+
+// Auto-start server if not in test mode
+if (process.env.NODE_ENV !== 'test') {
+  startServer().catch(error => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  });
+}
 
