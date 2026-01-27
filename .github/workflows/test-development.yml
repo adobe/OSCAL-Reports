@@ -9,9 +9,10 @@ on:
       - Development
 
 jobs:
-  security-tests:
-    name: Security Tests (CSRF & SSRF)
+  lint-and-format:
+    name: Linting and Code Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -29,90 +30,21 @@ jobs:
           cd backend && npm install
           cd ../frontend && npm install
       
-      - name: Run CSRF Protection Tests
+      - name: Run ESLint (Backend)
         run: |
           cd backend
-          npm run test -- --testPathPattern=csrf-protection.test.js
-        env:
-          NODE_ENV: test
-          TEST_ADMIN_PASSWORD: Admin@2026
-          TEST_USER_PASSWORD: User@2026
+          npx eslint . --ext .js || true
       
-      - name: Run SSRF Protection Tests
+      - name: Run ESLint (Frontend)
         run: |
-          cd backend
-          npm run test -- --testPathPattern=ssrf-protection.test.js
-        env:
-          NODE_ENV: test
-          TEST_ADMIN_PASSWORD: Admin@2026
-      
-      - name: Run URL Validator Tests
-        run: |
-          cd backend
-          npm run test -- --testPathPattern=urlValidator.test.js
-        env:
-          NODE_ENV: test
-
-  email-tests:
-    name: Email Functionality Tests
-    runs-on: ubuntu-latest
-    needs: security-tests
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: |
-          npm install
-          cd backend && npm install
-      
-      - name: Run Email Tests
-        run: |
-          cd backend
-          npm run test -- --testPathPattern=email-functionality.test.js
-        env:
-          NODE_ENV: test
-          TEST_ADMIN_PASSWORD: Admin@2026
-
-  ai-integration-tests:
-    name: AI Integration Tests
-    runs-on: ubuntu-latest
-    needs: security-tests
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: |
-          npm install
-          cd backend && npm install
-      
-      - name: Run AI Integration Tests
-        run: |
-          cd backend
-          npm run test -- --testPathPattern=ai-integration.test.js
-        env:
-          NODE_ENV: test
-          TEST_ADMIN_PASSWORD: Admin@2026
+          cd frontend
+          npx eslint . --ext .js,.jsx || true
 
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: security-tests
+    needs: lint-and-format
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -148,7 +80,8 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: [security-tests, email-tests, ai-integration-tests]
+    needs: unit-tests
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -175,9 +108,69 @@ jobs:
           TEST_USER_PASSWORD: User@2026
           TEST_ASSESSOR_PASSWORD: Assessor@2026
 
-  lint-and-format:
-    name: Linting and Code Quality
+  ai-integration-tests:
+    name: AI Integration Tests
     runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run AI Integration Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=ai-integration.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+
+  email-tests:
+    name: Email Functionality Tests
+    runs-on: ubuntu-latest
+    needs: ai-integration-tests
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+          cd backend && npm install
+      
+      - name: Run Email Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=email-functionality.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+
+  csrf-security-tests:
+    name: Security Tests (CSRF)
+    runs-on: ubuntu-latest
+    needs: email-tests
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -195,20 +188,57 @@ jobs:
           cd backend && npm install
           cd ../frontend && npm install
       
-      - name: Run ESLint (Backend)
+      - name: Run CSRF Protection Tests
         run: |
           cd backend
-          npx eslint . --ext .js || true
+          npm run test -- --testPathPattern=csrf-protection.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+          TEST_USER_PASSWORD: User@2026
+
+  ssrf-security-tests:
+    name: Security Tests (SSRF)
+    runs-on: ubuntu-latest
+    needs: email-tests
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-      - name: Run ESLint (Frontend)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
         run: |
-          cd frontend
-          npx eslint . --ext .js,.jsx || true
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
+      
+      - name: Run SSRF Protection Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=ssrf-protection.test.js
+        env:
+          NODE_ENV: test
+          TEST_ADMIN_PASSWORD: Admin@2026
+      
+      - name: Run URL Validator Tests
+        run: |
+          cd backend
+          npm run test -- --testPathPattern=urlValidator.test.js
+        env:
+          NODE_ENV: test
 
   build-test:
     name: Build Test
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
+    needs: [csrf-security-tests, ssrf-security-tests]
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -248,7 +278,7 @@ jobs:
   summary-and-auto-merge:
     name: Development Tests Summary & Auto-Merge
     runs-on: ubuntu-latest
-    needs: [security-tests, email-tests, ai-integration-tests, unit-tests, integration-tests, build-test]
+    needs: [lint-and-format, unit-tests, integration-tests, ai-integration-tests, email-tests, csrf-security-tests, ssrf-security-tests, build-test]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/Development'
     permissions:
       contents: write
@@ -267,16 +297,18 @@ jobs:
           echo "================================="
           
           # Count successful and failed jobs
-          TOTAL=6
+          TOTAL=8
           PASSED=0
           
           # Check each job result
           declare -A JOBS=(
-            ["security-tests"]="${{ needs.security-tests.result }}"
-            ["email-tests"]="${{ needs.email-tests.result }}"
-            ["ai-integration-tests"]="${{ needs.ai-integration-tests.result }}"
+            ["lint-and-format"]="${{ needs.lint-and-format.result }}"
             ["unit-tests"]="${{ needs.unit-tests.result }}"
             ["integration-tests"]="${{ needs.integration-tests.result }}"
+            ["ai-integration-tests"]="${{ needs.ai-integration-tests.result }}"
+            ["email-tests"]="${{ needs.email-tests.result }}"
+            ["csrf-security-tests"]="${{ needs.csrf-security-tests.result }}"
+            ["ssrf-security-tests"]="${{ needs.ssrf-security-tests.result }}"
             ["build-test"]="${{ needs.build-test.result }}"
           )
           
@@ -359,13 +391,15 @@ jobs:
           - **Passed Jobs:** ${{ steps.test_results.outputs.passed }}/${{ steps.test_results.outputs.total }}
           - **Status:** ✅ Threshold met
 
-          ### ✅ Passed Tests
-          - Security Tests (CSRF, SSRF, URL Validation)
-          - Email Functionality Tests
-          - AI Integration Tests
-          - Unit Tests
-          - Integration Tests
-          - Build Test
+          ### ✅ Passed Tests (Sequential Execution)
+          1. Linting and Code Quality
+          2. Unit Tests
+          3. Integration Tests
+          4. AI Integration Tests
+          5. Email Functionality Tests
+          6. Security Tests (CSRF) - Independent
+          7. Security Tests (SSRF) - Independent
+          8. Build Test
 
           ### 🔄 Merge Details
           - **Source:** \`Development\`
