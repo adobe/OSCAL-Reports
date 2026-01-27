@@ -1,986 +1,143 @@
-# 🛡️ Keekar's OSCAL SOA/SSP/CCM Generator
+# 📚 OSCAL Report Generator Documentation
 
-**A comprehensive web application for generating compliance documentation from OSCAL catalogs**
-
-Version 1.5.0 | January 2026
-
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Docker Hub](https://img.shields.io/docker/v/keekar/oscal_reports?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
-[![Docker Pulls](https://img.shields.io/docker/pulls/keekar/oscal_reports?logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
-[![Docker Image Size](https://img.shields.io/docker/image-size/keekar/oscal_reports/latest?logo=docker)](https://hub.docker.com/r/keekar/oscal_reports)
+**Organized documentation for development, deployment, and maintenance**
 
 ---
 
-## 📖 Overview
+## 📖 Quick Navigation
 
-**Keekar's OSCAL SOA/SSP/CCM Generator** is a powerful tool for creating **Statement of Applicability (SOA)**, **System Security Plans (SSP)**, and **Cloud Control Matrix (CCM)** documents from OSCAL (Open Security Controls Assessment Language) catalogs.
+### 🚀 Getting Started
 
-### 🎯 Key Features
-
-- ✨ **New Workflow**: Load existing reports first, then update catalogs intelligently
-- 🤖 **Automated Control Suggestions**: AI-powered recommendations for control implementations
-- 📊 **AI Telemetry Logging**: OpenTelemetry-compliant logging of all AI interactions
-- 📚 **Multiple Frameworks**: NIST SP 800-53, Australian ISM, Singapore IM8
-- 📈 **Multiple Export Formats**: OSCAL JSON, Excel, PDF, and CCM
-- 🔄 **Smart Catalog Updates**: Automatically detect new/changed controls
-- 💾 **Data Persistence**: Browser-based local storage for multi-session work
-- ⚡ **Auto-save**: Automatic progress saving
-- 🎨 **Modern UI**: Intuitive, responsive interface
+| Document | Description | For |
+|----------|-------------|-----|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, TrueNAS, Local) | **Start Here** |
+| [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md) | 5-minute TrueNAS installation guide | Quick Setup |
+| [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub image documentation | Docker Users |
 
 ---
 
-## 🚀 Quick Start
+### 🏗️ Architecture & Development
 
-### Option 1: Docker (Easiest - Recommended)
-
-The fastest way to get started is using our pre-built Docker images from Docker Hub:
-
-```bash
-# Pull the latest stable release
-docker pull keekar/oscal_reports:latest
-
-# Run the container
-docker run -d \
-  --name oscal-app \
-  -p 3020:3020 \
-  -v $(pwd)/config:/app/config \
-  keekar/oscal_reports:latest
-
-# Access the application
-open http://localhost:3020
-```
-
-**Available Tags:**
-- `latest` - Stable production release (from `main` branch)
-- `edge` - Latest development build (from `Development` branch)
-- `v{version}` - Specific version (e.g., `v1.5.0`)
-
-**Docker Hub Repository:** https://hub.docker.com/r/keekar/oscal_reports
-
-**Multi-Platform Support:**
-- ✅ linux/amd64 (Intel/AMD processors)
-- ✅ linux/arm64 (Apple Silicon, ARM servers)
-
-For detailed Docker deployment instructions, see [Docker Hub Guide](docs/DOCKER_HUB_GUIDE.md).
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
+| [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
+| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
+| [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
 
 ---
 
-### Option 2: Local Development Setup
+### 🔧 Development Workflow
 
-#### Prerequisites
-
-- **Node.js** 20+ (for local development)
-- **Modern web browser** (Chrome, Firefox, Safari, Edge)
-
-#### Setup Steps
-
-```bash
-# Clone or download the repository
-cd OSCAL_Reports
-
-# Run the setup script
-chmod +x setup.sh
-./setup.sh
-
-# Start the application in development mode
-npm run dev
-
-# Or start the production server
-cd backend
-node server.js
-
-# Access the application (production)
-open http://localhost:3020
-
-# Or access frontend dev server
-open http://localhost:3021
-```
+| Document | Description |
+|----------|-------------|
+| [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
+| [GITHUB_ACCOUNT_GUIDE.md](GITHUB_ACCOUNT_GUIDE.md) | Switching between GitHub accounts |
+| [PR_SUBMISSION_CHECKLIST.md](PR_SUBMISSION_CHECKLIST.md) | Pull request submission guide |
+| [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and changes |
 
 ---
 
-### Option 3: TrueNAS Server Deployment
+### 🐳 Docker & Deployment
 
-#### Automated Blue-Green Deployment (Recommended)
-
-For automated deployments on **nas.keekar.com** or other TrueNAS servers with auto-updates from GitHub:
-
-```bash
-# Quick setup (see docs/DEPLOYMENT.md#truenas-deployment for details)
-cd /mnt/pool1/Documents/KACI-Apps
-
-# Clone for Blue instance (Port 3020)
-# Note: Using personal repo because TrueNAS cannot access Adobe VPN
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
-cd OSCAL-Report-Generator-Blue
-chmod +x build_on_truenas.sh
-./build_on_truenas.sh
-
-# Clone for Green instance (Port 3019)
-cd ..
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
-cd OSCAL-Report-Generator-Green
-chmod +x build_on_truenas.sh
-./build_on_truenas.sh
-
-# Setup cron for monthly staggered updates
-crontab -e
-# Green (1st, 3rd, 5th Sunday at 2 AM):
-# 0 2 1-7,15-21,29-31 * 0 cd /path/to/OSCAL-Report-Generator-Green && ./build_on_truenas.sh >> /var/log/oscal-green-deploy.log 2>&1
-# Blue (2nd, 4th Sunday at 2 AM):
-# 0 2 8-14,22-28 * 0 cd /path/to/OSCAL-Report-Generator-Blue && ./build_on_truenas.sh >> /var/log/oscal-blue-deploy.log 2>&1
-```
-
-**Features:**
-- 🔄 Auto-detects Blue/Green instance from directory name
-- 📊 Compares versions (local, running, GitHub)
-- 🚀 Only builds/deploys if version changes
-- ⏰ Monthly staggered updates (Green: 1st/3rd/5th Sun, Blue: 2nd/4th Sun)
-- 🔌 Separate ports (Blue: 3020, Green: 3019)
-- 🛡️ High availability (never updates both simultaneously)
-
-**Documentation:**
-- **🎯 Deployment Options**: [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) - **Start Here!**
-- **☁️ Cloud Deployment**: [docs/CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md)
-- **🚀 TrueNAS Deployment**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- **🤖 GitHub Actions CI/CD**: [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md)
-
-### Cloud Deployment Options ☁️
-
-**Deploy to cloud platforms automatically when you push to main:**
-
-| Platform | Cost/Month | Setup Time | Guide |
-|----------|------------|------------|-------|
-| 🔴 **Google Cloud Run** | $5-10 | 10 min | [Setup](docs/CLOUD_DEPLOYMENT.md#google-cloud-run) |
-| 🟢 **DigitalOcean** | $5 | 10 min | [Setup](docs/CLOUD_DEPLOYMENT.md#digitalocean-app-platform) |
-| 🟣 **Heroku** | $0-7 | 5 min | [Setup](docs/CLOUD_DEPLOYMENT.md#heroku) |
-| 🔵 **Azure Web App** | $13 | 15 min | [Setup](docs/CLOUD_DEPLOYMENT.md#azure-web-app) |
-| 🟠 **AWS ECS** | $15-20 | 30 min | [Setup](docs/CLOUD_DEPLOYMENT.md#aws-ecs) |
-
-**See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for detailed comparison and recommendations.**
-
-### GitHub Actions CI/CD 🤖
-
-**Automated deployment when changes are pushed to main branch:**
-
-- ✅ **Automatic Testing**: Unit, integration, and E2E tests
-- 🐳 **Docker Image Building**: Automatic containerization to GitHub Container Registry
-- 🚀 **Deployment Ready**: Build artifacts with deployment instructions
-- 📧 **Notifications**: Status updates with deployment URLs to owners and contributors
-- 🔒 **Security Scanning**: Dependency audits and vulnerability checks
-
-**What happens on push to main:**
-1. All tests run automatically
-2. Docker image is built and pushed to `ghcr.io`
-3. Deployment instructions are generated with URLs
-4. Notifications sent to repository owner and committer
-5. Credentials available in workflow artifacts
-
-**Access deployed application:**
-- 🔵 **Blue Instance**: http://nas.keekar.com:3020
-- 🟢 **Green Instance**: http://nas.keekar.com:3019
-- 📦 **Docker Image**: `ghcr.io/adobemanagedservices/oscal-report-generator:latest`
-
-**Manual deployment available via GitHub Actions UI** - see [docs/GITHUB_ACTIONS_DEPLOYMENT.md](docs/GITHUB_ACTIONS_DEPLOYMENT.md) for details.
-
-### Branching Strategy 🌳
-
-**Three-tier branching model for progressive testing:**
-
-```
-Development  ──┐
-               ├──> Pre_Prod ──> main (Production)
-Quality_Test ──┘
-```
-
-**🔒 CRITICAL RULE:**
-- **⛔ ONLY Pre_Prod → main** (Strictly enforced - all other branches BLOCKED)
-
-**Branch Rules:**
-- ✅ **Development/Quality_Test → Pre_Prod**: Recommended flow
-- ✅ **Cross-branch merging**: Allowed for flexibility (except to main)
-- 🔒 **Protected branches**: main and Pre_Prod require PR reviews
-- 🤖 **Automated checks**: PR validation enforces main branch restriction
-
-**Quick Commands:**
-```bash
-# Start new feature
-git checkout Development
-git checkout -b feature/my-feature
-gh pr create --base Development
-
-# Deploy to staging
-git checkout Development
-gh pr create --base Pre_Prod
-
-# Deploy to production
-git checkout Pre_Prod
-gh pr create --base main
-```
-
-**Documentation:**
-- 📖 **Full Guide**: [docs/BRANCHING_STRATEGY.md](docs/BRANCHING_STRATEGY.md)
-- ⚡ **Quick Reference**: [.github/BRANCHING_QUICKSTART.md](.github/BRANCHING_QUICKSTART.md)
-
-#### Manual TrueNAS Deployment
-
-For manual deployment without Docker:
-
-1. **Build the Frontend**
-   ```bash
-   cd frontend
-   npm install
-   npm run build
-   ```
-
-2. **Copy Built Files**
-   ```bash
-   cp -r frontend/dist backend/public
-   ```
-
-3. **Install Backend Dependencies**
-   ```bash
-   cd backend
-   npm install
-   ```
-
-4. **Start the Server**
-   ```bash
-   cd backend
-   NODE_ENV=production node server.js
-   ```
-
-5. **Access from Network**
-   - Open browser to `http://nas.keekar.com:3020`
-   - Or use the server's IP address: `http://<server-ip>:3020`
+| Document | Description |
+|----------|-------------|
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub publishing guide |
+| [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub public documentation |
+| [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platform deployment (Azure, AWS, GCP) |
 
 ---
 
-## 🔒 OSCAL & Metaschema Framework Compliance
+### 🖥️ TrueNAS Deployment
 
-This tool follows **OSCAL (Open Security Controls Assessment Language)** standards and implements validation using the **Metaschema Framework**.
-
-**Key Standards:**
-- ✅ OSCAL Catalog Layer - Reads official catalogs
-- ✅ OSCAL Profile Layer - Supports resolved profiles  
-- ✅ OSCAL SSP Layer - Generates System Security Plans
-- ✅ **JSON Schema Validation** - Integrated AJV v8 with official OSCAL JSON Schema v1.1.2
-- ✅ **Real-time Validation** - Validates documents against Metaschema Framework standards
-
-**Validation powered by:**
-- Official OSCAL JSON Schema (v1.1.2, 243KB) from [oscal-editor](https://github.com/metaschema-framework/oscal-editor)
-- AJV v8 JSON Schema Validator with format validation
-- Multi-tier validation strategy (Schema → Basic → CLI future)
-
-**For detailed validation features, Metaschema Framework integration, and permissive validation strategy, see:**  
-📖 **[ENHANCEMENTS.md - Metaschema Framework & OSCAL Validation](ENHANCEMENTS.md#metaschema-framework--oscal-validation)**
+| Document | Description |
+|----------|-------------|
+| [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md) | Quick reference card (5-min setup) |
+| [TRUENAS_INSTALLATION.md](TRUENAS_INSTALLATION.md) | Detailed installation guide |
+| [TRUENAS_APP_CATALOG.md](TRUENAS_APP_CATALOG.md) | Custom app catalog integration |
 
 ---
 
-## 📋 How It Works
+### 🔒 Security & Quality
 
-### New Workflow (Version 2.0)
-
-#### 1️⃣ **Initial Choice**
-Choose your starting point:
-- **📂 Load Existing Report**: Continue working on a previous compliance report
-- **✨ Start New Report**: Begin from scratch with a fresh catalog
-
-#### 2️⃣ **Catalog Selection**
-
-**If loading existing report:**
-- System extracts your current catalog
-- Choose to:
-  - ✅ Keep current catalog version (all data pre-populated)
-  - 🔄 Update to latest version (identifies new/changed controls)
-
-**If starting fresh:**
-- Select from built-in catalogs or provide custom URL
-
-#### 3️⃣ **System Information**
-Document your system details:
-- System name, ID, description
-- Data/System classification level
-- Security impact levels (CIA)
-- System status
-
-#### 4️⃣ **Control Implementation**
-For each control, document:
-- **Implementation Status**: 7 status options with color coding
-- **Implementation Details**: How the control is implemented
-- **Responsible Party**: Shared, Consumer, CSP
-- **Consumer Guidance**: Instructions for configuration/implementation
-- **Cloud Provider Responsibility**: Inherited, Implementer, Option Provider
-- **Control Type**: Policy, Process, Orchestrated, or Automated
-- **Testing & Evidence**: Methods, frequency, last test date
-- **Risk Assessment**: Rating and compensating controls
-
-#### 5️⃣ **Export Documentation**
-Generate reports in multiple formats:
-- **OSCAL JSON**: Standard OSCAL SSP format
-- **Excel**: Detailed spreadsheet
-- **PDF**: Formatted compliance report
-- **CCM**: Cloud Control Matrix (Australian ISM)
+| Document | Description |
+|----------|-------------|
+| [SECURITY_QUICK_REFERENCE.md](SECURITY_QUICK_REFERENCE.md) | Security features and configurations |
+| [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA processes and testing |
 
 ---
 
-## 🎨 Features in Detail
+## 📊 Documentation Statistics
 
-### Supported OSCAL Catalogs
-
-1. **Australian ISM (ACSC)**
-   - Non-Classified Baseline
-   - Official Sensitive Baseline
-   - Protected Baseline
-   - Secret Baseline
-   - Top Secret Baseline
-
-2. **NIST SP 800-53 Rev 5**
-   - Full catalog with all control families
-
-3. **Singapore IM8 Reform**
-   - GovTech Singapore standards
-
-4. **Custom Catalogs**
-   - Provide any OSCAL-compliant catalog URL
-
-### Implementation Status Options
-
-- 🔴 **Not Assessed**: Control not yet reviewed
-- 🟢 **Effective**: Control is working as intended
-- 🔵 **Alternate Control**: Alternative implementation in place
-- 🟠 **Ineffective**: Control not meeting objectives
-- ⚪ **No Visibility**: Cannot assess effectiveness
-- 🟣 **Not Implemented**: Control not yet deployed
-- ⚫ **Not Applicable**: Control not relevant to system
-
-### Search and Filter
-
-- Search by control ID or title
-- Filter by control group/domain
-- Filter by implementation status
-- Filter by change status (new/changed/unchanged)
-- Bulk actions for status updates
-
-### Data Management
-
-- **Auto-save**: Saves every 2 seconds
-- **Manual save**: Save progress on demand
-- **Load saved data**: Resume from browser storage
-- **Clear data**: Start fresh when needed
-- **Export/Import**: Download and upload SSP JSON files
+- **Total Documents:** 19 (reduced from 37)
+- **Categories:** 6
+- **Last Cleanup:** 2026-01-28
 
 ---
 
-## 📊 AI Telemetry Logging (New in v1.2.7!)
+## 🎯 Quick Links by Role
 
-All AI interactions are logged following **OpenTelemetry (OTel) Generative AI Semantic Conventions** for full observability and compliance:
+### 👨‍💻 **Developer**
+Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md)
 
-### Features
-- **OTel Compliant**: Follows [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
-- **JSONL Format**: One JSON object per line for easy parsing
-- **Automatic Rotation**: New log file created when size reaches 5MB
-- **Detailed Metrics**: Tracks tokens, latency, prompts, responses, and errors
-- **Security**: Admin-only access with RBAC permissions
+### 🚀 **DevOps/Deployment**
+Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
 
-### What's Logged
-- **Prompts**: All prompts sent to AI engines
-- **Responses**: AI-generated implementation text
-- **Performance**: Latency, token usage, model information
-- **Context**: Control ID, family, user/session metadata
-- **Errors**: Detailed error information for debugging
+### 👤 **End User**
+Start with: [DOCKER_HUB_README.md](DOCKER_HUB_README.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
 
-### API Endpoints
-- `GET /api/ai/logs/stats` - View log statistics
-- `POST /api/ai/logs/cleanup` - Clean up old logs
+### 🔐 **Security Reviewer**
+Start with: [SECURITY_QUICK_REFERENCE.md](SECURITY_QUICK_REFERENCE.md) → [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
 
-See [ARCHITECTURE.md - AI Telemetry Logging](docs/ARCHITECTURE.md#ai-telemetry-logging-v127) for complete documentation.
+### ✅ **QA/Tester**
+Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ---
 
-## 🤖 Automated Control Suggestions
+## 📝 Documentation Guidelines
 
-The application includes an intelligent control suggestion engine that provides automated recommendations for control implementations.
+### Creating New Documentation
 
-### AI Provider Support
+1. **Location:** All docs go in `/docs/` folder
+2. **Naming:** Use `DESCRIPTIVE_NAME.md` (UPPERCASE for major docs)
+3. **Format:** Include table of contents, clear headings
+4. **Updates:** Update this README index when adding new docs
 
-The application supports multiple AI providers for enhanced control suggestions:
+### What NOT to Document
 
-- **🏠 Ollama** (Local/Self-hosted) - Run AI models locally with full data privacy
-- **☁️ Mistral API** (Cloud) - Direct access to Mistral AI cloud service
-- **🚀 AWS Bedrock** (Cloud) - Enterprise-grade managed AI from Amazon with access to Mistral, Claude, and Llama models
+- ❌ Session logs or temporary troubleshooting files
+- ❌ One-time migration guides (remove after completion)
+- ❌ Duplicate content across multiple files
+- ❌ Test results or execution summaries
 
-**See**: [AWS_BEDROCK_INTEGRATION.md](AWS_BEDROCK_INTEGRATION.md) for detailed AWS Bedrock configuration guide.
+### Documentation Lifecycle
 
-### Features
-
-- **Pattern Matching**: Analyzes control families (AC, AU, IA, SC, SI, etc.) and keywords
-- **Template Library**: Pre-built templates for common control types
-- **Machine Learning**: Learns from your existing control implementations
-- **Confidence Scoring**: Each suggestion includes a confidence level (High/Medium/Low)
-- **Field-Level Application**: Apply individual fields or all suggestions at once
-- **Reasoning Display**: Explains why each suggestion was made
-
-### How to Use
-
-1. Expand any control in the controls list
-2. Click the **"🤖 Get Suggestions"** button
-3. Review the suggested implementation details with confidence scores
-4. Apply individual fields using the "Apply" button next to each field
-5. Or apply all suggestions at once using "✅ Apply All Suggestions"
-
-### Suggestion Strategies
-
-The engine uses multiple strategies to provide the best suggestions:
-
-1. **Control Family Templates** (High Confidence)
-   - Matches controls to predefined templates by family
-   - Provides comprehensive implementation suggestions
-
-2. **Pattern Matching** (Medium Confidence)
-   - Analyzes control title and description for keywords
-   - Matches against known patterns (access, audit, encryption, etc.)
-
-3. **Learning from Existing Controls** (Medium Confidence)
-   - Finds similar controls from existing implementations
-   - Averages implementation details from similar controls
-
-4. **Default Suggestions** (Low Confidence)
-   - Provides generic but useful suggestions based on control characteristics
-
-### Supported Fields
-
-The suggestion engine can provide recommendations for:
-- Implementation Status
-- Implementation Description
-- Responsible Party
-- Control Type
-- Testing Method
-- Testing Frequency
-- Risk Rating
+- **Active:** Current, maintained documentation
+- **Archive:** Move to `/docs/archive/` if historical but valuable
+- **Remove:** Delete temporary, outdated, or superseded docs
 
 ---
 
-## 📊 Export Formats
+## 🔄 Recent Cleanup (2026-01-28)
 
-### 1. OSCAL SSP JSON
+**Removed 18 files:**
+- Session summaries and workflow analyses
+- Outdated test automation documentation
+- Completed migration guides
+- Duplicate deployment guides
+- Specific PR and bug fix logs
 
-Standard OSCAL 1.1.2 format with:
-- System characteristics
-- Control implementation statements
-- Responsible roles and parties
-- Implementation status and remarks
-- Original catalog metadata
-
-### 2. Excel Export
-
-Comprehensive spreadsheet with:
-- Control details and descriptions
-- Implementation information
-- Status and dates
-- Testing and evidence
-- Risk assessments
-- Color-coded status indicators
-
-### 3. PDF Report
-
-Professional compliance report including:
-- Cover page
-- System information summary
-- Control assessment overview
-- Detailed control implementations
-- Status indicators and formatting
-
-### 4. Cloud Control Matrix (CCM)
-
-Australian ISM-specific format with:
-- ACSC ISM control mappings
-- Cloud provider responsibilities
-- Consumer guidance
-- Technical controls
-- Policy and process controls
-- Summary statistics sheet
+**Result:** 48% reduction in file count, cleaner organization
 
 ---
 
-## 🔧 Configuration
+## 🆘 Need Help?
 
-### Configuration Directory Structure
-
-All configuration files are centralized in the `config/` directory:
-
-```
-config/
-├── app/              # Application runtime configs (sensitive)
-│   ├── config.json   # Application settings (SSO, messaging, API gateways)
-│   └── users.json    # User accounts (FIPS 140-2 compliant passwords)
-└── build/            # Build/deployment configs
-    ├── docker-compose.yml
-    ├── truenas-app.yaml
-    └── Dockerfile
-```
-
-**Security Note**: The `config/app/` directory contains sensitive data and should be encrypted and have restricted access controls applied.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | `production` | Node environment mode |
-| `PORT` | `3020` | Backend server port (default) |
-| `FRONTEND_DEV_PORT` | `3021` | Frontend dev server port (vite) |
-| `BUILD_TIMESTAMP` | Current time | Build timestamp for password generation |
-
-### Port Configuration
-
-The application uses the following ports:
-
-- **Backend Server**: `3020` (default, configurable via `PORT` env var)
-- **Frontend Dev Server**: `3021` (configured in `vite.config.js`)
-- **Ollama AI Service**: `11434` (if using local AI)
-
-Change the backend port by setting the `PORT` environment variable:
-
-```bash
-PORT=8080 node server.js
-```
-
-### User Registration
-
-The application supports self-service user registration:
-
-#### Self-Registration
-- Users can register with their email address on the login page
-- Auto-generated 12-character passwords sent via email
-- New users receive "User" role by default
-- Rate limited to 3 registrations per IP per hour
-- **Inactivity Policy**: Accounts inactive for 45+ days are automatically deactivated
-- **Email Cooldown**: Deactivated email addresses cannot re-register for 45 days
-
-#### Platform Admin Access
-- Platform Admin accounts must be created manually by system administrators
-- Contact your system administrator for Platform Admin credentials
-- Admins can create additional users through the User Management interface
+- **Issue:** Create a GitHub issue
+- **Questions:** Check relevant doc first, then ask team
+- **Updates:** Submit PR with documentation changes
 
 ---
 
-## 🛠️ Development
-
-### Project Structure
-
-```
-OSCAL_Reports/
-├── backend/                      # Node.js + Express backend
-│   ├── auth/                     # Authentication & authorization
-│   │   ├── middleware.js         # Auth middleware
-│   │   ├── passwordGenerator.js  # Password utilities
-│   │   ├── roles.js              # Role definitions (Admin, Assessor, User)
-│   │   └── userManager.js        # User management & PBKDF2 hashing
-│   ├── server.js                 # Main server file (Port 3020)
-│   ├── configManager.js          # Configuration management
-│   ├── ccmExport.js              # CCM Excel generation
-│   ├── ccmImport.js              # CCM import functionality
-│   ├── pdfExport.js              # PDF generation
-│   ├── sspComparisonV3.js        # Catalog comparison logic
-│   ├── controlSuggestionEngine.js # AI suggestion engine
-│   ├── mistralService.js         # Mistral AI integration
-│   ├── integrityService.js       # SSP integrity checking
-│   ├── messagingService.js       # Email/notification service
-│   ├── oscalValidator.js         # OSCAL validation
-│   ├── oscalValidatorAJV.js      # AJV-based validation
-│   ├── oscal-schema.json         # OSCAL JSON Schema v1.1.2
-│   ├── package.json              # Backend dependencies
-│   └── public/                   # Built frontend files (generated)
-│
-├── frontend/                     # React frontend
-│   ├── src/
-│   │   ├── components/           # React components
-│   │   │   ├── AIIntegration.jsx         # AI provider config
-│   │   │   ├── CatalogChoice.jsx         # Catalog selection
-│   │   │   ├── CatalogueInput.jsx        # Catalog input
-│   │   │   ├── CCMUpload.jsx             # CCM file upload
-│   │   │   ├── ControlEditModal.jsx      # Control editor
-│   │   │   ├── ControlItem.jsx           # Individual control
-│   │   │   ├── ControlItemCCM.jsx        # CCM control item
-│   │   │   ├── ControlsList.jsx          # Controls list view
-│   │   │   ├── ControlSuggestions.jsx    # AI suggestions UI
-│   │   │   ├── ErrorBoundary.jsx         # Error handling
-│   │   │   ├── ExistingSSPUpload.jsx     # SSP upload
-│   │   │   ├── ExportButtons.jsx         # Export options
-│   │   │   ├── InitialChoice.jsx         # Workflow choice
-│   │   │   ├── IntegrityWarning.jsx      # Integrity alerts
-│   │   │   ├── Login.jsx                 # Authentication UI
-│   │   │   ├── MessagingConfiguration.jsx # Email config
-│   │   │   ├── MultiReportComparison.jsx # Report comparison
-│   │   │   ├── SaveLoadBar.jsx           # Save/load bar
-│   │   │   ├── SaveLoadPanel.jsx         # Save/load panel
-│   │   │   ├── Settings.jsx              # Settings (legacy)
-│   │   │   ├── SettingsWithTabs.jsx      # Tabbed settings
-│   │   │   ├── SSOIntegration.jsx        # SSO configuration
-│   │   │   ├── SystemInfoForm.jsx        # System info form
-│   │   │   ├── UseCases.jsx              # Use case selector
-│   │   │   ├── UserManagement.jsx        # User admin UI
-│   │   │   └── ValidationStatus.jsx      # OSCAL validation
-│   │   ├── contexts/                 # React contexts
-│   │   │   └── AuthContext.jsx       # Authentication context
-│   │   ├── services/                 # Frontend services
-│   │   │   └── oscalValidator.js     # Client-side OSCAL validation
-│   │   ├── utils/                    # Utility functions
-│   │   │   ├── buildInfo.js          # Build metadata
-│   │   │   ├── passwordGenerator.js  # Client password utilities
-│   │   │   └── storage.js            # LocalStorage management
-│   │   ├── App.jsx                   # Main application component
-│   │   ├── App.css                   # Global styles
-│   │   ├── index.css                 # Base CSS
-│   │   └── main.jsx                  # Entry point
-│   ├── index.html                    # HTML template
-│   ├── package.json                  # Frontend dependencies
-│   └── vite.config.js                # Vite config (Port 3021)
-│
-├── config/                           # Configuration directory
-│   ├── app/                          # Application configs (sensitive)
-│   │   ├── config.json.example       # Config template
-│   │   └── users.json.example        # Users template
-│   └── build/                        # Build/deployment configs
-│       ├── docker-compose.yml        # Docker Compose
-│       ├── Dockerfile                # Docker build
-│       └── truenas-app.yaml          # TrueNAS config
-│
-├── docs/                             # Documentation
-│   ├── ARCHITECTURE.md               # Technical architecture & AI telemetry
-│   ├── DEPLOYMENT.md                 # Deployment guide (Docker, TrueNAS, SMB)
-│   ├── CONFIGURATION.md              # Configuration documentation
-│   └── OSCAL_Compliance_Tool_Demo.pptx # Demo presentation
-│
-├── sample_output/                    # Sample outputs
-│   ├── AEMGovAu_ComplianceReport_Sample_2025-11-20.json
-│   └── test-ssp-integrity.json
-│
-├── logs/                             # AI telemetry logs (OTel GenAI format)
-│   └── ai-telemetry-YYYY-MM-DD.jsonl # Log files (auto-rotated at 5MB)
-│
-├── package.json                      # Root package (dev scripts)
-├── setup.sh                          # Setup script
-├── build_on_truenas.sh               # TrueNAS build script
-├── reactivate-admin.sh               # Admin reactivation
-├── docker-compose.yml                # Docker Compose (root)
-├── Dockerfile                        # Dockerfile (root)
-├── truenas-app.yaml                  # TrueNAS config (root)
-├── LICENSE                           # GPL-3.0-or-later License
-└── README.md                         # This file
-```
-
-### Tech Stack
-
-**Backend:**
-- Node.js 20
-- Express.js
-- ExcelJS (Excel generation)
-- PDFKit (PDF generation)
-- Axios (HTTP client)
-- PBKDF2 (FIPS 140-2 compliant password hashing)
-- Crypto (Node.js built-in cryptographic functions)
-
-**Frontend:**
-- React 18
-- Vite (build tool)
-- CSS3 (styling)
-- Local Storage API (data persistence)
-- Axios (HTTP client for API calls)
-
-### Development Commands
-
-```bash
-# Run both backend and frontend in development mode
-npm run dev
-
-# Backend only (with auto-reload)
-cd backend
-npm run dev
-
-# Frontend only (with hot reload)
-cd frontend
-npm run dev
-
-# Build frontend for production
-cd frontend
-npm run build
-```
-
----
-
-## 📚 API Endpoints
-
-### Health Check
-```
-GET /health
-Response: {"status":"healthy","service":"Keekar's OSCAL SOA/SSP/CCM Generator"}
-```
-
-### Fetch OSCAL Catalog
-```
-POST /api/fetch-catalogue
-Body: { "url": "https://example.com/catalog.json" }
-```
-
-### Extract Catalog from SSP
-```
-POST /api/extract-catalog-from-ssp
-Body: { "sspData": {...} }
-```
-
-### Extract Controls from SSP
-```
-POST /api/extract-controls-from-ssp
-Body: { "catalogControls": [...], "existingSSP": {...} }
-```
-
-### Compare SSP with Catalog
-```
-POST /api/compare-ssp
-Body: { "catalogControls": [...], "existingSSP": {...}, "catalogData": {...} }
-```
-
-### Generate SSP
-```
-POST /api/generate-ssp
-Body: { "metadata": {...}, "controls": [...], "systemInfo": {...} }
-```
-
-### Generate Excel
-```
-POST /api/generate-excel
-Body: { "controls": [...], "systemInfo": {...} }
-Response: Excel file (binary)
-```
-
-### Generate PDF
-```
-POST /api/generate-pdf
-Body: { "metadata": {...}, "controls": [...], "systemInfo": {...} }
-Response: PDF file (binary)
-```
-
-### Generate CCM
-```
-POST /api/generate-ccm
-Body: { "controls": [...], "systemInfo": {...} }
-Response: Excel file (binary)
-```
-
-### Import CCM
-```
-POST /api/import-ccm
-Body: { "fileData": "<base64-encoded-excel>" }
-Response: { "systemInfo": {...}, "controls": [...], "statistics": {...} }
-```
-
-### Authentication Endpoints
-
-```
-POST /api/auth/login
-Body: { "username": "user", "password": "user#$27112514" }
-Response: { "success": true, "user": {...}, "sessionToken": "..." }
-
-GET /api/auth/default-credentials
-Response: { "success": true, "passwords": {...}, "format": "username#$DDMMYYHH" }
-
-GET /api/auth/validate
-Headers: { "Authorization": "Bearer <token>" }
-Response: { "valid": true, "user": {...} }
-
-POST /api/auth/logout
-Headers: { "Authorization": "Bearer <token>" }
-Response: { "success": true }
-```
-
----
-
-## 🔐 Security Considerations
-
-### Password Security
-
-- **FIPS 140-2 Compliant Hashing**: All passwords use PBKDF2 with SHA-256
-  - 100,000 iterations (meets FIPS recommendations)
-  - Random 16-byte salt per password
-  - 32-byte (256-bit) key length
-  - Format: `pbkdf2$sha256$iterations$salt$hash`
-- **Self-Registration Security**:
-  - IP-based rate limiting (3 registrations per hour)
-  - Email validation and uniqueness checks
-  - 45-day inactivity policy with automatic deactivation
-  - Email blacklist with 45-day cooldown period
-- **Automatic Password Migration**: Legacy SHA-256 passwords automatically migrate to PBKDF2 on login
-
-### Configuration Security
-
-- **Centralized Config Directory**: All configuration files stored in `config/` directory
-  - Runtime configs in `config/app/` (sensitive data)
-  - Build configs in `config/build/` (deployment files)
-  - Ready for folder-level encryption and access control
-- **Sensitive Files Excluded**: Config files excluded from version control via `.gitignore`
-
-### Data Storage
-
-- All data is stored in browser local storage (client-side)
-- No sensitive data is stored on the server
-- Catalog URLs are fetched server-side to avoid CORS issues
-- Health check endpoint for monitoring
-- User authentication and authorization system in place
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. Port already in use**
-```bash
-# Find and kill process on port 3020 (backend)
-lsof -i :3020
-kill -9 <PID>
-
-# Or port 3021 (frontend dev)
-lsof -i :3021
-kill -9 <PID>
-```
-
-**2. Frontend not loading**
-```bash
-# Rebuild frontend
-cd frontend && npm run build
-cp -r dist ../backend/public
-```
-
-**3. Health check fails**
-```bash
-# Check if server is running
-curl http://localhost:3020/health
-
-# Check logs
-cd backend
-tail -f server.log
-```
-
-**4. Cannot access from network (TrueNAS)**
-- Ensure the server is listening on `0.0.0.0` (not just `localhost`)
-- Check firewall settings on the server
-- Verify port 3020 is open and forwarded correctly
-- Test with: `curl http://<server-ip>:3020/health`
-
----
-
-## 📈 Roadmap
-
-### Version 2.1 (Planned)
-- [ ] User authentication and multi-user support
-- [ ] Database backend for persistent storage
-- [ ] Collaborative editing
-- [ ] Version control for SSP documents
-- [ ] API key management for external catalogs
-- [ ] Scheduled compliance reporting
-
-### Version 3.0 (Future)
-- [ ] Assessment and POA&M module
-- [ ] Integration with GRC tools
-- [ ] Automated control testing
-- [ ] Compliance dashboard
-- [ ] Multi-tenant support
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE](LICENSE) file for details.
-
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-**Copyright (C) 2025 Mukesh Kesharwani**
-
----
-
-## 👨‍💻 Author
-
-**Mukesh Kesharwani**
-- Email: mukesh.kesharwani@adobe.com
-- Affiliation: Adobe
-
----
-
-## 🙏 Acknowledgments
-
-- **NIST** for the OSCAL standard and reference implementations
-- **Australian Cyber Security Centre (ACSC)** for ISM OSCAL catalogs
-- **GovTech Singapore** for IM8 standards
-- **Open source community** for the amazing tools and libraries
-
----
-
-## 📚 Documentation
-
-This project maintains comprehensive documentation:
-
-1. **[README.md](README.md)** - This file - Overview, quick start, and features
-2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture, API endpoints, AI telemetry
-3. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment guide (Docker, general deployment)
-4. **[docs/TRUENAS_DEPLOYMENT.md](docs/TRUENAS_DEPLOYMENT.md)** - TrueNAS automated Blue-Green deployment
-5. **[docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md)** - Best practices and implementation guidelines
-6. **[docs/QUALITY_ASSURANCE.md](docs/QUALITY_ASSURANCE.md)** - QA processes and testing
-7. **[docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md)** - Complete testing strategy and automation
-8. **[docs/TESTING_AUTOMATION_SUMMARY.md](docs/TESTING_AUTOMATION_SUMMARY.md)** - Testing implementation summary
-9. **[docs/TESTING_QUICK_START.md](docs/TESTING_QUICK_START.md)** - Quick testing commands and reference
-10. **[docs/FILE_ORGANIZATION.md](docs/FILE_ORGANIZATION.md)** - Repository organization guidelines
-11. **[docs/SECURITY_FIXES_KODIAK.md](docs/SECURITY_FIXES_KODIAK.md)** - Security fixes and CSRF/SSRF protection
-12. **[docs/AI_ARCHITECTURE_SECURITY.md](docs/AI_ARCHITECTURE_SECURITY.md)** - AI security architecture
-
-### Quick Links
-
-- **Deployment Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (includes TrueNAS, Docker, cron)
-- **AI Telemetry Logging**: [ARCHITECTURE.md - AI Telemetry](docs/ARCHITECTURE.md#ai-telemetry-logging-v127)
-- **API Documentation**: [ARCHITECTURE.md - API Endpoints](docs/ARCHITECTURE.md)
-- **Deployment Guides**: [DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- **Testing Strategy**: [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md)
-- **Testing Quick Start**: [docs/TESTING_QUICK_START.md](docs/TESTING_QUICK_START.md)
-- **File Organization**: [docs/FILE_ORGANIZATION.md](docs/FILE_ORGANIZATION.md)
-- **Testing Guide**: [test_cases/TESTING_GUIDE.md](test_cases/TESTING_GUIDE.md)
-
----
-
-## 📞 Support
-
-For issues, questions, or feature requests:
-
-- **GitHub Issues**: Open an issue on the repository
-- **Documentation**: See above for all available documentation
-- **Server**: Access at nas.keekar.com:3020
-- **Email**: mukesh.kesharwani@adobe.com
-
----
-
-## 📊 Statistics
-
-- **7 Implementation Status Options** with color coding
-- **5 Australian ISM Baseline Levels** supported
-- **4 Export Formats** (OSCAL JSON, Excel, PDF, CCM)
-- **3 Built-in Framework Catalogs** (NIST, ACSC, Singapore)
-- **1 Powerful Tool** for compliance documentation
-
----
-
-**Made with Passion by Mukesh Kesharwani**
-
-*Simplifying compliance documentation, one control at a time.*
-# OSCAL-Reports
+*Last updated: 2026-01-28*
