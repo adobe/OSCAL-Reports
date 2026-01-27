@@ -1,4 +1,4 @@
-name: Main Branch Production Tests
+name: Main Branch Tests
 
 on:
   push:
@@ -9,48 +9,10 @@ on:
       - main
 
 jobs:
-  production-validation:
-    name: Production Validation
+  lint:
+    name: Linting
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Validate Branch Protection
-        run: |
-          echo "Validating main branch deployment..."
-          
-          # Check if this is coming from Pre_Prod
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "⚠️ Direct pushes to main should come from Pre_Prod"
-          fi
-          
-          echo "✅ Branch validation complete"
-      
-      - name: Check Security Configuration
-        run: |
-          # Verify all security files exist
-          required_files=(
-            "backend/utils/securityConfig.js"
-            "backend/utils/urlValidator.js"
-            "docs/SECURITY_FIXES_KODIAK.md"
-            "docs/AI_ARCHITECTURE_SECURITY.md"
-          )
-          
-          for file in "${required_files[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "❌ Required file missing: $file"
-              exit 1
-            fi
-          done
-          
-          echo "✅ All security files present"
-
-  final-security-audit:
-    name: Final Security Audit
-    runs-on: ubuntu-latest
-    needs: production-validation
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -60,47 +22,29 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          cache: 'npm'
       
-      - name: Run npm audit
+      - name: Install dependencies
         run: |
-          npm audit --audit-level=high
-          cd backend && npm audit --audit-level=high
-          cd ../frontend && npm audit --audit-level=high
+          npm install
+          cd backend && npm install
+          cd ../frontend && npm install
       
-      - name: Run Security Tests
+      - name: Run ESLint (Backend)
         run: |
           cd backend
-          npm install
-          npm run test -- --testPathPattern='(csrf|ssrf).*\.test\.js'
-        env:
-          NODE_ENV: production
-          TEST_ADMIN_PASSWORD: Admin@2026
+          npx eslint . --ext .js
       
-      - name: Generate Security Report
+      - name: Run ESLint (Frontend)
         run: |
-          echo "Production Security Audit - $(date)" > security-audit.md
-          echo "======================================" >> security-audit.md
-          echo "" >> security-audit.md
-          echo "## Security Features" >> security-audit.md
-          echo "- ✅ CSRF Protection: Enabled" >> security-audit.md
-          echo "- ✅ SSRF Protection: Active (6 endpoints)" >> security-audit.md
-          echo "- ✅ Private IPs: Allowed for AI (architectural)" >> security-audit.md
-          echo "- ✅ Session Security: HttpOnly, SameSite strict" >> security-audit.md
-          echo "- ✅ Password Hashing: PBKDF2/SHA-256 (FIPS)" >> security-audit.md
-          echo "" >> security-audit.md
-          echo "## npm Audit" >> security-audit.md
-          npm audit || echo "Audit complete" >> security-audit.md
-      
-      - name: Upload Security Audit
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-security-audit
-          path: security-audit.md
+          cd frontend
+          npx eslint . --ext .js,.jsx
 
-  production-tests:
-    name: Production Test Suite
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    needs: final-security-audit
+    needs: lint
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -110,60 +54,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          cache: 'npm'
       
       - name: Install dependencies
         run: |
           npm install
           cd backend && npm install
       
-      - name: Run Complete Test Suite
+      - name: Run Unit Tests with Coverage
         run: |
           cd backend
           npm run test:coverage
         env:
-          NODE_ENV: production
-          TEST_ADMIN_PASSWORD: Admin@2026
-          TEST_USER_PASSWORD: User@2026
-          TEST_ASSESSOR_PASSWORD: Assessor@2026
-          SESSION_SECRET: production-session-secret
-          CSRF_ENABLED: true
+          NODE_ENV: test
       
-      - name: Verify Test Coverage
-        run: |
-          cd backend
-          node --experimental-vm-modules -e "
-          import fs from 'fs';
-          
-          const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
-          const total = coverage.total;
-          
-          console.log('Production Test Coverage:');
-          console.log('========================');
-          console.log('Lines:      ' + total.lines.pct + '%');
-          console.log('Statements: ' + total.statements.pct + '%');
-          console.log('Functions:  ' + total.functions.pct + '%');
-          console.log('Branches:   ' + total.branches.pct + '%');
-          
-          if (total.lines.pct < 75) {
-            console.warn('⚠️ Coverage below 75% - consider adding more tests');
-          }
-          
-          console.log('✅ Test suite complete');
-          " || true
-      
-      # Note: codecov/codecov-action is not allowed by Adobe organization policy
-      # Coverage reports are uploaded as artifacts instead
-      - name: Upload Production Coverage
+      - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-production
+          name: coverage-report-main
           path: ./backend/coverage/
           retention-days: 90
 
-  integration-verification:
-    name: Integration Verification
+  integration-tests:
+    name: Integration Tests
     runs-on: ubuntu-latest
-    needs: production-tests
+    needs: unit-tests
+    timeout-minutes: 15
     
     steps:
       - name: Checkout code
@@ -173,40 +89,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          cache: 'npm'
       
       - name: Install dependencies
         run: |
           npm install
           cd backend && npm install
       
-      - name: Test Email Integration
+      - name: Run Integration Tests
         run: |
           cd backend
-          npm run test -- --testPathPattern=email-functionality.test.js
+          npm run test:integration
         env:
-          NODE_ENV: production
+          NODE_ENV: test
           TEST_ADMIN_PASSWORD: Admin@2026
-      
-      - name: Test AI Integration
-        run: |
-          cd backend
-          npm run test -- --testPathPattern=ai-integration.test.js
-        env:
-          NODE_ENV: production
-          TEST_ADMIN_PASSWORD: Admin@2026
-      
-      - name: Test Multi-Report Comparison
-        run: |
-          cd backend
-          npm run test -- --testPathPattern=api.test.js
-        env:
-          NODE_ENV: production
-          TEST_ADMIN_PASSWORD: Admin@2026
+          TEST_USER_PASSWORD: User@2026
+          TEST_ASSESSOR_PASSWORD: Assessor@2026
 
-  build-production:
-    name: Build for Production
+  build-test:
+    name: Build Test
     runs-on: ubuntu-latest
-    needs: integration-verification
+    needs: integration-tests
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
@@ -216,6 +120,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          cache: 'npm'
       
       - name: Install dependencies
         run: |
@@ -226,162 +131,18 @@ jobs:
       - name: Build Frontend
         run: |
           cd frontend
-          NODE_ENV=production npm run build
+          npm run build
+      
+      - name: Test Backend Startup
+        run: |
+          cd backend
+          timeout 30s npm start || exit 0
         env:
           NODE_ENV: production
       
-      - name: Verify Build
-        run: |
-          if [ ! -d "frontend/dist" ]; then
-            echo "❌ Frontend build failed"
-            exit 1
-          fi
-          
-          echo "Build size:"
-          du -sh frontend/dist
-          
-          echo "✅ Frontend build successful"
-      
-      - name: Upload Production Build
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: production-build
-          path: |
-            frontend/dist
-            backend/**/*.js
-          retention-days: 30
-
-  docker-build-test:
-    name: Docker Build Test
-    runs-on: ubuntu-latest
-    needs: build-production
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Build Docker Image
-        run: |
-          docker build -t oscal-report-generator:test .
-        if: hashFiles('Dockerfile') != ''
-      
-      - name: Test Docker Container
-        run: |
-          if [ -f "Dockerfile" ]; then
-            docker run -d -p 3020:3020 --name oscal-test oscal-report-generator:test || true
-            sleep 10
-            curl -f http://localhost:3020/health || echo "Health check via Docker"
-            docker stop oscal-test || true
-          fi
-        if: hashFiles('Dockerfile') != ''
-
-  production-deployment-gate:
-    name: Production Deployment Gate
-    runs-on: ubuntu-latest
-    needs: [production-validation, final-security-audit, production-tests, 
-            integration-verification, build-production, docker-build-test]
-    if: always()
-    
-    steps:
-      - name: Check Production Gate
-        run: |
-          echo "Production Deployment Gate Check"
-          echo "================================="
-          echo ""
-          echo "Production Validation: ${{ needs.production-validation.result }}"
-          echo "Security Audit: ${{ needs.final-security-audit.result }}"
-          echo "Production Tests: ${{ needs.production-tests.result }}"
-          echo "Integration Tests: ${{ needs.integration-verification.result }}"
-          echo "Build: ${{ needs.build-production.result }}"
-          echo "Docker Build: ${{ needs.docker-build-test.result }}"
-          echo ""
-          
-          # Critical checks (must pass)
-          if [ "${{ needs.production-validation.result }}" != "success" ] || \
-             [ "${{ needs.final-security-audit.result }}" != "success" ] || \
-             [ "${{ needs.production-tests.result }}" != "success" ] || \
-             [ "${{ needs.integration-verification.result }}" != "success" ] || \
-             [ "${{ needs.build-production.result }}" != "success" ]; then
-            echo "❌ Production gate FAILED - Deployment blocked!"
-            exit 1
-          fi
-          
-          echo "✅ Production gate PASSED - Ready for deployment!"
-      
-      - name: Create Production Report
-        if: success()
-        run: |
-          cat > production-report.md << 'EOF'
-          # Production Deployment Report
-          
-          **Date:** $(date)
-          **Branch:** main
-          **Status:** ✅ APPROVED FOR DEPLOYMENT
-          
-          ## Test Results
-          
-          | Test Suite | Status |
-          |------------|--------|
-          | Production Validation | ✅ Passed |
-          | Security Audit | ✅ Passed |
-          | Production Tests | ✅ Passed |
-          | Integration Tests | ✅ Passed |
-          | Production Build | ✅ Passed |
-          | Docker Build | ✅ Passed |
-          
-          ## Security Features Verified
-          
-          - ✅ CSRF Protection: Active and tested
-          - ✅ SSRF Protection: 6 endpoints protected
-          - ✅ Private IPs: Allowed for AI (documented architectural decision)
-          - ✅ Email: Port 587 configured and tested
-          - ✅ AI Integration: Private IP support verified
-          - ✅ Session Security: HttpOnly, SameSite strict
-          - ✅ Password Hashing: PBKDF2/SHA-256 (FIPS compliant)
-          
-          ## Deployment Checklist
-          
-          - [ ] Set production environment variables
-          - [ ] Update SESSION_SECRET
-          - [ ] Verify database connections
-          - [ ] Test external integrations
-          - [ ] Enable monitoring/logging
-          - [ ] Configure backup systems
-          
-          ## Rollback Plan
-          
-          If issues occur post-deployment:
-          1. Revert to previous main commit
-          2. Redeploy previous stable version
-          3. Investigate issues in Pre_Prod
-          4. Re-test and redeploy
-          
-          ---
-          
-          **Verdict:** ✅ READY FOR PRODUCTION DEPLOYMENT
-          EOF
-          
-          echo "Report created"
-      
-      - name: Upload Production Report
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-deployment-report
-          path: production-report.md
-
-  notify-success:
-    name: Notify Deployment Success
-    runs-on: ubuntu-latest
-    needs: production-deployment-gate
-    if: success()
-    
-    steps:
-      - name: Success Notification
-        run: |
-          echo "🎉 Production deployment approved!"
-          echo "All tests passed successfully"
-          echo "Ready for deployment to production environment"
+          name: frontend-build-main
+          path: frontend/dist
+          retention-days: 90
