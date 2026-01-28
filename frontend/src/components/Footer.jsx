@@ -10,6 +10,7 @@
 
 import React from 'react';
 import './Footer.css';
+import buildInfo from '../utils/buildInfo';
 
 /**
  * Footer component - Displays application branding, version, and links
@@ -17,9 +18,9 @@ import './Footer.css';
  * @returns {JSX.Element} Rendered footer component
  */
 export const Footer = () => {
-  // Get build info from Vite environment
-  const buildInfo = import.meta.env.VITE_BUILD_TIME || 'Development Build';
-  const version = '1.3.0';  // Should match package.json version
+  // Get build info from buildInfo utility (reads from package.json)
+  const version = buildInfo.version;
+  const buildTime = buildInfo.buildTime;
   const currentYear = new Date().getFullYear();
   
   return (
@@ -84,8 +85,14 @@ export const Footer = () => {
           </a>
         </div>
         
-        <div className="footer-build-info" title={buildInfo}>
-          Build: {buildInfo.substring(0, 19)}
+        <div className="footer-build-info" title={buildTime}>
+          Build: {new Date(buildTime).toLocaleString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })}
         </div>
       </div>
     </footer>

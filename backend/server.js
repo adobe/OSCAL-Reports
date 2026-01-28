@@ -1466,11 +1466,22 @@ app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFOR
     
     if (!urlValidation.valid) {
       console.warn('🚫 SSRF attempt blocked:', metadataUrl, urlValidation.error);
+      
+      // Return 403 for blocked URLs (security restriction)
+      if (urlValidation.blocked) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access to this URL is forbidden',
+          details: urlValidation.error,
+          code: 'SSRF_BLOCKED',
+        });
+      }
+      
+      // Return 400 for invalid URLs (bad request)
       return res.status(400).json({
         success: false,
-        error: 'Invalid or blocked URL',
+        error: 'Invalid URL',
         details: urlValidation.error,
-        securityReason: 'SSRF_PREVENTION',
       });
     }
     
@@ -1712,11 +1723,22 @@ app.post('/api/proxy-fetch', async (req, res) => {
 
   if (!urlValidation.valid) {
     console.warn('🚫 SSRF attempt blocked in proxy-fetch:', url, urlValidation.error);
+    
+    // Return 403 for blocked URLs (security restriction)
+    if (urlValidation.blocked) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access to this URL is forbidden',
+        details: urlValidation.error,
+        code: 'SSRF_BLOCKED',
+      });
+    }
+    
+    // Return 400 for invalid URLs (bad request)
     return res.status(400).json({ 
       success: false, 
-      error: 'Invalid or blocked URL',
+      error: 'Invalid URL',
       details: urlValidation.error,
-      securityReason: 'SSRF_PREVENTION',
     });
   }
 
@@ -1845,10 +1867,20 @@ app.post('/api/fetch-catalogue', async (req, res) => {
 
     if (!urlValidation.valid) {
       console.warn('🚫 SSRF attempt blocked in fetch-catalogue:', url, urlValidation.error);
+      
+      // Return 403 for blocked URLs (security restriction)
+      if (urlValidation.blocked) {
+        return res.status(403).json({ 
+          error: 'Access to this URL is forbidden',
+          details: urlValidation.error,
+          code: 'SSRF_BLOCKED',
+        });
+      }
+      
+      // Return 400 for invalid URLs (bad request)
       return res.status(400).json({ 
-        error: 'Invalid or blocked URL',
+        error: 'Invalid URL',
         details: urlValidation.error,
-        securityReason: 'SSRF_PREVENTION',
       });
     }
 
@@ -4120,11 +4152,22 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       
       if (!urlValidation.valid) {
         console.warn('🚫 SSRF attempt blocked in Mistral API test:', url, urlValidation.error);
+        
+        // Return 403 for blocked URLs (security restriction)
+        if (urlValidation.blocked) {
+          return res.status(403).json({
+            success: false,
+            error: 'Access to this URL is forbidden',
+            details: urlValidation.error,
+            code: 'SSRF_BLOCKED',
+          });
+        }
+        
+        // Return 400 for invalid URLs (bad request)
         return res.status(400).json({
           success: false,
-          error: 'Invalid or blocked URL',
+          error: 'Invalid URL',
           details: urlValidation.error,
-          securityReason: 'SSRF_PREVENTION',
         });
       }
       
@@ -4254,11 +4297,22 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     
     if (!urlValidation.valid) {
       console.warn('🚫 SSRF attempt blocked in AI test:', fullUrl, urlValidation.error);
+      
+      // Return 403 for blocked URLs (security restriction)
+      if (urlValidation.blocked) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access to this URL is forbidden',
+          details: urlValidation.error,
+          code: 'SSRF_BLOCKED',
+        });
+      }
+      
+      // Return 400 for invalid URLs (bad request)
       return res.status(400).json({
         success: false,
-        error: 'Invalid or blocked URL',
+        error: 'Invalid URL',
         details: urlValidation.error,
-        securityReason: 'SSRF_PREVENTION',
       });
     }
     
