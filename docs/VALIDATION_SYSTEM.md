@@ -52,7 +52,7 @@ The OSCAL Report Generator includes a comprehensive **automated validation syste
 
 test_cases/
 └── scripts/
-    ├── validate_best_practices.sh   # Main validation script
+    ├── run-all-tests.sh   # Main validation script
     ├── update_best_practices.sh     # Rule update script
     └── run_tests.sh                 # Complete test suite
 ```
@@ -65,7 +65,7 @@ test_cases/
 
 ```bash
 # Run full validation
-./test_cases/scripts/validate_best_practices.sh
+./test_cases/scripts/run-all-tests.sh
 
 # Update validation rules
 ./test_cases/scripts/update_best_practices.sh
@@ -263,7 +263,7 @@ The system automatically updates rules from:
 
 3. **Test** the rule:
 ```bash
-./test_cases/scripts/validate_best_practices.sh
+./test_cases/scripts/run-all-tests.sh
 ```
 
 4. **Commit** the updated rules
@@ -309,7 +309,7 @@ Update exclude patterns for specific rules:
 chmod +x test_cases/scripts/*.sh
 
 # 2. Run validation test
-./test_cases/scripts/validate_best_practices.sh
+./test_cases/scripts/run-all-tests.sh
 
 # 3. Run update test
 ./test_cases/scripts/update_best_practices.sh
@@ -349,7 +349,7 @@ chmod +x test_cases/scripts/*.sh
 chmod +x test_cases/scripts/*.sh
 
 # Verify path
-ls -la test_cases/scripts/validate_best_practices.sh
+ls -la test_cases/scripts/run-all-tests.sh
 ```
 
 ### False Positives
@@ -376,7 +376,7 @@ Already integrated in `.github/workflows/ci-cd.yml`:
 
 ```yaml
 - name: 🔍 Run validation
-  run: ./test_cases/scripts/validate_best_practices.sh
+  run: ./test_cases/scripts/run-all-tests.sh
 ```
 
 ### Custom CI Systems
@@ -388,7 +388,7 @@ Add to your pipeline:
 npm ci
 
 # Run validation
-./test_cases/scripts/validate_best_practices.sh
+./test_cases/scripts/run-all-tests.sh
 
 # Run tests
 ./test_cases/scripts/run_tests.sh
@@ -448,7 +448,7 @@ npm ci
 
 1. Check this documentation
 2. Review `.validation/*.json` files
-3. Run `./test_cases/scripts/validate_best_practices.sh --help` (future)
+3. Run `./test_cases/scripts/run-all-tests.sh --help` (future)
 4. Contact the development team
 
 ### Found a Bug?

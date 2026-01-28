@@ -697,13 +697,13 @@ docker system prune -f
 
 ## Automated Test Script
 
-A companion automated test script is available: `test_cases/scripts/test-deployment-script.sh`
+A companion automated test script is available: `test_cases/scripts/run-all-tests.sh`
 
 Run all tests automatically:
 
 ```bash
 cd /Users/mkesharw/Documents/OSCAL_Reports
-./test_cases/scripts/test-deployment-script.sh
+./test_cases/scripts/run-all-tests.sh
 ```
 
 ---

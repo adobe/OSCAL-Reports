@@ -243,6 +243,11 @@
 .supported-formats .text-muted {
   margin: 0;
   font-size: 0.9rem;
+  color: #e5e7eb; /* Lighter ash gray for better visibility */
+}
+
+.supported-formats .text-muted strong {
+  color: #f3f4f6; /* Off-white for emphasis */
 }
 
 @media (max-width: 1100px) {

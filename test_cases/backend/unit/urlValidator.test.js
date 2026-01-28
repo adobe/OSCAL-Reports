@@ -67,7 +67,7 @@ describe('URL Validator - SSRF Prevention', () => {
         const result = await validateUrl(url);
         expect(result.valid).toBe(false);
         expect(result.blocked).toBe(true);
-        expect(result.error).toContain('Link-local / Cloud Metadata');
+        expect(result.error).toContain('Cloud metadata');
       }
     });
 
