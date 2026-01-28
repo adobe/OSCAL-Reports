@@ -59,18 +59,17 @@
 
 ---
 
-### 🔒 Security & Quality
+### 🔒 Quality
 
 | Document | Description |
 |----------|-------------|
-| [SECURITY_QUICK_REFERENCE.md](SECURITY_QUICK_REFERENCE.md) | Security features and configurations |
 | [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA processes and testing |
 
 ---
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 19 (reduced from 37)
+- **Total Documents:** 18 (reduced from 37)
 - **Categories:** 6
 - **Last Cleanup:** 2026-01-28
 
@@ -88,7 +87,7 @@ Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_
 Start with: [DOCKER_HUB_README.md](DOCKER_HUB_README.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
 
 ### 🔐 **Security Reviewer**
-Start with: [SECURITY_QUICK_REFERENCE.md](SECURITY_QUICK_REFERENCE.md) → [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
+Start with: [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
 
 ### ✅ **QA/Tester**
 Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)
