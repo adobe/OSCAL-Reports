@@ -358,11 +358,48 @@ Follow the recommended flow for better tracking and organization, but cross-bran
 
 ---
 
-## 🏷️ Version Tagging
+## 🏷️ Version Tagging & Release Workflow
+
+### Automated Version Control
+
+**⚠️ IMPORTANT**: Before merging to Pre_Prod or main, you MUST bump the version number.
+
+The project uses an automated version control workflow to ensure consistency. See [VERSION_CONTROL_WORKFLOW.md](VERSION_CONTROL_WORKFLOW.md) for complete details.
+
+**Quick Start:**
+
+```bash
+# Before creating PR to Pre_Prod or main, bump the version
+./bump_version.sh patch "Fix: Your bug fix description"     # 1.6.4 → 1.6.5
+./bump_version.sh minor "Add: Your new feature description"  # 1.6.4 → 1.7.0
+./bump_version.sh major "Breaking: Breaking change"          # 1.6.4 → 2.0.0
+
+# The script automatically:
+# - Updates all package.json files (root, backend, frontend)
+# - Updates docs/CHANGELOG.md
+# - Creates a git commit
+# - Optionally creates a git tag
+```
+
+### Version Enforcement
+
+**Local Pre-Push Hook** (install with `./setup-git-hooks.sh`):
+- ✅ Validates version has been incremented
+- ✅ Checks package.json consistency
+- ✅ Verifies changelog is updated
+- ❌ Blocks push if version not bumped
+
+**GitHub Actions** (`.github/workflows/version-check.yml`):
+- Runs automatically on Pre_Prod and main branches
+- Validates version increment from latest tag
+- Auto-creates version tags on Pre_Prod
+- Fails CI if version not properly bumped
 
 ### main (Production) Tags
 
-Every merge to `main` should be tagged:
+Tags are automatically created when pushing to Pre_Prod. Every merge to `main` from Pre_Prod will have a corresponding version tag.
+
+**Manual tagging** (if needed):
 
 ```bash
 # After merging to main
@@ -372,10 +409,10 @@ git tag -a v1.7.0 -m "Release v1.7.0 - Add EKS deployment support"
 git push origin v1.7.0
 ```
 
-**Tag Format**: `vMAJOR.MINOR.PATCH`
-- **MAJOR**: Breaking changes
-- **MINOR**: New features (backward compatible)
-- **PATCH**: Bug fixes
+**Tag Format**: `vMAJOR.MINOR.PATCH` (Semantic Versioning)
+- **MAJOR**: Breaking changes (1.6.4 → 2.0.0)
+- **MINOR**: New features, backward compatible (1.6.4 → 1.7.0)
+- **PATCH**: Bug fixes (1.6.4 → 1.6.5)
 
 ---
 
