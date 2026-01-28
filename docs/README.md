@@ -22,7 +22,6 @@
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
-| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
 | [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
 
 ---
@@ -31,6 +30,8 @@
 
 | Document | Description |
 |----------|-------------|
+| [VERSION_CONTROL_WORKFLOW.md](VERSION_CONTROL_WORKFLOW.md) | Automated version bumping and release workflow |
+| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
 | [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
 | [GITHUB_ACCOUNT_GUIDE.md](GITHUB_ACCOUNT_GUIDE.md) | Switching between GitHub accounts |
 | [PR_SUBMISSION_CHECKLIST.md](PR_SUBMISSION_CHECKLIST.md) | Pull request submission guide |
@@ -44,6 +45,7 @@
 | Document | Description |
 |----------|-------------|
 | [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub publishing guide |
+| [DEPLOYMENT_COMPARISON.md](DEPLOYMENT_COMPARISON.md) | Build vs Pull deployment comparison |
 | [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub public documentation |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platform deployment (Azure, AWS, GCP) |
 
@@ -69,16 +71,16 @@
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 18 (reduced from 37)
+- **Total Documents:** 20
 - **Categories:** 6
-- **Last Cleanup:** 2026-01-28
+- **Last Update:** 2026-01-28
 
 ---
 
 ## 🎯 Quick Links by Role
 
 ### 👨‍💻 **Developer**
-Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md)
+Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [VERSION_CONTROL_WORKFLOW.md](VERSION_CONTROL_WORKFLOW.md)
 
 ### 🚀 **DevOps/Deployment**
 Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
