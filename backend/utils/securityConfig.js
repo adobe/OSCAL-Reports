@@ -63,7 +63,7 @@ export const CSRF_EXEMPT_PATHS = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/csrf-token',
-  '/api/users/', // User management endpoints (already protected by Bearer token + role auth)
+  '/api/users', // User management endpoints (already protected by Bearer token + role auth)
 ];
 
 // Paths that should always validate URLs (SSRF protection)
