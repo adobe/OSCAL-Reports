@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.7] - TBD
+
+### Release Notes
+- **Status**: In Development
+- **Breaking Changes**: None (planned)
+- **Backward Compatible**: Yes
+
+### Added
+- (Features to be added)
+
+### Enhanced
+- (Enhancements to be documented)
+
+### Fixed
+- (Bug fixes to be documented)
+
+### Changed
+- (Changes to be documented)
+
+---
+
 ## [1.6.6] - 2026-01-28
 
 ### Release Notes
