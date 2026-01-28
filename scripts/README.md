@@ -102,9 +102,104 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 
 ---
 
-## 🚀 Recommended Upgrade Workflow
+### 5. `deploy_from_dockerhub.sh` ⭐ NEW
+Fast deployment script that pulls pre-built images from Docker Hub.
 
-### Option A: Upgrade One at a Time (Safer)
+**What it does:**
+- Detects Blue/Green instance automatically
+- Backs up data (API export + volume directory)
+- Pulls latest image from Docker Hub (1-3 min vs 10-15 min build)
+- Deploys with automatic health verification
+- Auto-rollback on failure
+
+**Usage:**
+```bash
+# From Blue or Green deployment directory
+cd /path/to/OSCAL_Blue  # or OSCAL_Green
+./scripts/deploy_from_dockerhub.sh
+```
+
+**Options:**
+```bash
+# Force deployment (override lock file)
+./scripts/deploy_from_dockerhub.sh --force
+
+# Skip API backup (use volume backup only)
+./scripts/deploy_from_dockerhub.sh --skip-backup
+
+# Combine options
+./scripts/deploy_from_dockerhub.sh --force --skip-backup
+```
+
+**Advantages:**
+- ⚡ **Fast**: 1-3 minutes (vs 10-15 for build)
+- 🔄 **Auto Rollback**: Reverts on failure
+- 💾 **Safe**: Automatic backup before changes
+- 🏥 **Health Verified**: 60-second health check
+- 🔒 **Concurrent Safe**: Lock prevents conflicts
+- 📦 **Tested**: Uses CI/CD tested images
+
+**Requirements:**
+- Docker Hub connectivity
+- Internet access (~400MB download)
+- Sufficient disk space (>500MB)
+
+**Perfect for:**
+- Production deployments on TrueNAS
+- Monthly scheduled updates (via cron)
+- Quick security patches
+- Minimal downtime requirements
+
+**See also:**
+- [DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md) - Complete guide
+- [DEPLOYMENT_COMPARISON.md](../docs/DEPLOYMENT_COMPARISON.md) - Build vs Pull comparison
+- [DEPLOYMENT_TESTING_GUIDE.md](../docs/DEPLOYMENT_TESTING_GUIDE.md) - Test procedures
+
+---
+
+## 🚀 Recommended Deployment Workflows
+
+### For TrueNAS Production (Recommended)
+
+**Use the pull-based deployment for fast, safe updates:**
+
+```bash
+# Navigate to your deployment directory
+cd /mnt/pool/OSCAL_Blue  # or OSCAL_Green
+
+# Run deployment
+./scripts/deploy_from_dockerhub.sh
+
+# The script will:
+# - Backup your data automatically
+# - Pull latest from Docker Hub
+# - Deploy with health verification
+# - Rollback automatically if anything fails
+```
+
+**Schedule monthly updates:**
+```bash
+# Add to crontab (crontab -e)
+
+# Blue: 2nd & 4th Sunday at 2 AM
+0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
+
+# Green: 1st, 3rd, 5th Sunday at 2 AM
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
+```
+
+### For Custom Builds or Development
+
+**Use the build script when you need source code modifications:**
+
+```bash
+cd /path/to/OSCAL_Blue
+./build_on_truenas.sh
+```
+
+### Legacy: One-Time Upgrade to Volume Persistence
+
+**Option A: Upgrade One at a Time (Safer)**
 
 **Step 1: Upgrade Green first (test deployment)**
 ```bash
@@ -124,7 +219,7 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 # Choose option 3 (bi-directional)
 ```
 
-### Option B: Upgrade Both Together (Faster)
+**Option B: Upgrade Both Together (Faster)**
 
 **Step 1: Upgrade both**
 ```bash
@@ -137,6 +232,31 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 ./consolidate-users.sh
 # Choose option 3 (bi-directional)
 ```
+
+---
+
+## 🧪 Testing
+
+### Automated Test Suite
+
+Run comprehensive tests on the deployment script:
+
+```bash
+# From repository root
+./test_cases/scripts/test-deployment-script.sh
+
+# Tests include:
+# - Blue/Green detection
+# - Concurrent deployment protection
+# - Backup creation
+# - Health checks
+# - Volume persistence
+# - Architecture detection
+# - Error handling
+# - Cleanup verification
+```
+
+**Manual Testing Guide**: See [DEPLOYMENT_TESTING_GUIDE.md](../docs/DEPLOYMENT_TESTING_GUIDE.md)
 
 ---
 

@@ -134,6 +134,217 @@ docker-compose up -d
 
 ---
 
+## 🚀 Automated Deployment for TrueNAS (Blue-Green)
+
+For TrueNAS Blue-Green deployments, we provide an automated deployment script that pulls from Docker Hub with automatic backup, restore, and rollback capabilities.
+
+### Features
+
+- ✅ **Fast Deployment**: Pull pre-built images (1-3 minutes vs 10-15 minutes for build)
+- ✅ **Automatic Backup**: Both API export and volume directory backup
+- ✅ **Auto Rollback**: Automatically reverts to previous version if health checks fail
+- ✅ **Zero Data Loss**: Preserves users, config, and data across updates
+- ✅ **Blue-Green Support**: Automatic detection of deployment instance
+- ✅ **Concurrent Protection**: Prevents simultaneous deployments with lock mechanism
+
+### Quick Deployment
+
+```bash
+# Navigate to your Blue or Green deployment directory
+cd /path/to/OSCAL_Blue  # or OSCAL_Green
+
+# Run the deployment script
+./scripts/deploy_from_dockerhub.sh
+
+# The script will:
+# 1. Detect Blue/Green instance automatically
+# 2. Backup current data (API + volume)
+# 3. Pull latest image from Docker Hub
+# 4. Deploy with automatic health verification
+# 5. Rollback automatically if deployment fails
+```
+
+### Command Options
+
+```bash
+# Force deployment (override lock file)
+./scripts/deploy_from_dockerhub.sh --force
+
+# Skip API backup (use volume backup only)
+./scripts/deploy_from_dockerhub.sh --skip-backup
+
+# Combine options
+./scripts/deploy_from_dockerhub.sh --force --skip-backup
+```
+
+### Deployment Process
+
+The script follows this workflow:
+
+1. **Detect Environment**: Automatically identifies Blue/Green instance
+2. **Prerequisites Check**: Verifies Docker, connectivity, and disk space
+3. **Lock Creation**: Prevents concurrent deployments
+4. **API Backup**: Exports users and config via API (optional)
+5. **Volume Backup**: Creates compressed backup of data directory
+6. **Save Current Image**: Tags current image for rollback capability
+7. **Pull from Docker Hub**: Downloads latest image with architecture detection
+8. **Extract Credentials**: Shows default credentials from new image
+9. **Deploy**: Stops old container and starts new one
+10. **Health Check**: Verifies new deployment (60-second timeout)
+11. **Restore Data**: Applies backed-up configuration and users
+12. **Auto Rollback**: Reverts to previous version if health checks fail
+13. **Cleanup**: Removes old containers and dangling images
+
+### Comparison with Build Script
+
+| Feature | `build_on_truenas.sh` | `deploy_from_dockerhub.sh` |
+|---------|---------------------|---------------------------|
+| **Speed** | 10-15 minutes | 1-3 minutes |
+| **Internet** | Git clone only | Docker Hub pull required |
+| **Disk Space** | Higher (source + build) | Lower (image only) |
+| **Customization** | Full (edit source) | None (pre-built) |
+| **Use Case** | Development, custom builds | Production, quick updates |
+| **Rollback** | Manual | Automatic |
+| **Backup** | Manual (via config persistence) | Automatic (API + volume) |
+| **Risk** | Higher (untested build) | Lower (tested image) |
+
+### When to Use Each Script
+
+**Use `deploy_from_dockerhub.sh` when:**
+- ✅ Deploying to production TrueNAS
+- ✅ Need fast, reliable updates
+- ✅ Want automatic rollback protection
+- ✅ Using scheduled cron deployments
+- ✅ Docker Hub is accessible
+
+**Use `build_on_truenas.sh` when:**
+- ✅ Developing or testing custom changes
+- ✅ Building from specific Git branch
+- ✅ Docker Hub is unavailable
+- ✅ Need source code modifications
+- ✅ First-time setup with custom configuration
+
+### Automated Scheduling
+
+Schedule monthly deployments using cron:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Green: Deploy on 1st, 3rd, 5th Sunday at 2 AM
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
+
+# Blue: Deploy on 2nd, 4th Sunday at 2 AM
+0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
+```
+
+### Backup Management
+
+Backups are stored in `backups/dockerhub-deploy-YYYYMMDD-HHMMSS/`:
+
+```bash
+# List backups
+ls -lh backups/
+
+# Restore from backup manually if needed
+cd backups/dockerhub-deploy-20250128-140530/
+tar -xzf volume-backup.tar.gz -C /path/to/data/volume/
+
+# Clean up old backups (older than 7 days)
+find backups/ -name 'dockerhub-deploy-*' -type d -mtime +7 -exec rm -rf {} +
+```
+
+### Rollback Process
+
+If automatic rollback occurs:
+
+1. Failed container is stopped and removed
+2. Failed image is tagged for debugging: `oscal-report-generator:blue-failed-TIMESTAMP`
+3. Previous container is restored and started
+4. Previous configuration is reapplied
+5. Health verification confirms rollback success
+
+**Manual rollback** (if needed):
+
+```bash
+# Check available backup images
+docker images | grep oscal-report-generator
+
+# Stop current container
+docker stop oscal-report-generator-blue
+
+# Remove current container
+docker rm oscal-report-generator-blue
+
+# Start from backup image
+docker tag oscal-report-generator:blue-backup-20250128-140530 oscal-report-generator:blue
+./scripts/deploy_from_dockerhub.sh
+```
+
+### Troubleshooting Deployment Script
+
+**Issue: Script fails with "Docker Hub unreachable"**
+
+```bash
+# Check connectivity
+ping -c 3 hub.docker.com
+
+# Check Docker Hub status
+curl -s https://status.docker.com/api/v2/status.json | jq
+
+# Alternative: Build from source
+./build_on_truenas.sh
+```
+
+**Issue: Lock file exists**
+
+```bash
+# Check if deployment is actually running
+ps aux | grep deploy_from_dockerhub
+
+# Force deployment if safe
+./scripts/deploy_from_dockerhub.sh --force
+
+# Or manually remove stale lock
+rm -f /tmp/oscal-deploy-blue.lock  # or green.lock
+```
+
+**Issue: Health check fails**
+
+```bash
+# Check container logs
+docker logs oscal-report-generator-blue
+
+# Check if port is accessible
+curl http://localhost:3020/health
+
+# Manual health verification
+docker exec oscal-report-generator-blue wget -qO- http://localhost:3020/health
+```
+
+**Issue: Credentials not extracted**
+
+```bash
+# Check container logs for default credentials
+docker logs oscal-report-generator-blue | grep -A 20 "Default Credentials"
+
+# Or check the backup directory
+cat backups/dockerhub-deploy-*/credentials.txt
+```
+
+### Best Practices
+
+1. **Test First**: Always test deployment script in Green environment before Blue
+2. **Monitor Logs**: Watch deployment logs in real-time during first use
+3. **Backup Verification**: Verify backups are created before scheduling cron jobs
+4. **Stagger Deployments**: Don't deploy Blue and Green simultaneously
+5. **Keep Backups**: Maintain at least 2-3 recent backups for safety
+6. **Document Customizations**: Track any local configuration changes
+7. **Health Monitoring**: Set up external monitoring for critical deployments
+
+---
+
 ## Setup Instructions
 
 ### Prerequisites
