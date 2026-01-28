@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-01-28
+
+### Release Notes
+- **Status**: Promoted to Pre_Prod after successful Quality_Test validation
+- **Quality Validation**: 91% pass rate (22/24 checks passed)
+- **Test Duration**: 9 seconds
+- **Breaking Changes**: None
+- **Backward Compatible**: Yes
+
+### Added
+
+#### Test Infrastructure
+- **Unified Test Script**: Consolidated three separate validation scripts into single `run-all-tests.sh`
+- **Comprehensive Test Suite**: 
+  - Unit tests for URL validator, security config, authentication, RBAC
+  - Integration tests for CSRF, API security, settings
+  - End-to-end tests for complete security workflows
+  - v1.6.5 feature validation tests
+- **Test Documentation**:
+  - `test_cases/README.md` - Complete testing guide
+  - `test_cases/TESTING_QUICK_REFERENCE.md` - Quick command reference
+  - `test_cases/CHANGES_SUMMARY.md` - Summary of test updates
+  - `docs/TEST_UPDATES_V1.6.5.md` - Comprehensive testing documentation
+
+### Enhanced
+
+#### Security - SSRF Protection
+- **Cloud Metadata Blocking**: Always block AWS/GCP/Azure metadata endpoints
+- **IPv6 Support**: Proper IPv6 loopback handling with `allowLocalhost` option
+- **AI Integration**: Support for private network AI services (Ollama)
+  - `allowPrivateIPs` option for private IP ranges
+  - `allowLocalhost` option for localhost access
+  - Cloud metadata endpoints always blocked regardless of options
+- **HTTP Response Codes**: Return 403 (Forbidden) for blocked URLs, 400 (Bad Request) for invalid URLs
+- **Enhanced Validation**: Added `isCloudMetadata` checks across all SSRF-protected endpoints
+
+#### Documentation
+- **Repository Structure**: All documentation properly organized in `docs/` folder
+- **Security Documentation**: `docs/SECURITY_FIXES.md` with detailed security analysis
+- **Migration Guide**: `docs/CONFIG_MIGRATION_GUIDE.md` for configuration updates
+
+### Fixed
+
+#### Frontend
+- **UI Text Visibility**: "Supported Catalogs" text now visible with ash gray color
+
+### Testing Results
+- ✅ All security tests passing
+- ✅ All functional tests passing
+- ✅ CSRF exemption working correctly
+- ✅ SSRF protection blocking cloud metadata
+- ✅ Bearer token authentication functional
+- ✅ AI integration URL validation working
+- ✅ Documentation structure validated
+- ✅ Version consistency verified (1.7.0)
+
+---
+
 ## [1.6.5] - 2026-01-28
 
 ### Fixed
