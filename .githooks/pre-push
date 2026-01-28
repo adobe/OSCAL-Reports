@@ -1,0 +1,176 @@
+#!/bin/bash
+#
+# Pre-push hook to ensure version is bumped when pushing to Pre_Prod or main
+#
+# To install this hook:
+#   git config core.hooksPath .githooks
+#   chmod +x .githooks/pre-push
+#
+# Or run: ./setup-git-hooks.sh
+#
+
+set -e
+
+# ANSI color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'  # No Color
+
+print_error() {
+  echo -e "${RED}✗${NC} $1" >&2
+}
+
+print_success() {
+  echo -e "${GREEN}✓${NC} $1" >&2
+}
+
+print_warning() {
+  echo -e "${YELLOW}⚠${NC}  $1" >&2
+}
+
+print_info() {
+  echo -e "${BLUE}ℹ${NC}  $1" >&2
+}
+
+# Read push details from stdin
+while read local_ref local_sha remote_ref remote_sha; do
+  # Extract branch name
+  branch=$(echo "$remote_ref" | sed 's|refs/heads/||')
+  
+  # Only check for Pre_Prod and main branches
+  if [[ "$branch" != "Pre_Prod" && "$branch" != "main" ]]; then
+    continue
+  fi
+  
+  print_info "Checking version for push to branch: $branch"
+  
+  # Get current version from package.json
+  current_version=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+  
+  if [ -z "$current_version" ]; then
+    print_error "Could not read version from package.json"
+    exit 1
+  fi
+  
+  print_info "Current version: $current_version"
+  
+  # Get latest tag
+  latest_tag=$(git tag -l "v*.*.*" --sort=-v:refname | head -1)
+  
+  if [ -z "$latest_tag" ]; then
+    print_warning "No previous tags found - this will be the first release"
+    print_success "Version check passed (first release: v$current_version)"
+    continue
+  fi
+  
+  # Remove 'v' prefix from tag
+  latest_version=${latest_tag#v}
+  print_info "Latest tag version: $latest_version"
+  
+  # Compare versions
+  compare_versions() {
+    local ver1=$1
+    local ver2=$2
+    
+    IFS='.' read -r major1 minor1 patch1 <<< "$ver1"
+    IFS='.' read -r major2 minor2 patch2 <<< "$ver2"
+    
+    if [ "$major1" -gt "$major2" ]; then
+      return 0  # ver1 > ver2
+    elif [ "$major1" -lt "$major2" ]; then
+      return 1  # ver1 < ver2
+    fi
+    
+    if [ "$minor1" -gt "$minor2" ]; then
+      return 0
+    elif [ "$minor1" -lt "$minor2" ]; then
+      return 1
+    fi
+    
+    if [ "$patch1" -gt "$patch2" ]; then
+      return 0
+    elif [ "$patch1" -lt "$patch2" ]; then
+      return 1
+    fi
+    
+    return 2  # versions are equal
+  }
+  
+  compare_versions "$current_version" "$latest_version"
+  result=$?
+  
+  if [ $result -eq 2 ]; then
+    echo ""
+    print_error "VERSION NOT INCREMENTED!"
+    echo ""
+    echo "  Current version: $current_version" >&2
+    echo "  Latest tag:      $latest_version" >&2
+    echo ""
+    print_error "You must bump the version before pushing to $branch" >&2
+    echo ""
+    echo "To fix this, run one of:" >&2
+    echo ""
+    echo "  ${GREEN}./bump_version.sh patch \"Bug fix description\"${NC}" >&2
+    echo "  ${GREEN}./bump_version.sh minor \"New feature description\"${NC}" >&2
+    echo "  ${GREEN}./bump_version.sh major \"Breaking change description\"${NC}" >&2
+    echo ""
+    exit 1
+  elif [ $result -eq 1 ]; then
+    echo ""
+    print_error "VERSION DOWNGRADED!"
+    echo ""
+    echo "  Current version: $current_version" >&2
+    echo "  Latest tag:      $latest_version" >&2
+    echo ""
+    print_error "Version cannot be less than the latest tag" >&2
+    exit 1
+  fi
+  
+  print_success "Version check passed: $latest_version → $current_version"
+  
+  # Check package.json consistency
+  print_info "Checking package.json consistency..."
+  
+  backend_version=$(grep '"version":' backend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+  frontend_version=$(grep '"version":' frontend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+  
+  if [ "$current_version" != "$backend_version" ] || [ "$current_version" != "$frontend_version" ]; then
+    echo ""
+    print_error "VERSION MISMATCH DETECTED!"
+    echo ""
+    echo "  Root:     $current_version" >&2
+    echo "  Backend:  $backend_version" >&2
+    echo "  Frontend: $frontend_version" >&2
+    echo ""
+    print_error "All package.json files must have the same version" >&2
+    echo ""
+    echo "To fix this, run:" >&2
+    echo "  ${GREEN}./bump_version.sh patch \"Sync versions\"${NC}" >&2
+    echo ""
+    exit 1
+  fi
+  
+  print_success "All package.json files have consistent versions"
+  
+  # Check if changelog was updated
+  if [ -f "docs/CHANGELOG.md" ]; then
+    if ! grep -q "\[$current_version\]" docs/CHANGELOG.md; then
+      echo ""
+      print_warning "Version $current_version not found in docs/CHANGELOG.md"
+      print_info "Consider updating the changelog with ./bump_version.sh"
+      echo ""
+    else
+      print_success "Changelog contains version $current_version"
+    fi
+  else
+    print_warning "docs/CHANGELOG.md not found"
+  fi
+  
+  echo ""
+  print_success "All pre-push checks passed for $branch"
+  echo ""
+done
+
+exit 0
