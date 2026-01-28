@@ -56,6 +56,57 @@ global.testHelpers = {
     username: 'testuser',
     role: 'User',
     expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+  }),
+
+  /**
+   * Create a mock Bearer token (v1.6.5+)
+   */
+  createMockBearerToken: (role = 'User') => {
+    const prefix = role === 'Platform Admin' ? 'admin' : 'user';
+    return `Bearer ${prefix}-token-${Math.random().toString(36).substring(7)}`;
+  },
+
+  /**
+   * Create authorization header with Bearer token (v1.6.5+)
+   */
+  createAuthHeader: (role = 'User') => {
+    const token = global.testHelpers.createMockBearerToken(role);
+    return { Authorization: token };
+  },
+
+  /**
+   * Create mock AI service URL (v1.6.5+)
+   */
+  createMockAIUrl: (type = 'localhost') => {
+    const urls = {
+      localhost: 'http://localhost:11434',
+      privateIP: 'http://192.168.1.100:11434',
+      dockerNetwork: 'http://172.18.0.5:11434',
+      publicCloud: 'https://api.mistral.ai/v1/models',
+    };
+    return urls[type] || urls.localhost;
+  },
+
+  /**
+   * Create mock SSRF test URLs (v1.6.5+)
+   */
+  createSSRFTestUrls: () => ({
+    safe: [
+      'https://example.com',
+      'https://raw.githubusercontent.com/file.json',
+      'https://pages.nist.gov/oscal/catalog.json',
+    ],
+    blocked: [
+      'http://169.254.169.254/latest/meta-data/',
+      'http://metadata.google.internal/',
+      'file:///etc/passwd',
+      'gopher://localhost:70',
+    ],
+    privateAllowedForAI: [
+      'http://localhost:11434',
+      'http://192.168.1.100:11434',
+      'http://10.0.50.5:11434',
+    ],
   })
 };
 
