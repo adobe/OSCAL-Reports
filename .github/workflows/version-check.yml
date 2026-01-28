@@ -1,0 +1,414 @@
+name: Version Check on Pre_Prod
+
+on:
+  push:
+    branches:
+      - Pre_Prod
+  pull_request:
+    branches:
+      - Pre_Prod
+      - main
+
+jobs:
+  ###############################################################################
+  # Version Validation Job
+  ###############################################################################
+  version-check:
+    name: Validate Version Increment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to compare versions
+      
+      - name: 🔍 Get current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+      
+      - name: 🔍 Get latest tag version
+        id: latest_tag
+        run: |
+          # Get the latest tag (v*.*.*)
+          LATEST_TAG=$(git tag -l "v*.*.*" --sort=-v:refname | head -1)
+          
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No previous tags found, this is the first release"
+            echo "tag_version=0.0.0" >> $GITHUB_OUTPUT
+            echo "has_tag=false" >> $GITHUB_OUTPUT
+          else
+            TAG_VERSION=${LATEST_TAG#v}
+            echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+            echo "has_tag=true" >> $GITHUB_OUTPUT
+            echo "Latest tag version: $TAG_VERSION"
+          fi
+      
+      - name: 🧮 Compare versions
+        id: compare
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          LATEST="${{ steps.latest_tag.outputs.tag_version }}"
+          HAS_TAG="${{ steps.latest_tag.outputs.has_tag }}"
+          
+          echo "Comparing versions:"
+          echo "  Current: $CURRENT"
+          echo "  Latest:  $LATEST"
+          
+          # Function to compare semantic versions
+          compare_versions() {
+            local ver1=$1
+            local ver2=$2
+            
+            IFS='.' read -r major1 minor1 patch1 <<< "$ver1"
+            IFS='.' read -r major2 minor2 patch2 <<< "$ver2"
+            
+            if [ "$major1" -gt "$major2" ]; then
+              return 0  # ver1 > ver2
+            elif [ "$major1" -lt "$major2" ]; then
+              return 1  # ver1 < ver2
+            fi
+            
+            if [ "$minor1" -gt "$minor2" ]; then
+              return 0
+            elif [ "$minor1" -lt "$minor2" ]; then
+              return 1
+            fi
+            
+            if [ "$patch1" -gt "$patch2" ]; then
+              return 0
+            elif [ "$patch1" -lt "$patch2" ]; then
+              return 1
+            fi
+            
+            return 2  # versions are equal
+          }
+          
+          if [ "$HAS_TAG" == "false" ]; then
+            echo "✅ No previous tags found - first release"
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "message=First release detected (v$CURRENT)" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          compare_versions "$CURRENT" "$LATEST"
+          RESULT=$?
+          
+          if [ $RESULT -eq 0 ]; then
+            echo "✅ Version has been incremented: $LATEST → $CURRENT"
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "message=Version correctly incremented from $LATEST to $CURRENT" >> $GITHUB_OUTPUT
+          elif [ $RESULT -eq 2 ]; then
+            echo "❌ Version has NOT been incremented!"
+            echo "❌ Current version ($CURRENT) equals latest tag ($LATEST)"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "message=Version must be incremented. Current: $CURRENT, Latest: $LATEST" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "❌ Version has been DECREMENTED!"
+            echo "❌ Current version ($CURRENT) is less than latest tag ($LATEST)"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "message=Version cannot be less than latest tag. Current: $CURRENT, Latest: $LATEST" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+      
+      - name: ✅ Version check passed
+        if: success()
+        run: |
+          echo "================================"
+          echo "✅ VERSION CHECK PASSED"
+          echo "================================"
+          echo ""
+          echo "Current version: ${{ steps.current.outputs.version }}"
+          echo "Previous version: ${{ steps.latest_tag.outputs.tag_version }}"
+          echo ""
+          echo "✅ Version has been properly incremented"
+      
+      - name: ❌ Version check failed
+        if: failure()
+        run: |
+          echo "================================"
+          echo "❌ VERSION CHECK FAILED"
+          echo "================================"
+          echo ""
+          echo "Current version: ${{ steps.current.outputs.version }}"
+          echo "Previous version: ${{ steps.latest_tag.outputs.tag_version }}"
+          echo ""
+          echo "⚠️  You must bump the version before merging to Pre_Prod or main!"
+          echo ""
+          echo "To fix this, run:"
+          echo "  ./bump_version.sh patch \"Your changelog message\""
+          echo "  ./bump_version.sh minor \"Your changelog message\""
+          echo "  ./bump_version.sh major \"Your changelog message\""
+          echo ""
+          exit 1
+      
+      - name: 📝 Comment on PR (if PR event)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const currentVersion = '${{ steps.current.outputs.version }}';
+            const latestVersion = '${{ steps.latest_tag.outputs.tag_version }}';
+            const isValid = '${{ steps.compare.outputs.valid }}' === 'true';
+            const message = '${{ steps.compare.outputs.message }}';
+            
+            let body = '## 🔢 Version Check\n\n';
+            
+            if (isValid) {
+              body += '✅ **Version check passed!**\n\n';
+              body += `- Previous version: \`${latestVersion}\`\n`;
+              body += `- Current version: \`${currentVersion}\`\n\n`;
+              body += '✨ Version has been properly incremented.\n';
+            } else {
+              body += '❌ **Version check failed!**\n\n';
+              body += `- Previous version: \`${latestVersion}\`\n`;
+              body += `- Current version: \`${currentVersion}\`\n\n`;
+              body += '⚠️ **Action Required:** You must bump the version before merging.\n\n';
+              body += '### How to fix:\n\n';
+              body += '```bash\n';
+              body += '# For bug fixes (1.6.4 → 1.6.5)\n';
+              body += './bump_version.sh patch "Fix: your bug fix description"\n\n';
+              body += '# For new features (1.6.4 → 1.7.0)\n';
+              body += './bump_version.sh minor "Add: your new feature description"\n\n';
+              body += '# For breaking changes (1.6.4 → 2.0.0)\n';
+              body += './bump_version.sh major "Breaking: your breaking change description"\n';
+              body += '```\n\n';
+              body += 'The `bump_version.sh` script will:\n';
+              body += '- ✅ Update `package.json` (root, backend, frontend)\n';
+              body += '- ✅ Update `docs/CHANGELOG.md`\n';
+              body += '- ✅ Update validation rules\n';
+              body += '- ✅ Create a git commit\n';
+              body += '- ✅ Optionally create a git tag\n';
+            }
+            
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            } catch (error) {
+              console.log('Could not create comment:', error.message);
+            }
+
+  ###############################################################################
+  # Changelog Validation Job
+  ###############################################################################
+  changelog-check:
+    name: Validate Changelog Updated
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Check if CHANGELOG.md was updated
+        id: changelog
+        run: |
+          # Get the base branch for comparison
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            git fetch origin $BASE_REF
+            BASE="origin/$BASE_REF"
+          else
+            # For push events, compare with previous commit
+            BASE="HEAD^"
+          fi
+          
+          # Check if CHANGELOG.md has been modified
+          if git diff --name-only $BASE HEAD | grep -q "docs/CHANGELOG.md"; then
+            echo "✅ docs/CHANGELOG.md has been updated"
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️  docs/CHANGELOG.md has NOT been updated"
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get current version to check if it's in CHANGELOG
+          CURRENT_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          
+          if [ -f "docs/CHANGELOG.md" ]; then
+            if grep -q "\[$CURRENT_VERSION\]" docs/CHANGELOG.md; then
+              echo "✅ Version $CURRENT_VERSION found in CHANGELOG.md"
+              echo "version_in_changelog=true" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️  Version $CURRENT_VERSION NOT found in CHANGELOG.md"
+              echo "version_in_changelog=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️  docs/CHANGELOG.md does not exist"
+            echo "version_in_changelog=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: ⚠️  Changelog warning
+        if: steps.changelog.outputs.updated == 'false' || steps.changelog.outputs.version_in_changelog == 'false'
+        run: |
+          echo "================================"
+          echo "⚠️  CHANGELOG WARNING"
+          echo "================================"
+          echo ""
+          if [ "${{ steps.changelog.outputs.updated }}" == "false" ]; then
+            echo "⚠️  docs/CHANGELOG.md has not been updated in this commit"
+          fi
+          if [ "${{ steps.changelog.outputs.version_in_changelog }}" == "false" ]; then
+            echo "⚠️  Version ${{ steps.changelog.outputs.version }} not found in CHANGELOG.md"
+          fi
+          echo ""
+          echo "💡 TIP: Use ./bump_version.sh to automatically update all files"
+          echo ""
+          echo "This is a warning, not a failure. The check will continue."
+      
+      - name: 📝 Comment on PR about changelog
+        if: github.event_name == 'pull_request' && (steps.changelog.outputs.updated == 'false' || steps.changelog.outputs.version_in_changelog == 'false')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const updated = '${{ steps.changelog.outputs.updated }}' === 'true';
+            const versionInChangelog = '${{ steps.changelog.outputs.version_in_changelog }}' === 'true';
+            const currentVersion = '${{ steps.changelog.outputs.version }}';
+            
+            let body = '## 📝 Changelog Check\n\n';
+            body += '⚠️ **Changelog update recommended**\n\n';
+            
+            if (!updated) {
+              body += '- ⚠️  `docs/CHANGELOG.md` has not been updated\n';
+            }
+            if (!versionInChangelog) {
+              body += `- ⚠️  Version \`${currentVersion}\` not found in changelog\n`;
+            }
+            
+            body += '\n### Recommendation:\n\n';
+            body += 'Use the `bump_version.sh` script to ensure all files are updated consistently:\n\n';
+            body += '```bash\n';
+            body += './bump_version.sh patch "Your changelog message"\n';
+            body += '```\n\n';
+            body += 'This will automatically update:\n';
+            body += '- All `package.json` files\n';
+            body += '- `docs/CHANGELOG.md`\n';
+            body += '- Validation rules\n';
+            
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            } catch (error) {
+              console.log('Could not create comment:', error.message);
+            }
+
+  ###############################################################################
+  # Package.json Consistency Check
+  ###############################################################################
+  package-consistency:
+    name: Validate Package.json Consistency
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check version consistency
+        run: |
+          echo "Checking version consistency across package.json files..."
+          
+          ROOT_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          BACKEND_VERSION=$(grep '"version":' backend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          FRONTEND_VERSION=$(grep '"version":' frontend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          
+          echo "Root version:     $ROOT_VERSION"
+          echo "Backend version:  $BACKEND_VERSION"
+          echo "Frontend version: $FRONTEND_VERSION"
+          
+          if [ "$ROOT_VERSION" != "$BACKEND_VERSION" ] || [ "$ROOT_VERSION" != "$FRONTEND_VERSION" ]; then
+            echo ""
+            echo "❌ ERROR: Version mismatch detected!"
+            echo ""
+            echo "All package.json files must have the same version."
+            echo ""
+            echo "To fix this, run:"
+            echo "  ./bump_version.sh patch \"Sync versions\""
+            echo ""
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ All package.json files have consistent version: $ROOT_VERSION"
+
+  ###############################################################################
+  # Auto-tag creation (only on direct push to Pre_Prod, not on PR)
+  ###############################################################################
+  auto-tag:
+    name: Auto-create Version Tag
+    runs-on: ubuntu-latest
+    needs: [version-check, changelog-check, package-consistency]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Pre_Prod'
+    permissions:
+      contents: write
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Get current version
+        id: version
+        run: |
+          VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+      
+      - name: 🏷️ Check if tag exists
+        id: tag_check
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ steps.version.outputs.version }} already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag v${{ steps.version.outputs.version }} does not exist"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🏷️ Create version tag
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Extract changelog entry for this version
+          if [ -f "docs/CHANGELOG.md" ]; then
+            CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" docs/CHANGELOG.md | sed '$d' | tail -n +2)
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="Release v$VERSION"
+            fi
+          else
+            CHANGELOG="Release v$VERSION"
+          fi
+          
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          git tag -a "v$VERSION" -m "Release v$VERSION" -m "$CHANGELOG"
+          git push origin "v$VERSION"
+          
+          echo "✅ Created and pushed tag v$VERSION"
+      
+      - name: ℹ️  Tag already exists
+        if: steps.tag_check.outputs.exists == 'true'
+        run: |
+          echo "ℹ️  Tag v${{ steps.version.outputs.version }} already exists, skipping tag creation"
