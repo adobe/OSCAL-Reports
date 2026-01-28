@@ -1,4 +1,27 @@
 {
-  "type": "module"
+  "name": "oscal-backend-tests",
+  "version": "1.6.5",
+  "type": "module",
+  "description": "Test suite for OSCAL Report Generator Backend - v1.6.5 Security Updates",
+  "scripts": {
+    "test": "jest --config jest.config.js",
+    "test:unit": "jest --config jest.config.js unit",
+    "test:integration": "jest --config jest.config.js integration",
+    "test:e2e": "jest --config jest.config.js e2e",
+    "test:security": "jest --config jest.config.js --testPathPattern=\"(csrf-api|securityConfig|urlValidator-options|security-flow)\"",
+    "test:watch": "jest --config jest.config.js --watch",
+    "test:coverage": "jest --config jest.config.js --coverage",
+    "test:v165": "jest --config jest.config.js --testPathPattern=\"(csrf-api|securityConfig|urlValidator-options|security-flow)\" --verbose"
+  },
+  "keywords": [
+    "oscal",
+    "security",
+    "testing",
+    "jest",
+    "csrf",
+    "ssrf",
+    "authentication"
+  ],
+  "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
+  "license": "GPL-3.0-or-later"
 }
-
