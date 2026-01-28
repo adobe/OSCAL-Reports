@@ -27,7 +27,7 @@ import ExportButtons from './components/ExportButtons';
 import SaveLoadBar from './components/SaveLoadBar';
 import MultiReportComparison from './components/MultiReportComparison';
 import IntegrityWarning from './components/IntegrityWarning';
-import Footer from './components/Footer';
+// import Footer from './components/Footer'; // REMOVED: Footer component completely removed from application
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
 import buildInfo from './utils/buildInfo';
 import './App.css';
@@ -940,10 +940,12 @@ function AppWithUseCases() {
             </div>
           </div>
         )}
+        {/* Do NOT render Footer on UseCases page - it has its own footer */}
       </>
     );
   }
 
+  // Main application view - show Footer here
   return (
     <>
       <div className="app-header-user-menu">
@@ -966,8 +968,8 @@ function AppWithUseCases() {
           </div>
         </div>
       )}
-      {/* Application Footer */}
-      <Footer />
+      {/* Application Footer - REMOVED: Footer component completely removed from application */}
+      {/* <Footer /> */}
     </>
   );
 }

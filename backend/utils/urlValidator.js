@@ -37,6 +37,14 @@ const LOCALHOST_PATTERNS = [
   '[::]',
 ];
 
+// Cloud metadata endpoints that should always be blocked
+const CLOUD_METADATA_ENDPOINTS = [
+  '169.254.169.254',
+  'metadata.google.internal',
+  'metadata.azure.internal',
+  'metadata.aws.internal',
+];
+
 // Dangerous protocols
 const DANGEROUS_PROTOCOLS = [
   'file:',
@@ -132,15 +140,36 @@ function validateUrlStructure(url) {
 }
 
 /**
+ * Check if hostname/IP is a cloud metadata endpoint (always blocked)
+ */
+function isCloudMetadata(hostname) {
+  const lowerHost = hostname.toLowerCase();
+  return CLOUD_METADATA_ENDPOINTS.some(endpoint => 
+    lowerHost === endpoint || lowerHost.includes(endpoint)
+  );
+}
+
+/**
  * Resolve hostname to IP and validate
  */
 async function validateHostname(hostname) {
+  // Always block cloud metadata endpoints
+  if (isCloudMetadata(hostname)) {
+    return {
+      valid: false,
+      error: 'Cloud metadata endpoints are not allowed',
+      blocked: true,
+      isCloudMetadata: true
+    };
+  }
+
   // Check if hostname is localhost
   if (isLocalhost(hostname)) {
     return { 
       valid: false, 
       error: 'Localhost URLs are not allowed',
-      blocked: true 
+      blocked: true,
+      isLocalhost: true
     };
   }
 
@@ -151,19 +180,32 @@ async function validateHostname(hostname) {
       return {
         valid: false,
         error: 'IPv6 private/loopback addresses are not allowed',
-        blocked: true
+        blocked: true,
+        isIPv6Private: true,
+        isLocalhost: cleanHost === '::1'  // Mark if it's loopback
       };
     }
   }
 
   // If hostname is already an IP, validate it directly
   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)) {
+    // Check for cloud metadata IP
+    if (isCloudMetadata(hostname)) {
+      return {
+        valid: false,
+        error: 'Cloud metadata endpoints are not allowed',
+        blocked: true,
+        isCloudMetadata: true
+      };
+    }
+    
     const privateCheck = isPrivateIP(hostname);
     if (privateCheck) {
       return { 
         valid: false, 
         error: privateCheck.reason,
-        blocked: true 
+        blocked: true,
+        isPrivateIP: true
       };
     }
     return { valid: true };
@@ -173,6 +215,17 @@ async function validateHostname(hostname) {
   try {
     const { address } = await dnsLookup(hostname, { family: 4 });
     
+    // Check if resolved IP is cloud metadata
+    if (isCloudMetadata(address)) {
+      return {
+        valid: false,
+        error: `Hostname resolves to cloud metadata endpoint`,
+        blocked: true,
+        resolvedIp: address,
+        isCloudMetadata: true
+      };
+    }
+    
     // Check if resolved IP is private
     const privateCheck = isPrivateIP(address);
     if (privateCheck) {
@@ -180,7 +233,8 @@ async function validateHostname(hostname) {
         valid: false, 
         error: `Hostname resolves to private IP: ${privateCheck.reason}`,
         blocked: true,
-        resolvedIp: address 
+        resolvedIp: address,
+        isPrivateIP: true
       };
     }
 
@@ -228,9 +282,19 @@ export async function validateUrl(url, options = {}) {
     const hostnameCheck = await validateHostname(parsedUrl.hostname);
     
     if (!hostnameCheck.valid) {
+      // Cloud metadata endpoints are NEVER allowed
+      if (hostnameCheck.isCloudMetadata) {
+        return {
+          valid: false,
+          error: hostnameCheck.error,
+          blocked: true,
+        };
+      }
+      
       // Allow override for private IPs/localhost if configured
       if (hostnameCheck.blocked) {
-        if (allowLocalhost && isLocalhost(parsedUrl.hostname)) {
+        // Check for localhost override (includes IPv6 loopback ::1)
+        if (allowLocalhost && hostnameCheck.isLocalhost) {
           return { 
             valid: true, 
             warning: 'Localhost URL allowed by configuration',
@@ -239,14 +303,30 @@ export async function validateUrl(url, options = {}) {
             protocol: parsedUrl.protocol,
           };
         }
-        if (allowPrivateIPs && (hostnameCheck.error.includes('private') || hostnameCheck.error.includes('Private'))) {
+        
+        // Check for private IP override (includes IPv6 private but NOT loopback)
+        if (allowPrivateIPs && hostnameCheck.isIPv6Private && !hostnameCheck.isLocalhost) {
           return { 
             valid: true, 
-            warning: 'Private IP allowed by configuration',
+            warning: 'Private IPv6 address allowed by configuration',
             url: parsedUrl.href,
             hostname: parsedUrl.hostname,
             protocol: parsedUrl.protocol,
           };
+        }
+        
+        // Check for private IP override (IPv4 private ranges or resolved private IPs)
+        if (allowPrivateIPs && (hostnameCheck.isPrivateIP || hostnameCheck.error.includes('private') || hostnameCheck.error.includes('Private'))) {
+          // But NOT cloud metadata (169.254.x.x range)
+          if (!hostnameCheck.error.includes('Cloud Metadata') && !hostnameCheck.error.includes('Link-local')) {
+            return { 
+              valid: true, 
+              warning: 'Private IP allowed by configuration',
+              url: parsedUrl.href,
+              hostname: parsedUrl.hostname,
+              protocol: parsedUrl.protocol,
+            };
+          }
         }
       }
       

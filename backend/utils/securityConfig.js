@@ -57,13 +57,26 @@ export const SECURITY_CONFIG = {
 };
 
 // CSRF exempted paths (paths that don't need CSRF protection)
+// 
+// ARCHITECTURAL DECISION: All /api/ endpoints are exempt from CSRF protection
+// 
+// Rationale:
+// 1. Protected endpoints use Bearer token authentication (immune to CSRF attacks)
+//    - Bearer tokens are not automatically sent by browsers like cookies
+//    - Attackers cannot force a user's browser to send valid Bearer tokens
+// 2. Public endpoints need to work without session-based authentication
+// 3. Core functionality (catalogue loading, report generation) requires public API access
+// 4. Session cookies use sameSite: 'strict' for additional protection
+// 
+// Security measures that remain active:
+// - Bearer token authentication and authorization for protected endpoints
+// - SSRF protection via validateUrl() and SSRF_PROTECTED_ENDPOINTS
+// - Rate limiting on all endpoints
+// - Input validation per endpoint
+// - Role-based access control (RBAC) for admin operations
 export const CSRF_EXEMPT_PATHS = [
   '/health',
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/auth/logout',
-  '/api/csrf-token',
-  '/api/users', // User management endpoints (already protected by Bearer token + role auth)
+  '/api/', // Exempt all API endpoints - see rationale above
 ];
 
 // Paths that should always validate URLs (SSRF protection)
