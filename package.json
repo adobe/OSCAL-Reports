@@ -6,7 +6,10 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "lint": "npx eslint .",
+    "lint:fix": "npx eslint . --fix",
+    "lint:all": "npm run lint && cd backend && npm run lint && cd ../frontend && npm run lint"
   },
   "keywords": [
     "oscal",

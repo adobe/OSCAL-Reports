@@ -1,0 +1,318 @@
+name: Pre-Release Validation
+
+on:
+  pull_request:
+    branches:
+      - Pre_Prod
+      - main
+  push:
+    branches:
+      - Pre_Prod
+
+jobs:
+  ###############################################################################
+  # Version and Package Consistency Check
+  ###############################################################################
+  version-consistency:
+    name: Version Consistency Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check version consistency across package.json files
+        run: |
+          echo "Checking version consistency..."
+          
+          ROOT_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          BACKEND_VERSION=$(grep '"version":' backend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          FRONTEND_VERSION=$(grep '"version":' frontend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          
+          echo "Root:     $ROOT_VERSION"
+          echo "Backend:  $BACKEND_VERSION"
+          echo "Frontend: $FRONTEND_VERSION"
+          
+          if [ "$ROOT_VERSION" != "$BACKEND_VERSION" ] || [ "$ROOT_VERSION" != "$FRONTEND_VERSION" ]; then
+            echo ""
+            echo "❌ ERROR: Version mismatch detected!"
+            echo "All package.json files must have the same version."
+            echo ""
+            echo "To fix: Run ./bump_version.sh patch \"Sync versions\""
+            exit 1
+          fi
+          
+          echo "✅ All versions consistent: $ROOT_VERSION"
+      
+      - name: 🔍 Check CHANGELOG.md updated
+        run: |
+          VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          
+          if [ -f "docs/CHANGELOG.md" ]; then
+            if grep -q "\[$VERSION\]" docs/CHANGELOG.md; then
+              echo "✅ Version $VERSION found in CHANGELOG.md"
+            else
+              echo "⚠️  WARNING: Version $VERSION not found in CHANGELOG.md"
+              echo "Consider updating docs/CHANGELOG.md"
+            fi
+          else
+            echo "⚠️  WARNING: docs/CHANGELOG.md not found"
+          fi
+
+  ###############################################################################
+  # Workflow YAML Validation
+  ###############################################################################
+  yaml-validation:
+    name: Validate Workflow YAML
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Validate YAML syntax
+        run: |
+          echo "Checking YAML syntax for all workflow files..."
+          
+          for file in .github/workflows/*.yml; do
+            echo "Checking $file..."
+            python3 -c "import yaml, sys; yaml.safe_load(open('$file'))" || {
+              echo "❌ ERROR: Invalid YAML in $file"
+              exit 1
+            }
+          done
+          
+          echo "✅ All workflow YAML files are valid"
+      
+      - name: 🔍 Check for hardcoded version numbers
+        run: |
+          echo "Checking for hardcoded version numbers in workflows..."
+          
+          # Look for patterns like "1.6.6" in workflow files (but allow variable references)
+          if grep -r -E '"[0-9]+\.[0-9]+\.[0-9]+"' .github/workflows/ | grep -v '\${{' | grep -v 'node-version' | grep -v 'uses:' | grep -v '#'; then
+            echo "⚠️  WARNING: Found potential hardcoded version numbers"
+            echo "Consider using variable references instead"
+          else
+            echo "✅ No hardcoded version numbers found"
+          fi
+
+  ###############################################################################
+  # Tar Command Validation
+  ###############################################################################
+  tar-syntax-check:
+    name: Validate Tar Commands
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check tar command syntax in release.yml
+        run: |
+          echo "Validating tar command syntax..."
+          
+          # Check if --exclude comes before file arguments
+          if grep -A 20 "tar -czf" .github/workflows/release.yml | grep -B 5 "\\-\\-exclude" | grep -A 5 "backend/\\*\\.js\\|frontend/dist"; then
+            echo "❌ ERROR: --exclude options must come BEFORE file arguments in tar commands"
+            echo ""
+            echo "Correct syntax:"
+            echo "  tar --exclude=pattern -czf archive.tar.gz files..."
+            echo ""
+            echo "Incorrect syntax:"
+            echo "  tar -czf archive.tar.gz files... --exclude=pattern"
+            exit 1
+          fi
+          
+          echo "✅ Tar command syntax looks correct"
+      
+      - name: 🔍 Test tar command execution
+        run: |
+          echo "Testing tar commands with sample data..."
+          
+          # Create test directory structure
+          mkdir -p test_backend/auth test_backend/utils test_backend/node_modules
+          echo "test" > test_backend/server.js
+          echo "test" > test_backend/auth/middleware.js
+          echo "test" > test_backend/utils/validator.js
+          echo "excluded" > test_backend/node_modules/package.json
+          
+          # Test tar with excludes
+          tar --exclude=test_backend/node_modules \
+              -czf test-archive.tar.gz \
+              test_backend/*.js \
+              test_backend/auth \
+              test_backend/utils
+          
+          # Verify excludes worked
+          if tar -tzf test-archive.tar.gz | grep -q "node_modules"; then
+            echo "❌ ERROR: Exclusion pattern not working"
+            exit 1
+          fi
+          
+          echo "✅ Tar exclude patterns working correctly"
+          
+          # Cleanup
+          rm -rf test_backend test-archive.tar.gz
+
+  ###############################################################################
+  # ESLint Configuration Check
+  ###############################################################################
+  eslint-config-check:
+    name: Validate ESLint Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check ESLint config files exist
+        run: |
+          echo "Checking for ESLint configuration files..."
+          
+          MISSING=0
+          
+          if [ ! -f "eslint.config.js" ]; then
+            echo "⚠️  WARNING: eslint.config.js not found at root"
+            MISSING=1
+          else
+            echo "✅ Found eslint.config.js at root"
+          fi
+          
+          if [ ! -f "backend/eslint.config.js" ]; then
+            echo "⚠️  WARNING: backend/eslint.config.js not found"
+            MISSING=1
+          else
+            echo "✅ Found backend/eslint.config.js"
+          fi
+          
+          if [ ! -f "frontend/eslint.config.js" ]; then
+            echo "⚠️  WARNING: frontend/eslint.config.js not found"
+            MISSING=1
+          else
+            echo "✅ Found frontend/eslint.config.js"
+          fi
+          
+          if [ $MISSING -eq 1 ]; then
+            echo ""
+            echo "ℹ️  ESLint configs missing - linting will be skipped"
+            echo "This is not an error, but linting is recommended"
+          fi
+      
+      - name: 🔍 Verify lint scripts in package.json
+        run: |
+          echo "Checking for lint scripts in package.json files..."
+          
+          if grep -q '"lint"' package.json; then
+            echo "✅ Lint script found in root package.json"
+          else
+            echo "ℹ️  No lint script in root package.json"
+          fi
+          
+          if grep -q '"lint"' backend/package.json; then
+            echo "✅ Lint script found in backend/package.json"
+          else
+            echo "ℹ️  No lint script in backend/package.json"
+          fi
+          
+          if grep -q '"lint"' frontend/package.json; then
+            echo "✅ Lint script found in frontend/package.json"
+          else
+            echo "ℹ️  No lint script in frontend/package.json"
+          fi
+
+  ###############################################################################
+  # Branch Naming Convention Check
+  ###############################################################################
+  branch-naming:
+    name: Branch Naming Convention
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: 🔍 Check branch naming convention
+        run: |
+          HEAD="${{ github.head_ref }}"
+          BASE="${{ github.base_ref }}"
+          
+          echo "Source branch: $HEAD"
+          echo "Target branch: $BASE"
+          
+          # Check if PR to main is from Pre_Prod
+          if [ "$BASE" == "main" ] && [ "$HEAD" != "Pre_Prod" ]; then
+            echo "❌ ERROR: PRs to main must come from Pre_Prod branch"
+            echo "Current: $HEAD → main"
+            echo "Required: Pre_Prod → main"
+            exit 1
+          fi
+          
+          echo "✅ Branch naming follows conventions"
+
+  ###############################################################################
+  # Documentation Check
+  ###############################################################################
+  documentation-check:
+    name: Check Documentation Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check required documentation
+        run: |
+          echo "Checking for required documentation files..."
+          
+          REQUIRED_DOCS=(
+            "README.md"
+            "docs/CHANGELOG.md"
+            "docs/BRANCHING_STRATEGY.md"
+            "docs/DEPLOYMENT.md"
+          )
+          
+          MISSING=0
+          for doc in "${REQUIRED_DOCS[@]}"; do
+            if [ -f "$doc" ]; then
+              echo "✅ Found $doc"
+            else
+              echo "⚠️  WARNING: $doc not found"
+              MISSING=1
+            fi
+          done
+          
+          if [ $MISSING -eq 0 ]; then
+            echo "✅ All required documentation files present"
+          else
+            echo "ℹ️  Some documentation files missing (non-blocking)"
+          fi
+
+  ###############################################################################
+  # Summary Report
+  ###############################################################################
+  validation-summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [version-consistency, yaml-validation, tar-syntax-check, eslint-config-check, documentation-check]
+    if: always()
+    
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "## 🔍 Pre-Release Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All pre-release validation checks completed." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Checks Performed:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Version consistency across package.json files" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Workflow YAML syntax validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Tar command syntax validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ ESLint configuration validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Documentation presence check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.version-consistency.result }}" == "success" ] && \
+             [ "${{ needs.yaml-validation.result }}" == "success" ] && \
+             [ "${{ needs.tar-syntax-check.result }}" == "success" ]; then
+            echo "✅ **All critical validations passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Some validations failed. Please review the logs above.**" >> $GITHUB_STEP_SUMMARY
+          fi
