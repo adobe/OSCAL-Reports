@@ -14,7 +14,9 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend --coverage",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend unit",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend integration",
-    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend e2e"
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend e2e",
+    "lint": "npx eslint . --ext .js",
+    "lint:fix": "npx eslint . --ext .js --fix"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.952.0",

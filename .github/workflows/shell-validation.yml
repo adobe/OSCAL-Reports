@@ -1,0 +1,251 @@
+name: Shell Script Validation
+
+on:
+  pull_request:
+    branches:
+      - Development
+      - Quality_Test
+      - Pre_Prod
+      - main
+    paths:
+      - '**.sh'
+      - '.github/workflows/**.yml'
+      - '.githooks/**'
+  push:
+    branches:
+      - Development
+      - Quality_Test
+      - Pre_Prod
+    paths:
+      - '**.sh'
+      - '.github/workflows/**.yml'
+      - '.githooks/**'
+
+jobs:
+  ###############################################################################
+  # ShellCheck - Shell Script Linting
+  ###############################################################################
+  shellcheck:
+    name: ShellCheck Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🐚 Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --version
+      
+      - name: 🔍 Find all shell scripts
+        id: find_scripts
+        run: |
+          echo "Finding all .sh files..."
+          find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*" | tee shell_scripts.txt
+          
+          SCRIPT_COUNT=$(wc -l < shell_scripts.txt)
+          echo "Found $SCRIPT_COUNT shell scripts"
+          echo "script_count=$SCRIPT_COUNT" >> $GITHUB_OUTPUT
+      
+      - name: 🔍 Run ShellCheck on all scripts
+        run: |
+          echo "Running ShellCheck on all shell scripts..."
+          
+          FAILED=0
+          PASSED=0
+          
+          while IFS= read -r script; do
+            echo ""
+            echo "Checking: $script"
+            if shellcheck "$script"; then
+              echo "✅ $script passed"
+              PASSED=$((PASSED + 1))
+            else
+              echo "❌ $script failed"
+              FAILED=$((FAILED + 1))
+            fi
+          done < shell_scripts.txt
+          
+          echo ""
+          echo "================================"
+          echo "ShellCheck Results:"
+          echo "  Passed: $PASSED"
+          echo "  Failed: $FAILED"
+          echo "================================"
+          
+          if [ $FAILED -gt 0 ]; then
+            echo "❌ $FAILED script(s) failed ShellCheck validation"
+            exit 1
+          fi
+          
+          echo "✅ All shell scripts passed ShellCheck validation"
+      
+      - name: 🔍 Check bash in workflow files
+        run: |
+          echo "Checking inline bash scripts in workflow files..."
+          
+          # Extract and check bash scripts from workflow files
+          for workflow in .github/workflows/*.yml; do
+            echo "Checking workflow: $workflow"
+            
+            # Look for common shell errors in run: blocks
+            if grep -n "cd .* &&" "$workflow" | grep -v "cd .* && cd"; then
+              echo "⚠️  WARNING: Found 'cd && command' pattern in $workflow"
+              echo "   Consider using 'working_directory' parameter instead"
+            fi
+            
+            # Check for unquoted variables
+            if grep -n '\${{[^}]*}}' "$workflow" | grep -v '"' | grep -E "(path|file|dir)"; then
+              echo "ℹ️  INFO: Found potentially unquoted variables in $workflow"
+            fi
+          done
+          
+          echo "✅ Workflow inline script check complete"
+
+  ###############################################################################
+  # Validate Git Hooks
+  ###############################################################################
+  git-hooks-validation:
+    name: Git Hooks Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check git hooks syntax
+        run: |
+          if [ -d ".githooks" ]; then
+            echo "Validating git hooks..."
+            
+            for hook in .githooks/*; do
+              if [ -f "$hook" ] && [ -x "$hook" ]; then
+                echo "Checking: $hook"
+                bash -n "$hook" || {
+                  echo "❌ Syntax error in $hook"
+                  exit 1
+                }
+                echo "✅ $hook syntax valid"
+              fi
+            done
+          else
+            echo "ℹ️  No .githooks directory found"
+          fi
+
+  ###############################################################################
+  # Validate Shell Script Best Practices
+  ###############################################################################
+  shell-best-practices:
+    name: Shell Best Practices Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check for common shell script issues
+        run: |
+          echo "Checking for common shell script issues..."
+          
+          ISSUES=0
+          
+          # Check for missing shebang
+          echo "Checking for shebangs..."
+          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            if ! head -n 1 "$script" | grep -q "^#!"; then
+              echo "⚠️  WARNING: $script missing shebang"
+              ISSUES=$((ISSUES + 1))
+            fi
+          done
+          
+          # Check for 'set -e' usage
+          echo "Checking for error handling..."
+          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            if ! grep -q "set -e" "$script"; then
+              echo "ℹ️  INFO: $script doesn't use 'set -e' (consider adding for safety)"
+            fi
+          done
+          
+          # Check for executable permissions
+          echo "Checking executable permissions..."
+          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            if [ ! -x "$script" ]; then
+              echo "⚠️  WARNING: $script not executable"
+              echo "   Fix with: chmod +x $script"
+              ISSUES=$((ISSUES + 1))
+            fi
+          done
+          
+          if [ $ISSUES -gt 0 ]; then
+            echo ""
+            echo "⚠️  Found $ISSUES potential issues (warnings, not errors)"
+            echo "Consider addressing these for better script quality"
+          else
+            echo "✅ All scripts follow best practices"
+          fi
+
+  ###############################################################################
+  # Test Script Execution (Dry Run)
+  ###############################################################################
+  dry-run-test:
+    name: Script Dry Run Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Test scripts with --help flag
+        run: |
+          echo "Testing scripts with --help flag where applicable..."
+          
+          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            # Skip git hooks and certain system scripts
+            if [[ "$script" == *".githooks"* ]] || [[ "$script" == *"docker-entrypoint"* ]]; then
+              echo "Skipping system script: $script"
+              continue
+            fi
+            
+            echo "Testing: $script"
+            
+            # Try --help flag (many scripts support it)
+            if bash "$script" --help 2>&1 | grep -q -i "usage\|help\|options"; then
+              echo "✅ $script has help documentation"
+            else
+              echo "ℹ️  $script doesn't have --help (not required)"
+            fi
+          done
+
+  ###############################################################################
+  # Validation Summary
+  ###############################################################################
+  shell-validation-summary:
+    name: Shell Validation Summary
+    runs-on: ubuntu-latest
+    needs: [shellcheck, git-hooks-validation, shell-best-practices]
+    if: always()
+    
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "## 🐚 Shell Script Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All shell script validation checks completed." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Checks Performed:" >> $GITHUB_STEP_SUMMARY
+          echo "- ShellCheck linting: ${{ needs.shellcheck.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Git hooks validation: ${{ needs.git-hooks-validation.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Best practices check: ${{ needs.shell-best-practices.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.shellcheck.result }}" == "success" ]; then
+            echo "✅ **All critical validations passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **ShellCheck failed. Please fix the reported issues.**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Resources:" >> $GITHUB_STEP_SUMMARY
+          echo "- [ShellCheck Documentation](https://www.shellcheck.net/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Bash Best Practices](https://mywiki.wooledge.org/BashGuide/Practices)" >> $GITHUB_STEP_SUMMARY
