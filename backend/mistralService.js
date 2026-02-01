@@ -122,7 +122,13 @@ export async function loadMistralConfig() {
       bedrockModelId: bedrockModelId,
       timeout: aiTimeout || config.mistralConfig?.timeout || 180000, // 180 seconds default for model loading and processing
       maxRetries: config.mistralConfig?.maxRetries || 2,
-      fallbackToPatternMatching: config.mistralConfig?.fallbackToPatternMatching !== false
+      fallbackToPatternMatching: config.mistralConfig?.fallbackToPatternMatching !== false,
+      // Max tokens configuration
+      maxTokens: {
+        connectionTest: config.aiConfig?.maxTokens?.connectionTest || 10,
+        controlGeneration: config.aiConfig?.maxTokens?.controlGeneration || 150,
+        general: config.aiConfig?.maxTokens?.general || 512
+      }
     };
     
     // Log which source was used
@@ -189,7 +195,7 @@ async function generateWithOllama(control, config, existingControls = []) {
         options: {
           temperature: 0.7,
           top_p: 0.9,
-          num_predict: 150 // Reduced to encourage shorter responses (~250 chars)
+          num_predict: config.maxTokens?.controlGeneration || 150 // Configurable max tokens for control generation
         }
       },
       {
@@ -235,7 +241,7 @@ async function generateWithOllama(control, config, existingControls = []) {
           controlFamily: control.id?.split('-')[0] || 'unknown',
           temperature: 0.7,
           topP: 0.9,
-          maxTokens: 150
+          maxTokens: config.maxTokens?.controlGeneration || 150
         },
         tokenUsage: {
           inputTokens: Math.ceil(prompt.length / 4), // Approximate
@@ -326,7 +332,7 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
           }
         ],
         temperature: 0.7,
-        max_tokens: 150, // Reduced to encourage shorter responses (~250 chars)
+        max_tokens: config.maxTokens?.controlGeneration || 150, // Configurable max tokens for control generation
         top_p: 0.9
       },
       {
@@ -355,7 +361,7 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
           controlFamily: control.id?.split('-')[0] || 'unknown',
           temperature: 0.7,
           topP: 0.9,
-          maxTokens: 150,
+          maxTokens: config.maxTokens?.controlGeneration || 150,
           responseId: response.data.id
         },
         tokenUsage: {
@@ -459,7 +465,7 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
         }
       ],
       inferenceConfig: {
-        maxTokens: 512,
+        maxTokens: config.maxTokens?.general || 512,
         temperature: 0.7,
         topP: 0.9
       }
@@ -488,7 +494,7 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
             controlFamily: control.id?.split('-')[0] || 'unknown',
             temperature: 0.7,
             topP: 0.9,
-            maxTokens: 512,
+            maxTokens: config.maxTokens?.general || 512,
             awsRegion: config.awsRegion,
             finishReasons: response.stopReason ? [response.stopReason] : []
           },
