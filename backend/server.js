@@ -4031,6 +4031,10 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
   try {
     const { provider = 'ollama', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
     
+    // Load config for maxTokens settings
+    const config = await loadConfig();
+    const maxTokensConfig = config.aiConfig?.maxTokens || { connectionTest: 10, controlGeneration: 150, general: 512 };
+    
     console.log(`🔍 Testing ${provider} connection...`);
     
     // AWS Bedrock test connection
@@ -4087,7 +4091,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
             }
           ],
           inferenceConfig: {
-            maxTokens: 10,
+            maxTokens: maxTokensConfig.connectionTest,
             temperature: 0.5
           }
         });
@@ -4182,7 +4186,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
               content: 'Test connection. Reply with OK.'
             }
           ],
-          max_tokens: 10
+          max_tokens: maxTokensConfig.connectionTest
         }, {
           timeout: 15000,
           headers: {
