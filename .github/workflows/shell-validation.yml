@@ -95,11 +95,6 @@ jobs:
               echo "⚠️  WARNING: Found 'cd && command' pattern in $workflow"
               echo "   Consider using 'working_directory' parameter instead"
             fi
-            
-            # Check for unquoted variables
-            if grep -n '\${{' "$workflow" | grep -v '"' | grep -E "(path|file|dir)"; then
-              echo "ℹ️  INFO: Found potentially unquoted variables in $workflow"
-            fi
           done
           
           echo "✅ Workflow inline script check complete"
