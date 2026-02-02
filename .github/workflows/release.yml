@@ -54,34 +54,34 @@ jobs:
       - name: 📦 Create release archives
         run: |
           # Create backend archive
-          tar -czf oscal-backend-${{ steps.version.outputs.version }}.tar.gz \
-            backend/*.js \
-            backend/auth \
-            backend/utils \
-            backend/package.json \
-            backend/package-lock.json \
-            --exclude=backend/node_modules \
-            --exclude=backend/test_cases
+          tar --exclude=backend/node_modules \
+              --exclude=backend/test_cases \
+              -czf oscal-backend-${{ steps.version.outputs.version }}.tar.gz \
+              backend/*.js \
+              backend/auth \
+              backend/utils \
+              backend/package.json \
+              backend/package-lock.json
           
           # Create frontend archive
           tar -czf oscal-frontend-${{ steps.version.outputs.version }}.tar.gz \
             frontend/dist
           
           # Create full release archive
-          tar -czf oscal-report-generator-${{ steps.version.outputs.version }}.tar.gz \
-            backend/*.js \
-            backend/auth \
-            backend/utils \
-            backend/package.json \
-            backend/package-lock.json \
-            frontend/dist \
-            docs \
-            *.md \
-            *.sh \
-            --exclude=backend/node_modules \
-            --exclude=backend/test_cases \
-            --exclude=frontend/node_modules \
-            --exclude=frontend/test_cases
+          tar --exclude=backend/node_modules \
+              --exclude=backend/test_cases \
+              --exclude=frontend/node_modules \
+              --exclude=frontend/test_cases \
+              -czf oscal-report-generator-${{ steps.version.outputs.version }}.tar.gz \
+              backend/*.js \
+              backend/auth \
+              backend/utils \
+              backend/package.json \
+              backend/package-lock.json \
+              frontend/dist \
+              docs \
+              *.md \
+              *.sh
       
       - name: 🎉 Create GitHub Release
         uses: softprops/action-gh-release@v1

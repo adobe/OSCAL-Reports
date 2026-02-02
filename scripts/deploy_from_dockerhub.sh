@@ -379,40 +379,119 @@ else
 fi
 
 # ============================================================================
+# LEGACY CONFIG MIGRATION
+# ============================================================================
+
+print_header "🔄 Legacy Config Migration Check"
+
+LEGACY_CONFIG_DIR="${SCRIPT_DIR}/config/app"
+MIGRATED_CONFIG=false
+
+# Check if we need to migrate from old config structure
+if [ -d "$LEGACY_CONFIG_DIR" ] && [ -n "$(ls -A "$LEGACY_CONFIG_DIR" 2>/dev/null)" ]; then
+  if [ -f "$LEGACY_CONFIG_DIR/users.json" ] || [ -f "$LEGACY_CONFIG_DIR/config.json" ]; then
+    log "Legacy config directory found with files"
+    
+    # Check if data volume is empty (need migration)
+    if [ ! -d "$DATA_VOLUME_PATH" ] || [ -z "$(ls -A "$DATA_VOLUME_PATH" 2>/dev/null)" ]; then
+      print_info "Migrating legacy config to new volume structure..."
+      
+      mkdir -p "$DATA_VOLUME_PATH"
+      
+      # Copy config files to new location
+      if [ -f "$LEGACY_CONFIG_DIR/config.json" ]; then
+        cp "$LEGACY_CONFIG_DIR/config.json" "$DATA_VOLUME_PATH/config.json"
+        print_success "Migrated config.json"
+      fi
+      
+      if [ -f "$LEGACY_CONFIG_DIR/users.json" ]; then
+        cp "$LEGACY_CONFIG_DIR/users.json" "$DATA_VOLUME_PATH/users.json"
+        print_success "Migrated users.json"
+      fi
+      
+      # Copy other JSON files (rate_limit, email_blacklist, etc)
+      for file in "$LEGACY_CONFIG_DIR"/*.json; do
+        if [ -f "$file" ]; then
+          filename=$(basename "$file")
+          if [ "$filename" != "config.json" ] && [ "$filename" != "users.json" ] && [ "$filename" != "config.json.example" ] && [ "$filename" != "users.json.example" ]; then
+            cp "$file" "$DATA_VOLUME_PATH/$filename"
+            print_info "Migrated $filename"
+          fi
+        fi
+      done
+      
+      MIGRATED_CONFIG=true
+      print_success "Legacy config migration completed"
+    else
+      print_info "Data volume already has content, skipping migration"
+    fi
+  else
+    print_info "Legacy config directory exists but has no config/user files"
+  fi
+else
+  print_info "No legacy config directory found (fresh deployment or already migrated)"
+fi
+
+if [ "$MIGRATED_CONFIG" = true ]; then
+  print_success "Configuration migrated from legacy structure"
+fi
+
+# ============================================================================
 # VOLUME BACKUP
 # ============================================================================
 
-print_header "💾 Backup: Volume Directory"
+print_header "💾 Backup: Volume and Legacy Config"
 
 mkdir -p "$BACKUP_DIR"
 
-if [ ! -d "$DATA_VOLUME_PATH" ]; then
-  print_warning "Data volume directory not found: $DATA_VOLUME_PATH"
-  print_info "This may be a fresh deployment"
+BACKUP_SOURCES=()
+VOLUME_BACKUP_CREATED=false
+
+# Check primary volume location
+if [ -d "$DATA_VOLUME_PATH" ] && [ -n "$(ls -A "$DATA_VOLUME_PATH" 2>/dev/null)" ]; then
+  BACKUP_SOURCES+=("$DATA_VOLUME_PATH:data-volume")
+  print_info "Found data in volume: $DATA_VOLUME_PATH"
+fi
+
+# Check legacy config location as additional backup source
+if [ -d "$LEGACY_CONFIG_DIR" ] && [ -n "$(ls -A "$LEGACY_CONFIG_DIR" 2>/dev/null)" ]; then
+  # Only add legacy as backup source if it has actual config files
+  if [ -f "$LEGACY_CONFIG_DIR/users.json" ] || [ -f "$LEGACY_CONFIG_DIR/config.json" ]; then
+    BACKUP_SOURCES+=("$LEGACY_CONFIG_DIR:legacy-config")
+    print_info "Found data in legacy config: $LEGACY_CONFIG_DIR"
+  fi
+fi
+
+if [ ${#BACKUP_SOURCES[@]} -eq 0 ]; then
+  print_warning "No data to backup (fresh deployment)"
 else
-  log "Backing up volume directory..."
-  
-  # Check if directory has content
-  if [ -n "$(ls -A "$DATA_VOLUME_PATH" 2>/dev/null)" ]; then
-    # Create compressed backup
-    VOLUME_BACKUP_FILE="$BACKUP_DIR/volume-backup.tar.gz"
+  for SOURCE_INFO in "${BACKUP_SOURCES[@]}"; do
+    IFS=':' read -r SOURCE_PATH SOURCE_NAME <<< "$SOURCE_INFO"
     
-    if tar -czf "$VOLUME_BACKUP_FILE" -C "$DATA_VOLUME_PATH" . 2>/dev/null; then
+    log "Backing up $SOURCE_NAME from $SOURCE_PATH..."
+    VOLUME_BACKUP_FILE="$BACKUP_DIR/${SOURCE_NAME}-backup.tar.gz"
+    
+    if tar -czf "$VOLUME_BACKUP_FILE" -C "$SOURCE_PATH" . 2>/dev/null; then
       BACKUP_SIZE=$(du -h "$VOLUME_BACKUP_FILE" | cut -f1)
-      print_success "Volume backup created: $VOLUME_BACKUP_FILE ($BACKUP_SIZE)"
+      print_success "$SOURCE_NAME backup created: $VOLUME_BACKUP_FILE ($BACKUP_SIZE)"
       
-      # List backed up files
+      # Show backed up files
       print_info "Backed up files:"
       tar -tzf "$VOLUME_BACKUP_FILE" 2>/dev/null | head -10 | while read line; do
         echo "    $line"
       done
+      
+      VOLUME_BACKUP_CREATED=true
     else
-      print_error "Failed to create volume backup"
-      print_warning "Proceeding without backup (risky!)"
+      print_error "Failed to create $SOURCE_NAME backup"
     fi
-  else
-    print_info "Volume directory is empty - no backup needed"
-  fi
+  done
+fi
+
+if [ "$VOLUME_BACKUP_CREATED" = true ]; then
+  print_success "Backup phase completed successfully"
+else
+  print_warning "No backups created - this may be a fresh deployment"
 fi
 
 echo ""
@@ -721,25 +800,70 @@ fi
 print_header "♻️  Restore Configuration and Users"
 
 RESTORE_SUCCESS=true
+RESTORE_ATTEMPTED=false
 
-# Check if we have backups to restore
-if [ -f "$BACKUP_DIR/volume-backup.tar.gz" ]; then
-  log "Restoring configuration from volume backup..."
+# Priority 1: Restore from data-volume backup
+if [ -f "$BACKUP_DIR/data-volume-backup.tar.gz" ]; then
+  log "Restoring from data volume backup..."
+  RESTORE_ATTEMPTED=true
   
-  # Extract backup to volume
+  if tar -xzf "$BACKUP_DIR/data-volume-backup.tar.gz" -C "$DATA_VOLUME_PATH" 2>/dev/null; then
+    print_success "Data volume backup restored"
+    
+    # Restart to load config
+    log "Restarting container to apply configuration..."
+    docker restart "$CONTAINER_NAME" > /dev/null 2>&1
+    sleep 15
+    
+    if curl -sf "http://localhost:${CONTAINER_PORT}/health" > /dev/null 2>&1; then
+      print_success "Container healthy after data restore"
+    else
+      print_warning "Health check failed after restart"
+      RESTORE_SUCCESS=false
+    fi
+  else
+    print_error "Failed to restore data volume backup"
+    RESTORE_SUCCESS=false
+  fi
+
+# Priority 2: Restore from legacy-config backup
+elif [ -f "$BACKUP_DIR/legacy-config-backup.tar.gz" ]; then
+  log "Restoring from legacy config backup..."
+  RESTORE_ATTEMPTED=true
+  
+  if tar -xzf "$BACKUP_DIR/legacy-config-backup.tar.gz" -C "$DATA_VOLUME_PATH" 2>/dev/null; then
+    print_success "Legacy config backup restored"
+    
+    # Restart to load config
+    log "Restarting container to apply configuration..."
+    docker restart "$CONTAINER_NAME" > /dev/null 2>&1
+    sleep 15
+    
+    if curl -sf "http://localhost:${CONTAINER_PORT}/health" > /dev/null 2>&1; then
+      print_success "Container healthy after legacy restore"
+    else
+      print_warning "Health check failed after restart"
+      RESTORE_SUCCESS=false
+    fi
+  else
+    print_error "Failed to restore legacy config backup"
+    RESTORE_SUCCESS=false
+  fi
+
+# Priority 3: Check for old volume-backup.tar.gz name (backward compatibility)
+elif [ -f "$BACKUP_DIR/volume-backup.tar.gz" ]; then
+  log "Restoring from volume backup (legacy name)..."
+  RESTORE_ATTEMPTED=true
+  
   if tar -xzf "$BACKUP_DIR/volume-backup.tar.gz" -C "$DATA_VOLUME_PATH" 2>/dev/null; then
     print_success "Volume backup restored"
     
-    # Restart container to reload configuration
     log "Restarting container to apply configuration..."
     docker restart "$CONTAINER_NAME" > /dev/null 2>&1
-    
-    # Wait for restart
     sleep 15
     
-    # Verify container is still healthy after restart
     if curl -sf "http://localhost:${CONTAINER_PORT}/health" > /dev/null 2>&1; then
-      print_success "Container healthy after configuration restore"
+      print_success "Container healthy after restore"
     else
       print_warning "Health check failed after restart"
       RESTORE_SUCCESS=false
@@ -748,11 +872,26 @@ if [ -f "$BACKUP_DIR/volume-backup.tar.gz" ]; then
     print_error "Failed to restore volume backup"
     RESTORE_SUCCESS=false
   fi
-elif [ "$API_BACKUP_SUCCESS" = true ]; then
-  print_info "No volume backup found, but API backup is available"
-  print_info "Users can be imported via API after login"
+
+# Priority 4: Check for API backup
+elif [ "$API_BACKUP_SUCCESS" = true ] && [ -f "$BACKUP_DIR/users.json" ]; then
+  print_info "API backup available but requires manual import"
+  print_info "Users can be imported via Admin UI after login"
+  print_info "API backup location: $BACKUP_DIR/users.json"
+  RESTORE_ATTEMPTED=true
+  
+# No backups available
 else
-  print_info "No backups to restore (fresh deployment or backup failed)"
+  print_info "No backups to restore (fresh deployment or all backups failed)"
+fi
+
+if [ "$RESTORE_ATTEMPTED" = false ]; then
+  print_warning "No configuration restored - using defaults"
+  echo ""
+  print_info "If this is not a fresh deployment, you may need to:"
+  echo "  1. Check backup directory: $BACKUP_DIR"
+  echo "  2. Manually restore config files to: $DATA_VOLUME_PATH"
+  echo "  3. Restart container: docker restart $CONTAINER_NAME"
 fi
 
 # ============================================================================
