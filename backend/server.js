@@ -900,6 +900,243 @@ app.get('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (re
 });
 
 /**
+ * Export users (with passwords for migration)
+ * GET /api/users/export
+ * 
+ * Returns JSON array of all users including hashed passwords for migration purposes.
+ * Requires Platform Admin role.
+ * 
+ * IMPORTANT: This route MUST be before /api/users/:userId to avoid route conflicts
+ */
+app.get('/api/users/export', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+  try {
+    console.log(`📤 User export requested by ${req.user.username}`);
+    
+    // Load all users (including passwords for migration)
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    // Read users file directly to include passwords
+    let usersData = [];
+    const possiblePaths = [
+      process.env.USERS_PATH,
+      '/data/users.json',
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
+      path.join(process.cwd(), 'auth', 'users.json')
+    ].filter(Boolean);
+    
+    for (const filePath of possiblePaths) {
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        usersData = JSON.parse(data);
+        console.log(`✅ Loaded ${usersData.length} users from ${filePath}`);
+        break;
+      }
+    }
+    
+    // Add export metadata
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      exportedBy: req.user.username,
+      version: '1.0',
+      userCount: usersData.length,
+      users: usersData
+    };
+    
+    res.json(exportData);
+    console.log(`✅ Exported ${usersData.length} users`);
+  } catch (error) {
+    console.error('❌ User export error:', error);
+    res.status(500).json({ 
+      error: 'Failed to export users',
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Import users from exported data
+ * POST /api/users/import
+ * 
+ * Merges imported users with existing users. By default, preserves existing users.
+ * Query params:
+ *   - mode=merge (default): Skip users with duplicate IDs or usernames
+ *   - mode=override: Update existing users if ID matches, create new if not
+ * 
+ * Requires Platform Admin role.
+ * 
+ * IMPORTANT: This route MUST be before /api/users/:userId to avoid route conflicts
+ */
+app.post('/api/users/import', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+  try {
+    const mode = req.query.mode || 'merge';
+    const importData = req.body;
+    
+    console.log(`📥 User import requested by ${req.user.username} (mode: ${mode})`);
+    
+    // Validate import data structure
+    if (!importData || !Array.isArray(importData.users)) {
+      return res.status(400).json({
+        error: 'Invalid import data',
+        message: 'Expected { users: [...] } structure'
+      });
+    }
+    
+    const importedUsers = importData.users;
+    console.log(`📦 Attempting to import ${importedUsers.length} users`);
+    
+    // Load existing users
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    let existingUsers = [];
+    const possiblePaths = [
+      process.env.USERS_PATH,
+      '/data/users.json',
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
+      path.join(process.cwd(), 'auth', 'users.json')
+    ].filter(Boolean);
+    
+    let usersFilePath = possiblePaths[0];
+    for (const filePath of possiblePaths) {
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        existingUsers = JSON.parse(data);
+        usersFilePath = filePath;
+        console.log(`✅ Loaded ${existingUsers.length} existing users from ${filePath}`);
+        break;
+      }
+    }
+    
+    const results = {
+      mode,
+      total: importedUsers.length,
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      conflicts: [],
+      addedUsers: [],
+      updatedUsers: [],
+      skippedUsers: []
+    };
+    
+    if (mode === 'override') {
+      // Override mode: Update existing or create new
+      importedUsers.forEach(importUser => {
+        const existingIndex = existingUsers.findIndex(u => u.id === importUser.id);
+        
+        if (existingIndex !== -1) {
+          // Update existing user
+          existingUsers[existingIndex] = {
+            ...importUser,
+            updatedAt: new Date().toISOString(),
+            importedAt: new Date().toISOString()
+          };
+          results.updated++;
+          results.updatedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ✏️  Updated: ${importUser.username} (${importUser.id})`);
+        } else {
+          // Check for username conflict
+          const usernameConflict = existingUsers.find(u => u.username === importUser.username);
+          if (usernameConflict) {
+            results.skipped++;
+            results.conflicts.push({
+              reason: 'username_exists',
+              username: importUser.username,
+              existingId: usernameConflict.id,
+              importId: importUser.id
+            });
+            results.skippedUsers.push({
+              username: importUser.username,
+              reason: 'Username already exists with different ID'
+            });
+            console.log(`  ⏭️  Skipped: ${importUser.username} (username conflict)`);
+          } else {
+            // Add new user
+            existingUsers.push({
+              ...importUser,
+              importedAt: new Date().toISOString()
+            });
+            results.added++;
+            results.addedUsers.push({
+              id: importUser.id,
+              username: importUser.username
+            });
+            console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
+          }
+        }
+      });
+    } else {
+      // Merge mode (default): Skip duplicates
+      importedUsers.forEach(importUser => {
+        const idExists = existingUsers.find(u => u.id === importUser.id);
+        const usernameExists = existingUsers.find(u => u.username === importUser.username);
+        
+        if (idExists) {
+          results.skipped++;
+          results.conflicts.push({
+            reason: 'id_exists',
+            id: importUser.id,
+            username: importUser.username
+          });
+          results.skippedUsers.push({
+            username: importUser.username,
+            reason: 'User ID already exists'
+          });
+          console.log(`  ⏭️  Skipped: ${importUser.username} (ID exists)`);
+        } else if (usernameExists) {
+          results.skipped++;
+          results.conflicts.push({
+            reason: 'username_exists',
+            username: importUser.username,
+            existingId: usernameExists.id,
+            importId: importUser.id
+          });
+          results.skippedUsers.push({
+            username: importUser.username,
+            reason: 'Username already exists'
+          });
+          console.log(`  ⏭️  Skipped: ${importUser.username} (username exists)`);
+        } else {
+          // Add new user
+          existingUsers.push({
+            ...importUser,
+            importedAt: new Date().toISOString()
+          });
+          results.added++;
+          results.addedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
+        }
+      });
+    }
+    
+    // Save updated users
+    const { atomicWriteJSON } = await import('./utils/atomicWrite.js');
+    await atomicWriteJSON(usersFilePath, existingUsers, { backup: true });
+    
+    console.log(`✅ Import complete: ${results.added} added, ${results.updated} updated, ${results.skipped} skipped`);
+    
+    res.json({
+      success: true,
+      message: `Import complete: ${results.added} added, ${results.updated} updated, ${results.skipped} skipped`,
+      results
+    });
+  } catch (error) {
+    console.error('❌ User import error:', error);
+    res.status(500).json({ 
+      error: 'Failed to import users',
+      message: error.message 
+    });
+  }
+});
+
+/**
  * Get user by ID
  */
 app.get('/api/users/:userId', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
@@ -1099,16 +1336,12 @@ app.post('/api/users/:userId/reset-password', authenticate, requireRole(ROLES.PL
   }
 });
 
-// ===== USER IMPORT/EXPORT ENDPOINTS (Platform Admin only) =====
+// ===== SSO CONFIGURATION ENDPOINTS (Platform Admin only) =====
 
 /**
- * Export all users (with hashed passwords for migration)
- * GET /api/users/export
- * 
- * Returns JSON array of all users including hashed passwords for migration purposes.
- * Requires Platform Admin role.
+ * Get SSO configuration
  */
-app.get('/api/users/export', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+app.get('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
   try {
     console.log(`📤 User export requested by ${req.user.username}`);
     
@@ -1149,186 +1382,6 @@ app.get('/api/users/export', authenticate, requireRole(ROLES.PLATFORM_ADMIN), as
     console.error('❌ User export error:', error);
     res.status(500).json({ 
       error: 'Failed to export users',
-      message: error.message 
-    });
-  }
-});
-
-/**
- * Import users from exported data
- * POST /api/users/import
- * 
- * Merges imported users with existing users. By default, preserves existing users.
- * Query params:
- *   - mode=merge (default): Skip users with duplicate IDs or usernames
- *   - mode=override: Update existing users if ID matches, create new if not
- * 
- * Requires Platform Admin role.
- */
-app.post('/api/users/import', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
-  try {
-    const mode = req.query.mode || 'merge';
-    const importData = req.body;
-    
-    console.log(`📥 User import requested by ${req.user.username} (mode: ${mode})`);
-    
-    // Validate import data structure
-    if (!importData || !Array.isArray(importData.users)) {
-      return res.status(400).json({
-        error: 'Invalid import data',
-        message: 'Expected { users: [...] } structure'
-      });
-    }
-    
-    const importedUsers = importData.users;
-    console.log(`📦 Attempting to import ${importedUsers.length} users`);
-    
-    // Load existing users
-    const fs = await import('fs');
-    const path = await import('path');
-    
-    let existingUsers = [];
-    const possiblePaths = [
-      process.env.USERS_PATH,
-      '/data/users.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
-      path.join(process.cwd(), 'auth', 'users.json')
-    ].filter(Boolean);
-    
-    let usersFilePath = possiblePaths[0];
-    for (const filePath of possiblePaths) {
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, 'utf-8');
-        existingUsers = JSON.parse(data);
-        usersFilePath = filePath;
-        console.log(`✅ Loaded ${existingUsers.length} existing users from ${filePath}`);
-        break;
-      }
-    }
-    
-    const results = {
-      mode,
-      total: importedUsers.length,
-      added: 0,
-      updated: 0,
-      skipped: 0,
-      conflicts: [],
-      addedUsers: [],
-      updatedUsers: [],
-      skippedUsers: []
-    };
-    
-    if (mode === 'override') {
-      // Override mode: Update existing or create new
-      importedUsers.forEach(importUser => {
-        const existingIndex = existingUsers.findIndex(u => u.id === importUser.id);
-        
-        if (existingIndex !== -1) {
-          // Update existing user
-          existingUsers[existingIndex] = {
-            ...importUser,
-            updatedAt: new Date().toISOString(),
-            importedAt: new Date().toISOString()
-          };
-          results.updated++;
-          results.updatedUsers.push({
-            id: importUser.id,
-            username: importUser.username
-          });
-          console.log(`  ✏️  Updated: ${importUser.username} (${importUser.id})`);
-        } else {
-          // Check for username conflict
-          const usernameConflict = existingUsers.find(u => u.username === importUser.username);
-          if (usernameConflict) {
-            results.skipped++;
-            results.conflicts.push({
-              reason: 'username_exists',
-              username: importUser.username,
-              existingId: usernameConflict.id,
-              importId: importUser.id
-            });
-            results.skippedUsers.push({
-              username: importUser.username,
-              reason: 'Username already exists with different ID'
-            });
-            console.log(`  ⏭️  Skipped: ${importUser.username} (username conflict)`);
-          } else {
-            // Add new user
-            existingUsers.push({
-              ...importUser,
-              importedAt: new Date().toISOString()
-            });
-            results.added++;
-            results.addedUsers.push({
-              id: importUser.id,
-              username: importUser.username
-            });
-            console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
-          }
-        }
-      });
-    } else {
-      // Merge mode (default): Skip duplicates
-      importedUsers.forEach(importUser => {
-        const idExists = existingUsers.find(u => u.id === importUser.id);
-        const usernameExists = existingUsers.find(u => u.username === importUser.username);
-        
-        if (idExists) {
-          results.skipped++;
-          results.conflicts.push({
-            reason: 'id_exists',
-            id: importUser.id,
-            username: importUser.username
-          });
-          results.skippedUsers.push({
-            username: importUser.username,
-            reason: 'User ID already exists'
-          });
-          console.log(`  ⏭️  Skipped: ${importUser.username} (ID exists)`);
-        } else if (usernameExists) {
-          results.skipped++;
-          results.conflicts.push({
-            reason: 'username_exists',
-            username: importUser.username,
-            existingId: usernameExists.id,
-            importId: importUser.id
-          });
-          results.skippedUsers.push({
-            username: importUser.username,
-            reason: 'Username already exists'
-          });
-          console.log(`  ⏭️  Skipped: ${importUser.username} (username exists)`);
-        } else {
-          // Add new user
-          existingUsers.push({
-            ...importUser,
-            importedAt: new Date().toISOString()
-          });
-          results.added++;
-          results.addedUsers.push({
-            id: importUser.id,
-            username: importUser.username
-          });
-          console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
-        }
-      });
-    }
-    
-    // Save updated users
-    const { atomicWriteJSON } = await import('./utils/atomicWrite.js');
-    await atomicWriteJSON(usersFilePath, existingUsers, { backup: true });
-    
-    console.log(`✅ Import complete: ${results.added} added, ${results.updated} updated, ${results.skipped} skipped`);
-    
-    res.json({
-      success: true,
-      message: `Import complete: ${results.added} added, ${results.updated} updated, ${results.skipped} skipped`,
-      results
-    });
-  } catch (error) {
-    console.error('❌ User import error:', error);
-    res.status(500).json({ 
-      error: 'Failed to import users',
       message: error.message 
     });
   }
