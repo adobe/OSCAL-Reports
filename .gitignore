@@ -110,3 +110,8 @@ volumes/
 uploads/
 user-data/
 .cursor/
+
+# Vercel deployment files (NOT USED - Docker deployments only)
+.vercel/
+.vercel
+# Note: vercel.json and .vercelignore are committed to block deployments
