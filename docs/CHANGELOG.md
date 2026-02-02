@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - Planned
+
+### Release Notes
+- **Status**: Planned for Next Release
+- **Breaking Changes**: None
+- **Backward Compatible**: Yes
+- **Focus**: International framework expansion - German BSI security standards
+
+### Planned
+
+#### New Framework Support
+- **BSI Grundschutz++ Integration** 🇩🇪
+  - Added German IT security standards from BSI (Bundesamt für Sicherheit in der Informationstechnik)
+  - Grundschutz++ Kompendium catalogue support
+  - Source: [BSI Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
+  - OSCAL-compliant format (compatible with existing infrastructure)
+  - German-language controls with bilingual implementation support
+  - Full export support (OSCAL JSON, Excel, PDF, CCM)
+  - AI-powered suggestions for German controls (Mistral 7B multilingual support)
+
+#### Documentation
+- **BSI Catalogue Integration Guide** (`docs/BSI_CATALOGUE_INTEGRATION.md`)
+  - Comprehensive BSI background and usage guide
+  - German control implementation guidance
+  - Language considerations and translation resources
+  - AI integration for German security terminology
+  - Troubleshooting and best practices
+
+#### Frontend Enhancements
+- Added BSI Grundschutz++ to catalogue selection dropdown
+- German flag indicator (🇩🇪) for German-language catalogues
+- Support for German characters (umlauts, ß) in all export formats
+
+---
+
 ## [1.6.7] - TBD
 
 ### Release Notes

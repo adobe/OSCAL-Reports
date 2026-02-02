@@ -18,6 +18,13 @@ const SAMPLE_CATALOGUES = [
     publisher: 'ACSC'
   },
   {
+    name: 'BSI Grundschutz++ (Kompendium) 🇩🇪',
+    url: 'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+    description: 'German IT Security Standards - Grundschutz++ Baseline',
+    classification: 'standard',
+    publisher: 'BSI'
+  },
+  {
     name: 'Australian ISM (Official Sensitive Baseline)',
     url: 'https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_OFFICIAL_SENSITIVE-baseline-resolved-profile_catalog.json',
     description: 'Australian Signals Directorate ISM Official Sensitive Baseline',
