@@ -1,7 +1,106 @@
 # Pull Request Submission Checklist
 
 ## Purpose
-This document provides a comprehensive checklist for submitting Pull Requests to external repositories (like TrueNAS apps catalog) to avoid common pitfalls and ensure clean, reviewable PRs.
+This document provides comprehensive checklists for submitting Pull Requests:
+1. **Internal PRs**: Within this OSCAL Report Generator repository
+2. **External PRs**: To external repositories (like TrueNAS apps catalog)
+
+---
+
+## 🏠 Internal Repository PRs
+
+### Branch Protection Rules
+
+**🚨 CRITICAL: Only Pre_Prod can merge to main**
+
+This rule is **strictly enforced** by GitHub Actions workflow (`.github/workflows/branch-protection-check.yml`).
+
+### Creating PRs to main Branch
+
+**✅ CORRECT Way:**
+```bash
+# Step 1: Ensure your changes are in Pre_Prod branch
+git checkout Pre_Prod
+git pull origin Pre_Prod
+
+# Step 2: Create PR from Pre_Prod to main
+gh pr create --base main --head Pre_Prod --title "Release v1.6.7"
+```
+
+**❌ WRONG Ways (Will Be Rejected):**
+```bash
+# ❌ Creating custom branch for syncing
+git checkout -b sync-preprod-to-main-v1.6.7
+gh pr create --base main  # BLOCKED by workflow
+
+# ❌ Creating PR from Development
+gh pr create --base main --head Development  # BLOCKED
+
+# ❌ Creating PR from Quality_Test
+gh pr create --base main --head Quality_Test  # BLOCKED
+
+# ❌ Creating PR from feature branch
+gh pr create --base main --head feature/my-feature  # BLOCKED
+```
+
+### Why PRs Get Rejected
+
+**Error Message:**
+```
+❌ ERROR: Only 'Pre_Prod' branch can merge to 'main'.
+
+Current PR: sync-preprod-to-main-v1.6.7 → main
+
+Required flow:
+  Development/Quality_Test → Pre_Prod → main
+
+Please close this PR and create a PR to 'Pre_Prod' instead.
+```
+
+**Common Mistakes:**
+1. Creating a custom branch (e.g., `sync-preprod-to-main-v1.6.7`) to sync changes
+2. Trying to merge Development or Quality_Test directly to main
+3. Creating feature branches that target main
+
+**Solution:**
+- Always merge your changes into Pre_Prod first
+- Then create PR directly from Pre_Prod to main
+- Never create intermediate branches for syncing to main
+
+### Internal PR Checklist
+
+Before creating PR to Pre_Prod or main:
+
+- [ ] **Version bumped** using `./bump_version.sh`
+- [ ] **All package.json files** have matching versions
+- [ ] **CHANGELOG.md** updated with version entry
+- [ ] **Tests passing** locally (`npm run test`)
+- [ ] **Linting clean** (if configured: `npm run lint`)
+- [ ] **Branch flow correct**:
+  - To Pre_Prod: From Development or Quality_Test ✅
+  - To main: From Pre_Prod ONLY ✅
+- [ ] **No hardcoded credentials** or sensitive data
+- [ ] **GitHub Actions passing** on source branch
+
+### Branch Flow Diagram
+
+```
+Development  ────┐
+                 ├──> Pre_Prod ────> main (Production)
+Quality_Test ────┘
+
+✅ Development → Pre_Prod → main (Correct)
+❌ Development → main (Blocked)
+❌ Custom branch → main (Blocked)
+```
+
+**See [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) for complete internal workflow details.**
+
+---
+
+## 🌐 External Repository PRs
+
+This section covers Pull Requests to external repositories (like TrueNAS apps catalog) to avoid common pitfalls and ensure clean, reviewable PRs.
 
 ## Lessons Learned from PR #4144
 

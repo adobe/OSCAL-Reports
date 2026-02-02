@@ -1,14 +1,16 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-frontend",
   "private": true,
-  "version": "1.6.6",
+  "version": "1.6.7",
   "type": "module",
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
   "license": "GPL-3.0-or-later",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "npx eslint . --ext .js,.jsx",
+    "lint:fix": "npx eslint . --ext .js,.jsx --fix"
   },
   "dependencies": {
     "react": "^18.2.0",
