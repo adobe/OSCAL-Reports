@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "oscal-reports-no-deployment",
+  "builds": [],
+  "routes": [],
+  "env": {},
+  "build": {
+    "env": {}
+  },
+  "github": {
+    "enabled": false,
+    "silent": true
+  }
+}
