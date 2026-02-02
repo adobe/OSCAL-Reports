@@ -3,9 +3,10 @@ name: Docker Hub Publish
 on:
   release:
     types: [published]
+  # push:
+  #   branches:
+  #     - main  # Disabled to save Actions minutes - use manual workflow_dispatch or tags
   push:
-    branches:
-      - main
     tags:
       - 'v*.*.*'
   workflow_dispatch:
