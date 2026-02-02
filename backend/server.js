@@ -23,6 +23,8 @@ import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
 import { loadConfig, saveConfig, validateConfig } from './configManager.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
+import { checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
+import { checkAIAvailability, detectModelFamily } from './aiModelRouter.js';
 import { addIntegrityHash, verifyIntegrityHash, getIntegrityInfo } from './integrityService.js';
 import { getLogStats, cleanupOldLogs } from './aiLogger.js';
 import { 
@@ -3933,7 +3935,55 @@ app.post('/api/suggest-control', authenticate, async (req, res) => {
 });
 
 /**
- * Check Mistral 7B availability and configuration
+ * Check AI availability (automatically routes to correct service based on model)
+ */
+app.get('/api/ai/status', authenticate, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Checking AI availability...');
+      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
+      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
+    }
+    
+    // Detect model family and check appropriate service
+    const modelFamily = await detectModelFamily();
+    const status = await checkAIAvailability();
+    
+    console.log(`📊 AI status:`, {
+      modelFamily: modelFamily,
+      available: status.available,
+      provider: status.provider,
+      reason: status.reason
+    });
+    
+    res.json({
+      success: true,
+      modelFamily: modelFamily,
+      ...status,
+      environment: {
+        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
+        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
+        NODE_ENV: process.env.NODE_ENV || 'not set'
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error checking AI status:', error);
+    console.error('   Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check AI status',
+      details: error.message,
+      environment: {
+        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
+        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
+        NODE_ENV: process.env.NODE_ENV || 'not set'
+      }
+    });
+  }
+});
+
+/**
+ * Check Mistral availability and configuration (legacy endpoint - use /api/ai/status instead)
  */
 app.get('/api/mistral/status', authenticate, async (req, res) => {
   try {
@@ -3966,6 +4016,50 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to check Mistral status',
+      details: error.message,
+      environment: {
+        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
+        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
+        NODE_ENV: process.env.NODE_ENV || 'not set'
+      }
+    });
+  }
+});
+
+/**
+ * Check Gemma availability and configuration
+ */
+app.get('/api/gemma/status', authenticate, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Checking Gemma availability...');
+      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
+      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
+    }
+    
+    const status = await checkGemmaAvailability();
+    
+    console.log(`📊 Gemma status:`, {
+      available: status.available,
+      provider: status.provider,
+      reason: status.reason
+    });
+    
+    res.json({
+      success: true,
+      ...status,
+      environment: {
+        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
+        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
+        NODE_ENV: process.env.NODE_ENV || 'not set'
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error checking Gemma status:', error);
+    console.error('   Stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check Gemma status',
       details: error.message,
       environment: {
         OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
