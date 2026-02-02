@@ -1343,57 +1343,6 @@ app.post('/api/users/:userId/reset-password', authenticate, requireRole(ROLES.PL
  */
 app.get('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
   try {
-    console.log(`📤 User export requested by ${req.user.username}`);
-    
-    // Load all users (including passwords for migration)
-    const fs = await import('fs');
-    const path = await import('path');
-    
-    // Read users file directly to include passwords
-    let usersData = [];
-    const possiblePaths = [
-      process.env.USERS_PATH,
-      '/data/users.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
-      path.join(process.cwd(), 'auth', 'users.json')
-    ].filter(Boolean);
-    
-    for (const filePath of possiblePaths) {
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, 'utf-8');
-        usersData = JSON.parse(data);
-        console.log(`✅ Loaded ${usersData.length} users from ${filePath}`);
-        break;
-      }
-    }
-    
-    // Add export metadata
-    const exportData = {
-      exportedAt: new Date().toISOString(),
-      exportedBy: req.user.username,
-      version: '1.0',
-      userCount: usersData.length,
-      users: usersData
-    };
-    
-    res.json(exportData);
-    console.log(`✅ Exported ${usersData.length} users`);
-  } catch (error) {
-    console.error('❌ User export error:', error);
-    res.status(500).json({ 
-      error: 'Failed to export users',
-      message: error.message 
-    });
-  }
-});
-
-// ===== SSO CONFIGURATION ENDPOINTS (Platform Admin only) =====
-
-/**
- * Get SSO configuration
- */
-app.get('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
-  try {
     const config = loadConfig();
     const ssoConfig = config.ssoConfig || {
       saml: { enabled: false },
