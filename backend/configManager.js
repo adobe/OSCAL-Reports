@@ -93,7 +93,12 @@ const DEFAULT_CONFIG = {
     apiToken: '',
     model: 'mistral:7b',
     timeout: 180000, // 180 seconds (3 minutes) to allow for model loading and processing
-    organizationName: 'Adobe' // Default organization name
+    organizationName: 'Adobe', // Default organization name
+    maxTokens: {
+      connectionTest: 10,        // Minimal response for testing connectivity
+      controlGeneration: 150,    // Short responses for control implementations (~250 chars)
+      general: 512               // Standard responses for general operations
+    }
   },
   lastModified: new Date().toISOString(),
   version: '1.0.0'
@@ -181,7 +186,11 @@ async function saveConfig(config) {
       // Ensure aiConfig structure is complete
       aiConfig: {
         ...DEFAULT_CONFIG.aiConfig,
-        ...config.aiConfig
+        ...config.aiConfig,
+        maxTokens: {
+          ...DEFAULT_CONFIG.aiConfig.maxTokens,
+          ...config.aiConfig?.maxTokens
+        }
       },
       // Explicitly preserve publishedSoaUrl (even if empty string)
       publishedSoaUrl: config.publishedSoaUrl !== undefined 
