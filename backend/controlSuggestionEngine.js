@@ -1,14 +1,14 @@
 /**
  * Control Suggestion Engine
  * Provides automated suggestions for control implementations based on patterns, templates, and best practices
- * Enhanced with Mistral 7B AI for implementation text generation
+ * Enhanced with AI for implementation text generation (supports Mistral, Gemma, and other models)
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
  * @license GPL-3.0-or-later
  */
 
-import { generateImplementationWithMistral } from './mistralService.js';
+import { generateImplementationWithAI } from './aiModelRouter.js';
 import { loadConfig } from './configManager.js';
 
 /**
@@ -356,69 +356,71 @@ export async function suggestControlImplementation(control, existingControls = [
     suggestions.testingFrequency = suggestions.testingFrequency || 'Quarterly';
     suggestions.riskRating = suggestions.riskRating || 'Medium';
 
-    // ALWAYS generate implementation text using Mistral 7B (even if other fields came from templates)
+    // ALWAYS generate implementation text using AI (even if other fields came from templates)
     // This ensures unique, context-aware implementation text for each control
+    // Uses aiModelRouter to automatically route to the correct service (Mistral, Gemma, etc.)
     const templateImplementation = suggestions.implementation; // Save template implementation as fallback
-    suggestions.implementation = null; // Clear to force Mistral generation
+    suggestions.implementation = null; // Clear to force AI generation
     
-    let mistralUsed = false;
-    let mistralError = null;
-    let mistralAttempted = false;
+    let aiUsed = false;
+    let aiError = null;
+    let aiAttempted = false;
     
     try {
-      console.log(`🤖 Attempting to generate implementation with Mistral for control: ${control.id}`);
-      mistralAttempted = true;
-      // Try Mistral 7B for implementation text generation
+      console.log(`🤖 Attempting to generate implementation with AI for control: ${control.id}`);
+      aiAttempted = true;
+      // Try AI generation (automatically routed to appropriate service)
       // Pass existing controls to learn writing style
-      const mistralResult = await generateImplementationWithMistral(
+      const aiResult = await generateImplementationWithAI(
         control,
         templateImplementation ? () => templateImplementation : generateGenericImplementation, // Use template as fallback if available
         existingControls // Pass existing controls for style learning
       );
       
       // Handle both old format (string) and new format (object with aiGenerated flag)
-      const mistralImplementation = typeof mistralResult === 'string' ? mistralResult : (mistralResult?.text || null);
-      // CRITICAL: aiGenerated is ONLY true when Mistral/Ollama actually generated the text
-      // It's false for template/fallback values even if they came through Mistral service
-      const aiGenerated = typeof mistralResult === 'object' && mistralResult?.aiGenerated === true;
+      const aiImplementation = typeof aiResult === 'string' ? aiResult : (aiResult?.text || null);
+      // CRITICAL: aiGenerated is ONLY true when AI actually generated the text
+      // It's false for template/fallback values even if they came through AI service
+      const aiGenerated = typeof aiResult === 'object' && aiResult?.aiGenerated === true;
       // Check if this was an attempted AI call that failed (has error property)
-      const aiAttemptedButFailed = typeof mistralResult === 'object' && mistralResult?.attempted === true && mistralResult?.aiGenerated === false;
+      const aiAttemptedButFailed = typeof aiResult === 'object' && aiResult?.attempted === true && aiResult?.aiGenerated === false;
       
       // Debug logging (development only)
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🔍 Mistral result analysis for control ${control.id}:`, {
-          isObject: typeof mistralResult === 'object',
-          hasText: !!mistralImplementation,
-          textLength: mistralImplementation?.length || 0,
+        console.log(`🔍 AI result analysis for control ${control.id}:`, {
+          isObject: typeof aiResult === 'object',
+          hasText: !!aiImplementation,
+          textLength: aiImplementation?.length || 0,
           aiGenerated: aiGenerated,
-          attempted: mistralResult?.attempted,
-          error: mistralResult?.error
+          attempted: aiResult?.attempted,
+          error: aiResult?.error,
+          provider: aiResult?.provider
         });
       }
       
-      if (mistralImplementation && mistralImplementation.length > 50 && aiGenerated) {
-        // Use Mistral output as-is (no truncation - prompt guides it to 250 chars)
+      if (aiImplementation && aiImplementation.length > 50 && aiGenerated) {
+        // Use AI output as-is (no truncation - prompt guides it to 250 chars)
         // Just normalize whitespace to match existing text format
-        suggestions.implementation = mistralImplementation.replace(/\s+/g, ' ').trim();
+        suggestions.implementation = aiImplementation.replace(/\s+/g, ' ').trim();
         suggestions.confidence = Math.max(suggestions.confidence, 0.7); // Boost confidence if AI-generated
-        // CRITICAL: mistralUsed is ONLY true when AI actually generated the text
-        mistralUsed = true;
-        console.log(`✅ Successfully generated implementation with AI Agents for control: ${control.id} (${suggestions.implementation.length} chars)`);
+        // CRITICAL: aiUsed is ONLY true when AI actually generated the text
+        aiUsed = true;
+        console.log(`✅ Successfully generated implementation with AI for control: ${control.id} (${suggestions.implementation.length} chars)`);
       } else {
         // Fallback to template or generic implementation (truncate fallbacks since they're static)
         suggestions.implementation = templateImplementation ? truncateImplementationText(templateImplementation) : generateGenericImplementation(control);
         // Set error if AI was attempted but failed, or if result was empty
         if (aiAttemptedButFailed) {
-          mistralError = mistralResult?.error || 'AI generation failed';
-        } else if (!mistralImplementation || mistralImplementation.length <= 50) {
-          mistralError = typeof mistralResult === 'object' ? mistralResult?.error : 'Empty response';
+          aiError = aiResult?.error || 'AI generation failed';
+        } else if (!aiImplementation || aiImplementation.length <= 50) {
+          aiError = typeof aiResult === 'object' ? aiResult?.error : 'Empty response';
         }
-        console.log(`⚠️ Mistral ${aiAttemptedButFailed ? 'failed' : 'returned empty'}, using fallback for control: ${control.id}`);
+        console.log(`⚠️ AI ${aiAttemptedButFailed ? 'failed' : 'returned empty'}, using fallback for control: ${control.id}`);
       }
     } catch (error) {
-      mistralError = error.message;
-      mistralAttempted = true;
-      console.warn(`⚠️ Mistral generation failed for control ${control.id}, using fallback:`, error.message);
+      aiError = error.message;
+      aiAttempted = true;
+      console.warn(`⚠️ AI generation failed for control ${control.id}, using fallback:`, error.message);
       // Fallback to template or generic implementation (truncate fallbacks since they're static)
       suggestions.implementation = templateImplementation ? truncateImplementationText(templateImplementation) : generateGenericImplementation(control);
     }
@@ -443,22 +445,22 @@ export async function suggestControlImplementation(control, existingControls = [
       }
     }
     
-    // Add AI reasoning ONLY if Mistral was actually called AND succeeded in generating text
-    // mistralUsed is only true when aiGenerated === true (AI actually generated the text)
-    if (mistralUsed) {
+    // Add AI reasoning ONLY if AI was actually called AND succeeded in generating text
+    // aiUsed is only true when aiGenerated === true (AI actually generated the text)
+    if (aiUsed) {
       // Only add this message if AI actually generated the text (not template/fallback)
       cleanedReasoning.push(`Implementation text generated using AI Engine maintained by ${organizationName}`);
-    } else if (mistralAttempted && mistralError) {
-      // Only add fallback message if we actually tried Mistral and it failed
-      // Don't add if Mistral was disabled or not configured
+    } else if (aiAttempted && aiError) {
+      // Only add fallback message if we actually tried AI and it failed
+      // Don't add if AI was disabled or not configured
       // This indicates we tried AI but it failed, so we're using template/generic
       if (templateImplementation) {
-        cleanedReasoning.push(`Using template implementation (AI Agents ${mistralError.includes('unavailable') || mistralError.includes('disabled') ? 'unavailable' : 'error'})`);
+        cleanedReasoning.push(`Using template implementation (AI Agents ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'})`);
       } else {
-        cleanedReasoning.push(`Using generic implementation (AI Agents ${mistralError.includes('unavailable') || mistralError.includes('disabled') ? 'unavailable' : 'error'})`);
+        cleanedReasoning.push(`Using generic implementation (AI Agents ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'})`);
       }
     }
-    // If mistralAttempted is false, Mistral was disabled - don't mention AI at all
+    // If aiAttempted is false, AI was disabled - don't mention AI at all
     
     // Update reasoning with cleaned version (only include what actually happened)
     // If no reasoning was added, add a default one
@@ -469,10 +471,10 @@ export async function suggestControlImplementation(control, existingControls = [
     
     // Add source indicator for frontend display
     // This makes it easy to see if AI was used or fallback was used
-    if (mistralUsed) {
+    if (aiUsed) {
       suggestions.source = 'ai'; // AI Engine generated the implementation text
       suggestions.sourceLabel = 'AI Generated';
-    } else if (mistralAttempted && mistralError) {
+    } else if (aiAttempted && aiError) {
       suggestions.source = 'fallback'; // AI was attempted but failed, using fallback
       suggestions.sourceLabel = 'Template/Pattern (AI Unavailable)';
     } else {

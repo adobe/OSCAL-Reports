@@ -59,10 +59,13 @@ function AIIntegration({ embedded = false }) {
     // Check if it's mistral (also accepted)
     const isMistral = modelLower.includes('mistral') || modelLower.includes('mixtral');
     
-    if (isAccepted || isMistral) {
+    // Check if it's gemma (also accepted)
+    const isGemma = modelLower.includes('gemma');
+    
+    if (isAccepted || isMistral || isGemma) {
       setModelWarning('');
     } else {
-      setModelWarning('This model has not been fully tested with OSCAL context. Mistral, LLaMA 2, Falcon, and GPT-5+ are recommended.');
+      setModelWarning('This model has not been fully tested with OSCAL context. Mistral, Gemma, LLaMA 2, Falcon, and GPT-5+ are recommended.');
     }
   };
 

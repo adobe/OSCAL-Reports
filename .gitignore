@@ -109,3 +109,4 @@ volumes/
 # User-uploaded files (if applicable)
 uploads/
 user-data/
+.cursor/
