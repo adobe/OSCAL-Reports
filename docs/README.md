@@ -23,6 +23,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
 | [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
+| [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
 
 ---
 
@@ -71,9 +72,9 @@
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 20
+- **Total Documents:** 21
 - **Categories:** 6
-- **Last Update:** 2026-01-28
+- **Last Update:** 2026-02-03
 
 ---
 

@@ -58,6 +58,10 @@ The application supports a wide range of official OSCAL catalogs and profiles:
 - IM8 Reform catalog for low-risk cloud systems
 - Source: [GovTechSG/tech-standards](https://github.com/GovTechSG/tech-standards)
 
+#### 🇩🇪 German BSI (Grundschutz++)
+- Grundschutz++ Kompendium (Modern IT security baseline)
+- Source: [BSI-Bund/Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
+
 #### 🇨🇦 Canadian CCCS Profiles
 - Cloud Medium Security Profile
 - ITSP.10.033-01 (User Authentication Guidance)
@@ -151,6 +155,9 @@ The application supports a wide range of official OSCAL catalogs and profiles:
 │  🇸🇬 Singapore IM8:                                           │
 │     • IM8 Reform (Low Risk Cloud)                            │
 │                                                              │
+│  🇩🇪 German BSI (Grundschutz++):                              │
+│     • Grundschutz++ Kompendium                               │
+│                                                              │
 │  🇨🇦 Canadian CCCS Profiles:                                  │
 │     • Cloud Medium Profile                                   │
 │     • ITSP.10.033-01 (User Authentication)                   │
@@ -190,7 +197,7 @@ User → CatalogueInput → Select Catalog (Built-in or Custom URL)
 ```
 
 **Supported Catalog Sources:**
-- Pre-configured catalogs (NIST, Australian ISM, Singapore IM8, Canadian CCCS)
+- Pre-configured catalogs (NIST, Australian ISM, Singapore IM8, Canadian CCCS, German BSI)
 - Custom OSCAL catalog URLs
 - Resolved profile catalogs
 - Full OSCAL catalogs
