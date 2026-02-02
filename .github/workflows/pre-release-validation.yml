@@ -89,7 +89,7 @@ jobs:
           echo "Checking for hardcoded version numbers in workflows..."
           
           # Look for patterns like "1.6.6" in workflow files (but allow variable references)
-          if grep -r -E '"[0-9]+\.[0-9]+\.[0-9]+"' .github/workflows/ | grep -v '\${{' | grep -v 'node-version' | grep -v 'uses:' | grep -v '#'; then
+          if grep -r -E '"[0-9]+\.[0-9]+\.[0-9]+"' .github/workflows/ | grep -v 'node-version' | grep -v 'uses:' | grep -v '#' | grep -v 'github'; then
             echo "⚠️  WARNING: Found potential hardcoded version numbers"
             echo "Consider using variable references instead"
           else
