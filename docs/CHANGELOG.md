@@ -7,6 +7,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - Planned
+
+### Release Notes
+- **Status**: Planned for Next Release
+- **Breaking Changes**: None
+- **Backward Compatible**: Yes
+- **Focus**: International framework expansion - German BSI security standards
+
+### Planned
+
+#### New Framework Support
+- **BSI Grundschutz++ Integration** 🇩🇪
+  - Added German IT security standards from BSI (Bundesamt für Sicherheit in der Informationstechnik)
+  - Grundschutz++ Kompendium catalogue support
+  - Source: [BSI Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
+  - OSCAL-compliant format (compatible with existing infrastructure)
+  - German-language controls with bilingual implementation support
+  - Full export support (OSCAL JSON, Excel, PDF, CCM)
+  - AI-powered suggestions for German controls (Mistral 7B multilingual support)
+
+#### Documentation
+- **BSI Catalogue Integration Guide** (`docs/BSI_CATALOGUE_INTEGRATION.md`)
+  - Comprehensive BSI background and usage guide
+  - German control implementation guidance
+  - Language considerations and translation resources
+  - AI integration for German security terminology
+  - Troubleshooting and best practices
+
+#### Frontend Enhancements
+- Added BSI Grundschutz++ to catalogue selection dropdown
+- German flag indicator (🇩🇪) for German-language catalogues
+- Support for German characters (umlauts, ß) in all export formats
+
+---
+
+## [1.6.7] - TBD
+
+### Release Notes
+- **Status**: In Development
+- **Breaking Changes**: None
+- **Backward Compatible**: Yes
+- **Focus**: Release process improvements, error prevention, and security updates
+
+### Security
+
+#### Dependency Vulnerabilities Fixed
+- **Fixed HIGH severity DoS vulnerability** in `fast-xml-parser` dependency
+  - CVE: GHSA-37qj-frw5-hhjh (CVE-2026-25128)
+  - CVSS Score: 7.5 (HIGH)
+  - Issue: RangeError DoS when parsing XML with out-of-range numeric entities
+  - Updated: `fast-xml-parser` 5.2.5 → 5.3.4
+  - Impact: Only affects AWS Bedrock integration (transitive dependency through AWS SDK)
+  - Attack Vector: Malicious XML responses from AWS API (low probability)
+- **Fixed HIGH severity vulnerability** in `@aws-sdk/xml-builder`
+  - Updated: `@aws-sdk/xml-builder` 3.972.2 → 3.972.3
+  - Transitive dependency fix (automatic with fast-xml-parser update)
+
+**Affected Components:**
+- AWS Bedrock integration for Mistral and Gemma models only
+- Does not affect: Ollama (local), Mistral API, Google AI API, or non-AI features
+
+**Testing Required:**
+- Priority 1: AWS Bedrock integration (if configured)
+- Priority 2: Regression testing of other AI providers
+- Priority 3: Non-AI feature verification
+
+See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
+
+### Added
+
+#### Release Quality Improvements
+- **ESLint Configuration**: Added ESLint v9 flat config files for code quality
+  - `eslint.config.js` (root)
+  - `backend/eslint.config.js` (Node.js backend)
+  - `frontend/eslint.config.js` (React frontend with JSX)
+- **Lint Scripts**: Added npm lint scripts to all package.json files
+  - `npm run lint` - Run linting
+  - `npm run lint:fix` - Auto-fix linting issues
+  - `npm run lint:all` - Lint all packages (root script)
+
+#### GitHub Actions Workflows
+- **Pre-Release Validation Workflow** (`.github/workflows/pre-release-validation.yml`)
+  - Version consistency checks across package.json files
+  - CHANGELOG.md update validation
+  - Workflow YAML syntax validation
+  - Tar command syntax validation with test execution
+  - ESLint configuration presence check
+  - Branch naming convention validation
+  - Documentation presence check
+- **Shell Validation Workflow** (`.github/workflows/shell-validation.yml`)
+  - ShellCheck linting for all .sh files
+  - Git hooks validation
+  - Shell script best practices check
+  - Executable permissions check
+  - Dry-run testing for scripts
+
+#### Documentation
+- **Release Checklist** (`docs/RELEASE_CHECKLIST.md`)
+  - Comprehensive pre-release checklist
+  - Release day procedures
+  - Common pitfalls and solutions
+  - Emergency procedures (rollback, hotfix)
+  - Quick reference commands
+  - Checklist template for new releases
+
+### Enhanced
+
+#### Release Workflow
+- **Fixed tar command syntax** in `.github/workflows/release.yml`
+  - Moved `--exclude` options before file arguments
+  - Prevents "tar: --exclude has no effect" errors
+  - Validated with test tar operations
+
+#### Documentation
+- **Branching Strategy** (`docs/BRANCHING_STRATEGY.md`)
+  - Added explicit section on correct PR creation to main branch
+  - Documented common mistakes (creating custom sync branches)
+  - Added examples of correct vs incorrect PR workflows
+  - Clarified why only Pre_Prod can merge to main
+- **PR Submission Checklist** (`docs/PR_SUBMISSION_CHECKLIST.md`)
+  - Added internal repository PR guidelines
+  - Documented branch protection rules
+  - Added examples of rejected PR patterns
+  - Included branch flow diagram
+
+### Fixed
+
+#### GitHub Actions
+- **Tar Archive Creation**: Fixed syntax in release.yml to prevent archive creation failures
+  - Issue: `--exclude` options positioned after file arguments
+  - Solution: Moved excludes before file arguments per tar command requirements
+  - Impact: Release workflow now creates archives successfully
+
+### Changed
+
+#### Code Quality
+- **Linting Infrastructure**: Project now has optional but recommended linting setup
+  - Can be enabled by installing ESLint: `npm install --save-dev eslint@9`
+  - Configurations already in place for when linting is desired
+  - Non-blocking - project works with or without ESLint installed
+
+---
+
 ## [1.6.6] - 2026-01-28
 
 ### Release Notes
