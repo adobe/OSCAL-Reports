@@ -4,6 +4,185 @@ This document tracks security fixes and architectural security decisions for the
 
 ---
 
+## v1.6.7 - AWS SDK Dependency Vulnerability Fix (February 2026)
+
+### Issue Summary
+Two HIGH severity vulnerabilities identified in backend dependencies affecting AWS Bedrock integration:
+
+1. **fast-xml-parser DoS Vulnerability**
+   - CVE: GHSA-37qj-frw5-hhjh (CVE-2026-25128)
+   - CVSS Score: 7.5 (HIGH)
+   - Severity: HIGH
+   - CWE-248: Uncaught Exception
+
+2. **@aws-sdk/xml-builder Vulnerability**
+   - Severity: HIGH (transitive dependency)
+   - Caused by: fast-xml-parser vulnerability
+
+### Vulnerability Details
+
+#### fast-xml-parser RangeError DoS
+The XML parser throws an uncaught exception when encountering malformed numeric entities such as `&#9999999;` or `&#xFFFFFF;`, causing application crashes when processing untrusted XML input.
+
+**Dependency Chain:**
+```
+@aws-sdk/client-bedrock-runtime@3.978.0
+  └── @aws-sdk/core@3.973.4
+      └── @aws-sdk/xml-builder@3.972.2 (VULNERABLE)
+          └── fast-xml-parser@5.2.5 (VULNERABLE)
+```
+
+### Root Cause
+The vulnerability exists in a transitive dependency used by AWS SDK for parsing XML responses from AWS Bedrock API. The XML parser fails to handle out-of-range numeric entities gracefully.
+
+### Affected Components
+
+**Directly Affected:**
+- AWS Bedrock integration ONLY (when `aiConfig.provider = "aws-bedrock"`)
+- Files:
+  - `backend/mistralService.js` (lines 410-550): `generateWithAWSBedrock()`
+  - `backend/gemmaService.js` (lines 413-550): `generateWithAWSBedrock()`
+  - `backend/server.js` (lines 4179-4290): `/api/ai/test-connection` endpoint
+  - `backend/controlSuggestionEngine.js` (indirect via AI router)
+
+**NOT Affected:**
+- Ollama (local AI) - uses JSON, no XML parsing
+- Mistral Cloud API - uses JSON, no XML parsing
+- Google AI API - uses JSON, no XML parsing
+- All non-AI features (user management, report generation, etc.)
+- Frontend components
+
+### Risk Assessment
+
+**Risk Level:** MEDIUM-HIGH (despite HIGH CVSS score)
+
+**Justification:**
+- XML parser only processes responses from AWS Bedrock API (trusted source)
+- Attack requires Man-in-the-Middle attack on AWS API communication OR compromise of AWS services
+- Not directly exploitable through user input
+- Only affects subset of users who configured AWS Bedrock (optional feature)
+
+**However:**
+- DoS vulnerability can crash entire application
+- No authentication required once AWS Bedrock is configured
+- Affects production deployments using AWS Bedrock
+
+### Solution Implemented
+
+Updated vulnerable dependencies to patched versions:
+
+**File Modified:** `backend/package-lock.json`
+
+**Changes:**
+- `fast-xml-parser`: 5.2.5 → 5.3.4 (FIXED)
+- `@aws-sdk/xml-builder`: 3.972.2 → 3.972.3 (FIXED)
+
+**Command Used:**
+```bash
+cd backend
+npm audit fix
+```
+
+**Verification:**
+```bash
+npm audit
+# Result: 0 vulnerabilities
+```
+
+### Testing Strategy
+
+#### Priority 1: Critical - AWS Bedrock Integration (3-4 hours)
+**Must test if AWS Bedrock is configured in any environment**
+
+1. **Connection Test**
+   - Endpoint: `POST /api/ai/test-connection`
+   - Config: `provider: "aws-bedrock"`
+   - Expected: Connection succeeds, no crashes
+
+2. **Mistral via AWS Bedrock**
+   - Generate control implementation using Mistral Large on Bedrock
+   - Test with multiple control families (NIST, ISO, CIS, ISM)
+   - Verify no crashes with various XML response sizes
+
+3. **Gemma via AWS Bedrock**
+   - Generate control implementation using Gemma on Bedrock
+   - Test batch control generation
+   - Verify error handling for network timeouts
+
+4. **Error Handling**
+   - Test with invalid AWS credentials
+   - Test with invalid region
+   - Verify graceful error messages (no uncaught exceptions)
+
+#### Priority 2: Regression - Other AI Providers (1-2 hours)
+Quick smoke tests to ensure no breaking changes:
+
+1. **Ollama (Local)**: Generate 1 control implementation
+2. **Mistral Cloud API**: Generate 1 control implementation
+3. **Google AI API**: Generate 1 control implementation
+
+#### Priority 3: Non-AI Features (30 minutes)
+Verify core features unaffected:
+- User authentication/authorization
+- Manual control entry and editing
+- Report generation (PDF/Excel)
+- SSP/SOA export
+
+### Test Environment Requirements
+
+**For AWS Bedrock Tests:**
+- AWS account with Bedrock access
+- AWS credentials (Access Key ID + Secret Access Key)
+- Bedrock-enabled region (us-east-1, us-west-2)
+- IAM permissions: `bedrock:InvokeModel`
+- Budget: ~$0.50-$2.00 for testing
+
+**For Regression Tests:**
+- Ollama installed locally with models
+- Mistral API key (optional)
+- Google AI API key (optional)
+
+### Deployment Strategy
+
+1. **Development**: Apply fix, run tests, verify `npm audit`
+2. **Quality_Test**: Merge, deploy to QA, execute Priority 1 & 2 tests
+3. **Pre_Prod**: Deploy to staging, quick AWS Bedrock smoke test
+4. **Production**: Deploy during maintenance window, monitor for 24 hours
+
+### Rollback Plan
+
+If issues arise:
+1. Revert to previous Docker image/commit
+2. Check AWS SDK compatibility issues
+3. Temporarily pin fast-xml-parser to 5.2.5 (NOT recommended for security)
+
+### Success Criteria
+
+- ✅ `npm audit` shows 0 vulnerabilities in backend
+- ✅ Package versions updated: fast-xml-parser 5.3.4, @aws-sdk/xml-builder 3.972.3
+- ⏳ All AWS Bedrock tests pass without crashes (manual QA required)
+- ⏳ No regression in other AI providers (manual QA required)
+- ⏳ No impact on non-AI features (manual QA required)
+- ✅ Documentation updated
+- ⏳ Deployed to production successfully
+- ⏳ No error spikes in monitoring (24 hours post-deployment)
+
+### Additional Recommendations
+
+1. **Add Integration Tests**: Create automated tests for AWS Bedrock integration
+2. **Dependency Monitoring**: Set up Dependabot alerts for future vulnerabilities
+3. **Security Scanning**: Add `npm audit` to CI/CD pipeline (pre-commit hook)
+4. **Input Validation**: Consider XML response validation for AWS API responses
+
+### References
+
+- GitHub Advisory: https://github.com/advisories/GHSA-37qj-frw5-hhjh
+- CVE: CVE-2026-25128
+- fast-xml-parser releases: https://github.com/NaturalIntelligence/fast-xml-parser/releases
+- NIST NVD: (pending publication)
+
+---
+
 ## v1.6.5 - CSRF Protection Refinement (January 28, 2026)
 
 ### Issue Summary

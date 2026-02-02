@@ -48,7 +48,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Status**: In Development
 - **Breaking Changes**: None
 - **Backward Compatible**: Yes
-- **Focus**: Release process improvements and error prevention
+- **Focus**: Release process improvements, error prevention, and security updates
+
+### Security
+
+#### Dependency Vulnerabilities Fixed
+- **Fixed HIGH severity DoS vulnerability** in `fast-xml-parser` dependency
+  - CVE: GHSA-37qj-frw5-hhjh (CVE-2026-25128)
+  - CVSS Score: 7.5 (HIGH)
+  - Issue: RangeError DoS when parsing XML with out-of-range numeric entities
+  - Updated: `fast-xml-parser` 5.2.5 → 5.3.4
+  - Impact: Only affects AWS Bedrock integration (transitive dependency through AWS SDK)
+  - Attack Vector: Malicious XML responses from AWS API (low probability)
+- **Fixed HIGH severity vulnerability** in `@aws-sdk/xml-builder`
+  - Updated: `@aws-sdk/xml-builder` 3.972.2 → 3.972.3
+  - Transitive dependency fix (automatic with fast-xml-parser update)
+
+**Affected Components:**
+- AWS Bedrock integration for Mistral and Gemma models only
+- Does not affect: Ollama (local), Mistral API, Google AI API, or non-AI features
+
+**Testing Required:**
+- Priority 1: AWS Bedrock integration (if configured)
+- Priority 2: Regression testing of other AI providers
+- Priority 3: Non-AI feature verification
+
+See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
 
 ### Added
 
