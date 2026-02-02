@@ -1,10 +1,22 @@
 #!/bin/bash
 # Consolidate Users Between Blue and Green Deployments
 # Author: Mukesh Kesharwani
-# Version: 1.0.0
+# Version: 2.0.0
 #
-# This script merges users from one deployment into another,
-# avoiding duplicates and preserving existing users.
+# This script synchronizes users between Blue and Green deployments,
+# ensuring users registered on either instance can login to both.
+#
+# Usage:
+#   ./consolidate-users.sh                    # Interactive mode
+#   ./consolidate-users.sh --auto             # Automatic bi-directional sync
+#   ./consolidate-users.sh --blue-to-green    # One-way: Blue → Green
+#   ./consolidate-users.sh --green-to-blue    # One-way: Green → Blue
+#
+# Features:
+#   - Bi-directional user synchronization (default)
+#   - Automatic duplicate detection and merging
+#   - Preserves existing passwords and user data
+#   - Creates backup before consolidation
 
 set -e
 
@@ -12,12 +24,91 @@ set -e
 # CONFIGURATION
 # ============================================================================
 
+# URL Configuration (can be overridden by environment variables)
+BLUE_URL="${BLUE_URL:-http://blue.oscal.keekar.com}"
+GREEN_URL="${GREEN_URL:-http://green.oscal.keekar.com}"
+
+# Legacy configuration (deprecated - use BLUE_URL and GREEN_URL instead)
 BLUE_CONTAINER="oscal-report-generator-blue"
 BLUE_PORT="3020"
 GREEN_CONTAINER="oscal-report-generator-green"
 GREEN_PORT="3019"
 
 BACKUP_DIR="$HOME/oscal-user-consolidation-$(date +%Y%m%d-%H%M%S)"
+
+# Parse command-line arguments
+AUTO_MODE=false
+DIRECTION=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --auto)
+      AUTO_MODE=true
+      DIRECTION="3"
+      shift
+      ;;
+    --blue-to-green)
+      AUTO_MODE=true
+      DIRECTION="1"
+      shift
+      ;;
+    --green-to-blue)
+      AUTO_MODE=true
+      DIRECTION="2"
+      shift
+      ;;
+    --blue-url)
+      BLUE_URL="$2"
+      shift 2
+      ;;
+    --green-url)
+      GREEN_URL="$2"
+      shift 2
+      ;;
+    --blue-password)
+      BLUE_PASSWORD="$2"
+      shift 2
+      ;;
+    --green-password)
+      GREEN_PASSWORD="$2"
+      shift 2
+      ;;
+    --help|-h)
+      echo "Usage: $0 [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --auto                    Automatic bi-directional sync (recommended)"
+      echo "  --blue-to-green           One-way sync: Blue → Green only"
+      echo "  --green-to-blue           One-way sync: Green → Blue only"
+      echo "  --blue-url URL            Blue instance URL (default: http://blue.oscal.keekar.com)"
+      echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.com)"
+      echo "  --blue-password PASS      Blue admin password (for automation)"
+      echo "  --green-password PASS     Green admin password (for automation)"
+      echo "  --help, -h                Show this help message"
+      echo ""
+      echo "Environment Variables:"
+      echo "  BLUE_URL                  Blue instance URL"
+      echo "  GREEN_URL                 Green instance URL"
+      echo "  BLUE_USERNAME             Blue admin username (default: admin)"
+      echo "  GREEN_USERNAME            Green admin username (default: admin)"
+      echo "  BLUE_PASSWORD             Blue admin password"
+      echo "  GREEN_PASSWORD            Green admin password"
+      echo ""
+      echo "Examples:"
+      echo "  $0 --auto"
+      echo "  $0 --auto --blue-url http://localhost:3020 --green-url http://localhost:3019"
+      echo "  BLUE_PASSWORD=secret GREEN_PASSWORD=secret $0 --auto"
+      echo ""
+      echo "Interactive mode (no flags): Prompts for sync direction"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+done
 
 # Colors
 RED='\033[0;31m'
@@ -50,38 +141,54 @@ print_header() {
 
 print_header "👥 User Consolidation - Blue ⟷ Green"
 
-echo "This script consolidates users between Blue and Green deployments."
-echo ""
-echo "You can choose to:"
-echo "  1. Export users from Blue → Import to Green"
-echo "  2. Export users from Green → Import to Blue"
-echo "  3. Merge both ways (bi-directional sync)"
-echo ""
-echo "Existing users will NOT be overwritten (merge mode)."
-echo "Users with duplicate IDs or usernames will be skipped."
-echo ""
-
-# Check if containers are running
-BLUE_RUNNING=$(docker ps --format '{{.Names}}' | grep -c "^${BLUE_CONTAINER}$" || echo "0")
-GREEN_RUNNING=$(docker ps --format '{{.Names}}' | grep -c "^${GREEN_CONTAINER}$" || echo "0")
-
-if [ "$BLUE_RUNNING" = "0" ]; then
-  print_warning "Blue container is not running"
+if [ "$AUTO_MODE" = true ]; then
+  echo "Running in automatic mode..."
+  case $DIRECTION in
+    1) echo "Mode: Blue → Green (one-way sync)" ;;
+    2) echo "Mode: Green → Blue (one-way sync)" ;;
+    3) echo "Mode: Bi-directional sync (recommended)" ;;
+  esac
+  echo ""
+else
+  echo "This script synchronizes users between Blue and Green deployments."
+  echo ""
+  echo "✨ RECOMMENDED: Option 3 (Bi-directional sync)"
+  echo "   Ensures users can login to BOTH instances with same credentials"
+  echo ""
+  echo "Available options:"
+  echo "  1. Blue → Green only (users registered on Blue will work on Green)"
+  echo "  2. Green → Blue only (users registered on Green will work on Blue)"
+  echo "  3. Bi-directional ⭐ (users from either work on both - RECOMMENDED)"
+  echo ""
+  echo "How it works:"
+  echo "  • Existing users will NOT be overwritten (merge mode)"
+  echo "  • Duplicate usernames/IDs will be automatically skipped"
+  echo "  • Password hashes are preserved exactly as-is"
+  echo ""
 fi
 
-if [ "$GREEN_RUNNING" = "0" ]; then
-  print_warning "Green container is not running"
+# Check if instances are accessible
+print_info "Checking instance accessibility..."
+BLUE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$BLUE_URL/" || echo "000")
+GREEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$GREEN_URL/" || echo "000")
+
+if [ "$BLUE_STATUS" = "000" ]; then
+  print_warning "Blue instance not accessible at $BLUE_URL"
 fi
 
-if [ "$BLUE_RUNNING" = "0" ] && [ "$GREEN_RUNNING" = "0" ]; then
-  print_error "Neither Blue nor Green containers are running!"
+if [ "$GREEN_STATUS" = "000" ]; then
+  print_warning "Green instance not accessible at $GREEN_URL"
+fi
+
+if [ "$BLUE_STATUS" = "000" ] && [ "$GREEN_STATUS" = "000" ]; then
+  print_error "Neither Blue nor Green instances are accessible!"
   exit 1
 fi
 
 echo ""
-echo "Container Status:"
-echo "  ${BLUE}Blue:${NC}  $([ "$BLUE_RUNNING" = "1" ] && echo "✓ Running" || echo "✗ Not running")"
-echo "  ${GREEN}Green:${NC} $([ "$GREEN_RUNNING" = "1" ] && echo "✓ Running" || echo "✗ Not running")"
+echo "Instance Status:"
+echo "  ${BLUE}Blue ($BLUE_URL):${NC}  $([ "$BLUE_STATUS" != "000" ] && echo "✓ Accessible (HTTP $BLUE_STATUS)" || echo "✗ Not accessible")"
+echo "  ${GREEN}Green ($GREEN_URL):${NC} $([ "$GREEN_STATUS" != "000" ] && echo "✓ Accessible (HTTP $GREEN_STATUS)" || echo "✗ Not accessible")"
 echo ""
 
 # Create backup directory
@@ -89,41 +196,51 @@ mkdir -p "$BACKUP_DIR"
 print_info "Backup directory: $BACKUP_DIR"
 echo ""
 
-# Configure hostnames
-echo "Enter hostname or IP to access containers"
-echo "Common options: localhost, 127.0.0.1, or your NAS IP (e.g., 192.168.1.200)"
-echo ""
-read -p "Blue hostname/IP (default: localhost): " BLUE_HOST
-BLUE_HOST=${BLUE_HOST:-localhost}
-read -p "Green hostname/IP (default: localhost): " GREEN_HOST
-GREEN_HOST=${GREEN_HOST:-localhost}
-echo ""
-print_info "Blue will use: http://${BLUE_HOST}:${BLUE_PORT}"
-print_info "Green will use: http://${GREEN_HOST}:${GREEN_PORT}"
+print_info "Blue instance: $BLUE_URL"
+print_info "Green instance: $GREEN_URL"
 echo ""
 
-# Select consolidation direction
-echo "Select consolidation direction:"
-echo "  1) Blue → Green (merge Blue users into Green)"
-echo "  2) Green → Blue (merge Green users into Blue)"
-echo "  3) Bi-directional (merge both ways)"
-echo ""
-read -p "Enter choice (1-3): " DIRECTION
+# Select consolidation direction (only in interactive mode)
+if [ "$AUTO_MODE" = false ]; then
+  echo "Select consolidation direction:"
+  echo "  1) Blue → Green (merge Blue users into Green)"
+  echo "  2) Green → Blue (merge Green users into Blue)"
+  echo "  3) Bi-directional ⭐ (merge both ways - RECOMMENDED)"
+  echo ""
+  read -p "Enter choice (1-3, default: 3): " DIRECTION
+  DIRECTION=${DIRECTION:-3}
+fi
 
 # ============================================================================
 # AUTHENTICATE BLUE
 # ============================================================================
 
-if [ "$BLUE_RUNNING" = "1" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
+if [ "$BLUE_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
   print_header "🔐 Authenticating Blue Deployment"
   
-  read -p "Blue username (default: admin): " BLUE_USER
-  BLUE_USER=${BLUE_USER:-admin}
-  read -sp "Blue password: " BLUE_PASSWORD
-  echo ""
+  # Check for environment variables first (useful for automation)
+  if [ -z "$BLUE_USERNAME" ]; then
+    if [ "$AUTO_MODE" = true ]; then
+      BLUE_USER="admin"
+      print_info "Using default username: admin"
+    else
+      read -p "Blue username (default: admin): " BLUE_USER
+      BLUE_USER=${BLUE_USER:-admin}
+    fi
+  else
+    BLUE_USER="$BLUE_USERNAME"
+    print_info "Using username from environment: $BLUE_USER"
+  fi
+  
+  if [ -z "$BLUE_PASSWORD" ]; then
+    read -sp "Blue password: " BLUE_PASSWORD
+    echo ""
+  else
+    print_info "Using password from environment variable"
+  fi
   
   BLUE_JSON=$(jq -n --arg user "$BLUE_USER" --arg pass "$BLUE_PASSWORD" '{username: $user, password: $pass}')
-  BLUE_TOKEN=$(curl -s -X POST "http://${BLUE_HOST}:${BLUE_PORT}/api/auth/login" \
+  BLUE_TOKEN=$(curl -s -X POST "$BLUE_URL/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "$BLUE_JSON" \
     | jq -r '.sessionToken' 2>/dev/null || echo "null")
@@ -140,16 +257,32 @@ fi
 # AUTHENTICATE GREEN
 # ============================================================================
 
-if [ "$GREEN_RUNNING" = "1" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
+if [ "$GREEN_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
   print_header "🔐 Authenticating Green Deployment"
   
-  read -p "Green username (default: admin): " GREEN_USER
-  GREEN_USER=${GREEN_USER:-admin}
-  read -sp "Green password: " GREEN_PASSWORD
-  echo ""
+  # Check for environment variables first (useful for automation)
+  if [ -z "$GREEN_USERNAME" ]; then
+    if [ "$AUTO_MODE" = true ]; then
+      GREEN_USER="admin"
+      print_info "Using default username: admin"
+    else
+      read -p "Green username (default: admin): " GREEN_USER
+      GREEN_USER=${GREEN_USER:-admin}
+    fi
+  else
+    GREEN_USER="$GREEN_USERNAME"
+    print_info "Using username from environment: $GREEN_USER"
+  fi
+  
+  if [ -z "$GREEN_PASSWORD" ]; then
+    read -sp "Green password: " GREEN_PASSWORD
+    echo ""
+  else
+    print_info "Using password from environment variable"
+  fi
   
   GREEN_JSON=$(jq -n --arg user "$GREEN_USER" --arg pass "$GREEN_PASSWORD" '{username: $user, password: $pass}')
-  GREEN_TOKEN=$(curl -s -X POST "http://${GREEN_HOST}:${GREEN_PORT}/api/auth/login" \
+  GREEN_TOKEN=$(curl -s -X POST "$GREEN_URL/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "$GREEN_JSON" \
     | jq -r '.sessionToken' 2>/dev/null || echo "null")
@@ -170,14 +303,14 @@ if [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "3" ]; then
   print_header "📤 Exporting Users from Blue"
   
   curl -s -H "Authorization: Bearer $BLUE_TOKEN" \
-    "http://${BLUE_HOST}:${BLUE_PORT}/api/users/export" > "$BACKUP_DIR/blue-users.json"
+    "$BLUE_URL/api/users/export" > "$BACKUP_DIR/blue-users.json"
   
   BLUE_USER_COUNT=$(jq '.userCount' "$BACKUP_DIR/blue-users.json" 2>/dev/null || echo "0")
   print_success "Exported $BLUE_USER_COUNT users from Blue"
   
   print_header "📥 Importing Blue Users into Green"
   
-  IMPORT_RESULT=$(curl -s -X POST "http://${GREEN_HOST}:${GREEN_PORT}/api/users/import?mode=merge" \
+  IMPORT_RESULT=$(curl -s -X POST "$GREEN_URL/api/users/import?mode=merge" \
     -H "Authorization: Bearer $GREEN_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$BACKUP_DIR/blue-users.json")
@@ -199,14 +332,14 @@ if [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; then
   print_header "📤 Exporting Users from Green"
   
   curl -s -H "Authorization: Bearer $GREEN_TOKEN" \
-    "http://${GREEN_HOST}:${GREEN_PORT}/api/users/export" > "$BACKUP_DIR/green-users.json"
+    "$GREEN_URL/api/users/export" > "$BACKUP_DIR/green-users.json"
   
   GREEN_USER_COUNT=$(jq '.userCount' "$BACKUP_DIR/green-users.json" 2>/dev/null || echo "0")
   print_success "Exported $GREEN_USER_COUNT users from Green"
   
   print_header "📥 Importing Green Users into Blue"
   
-  IMPORT_RESULT=$(curl -s -X POST "http://${BLUE_HOST}:${BLUE_PORT}/api/users/import?mode=merge" \
+  IMPORT_RESULT=$(curl -s -X POST "$BLUE_URL/api/users/import?mode=merge" \
     -H "Authorization: Bearer $BLUE_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$BACKUP_DIR/green-users.json")
@@ -226,15 +359,15 @@ fi
 
 print_header "🔍 Verification"
 
-if [ "$BLUE_RUNNING" = "1" ]; then
+if [ "$BLUE_STATUS" != "000" ]; then
   BLUE_FINAL_COUNT=$(curl -s -H "Authorization: Bearer $BLUE_TOKEN" \
-    "http://${BLUE_HOST}:${BLUE_PORT}/api/users" | jq 'length' 2>/dev/null || echo "0")
+    "$BLUE_URL/api/users" | jq '.users | length' 2>/dev/null || echo "0")
   echo "${BLUE}Blue:${NC}  Total users: $BLUE_FINAL_COUNT"
 fi
 
-if [ "$GREEN_RUNNING" = "1" ]; then
+if [ "$GREEN_STATUS" != "000" ]; then
   GREEN_FINAL_COUNT=$(curl -s -H "Authorization: Bearer $GREEN_TOKEN" \
-    "http://${GREEN_HOST}:${GREEN_PORT}/api/users" | jq 'length' 2>/dev/null || echo "0")
+    "$GREEN_URL/api/users" | jq '.users | length' 2>/dev/null || echo "0")
   echo "${GREEN}Green:${NC} Total users: $GREEN_FINAL_COUNT"
 fi
 
@@ -260,26 +393,44 @@ echo ""
 case $DIRECTION in
   1)
     echo "📊 Result: Blue users merged into Green"
-    echo "   - Green now has users from both deployments"
-    echo "   - Blue remains unchanged"
+    echo ""
+    echo "   ✓ Green now has users from both deployments"
+    echo "   ✓ Users registered on Blue can now login to Green"
+    echo "   • Blue remains unchanged"
+    echo ""
+    echo "   To enable login from Green → Blue, run with --auto flag"
     ;;
   2)
     echo "📊 Result: Green users merged into Blue"
-    echo "   - Blue now has users from both deployments"
-    echo "   - Green remains unchanged"
+    echo ""
+    echo "   ✓ Blue now has users from both deployments"
+    echo "   ✓ Users registered on Green can now login to Blue"
+    echo "   • Green remains unchanged"
+    echo ""
+    echo "   To enable login from Blue → Green, run with --auto flag"
     ;;
   3)
-    echo "📊 Result: Bi-directional merge complete"
-    echo "   - Both deployments now have all users"
-    echo "   - No duplicates created"
+    echo "📊 Result: Bi-directional merge complete ⭐"
+    echo ""
+    echo "   ✓ Both deployments now have all users"
+    echo "   ✓ Users registered on Blue can login to Green"
+    echo "   ✓ Users registered on Green can login to Blue"
+    echo "   ✓ No duplicates created"
+    echo ""
+    echo "   🎉 Users can now use BOTH instances with same credentials!"
     ;;
 esac
 
 echo ""
 echo "📖 Notes:"
-echo "   - Duplicate users were automatically skipped"
-echo "   - Existing users were preserved (not overwritten)"
-echo "   - Password hashes were maintained"
+echo "   • Duplicate users were automatically skipped"
+echo "   • Existing users were preserved (not overwritten)"
+echo "   • Password hashes were maintained exactly"
+echo "   • Session data and preferences are deployment-specific"
 echo ""
-echo "🔄 To re-consolidate in the future, run this script again"
+echo "🔄 To re-consolidate after new registrations:"
+echo "   ./consolidate-users.sh --auto"
+echo ""
+echo "💡 Tip: Add this to a cron job for automatic synchronization!"
+echo "   Example: 0 */6 * * * cd /path/to/scripts && ./consolidate-users.sh --auto"
 echo ""

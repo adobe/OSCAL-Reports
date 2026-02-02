@@ -294,13 +294,47 @@ gh pr create --base Pre_Prod --title "Merge QA improvements"
 
 **⛔ Only Pre_Prod can merge to main**
 
-This is the ONE hard rule that is strictly enforced:
+This is the ONE hard rule that is strictly enforced by GitHub Actions:
 - ❌ Development → main (BLOCKED)
 - ❌ Quality_Test → main (BLOCKED)
-- ❌ Any other branch → main (BLOCKED)
+- ❌ Feature branches → main (BLOCKED)
+- ❌ Custom branches → main (BLOCKED)
 - ✅ Pre_Prod → main (ALLOWED)
 
-All PRs to `main` must come from `Pre_Prod` - no exceptions.
+**All PRs to `main` must come from the `Pre_Prod` branch - no exceptions.**
+
+### 📝 How to Create a PR to main (Correct Way)
+
+**✅ CORRECT - From Pre_Prod branch:**
+```bash
+# Step 1: Ensure you're on Pre_Prod branch
+git checkout Pre_Prod
+git pull origin Pre_Prod
+
+# Step 2: Create PR from Pre_Prod to main
+gh pr create --base main --head Pre_Prod --title "Release v1.6.7"
+```
+
+**❌ WRONG - From feature/custom branch:**
+```bash
+# This will be REJECTED by branch protection workflow
+git checkout -b sync-preprod-to-main-v1.6.7  # ❌ Creating custom branch
+gh pr create --base main --head sync-preprod-to-main-v1.6.7  # ❌ WILL FAIL
+```
+
+**Common Mistake: Creating Custom Branches for Syncing**
+
+If you need to sync changes to main:
+1. ❌ **DON'T** create a custom branch like `sync-preprod-to-main-v1.6.7`
+2. ❌ **DON'T** create PR from that custom branch to main
+3. ✅ **DO** merge your changes into Pre_Prod first
+4. ✅ **DO** create PR directly from Pre_Prod to main
+
+**Why This Rule Exists:**
+- Ensures all production releases go through staging (Pre_Prod) first
+- Maintains deployment consistency
+- Prevents untested code from reaching production
+- Provides clear audit trail of what was deployed
 
 ---
 

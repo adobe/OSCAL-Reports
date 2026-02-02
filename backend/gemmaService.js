@@ -1,7 +1,7 @@
 /**
- * Mistral 7B Service
- * Provides AI-powered implementation text generation using Mistral 7B
- * Supports both Ollama (local) and Mistral AI API (cloud)
+ * Gemma Service
+ * Provides AI-powered implementation text generation using Gemma models (Gemma, Gemma2, Gemma3)
+ * Supports both Ollama (local) and Google AI API (cloud)
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
@@ -24,17 +24,17 @@ try {
   console.log('ℹ️ AWS SDK not installed. AWS Bedrock support disabled. Run: npm install @aws-sdk/client-bedrock-runtime');
 }
 
-let mistralConfig = null;
+let gemmaConfig = null;
 
 /**
- * Load Mistral configuration from config file
+ * Load Gemma configuration from config file
  * Priority: Settings AI Config > Environment Variable > Config File > Defaults
- * @returns {Promise<Object>} Mistral configuration object
+ * @returns {Promise<Object>} Gemma configuration object
  */
-export async function loadMistralConfig() {
+export async function loadGemmaConfig() {
   // Always reload config to pick up changes from Settings UI
-  // Don't cache mistralConfig since it can change via Settings
-  mistralConfig = null;
+  // Don't cache gemmaConfig since it can change via Settings
+  gemmaConfig = null;
   
   try {
     const config = await loadConfig();
@@ -42,14 +42,14 @@ export async function loadMistralConfig() {
     // Priority 1: Check Settings AI Config (highest priority - user configured)
     let aiUrl = null;
     let aiEnabled = false;
-    let aiModel = 'mistral:7b';
+    let aiModel = 'gemma2';
     let aiTimeout = 30000;
     let aiApiToken = '';
     let aiProvider = 'ollama';
     let awsRegion = 'us-east-1';
     let awsAccessKeyId = '';
     let awsSecretAccessKey = '';
-    let bedrockModelId = 'mistral.mistral-large-2402-v1:0';
+    let bedrockModelId = '';
     
     if (config.aiConfig && config.aiConfig.enabled) {
       aiEnabled = true;
@@ -62,12 +62,12 @@ export async function loadMistralConfig() {
         awsRegion = config.aiConfig.awsRegion || 'us-east-1';
         awsAccessKeyId = config.aiConfig.awsAccessKeyId || '';
         awsSecretAccessKey = config.aiConfig.awsSecretAccessKey || '';
-        bedrockModelId = config.aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+        bedrockModelId = config.aiConfig.bedrockModelId || '';
         console.log(`🔧 Using AWS Bedrock in region: ${awsRegion}`);
         console.log(`   Model: ${bedrockModelId}`);
         console.log(`   Timeout: ${aiTimeout}ms (${aiTimeout/1000}s)`);
       } else if (config.aiConfig.url) {
-        // Ollama or Mistral API - requires URL
+        // Ollama or Google AI API - requires URL
         let baseUrl = config.aiConfig.url.trim();
         
         // Handle migration from old format (url + port) to new format (full URL)
@@ -78,16 +78,16 @@ export async function loadMistralConfig() {
           baseUrl = `http://${hostname}:${port}`;
         }
         
-        // Add protocol if missing (default to http for ollama, https for mistral-api)
+        // Add protocol if missing (default to http for ollama, https for google-ai)
         if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-          baseUrl = aiProvider === 'mistral-api' ? `https://${baseUrl}` : `http://${baseUrl}`;
+          baseUrl = aiProvider === 'google-ai' ? `https://${baseUrl}` : `http://${baseUrl}`;
         }
         
         // Parse and normalize URL
         try {
           const urlObj = new URL(baseUrl);
           aiUrl = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}` : ''}${urlObj.pathname}`;
-          aiModel = config.aiConfig.model || 'mistral:7b';
+          aiModel = config.aiConfig.model || 'gemma2';
           aiApiToken = config.aiConfig.apiToken || '';
           console.log(`🔧 Using AI Engine URL from Settings: ${aiUrl}`);
           console.log(`   Provider: ${aiProvider}`);
@@ -104,25 +104,25 @@ export async function loadMistralConfig() {
     // Priority 2: Environment variable (for Docker deployments)
     const dockerOllamaUrl = process.env.OLLAMA_URL || process.env.OLLAMA_HOST || null;
     
-    // Priority 3: Config file mistralConfig (legacy)
-    const defaultOllamaUrl = aiUrl || dockerOllamaUrl || config.mistralConfig?.ollamaUrl || 'http://localhost:11434';
+    // Priority 3: Config file defaults
+    const defaultOllamaUrl = aiUrl || dockerOllamaUrl || config.gemmaConfig?.ollamaUrl || 'http://localhost:11434';
     
-    mistralConfig = {
-      enabled: aiEnabled || config.mistralConfig?.enabled || false,
-      provider: aiProvider || 'ollama', // 'ollama', 'mistral-api', or 'aws-bedrock'
+    gemmaConfig = {
+      enabled: aiEnabled || config.gemmaConfig?.enabled || false,
+      provider: aiProvider || 'ollama', // 'ollama', 'google-ai', or 'aws-bedrock'
       ollamaUrl: defaultOllamaUrl,
-      model: aiModel || config.mistralConfig?.model || 'mistral:7b',
-      apiToken: aiApiToken || config.mistralConfig?.apiToken || '',
-      mistralApiKey: config.mistralConfig?.mistralApiKey || '',
-      mistralApiUrl: config.mistralConfig?.mistralApiUrl || 'https://api.mistral.ai/v1/chat/completions',
+      model: aiModel || config.gemmaConfig?.model || 'gemma2',
+      apiToken: aiApiToken || config.gemmaConfig?.apiToken || '',
+      googleApiKey: config.gemmaConfig?.googleApiKey || '',
+      googleApiUrl: config.gemmaConfig?.googleApiUrl || 'https://generativelanguage.googleapis.com/v1/models',
       // AWS Bedrock configuration
       awsRegion: awsRegion,
       awsAccessKeyId: awsAccessKeyId,
       awsSecretAccessKey: awsSecretAccessKey,
       bedrockModelId: bedrockModelId,
-      timeout: aiTimeout || config.mistralConfig?.timeout || 180000, // 180 seconds default for model loading and processing
-      maxRetries: config.mistralConfig?.maxRetries || 2,
-      fallbackToPatternMatching: config.mistralConfig?.fallbackToPatternMatching !== false,
+      timeout: aiTimeout || config.gemmaConfig?.timeout || 180000, // 180 seconds default for model loading and processing
+      maxRetries: config.gemmaConfig?.maxRetries || 2,
+      fallbackToPatternMatching: config.gemmaConfig?.fallbackToPatternMatching !== false,
       // Max tokens configuration
       maxTokens: {
         connectionTest: config.aiConfig?.maxTokens?.connectionTest || 10,
@@ -136,38 +136,38 @@ export async function loadMistralConfig() {
       console.log(`✅ Using AI Engine from Settings configuration: ${aiUrl}`);
     } else if (dockerOllamaUrl) {
       console.log(`🔧 Using OLLAMA_URL from environment: ${dockerOllamaUrl}`);
-    } else if (config.mistralConfig?.ollamaUrl) {
-      console.log(`📝 Using Ollama URL from config file: ${mistralConfig.ollamaUrl}`);
+    } else if (config.gemmaConfig?.ollamaUrl) {
+      console.log(`📝 Using Ollama URL from config file: ${gemmaConfig.ollamaUrl}`);
     } else {
-      console.log(`⚠️  Using default Ollama URL: ${mistralConfig.ollamaUrl}`);
+      console.log(`⚠️  Using default Ollama URL: ${gemmaConfig.ollamaUrl}`);
       console.log(`   Configure AI Engine in Settings → AI Integration for production use`);
     }
     
-    return mistralConfig;
+    return gemmaConfig;
   } catch (error) {
-    console.warn('⚠️ Could not load Mistral config, using defaults:', error.message);
-    mistralConfig = {
+    console.warn('⚠️ Could not load Gemma config, using defaults:', error.message);
+    gemmaConfig = {
       enabled: false,
       provider: 'ollama',
       ollamaUrl: 'http://localhost:11434',
-      model: 'mistral:7b',
+      model: 'gemma2',
       timeout: 180000, // Match the generate endpoint timeout
       maxRetries: 2,
       fallbackToPatternMatching: true
     };
-    return mistralConfig;
+    return gemmaConfig;
   }
 }
 
 /**
- * Generate implementation text using Ollama (local Mistral 7B)
+ * Generate implementation text using Ollama (local Gemma)
  */
 async function generateWithOllama(control, config, existingControls = []) {
   const prompt = buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   console.log(`🔗 Attempting to connect to Ollama at: ${config.ollamaUrl}`);
-  console.log(`   Model: ${config.model || 'mistral:7b'}`);
+  console.log(`   Model: ${config.model || 'gemma2'}`);
   const actualTimeout = config.timeout || 180000;
   console.log(`   Timeout: ${actualTimeout}ms (${actualTimeout/1000}s)`);
   console.log(`   Config enabled: ${config.enabled}`);
@@ -189,7 +189,7 @@ async function generateWithOllama(control, config, existingControls = []) {
     const response = await axios.post(
       generateUrl,
       {
-        model: config.model || 'mistral:7b',
+        model: config.model || 'gemma2',
         prompt: prompt,
         stream: false,
         options: {
@@ -231,7 +231,7 @@ async function generateWithOllama(control, config, existingControls = []) {
       // Log successful AI interaction (OTel GenAI Semantic Conventions)
       logAIInteraction({
         provider: 'ollama',
-        model: config.model || 'mistral:7b',
+        model: config.model || 'gemma2',
         operation: 'generate',
         prompt: prompt,
         response: cleanedResponse,
@@ -264,7 +264,7 @@ async function generateWithOllama(control, config, existingControls = []) {
     // Log AI error (OTel GenAI Semantic Conventions)
     logAIError({
       provider: 'ollama',
-      model: config.model || 'mistral:7b',
+      model: config.model || 'gemma2',
       operation: 'generate',
       prompt: prompt,
       error: error,
@@ -306,53 +306,57 @@ async function generateWithOllama(control, config, existingControls = []) {
 }
 
 /**
- * Generate implementation text using Mistral AI API (cloud)
+ * Generate implementation text using Google AI API (cloud)
  */
-async function generateWithMistralAPI(control, config, existingControls = []) {
-  if (!config.mistralApiKey) {
-    throw new Error('Mistral API key not configured');
+async function generateWithGoogleAI(control, config, existingControls = []) {
+  if (!config.googleApiKey) {
+    throw new Error('Google AI API key not configured');
   }
 
   const prompt = buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   try {
+    // Use Gemini API format (Gemma models on Google AI)
+    const modelName = config.model || 'gemma-2-9b-it';
+    const apiUrl = `${config.googleApiUrl || 'https://generativelanguage.googleapis.com/v1/models'}/${modelName}:generateContent?key=${config.googleApiKey}`;
+    
     const response = await axios.post(
-      config.mistralApiUrl || 'https://api.mistral.ai/v1/chat/completions',
+      apiUrl,
       {
-        model: 'mistral-7b-instruct',
-        messages: [
+        contents: [
           {
-            role: 'system',
-            content: 'You are a cybersecurity compliance expert specializing in OSCAL control implementations. Generate concise, professional implementation descriptions for security controls.'
-          },
-          {
-            role: 'user',
-            content: prompt
+            parts: [
+              {
+                text: prompt
+              }
+            ]
           }
         ],
-        temperature: 0.7,
-        max_tokens: config.maxTokens?.controlGeneration || 150, // Configurable max tokens for control generation
-        top_p: 0.9
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: config.maxTokens?.controlGeneration || 150,
+          topP: 0.9
+        }
       },
       {
         timeout: config.timeout || 180000,
         headers: {
-          'Authorization': `Bearer ${config.mistralApiKey}`,
           'Content-Type': 'application/json'
         }
       }
     );
 
-    if (response.data && response.data.choices && response.data.choices[0]) {
+    if (response.data && response.data.candidates && response.data.candidates[0]) {
       const latency = Date.now() - startTime;
-      const cleanedResponse = cleanResponse(response.data.choices[0].message.content);
+      const responseText = response.data.candidates[0].content.parts[0].text;
+      const cleanedResponse = cleanResponse(responseText);
       
       // Log successful AI interaction (OTel GenAI Semantic Conventions)
       logAIInteraction({
-        provider: 'mistral-api',
-        model: 'mistral-7b-instruct',
-        operation: 'chat.completions',
+        provider: 'google-ai',
+        model: modelName,
+        operation: 'generateContent',
         prompt: prompt,
         response: cleanedResponse,
         metadata: {
@@ -361,13 +365,12 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
           controlFamily: control.id?.split('-')[0] || 'unknown',
           temperature: 0.7,
           topP: 0.9,
-          maxTokens: config.maxTokens?.controlGeneration || 150,
-          responseId: response.data.id
+          maxTokens: config.maxTokens?.controlGeneration || 150
         },
         tokenUsage: {
-          inputTokens: response.data.usage?.prompt_tokens || Math.ceil(prompt.length / 4),
-          outputTokens: response.data.usage?.completion_tokens || Math.ceil(cleanedResponse.length / 4),
-          totalTokens: response.data.usage?.total_tokens || Math.ceil((prompt.length + cleanedResponse.length) / 4)
+          inputTokens: response.data.usageMetadata?.promptTokenCount || Math.ceil(prompt.length / 4),
+          outputTokens: response.data.usageMetadata?.candidatesTokenCount || Math.ceil(cleanedResponse.length / 4),
+          totalTokens: response.data.usageMetadata?.totalTokenCount || Math.ceil((prompt.length + cleanedResponse.length) / 4)
         },
         latency: latency,
         status: 'success'
@@ -376,15 +379,15 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
       return cleanedResponse;
     }
     
-    throw new Error('Invalid response format from Mistral API');
+    throw new Error('Invalid response format from Google AI API');
   } catch (error) {
     const latency = Date.now() - startTime;
     
     // Log AI error (OTel GenAI Semantic Conventions)
     logAIError({
-      provider: 'mistral-api',
-      model: 'mistral-7b-instruct',
-      operation: 'chat.completions',
+      provider: 'google-ai',
+      model: config.model || 'gemma-2-9b-it',
+      operation: 'generateContent',
       prompt: prompt,
       error: error,
       metadata: {
@@ -396,8 +399,8 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
       }
     });
     
-    if (error.response?.status === 401) {
-      throw new Error('Invalid Mistral API key');
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      throw new Error('Invalid Google AI API key');
     }
     throw error;
   }
@@ -405,7 +408,7 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
 
 /**
  * Generate implementation text using AWS Bedrock
- * Supports Mistral, Claude, and Llama models on Bedrock
+ * Supports various models including Gemma on Bedrock
  */
 async function generateWithAWSBedrock(control, config, existingControls = []) {
   if (!BedrockRuntimeClient || !ConverseCommand) {
@@ -451,8 +454,8 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
       })
     });
 
-    // Set model ID (default to Mistral Large if not specified)
-    const modelId = config.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+    // Set model ID from configuration
+    const modelId = config.bedrockModelId;
     console.log(`📝 Using Bedrock model: ${modelId}`);
 
     // Create the command with Converse API
@@ -519,7 +522,7 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
     // Log AI error (OTel GenAI Semantic Conventions)
     logAIError({
       provider: 'aws-bedrock',
-      model: modelId,
+      model: config.bedrockModelId,
       operation: 'converse',
       prompt: prompt,
       error: error,
@@ -595,7 +598,7 @@ function analyzeWritingStyle(existingControls) {
 }
 
 /**
- * Build prompt for Mistral based on control information
+ * Build prompt for Gemma based on control information
  */
 function buildPrompt(control, existingControls = []) {
   // Clean title
@@ -724,15 +727,6 @@ function cleanResponse(response) {
 }
 
 /**
- * Generate implementation text using Mistral 7B
- * Falls back to pattern matching if Mistral is unavailable
- * 
- * @param {Object} control - Control object with id, title, description, parts
- * @param {Function} fallbackGenerator - Function to generate fallback implementation
- * @param {Array} existingControls - Array of existing controls to learn writing style from
- * @returns {Promise<string>} - Generated implementation text
- */
-/**
  * Try to generate with a specific AI provider
  * @param {string} provider - Provider name
  * @param {Object} control - Control object
@@ -750,8 +744,8 @@ async function tryGenerateWithProvider(provider, control, config, existingContro
       
       if (provider === 'ollama') {
         implementation = await generateWithOllama(control, config, existingControls);
-      } else if (provider === 'mistral-api') {
-        implementation = await generateWithMistralAPI(control, config, existingControls);
+      } else if (provider === 'google-ai') {
+        implementation = await generateWithGoogleAI(control, config, existingControls);
       } else if (provider === 'aws-bedrock') {
         implementation = await generateWithAWSBedrock(control, config, existingControls);
       } else {
@@ -785,14 +779,14 @@ async function tryGenerateWithProvider(provider, control, config, existingContro
  * @param {Array} existingControls - Existing controls for context
  * @returns {Promise<Object|null>} Result object with text, aiGenerated, attempted flags
  */
-export async function generateImplementationWithMistral(control, fallbackGenerator, existingControls = []) {
+export async function generateImplementationWithGemma(control, fallbackGenerator, existingControls = []) {
   try {
-    const config = await loadMistralConfig();
+    const config = await loadGemmaConfig();
     
-    // Check if Mistral is enabled
+    // Check if Gemma is enabled
     if (!config.enabled) {
-      console.log('🤖 Mistral is disabled, using fallback');
-      // Return fallback with flag indicating Mistral was not attempted
+      console.log('🤖 Gemma is disabled, using fallback');
+      // Return fallback with flag indicating Gemma was not attempted
       const fallback = fallbackGenerator ? fallbackGenerator(control) : null;
       return fallback ? { text: fallback, aiGenerated: false, attempted: false } : null;
     }
@@ -806,7 +800,7 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
     
     // Define provider fallback chain (Dual-Method Fallback Pattern)
     // Priority: Configured Provider -> Local Ollama (if available) -> Pattern Matching
-    if (config.provider === 'mistral-api' || config.provider === 'aws-bedrock') {
+    if (config.provider === 'google-ai' || config.provider === 'aws-bedrock') {
       // If using cloud service, fallback to local Ollama
       fallbackProvider = 'ollama';
     }
@@ -833,7 +827,7 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
           ...config,
           provider: fallbackProvider,
           ollamaUrl: config.ollamaUrl || 'http://localhost:11434',
-          model: 'mistral:7b',
+          model: 'gemma2', // Default to gemma2 for fallback
           maxRetries: 1 // Fewer retries for fallback
         };
         
@@ -873,10 +867,10 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
     throw primaryError || new Error('AI generation failed after all attempts');
     
   } catch (error) {
-    console.error('❌ Error in Mistral service:', error.message);
+    console.error('❌ Error in Gemma service:', error.message);
     
     // Fallback to pattern matching if enabled
-    const config = await loadMistralConfig();
+    const config = await loadGemmaConfig();
     if (config.fallbackToPatternMatching !== false && fallbackGenerator) {
       console.log('🔄 Falling back to pattern matching due to error');
       const fallback = fallbackGenerator(control);
@@ -894,16 +888,16 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
 }
 
 /**
- * Check if Mistral service is available
+ * Check if Gemma service is available
  */
-export async function checkMistralAvailability() {
+export async function checkGemmaAvailability() {
   try {
-    const config = await loadMistralConfig();
+    const config = await loadGemmaConfig();
     
     if (!config.enabled) {
       return {
         available: false,
-        reason: 'Mistral is disabled in configuration'
+        reason: 'Gemma is disabled in configuration'
       };
     }
     
@@ -930,10 +924,10 @@ export async function checkMistralAvailability() {
           httpsAgent: config.ollamaUrl.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined
         });
         
-        // Check if model is available
+        // Check if gemma model is available
         const models = response.data?.models || [];
-        const modelName = config.model || 'mistral:7b';
-        const hasModel = models.some(m => m.name === modelName || m.name.includes('mistral'));
+        const modelName = config.model || 'gemma2';
+        const hasModel = models.some(m => m.name === modelName || m.name.includes('gemma'));
         
         console.log(`✅ Ollama is reachable. Models: ${models.map(m => m.name).join(', ')}`);
         console.log(`   Looking for: ${modelName}, Found: ${hasModel}`);
@@ -980,18 +974,18 @@ export async function checkMistralAvailability() {
           error: errorDetails
         };
       }
-    } else if (config.provider === 'mistral-api') {
-      if (!config.mistralApiKey) {
+    } else if (config.provider === 'google-ai') {
+      if (!config.googleApiKey) {
         return {
           available: false,
-          provider: 'mistral-api',
-          reason: 'Mistral API key not configured'
+          provider: 'google-ai',
+          reason: 'Google AI API key not configured'
         };
       }
       return {
         available: true,
-        provider: 'mistral-api',
-        reason: 'Mistral API configured (availability not tested)'
+        provider: 'google-ai',
+        reason: 'Google AI API configured (availability not tested)'
       };
     } else if (config.provider === 'aws-bedrock') {
       // Check AWS Bedrock configuration
@@ -1041,8 +1035,7 @@ export async function checkMistralAvailability() {
 }
 
 export default {
-  generateImplementationWithMistral,
-  checkMistralAvailability,
-  loadMistralConfig
+  generateImplementationWithGemma,
+  checkGemmaAvailability,
+  loadGemmaConfig
 };
-

@@ -1,12 +1,15 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-generator",
-  "version": "1.6.6",
+  "version": "1.6.7",
   "description": "Keekar's OSCAL SOA/SSP/CCM Generator - Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "lint": "npx eslint .",
+    "lint:fix": "npx eslint . --fix",
+    "lint:all": "npm run lint && cd backend && npm run lint && cd ../frontend && npm run lint"
   },
   "keywords": [
     "oscal",
