@@ -1,401 +1,277 @@
-# User Consolidation Guide
+# User Consolidation Between Blue and Green Deployments
 
 ## Overview
 
-The `consolidate-users.sh` script synchronizes user accounts between Blue and Green deployments, ensuring that users registered on either instance can login to both with the same credentials.
+This guide explains how to consolidate users between Blue and Green deployments so users can login to both instances with the same credentials.
 
-## Why Consolidate Users?
+## Current Status
 
-When running Blue/Green deployments:
-- Users who register on **Blue (port 3020)** can only login to Blue
-- Users who register on **Green (port 3019)** can only login to Green
-- **After consolidation**: All users can login to **BOTH** instances
+- **Blue (http://blue.oscal.keekar.com)**: 18 users
+- **Green (http://green.oscal.keekar.com)**: 16 users
+- **Common users**: 14 users on both
+- **Unique to Blue**: 4 users
+- **Unique to Green**: 2 users
 
-## Quick Start
+## Backend Fix Required
 
-### Automatic Bi-Directional Sync (Recommended)
+⚠️ **IMPORTANT**: The backend API has a route conflict bug that must be fixed first!
 
+### The Problem
+
+The `/api/users/export` and `/api/users/import` endpoints were failing because Express was matching them against `/api/users/:userId` route first, treating "export" and "import" as user IDs.
+
+### The Solution
+
+**Commit**: `8063b1a` - "fix(api): resolve route conflict for /api/users/export and /api/users/import"
+
+**What was fixed**:
+- Moved `/api/users/export` and `/api/users/import` routes BEFORE `/api/users/:userId`
+- Removed duplicate route definitions
+- Added comments to prevent future route ordering issues
+
+### Deployment Steps
+
+1. **Pull latest code on both servers**:
+   ```bash
+   cd /path/to/OSCAL_Reports
+   git pull origin Development
+   ```
+
+2. **Restart both containers**:
+   ```bash
+   docker restart oscal-report-generator-blue
+   docker restart oscal-report-generator-green
+   ```
+
+3. **Verify the fix**:
+   ```bash
+   # Test Blue
+   curl -H "Authorization: Bearer YOUR_TOKEN" \
+     http://blue.oscal.keekar.com/api/users/export
+   
+   # Test Green
+   curl -H "Authorization: Bearer YOUR_TOKEN" \
+     http://green.oscal.keekar.com/api/users/export
+   ```
+
+## Two Consolidation Methods
+
+### Method 1: Direct Docker Access (Immediate - Use This Now)
+
+**Script**: `scripts/consolidate-users-docker.sh`
+
+This script directly accesses Docker containers to merge users. Use this method until the backend fix is deployed.
+
+**Requirements**:
+- Must be run ON the server where Docker containers are running
+- Requires Docker access (sudo or docker group membership)
+- Both containers must be running
+
+**Usage**:
 ```bash
-cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
-./consolidate-users.sh --auto
+# SSH to the server where containers are running
+ssh user@your-nas-server
+
+# Run the script
+cd /path/to/OSCAL_Reports
+sudo ./scripts/consolidate-users-docker.sh
 ```
 
-You'll be prompted for admin credentials for both deployments, then the script will:
-1. Export users from Blue → Import to Green
-2. Export users from Green → Import to Blue
-3. Both instances now have all users
+**What it does**:
+1. Extracts users.json directly from both containers
+2. Merges users (skips duplicates automatically)
+3. Updates users.json in both containers
+4. Restarts containers to reload users
+5. Creates backups in `~/oscal-user-consolidation-TIMESTAMP/`
 
-### One-Way Sync
+### Method 2: API-Based Consolidation (After Backend Fix)
 
+**Script**: `scripts/consolidate-users.sh`
+
+This script uses the backend API endpoints for user export/import. Use this method after deploying the backend fix.
+
+**Requirements**:
+- Backend fix must be deployed to both servers
+- Admin credentials for both instances
+- Network access to both URLs
+
+**Basic Usage**:
 ```bash
-# Blue → Green only
-./consolidate-users.sh --blue-to-green
+# Interactive mode (prompts for password)
+./scripts/consolidate-users.sh
 
-# Green → Blue only
-./consolidate-users.sh --green-to-blue
+# Automatic bi-directional sync
+BLUE_PASSWORD='admin#03feb2026' \
+GREEN_PASSWORD='admin#03feb2026' \
+./scripts/consolidate-users.sh --auto
 ```
 
-### Interactive Mode
-
+**Advanced Usage**:
 ```bash
-./consolidate-users.sh
+# Custom URLs
+./scripts/consolidate-users.sh --auto \
+  --blue-url http://blue.oscal.keekar.com \
+  --green-url http://green.oscal.keekar.com \
+  --blue-password 'admin#03feb2026' \
+  --green-password 'admin#03feb2026'
+
+# One-way sync (Blue → Green only)
+./scripts/consolidate-users.sh --blue-to-green
+
+# One-way sync (Green → Blue only)
+./scripts/consolidate-users.sh --green-to-blue
 ```
 
-Choose from menu:
-1. Blue → Green
-2. Green → Blue
-3. Bi-directional (recommended)
-
-## Usage Examples
-
-### Example 1: Manual Consolidation
-
+**Environment Variables**:
 ```bash
-$ ./consolidate-users.sh --auto
-
-👥 User Consolidation - Blue ⟷ Green
-Running in automatic mode...
-Mode: Bi-directional sync (recommended)
-
-Container Status:
-  Blue:  ✓ Running
-  Green: ✓ Running
-
-🔐 Authenticating Blue Deployment
-Blue password: ********
-✓ Blue authentication successful
-
-🔐 Authenticating Green Deployment
-Green password: ********
-✓ Green authentication successful
-
-📤 Exporting Users from Blue
-✓ Exported 5 users from Blue
-
-📥 Importing Blue Users into Green
-✓ Blue → Green: 3 users added, 2 skipped (duplicates)
-
-📤 Exporting Users from Green
-✓ Exported 4 users from Green
-
-📥 Importing Green Users into Blue
-✓ Green → Blue: 1 users added, 4 skipped (duplicates)
-
-🔍 Verification
-Blue:  Total users: 6
-Green: Total users: 6
-
-✅ User Consolidation Complete!
-
-📊 Result: Bi-directional merge complete ⭐
-   ✓ Both deployments now have all users
-   ✓ Users registered on Blue can login to Green
-   ✓ Users registered on Green can login to Blue
-   🎉 Users can now use BOTH instances with same credentials!
-```
-
-### Example 2: Using Environment Variables
-
-For automation or scripting:
-
-```bash
+export BLUE_URL="http://blue.oscal.keekar.com"
+export GREEN_URL="http://green.oscal.keekar.com"
 export BLUE_USERNAME="admin"
-export BLUE_PASSWORD="your-blue-password"
 export GREEN_USERNAME="admin"
-export GREEN_PASSWORD="your-green-password"
+export BLUE_PASSWORD="admin#03feb2026"
+export GREEN_PASSWORD="admin#03feb2026"
 
-./consolidate-users.sh --auto
+./scripts/consolidate-users.sh --auto
 ```
 
-### Example 3: Custom Hostnames
+## Scheduling with Cron
+
+### Option 1: Direct Docker Method (Immediate)
+
+Add to crontab on the server where Docker containers run:
 
 ```bash
-export BLUE_HOST="192.168.1.100"
-export GREEN_HOST="192.168.1.100"
+sudo crontab -e
+```
+
+Add this line for automatic sync every 6 hours:
+```cron
+0 */6 * * * cd /path/to/OSCAL_Reports && ./scripts/consolidate-users-docker.sh >> /var/log/user-consolidation.log 2>&1
+```
+
+### Option 2: API Method (After Backend Fix)
+
+Create a credentials file (secure it properly):
+```bash
+# Create /root/.oscal-sync-env
+cat > /root/.oscal-sync-env <<'EOF'
+export BLUE_URL="http://blue.oscal.keekar.com"
+export GREEN_URL="http://green.oscal.keekar.com"
 export BLUE_USERNAME="admin"
-export BLUE_PASSWORD="password"
 export GREEN_USERNAME="admin"
-export GREEN_PASSWORD="password"
+export BLUE_PASSWORD="admin#03feb2026"
+export GREEN_PASSWORD="admin#03feb2026"
+EOF
 
-./consolidate-users.sh --auto
+chmod 600 /root/.oscal-sync-env
 ```
 
-## Automated Synchronization
-
-### Option 1: Cron Job (Recommended)
-
-Run consolidation every 6 hours:
-
+Add to crontab:
 ```bash
-# Edit crontab
 crontab -e
-
-# Add this line (adjust path to your installation)
-0 */6 * * * cd /Users/mkesharw/Documents/OSCAL_Reports/scripts && BLUE_PASSWORD="pass1" GREEN_PASSWORD="pass2" ./consolidate-users.sh --auto >> /tmp/user-consolidation.log 2>&1
 ```
 
-### Option 2: systemd Timer (Linux)
+```cron
+# Sync users every 6 hours
+0 */6 * * * source /root/.oscal-sync-env && cd /path/to/OSCAL_Reports && ./scripts/consolidate-users.sh --auto >> /var/log/user-consolidation.log 2>&1
 
-Create `/etc/systemd/system/oscal-user-sync.service`:
-
-```ini
-[Unit]
-Description=OSCAL User Consolidation Service
-After=network.target
-
-[Service]
-Type=oneshot
-Environment="BLUE_USERNAME=admin"
-Environment="BLUE_PASSWORD=yourpass"
-Environment="GREEN_USERNAME=admin"
-Environment="GREEN_PASSWORD=yourpass"
-ExecStart=/path/to/scripts/consolidate-users.sh --auto
-User=your-user
-
-[Install]
-WantedBy=multi-user.target
+# Or more frequent (every hour)
+0 * * * * source /root/.oscal-sync-env && cd /path/to/OSCAL_Reports && ./scripts/consolidate-users.sh --auto >> /var/log/user-consolidation.log 2>&1
 ```
 
-Create `/etc/systemd/system/oscal-user-sync.timer`:
+## Users That Will Be Merged
 
-```ini
-[Unit]
-Description=Run OSCAL User Consolidation every 6 hours
+### Blue → Green (4 users to add):
+1. `chander.vohra@gmail.com` - Assessor
+2. `chetan_joshi@trendmicro.com` - User
+3. `dmiglani@adobe.com` - User
+4. `satyamish@yahoo.com` - Assessor
 
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=6h
+### Green → Blue (2 users to add):
+1. `Lucas.Lenci@gartner.com` - User
+2. `jessica.freeth@defence.gov.au` - User
 
-[Install]
-WantedBy=timers.target
+### Result After Merge:
+- **Blue**: 18 + 2 = **20 users**
+- **Green**: 16 + 4 = **20 users**
+- All users can login to both instances
+
+## Safety Features
+
+- **No deletions**: Existing users are never deleted
+- **No overwrites**: Duplicate users are automatically skipped
+- **Automatic backups**: All user data is backed up before merge
+- **Password preservation**: Password hashes are maintained exactly
+- **Merge mode**: By default, only adds new users, never modifies existing ones
+
+## Backup Locations
+
+Backups are automatically created in:
 ```
-
-Enable and start:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable oscal-user-sync.timer
-sudo systemctl start oscal-user-sync.timer
+~/oscal-user-consolidation-YYYYMMDD-HHMMSS/
+├── blue-users.json         # Full Blue user export
+├── green-users.json        # Full Green user export
+├── blue-usernames.txt      # Blue username list
+├── green-usernames.txt     # Green username list
+├── blue-merged.json        # Blue after merge (if applicable)
+└── green-merged.json       # Green after merge (if applicable)
 ```
-
-## How It Works
-
-### 1. Export Phase
-- Script authenticates to Blue deployment
-- Exports all users via `/api/users/export` endpoint
-- Returns JSON with user data (including password hashes)
-
-### 2. Import Phase
-- Script authenticates to Green deployment
-- Imports users via `/api/users/import?mode=merge` endpoint
-- Merge mode ensures:
-  - Existing users are NOT overwritten
-  - Duplicate usernames are skipped
-  - Password hashes are preserved exactly
-
-### 3. Bi-Directional
-- Repeats export/import in reverse (Green → Blue)
-- Results in both deployments having all users
-
-## Important Notes
-
-### What Gets Synchronized
-✅ **Synchronized:**
-- Username
-- Email address
-- Password hash (PBKDF2)
-- Role (admin/user)
-- Account status
-- Created date
-
-❌ **NOT Synchronized:**
-- Active sessions
-- Session tokens
-- User preferences
-- Login history
-- Deployment-specific data
-
-### Duplicate Handling
-- Users are identified by **username** and **ID**
-- If a user already exists in target deployment:
-  - Existing user data is preserved (not overwritten)
-  - Import is skipped for that user
-  - Reported as "skipped (duplicate)"
-
-### Password Security
-- Password hashes are copied exactly as-is
-- Uses PBKDF2 with 600,000 iterations (FIPS 140-2 compliant)
-- No passwords are ever transmitted in plain text
-- Hashes work identically on both deployments
 
 ## Troubleshooting
 
-### Container Not Running
+### "User not found" error on export endpoint
 
-```
-✗ Neither Blue nor Green containers are running!
-```
+**Problem**: Backend has the route conflict bug.
 
-**Solution:** Start at least one container before running consolidation.
+**Solution**: 
+1. Use Method 1 (Direct Docker) until backend is fixed
+2. Deploy backend fix (commit 8063b1a)
+3. Switch to Method 2 (API-based)
 
+### "Authentication failed"
+
+**Problem**: Wrong credentials or password changed.
+
+**Solution**: 
+- Verify admin password is correct
+- Check if password uses special characters (quote them properly)
+- Try logging in via web UI first to verify credentials
+
+### "Container not found" (Direct Docker method)
+
+**Problem**: Container names don't match or containers aren't running.
+
+**Solution**:
 ```bash
-docker ps | grep oscal-report-generator
+# Check running containers
+docker ps | grep oscal
+
+# If names are different, update script variables
+BLUE_CONTAINER="your-blue-container-name"
+GREEN_CONTAINER="your-green-container-name"
 ```
 
-### Authentication Failed
+### "Instance not accessible"
 
-```
-✗ Blue authentication failed!
-```
+**Problem**: URL is wrong or service is down.
 
-**Solutions:**
-1. Verify container is running
-2. Check username/password are correct
-3. Ensure API endpoints are accessible
-4. Check container logs: `docker logs oscal-report-generator-blue`
+**Solution**:
+- Verify URLs are correct
+- Check if services are running: `docker ps`
+- Test connectivity: `curl http://blue.oscal.keekar.com/`
 
-### No Users Added
+## Next Steps
 
-```
-Blue → Green: 0 users added, 5 skipped (duplicates)
-```
+1. ✅ Backend fix committed and pushed to personal repo
+2. ⏳ Deploy backend fix to both Blue and Green servers
+3. ⏳ Run initial consolidation (use Method 1 for now)
+4. ⏳ Set up cron job for automatic synchronization
+5. ⏳ After backend deployment, switch to Method 2
 
-**This is normal if:**
-- All users already exist in target deployment
-- Consolidation was already run previously
-- Users were manually added to both deployments
+## Support
 
-### Connection Refused
-
-**Problem:** Cannot connect to container
-
-**Solutions:**
-1. Verify container is running: `docker ps`
-2. Check port mappings: `docker port oscal-report-generator-blue`
-3. Try different hostname:
-   - `localhost`
-   - `127.0.0.1`
-   - Your NAS IP (e.g., `192.168.1.100`)
-
-### jq Command Not Found
-
-```
-bash: jq: command not found
-```
-
-**Install jq:**
-
-```bash
-# macOS
-brew install jq
-
-# Ubuntu/Debian
-sudo apt-get install jq
-
-# RHEL/CentOS
-sudo yum install jq
-```
-
-## Best Practices
-
-### 1. Run After New User Registrations
-After users register on either deployment, run consolidation to sync:
-
-```bash
-./consolidate-users.sh --auto
-```
-
-### 2. Backup Before Consolidation
-The script automatically creates backups in:
-```
-~/oscal-user-consolidation-YYYYMMDD-HHMMSS/
-├── blue-users.json
-└── green-users.json
-```
-
-Keep these for recovery if needed.
-
-### 3. Verify After Consolidation
-Check user counts match:
-
-```bash
-# Blue users
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:3020/api/users | jq 'length'
-
-# Green users
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:3019/api/users | jq 'length'
-```
-
-### 4. Regular Synchronization
-Set up automated sync via cron to keep deployments in sync:
-- Every 6 hours for active systems
-- Daily for less active systems
-
-### 5. Monitor Consolidation Logs
-When running via cron, monitor logs:
-
-```bash
-tail -f /tmp/user-consolidation.log
-```
-
-## Security Considerations
-
-### 1. Admin Credentials
-- Store passwords securely
-- Use environment variables, not hardcoded values
-- Consider using a secrets manager for automation
-
-### 2. Backup Files
-- Backup files contain password hashes
-- Secure the backup directory with proper permissions:
-
-```bash
-chmod 700 ~/oscal-user-consolidation-*
-```
-
-### 3. Network Security
-- Use HTTPS in production
-- Consider VPN for remote access
-- Restrict API access with firewall rules
-
-## Command Reference
-
-```bash
-# Show help
-./consolidate-users.sh --help
-
-# Automatic bi-directional sync (recommended)
-./consolidate-users.sh --auto
-
-# One-way sync options
-./consolidate-users.sh --blue-to-green
-./consolidate-users.sh --green-to-blue
-
-# Interactive mode (manual selection)
-./consolidate-users.sh
-```
-
-### Environment Variables
-
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `BLUE_HOST` | Blue hostname/IP | `192.168.1.100` |
-| `GREEN_HOST` | Green hostname/IP | `192.168.1.100` |
-| `BLUE_USERNAME` | Blue admin username | `admin` |
-| `BLUE_PASSWORD` | Blue admin password | `yourpassword` |
-| `GREEN_USERNAME` | Green admin username | `admin` |
-| `GREEN_PASSWORD` | Green admin password | `yourpassword` |
-
-## Related Documentation
-
-- [Docker Hub Deployment](./DOCKER_HUB_DEPLOYMENT_IMPLEMENTATION.md)
-- [Deployment Testing Guide](./DEPLOYMENT_TESTING_GUIDE.md)
-- [Blue/Green Deployment Strategy](./BRANCHING_STRATEGY.md)
-
----
-
-**Last Updated:** January 29, 2026  
-**Script Version:** 2.0.0  
-**Maintained by:** Mukesh Kesharwani
+For issues or questions:
+- Check logs: `tail -f /var/log/user-consolidation.log`
+- Review backup files in `~/oscal-user-consolidation-*/`
+- Test export endpoint manually with curl
+- Verify Docker container names and status

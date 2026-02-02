@@ -24,6 +24,11 @@ set -e
 # CONFIGURATION
 # ============================================================================
 
+# URL Configuration (can be overridden by environment variables)
+BLUE_URL="${BLUE_URL:-http://blue.oscal.keekar.com}"
+GREEN_URL="${GREEN_URL:-http://green.oscal.keekar.com}"
+
+# Legacy configuration (deprecated - use BLUE_URL and GREEN_URL instead)
 BLUE_CONTAINER="oscal-report-generator-blue"
 BLUE_PORT="3020"
 GREEN_CONTAINER="oscal-report-generator-green"
@@ -52,14 +57,47 @@ while [[ $# -gt 0 ]]; do
       DIRECTION="2"
       shift
       ;;
+    --blue-url)
+      BLUE_URL="$2"
+      shift 2
+      ;;
+    --green-url)
+      GREEN_URL="$2"
+      shift 2
+      ;;
+    --blue-password)
+      BLUE_PASSWORD="$2"
+      shift 2
+      ;;
+    --green-password)
+      GREEN_PASSWORD="$2"
+      shift 2
+      ;;
     --help|-h)
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --auto              Automatic bi-directional sync (recommended)"
-      echo "  --blue-to-green     One-way sync: Blue → Green only"
-      echo "  --green-to-blue     One-way sync: Green → Blue only"
-      echo "  --help, -h          Show this help message"
+      echo "  --auto                    Automatic bi-directional sync (recommended)"
+      echo "  --blue-to-green           One-way sync: Blue → Green only"
+      echo "  --green-to-blue           One-way sync: Green → Blue only"
+      echo "  --blue-url URL            Blue instance URL (default: http://blue.oscal.keekar.com)"
+      echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.com)"
+      echo "  --blue-password PASS      Blue admin password (for automation)"
+      echo "  --green-password PASS     Green admin password (for automation)"
+      echo "  --help, -h                Show this help message"
+      echo ""
+      echo "Environment Variables:"
+      echo "  BLUE_URL                  Blue instance URL"
+      echo "  GREEN_URL                 Green instance URL"
+      echo "  BLUE_USERNAME             Blue admin username (default: admin)"
+      echo "  GREEN_USERNAME            Green admin username (default: admin)"
+      echo "  BLUE_PASSWORD             Blue admin password"
+      echo "  GREEN_PASSWORD            Green admin password"
+      echo ""
+      echo "Examples:"
+      echo "  $0 --auto"
+      echo "  $0 --auto --blue-url http://localhost:3020 --green-url http://localhost:3019"
+      echo "  BLUE_PASSWORD=secret GREEN_PASSWORD=secret $0 --auto"
       echo ""
       echo "Interactive mode (no flags): Prompts for sync direction"
       exit 0
@@ -129,27 +167,28 @@ else
   echo ""
 fi
 
-# Check if containers are running
-BLUE_RUNNING=$(docker ps --format '{{.Names}}' | grep -c "^${BLUE_CONTAINER}$" || echo "0")
-GREEN_RUNNING=$(docker ps --format '{{.Names}}' | grep -c "^${GREEN_CONTAINER}$" || echo "0")
+# Check if instances are accessible
+print_info "Checking instance accessibility..."
+BLUE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$BLUE_URL/" || echo "000")
+GREEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$GREEN_URL/" || echo "000")
 
-if [ "$BLUE_RUNNING" = "0" ]; then
-  print_warning "Blue container is not running"
+if [ "$BLUE_STATUS" = "000" ]; then
+  print_warning "Blue instance not accessible at $BLUE_URL"
 fi
 
-if [ "$GREEN_RUNNING" = "0" ]; then
-  print_warning "Green container is not running"
+if [ "$GREEN_STATUS" = "000" ]; then
+  print_warning "Green instance not accessible at $GREEN_URL"
 fi
 
-if [ "$BLUE_RUNNING" = "0" ] && [ "$GREEN_RUNNING" = "0" ]; then
-  print_error "Neither Blue nor Green containers are running!"
+if [ "$BLUE_STATUS" = "000" ] && [ "$GREEN_STATUS" = "000" ]; then
+  print_error "Neither Blue nor Green instances are accessible!"
   exit 1
 fi
 
 echo ""
-echo "Container Status:"
-echo "  ${BLUE}Blue:${NC}  $([ "$BLUE_RUNNING" = "1" ] && echo "✓ Running" || echo "✗ Not running")"
-echo "  ${GREEN}Green:${NC} $([ "$GREEN_RUNNING" = "1" ] && echo "✓ Running" || echo "✗ Not running")"
+echo "Instance Status:"
+echo "  ${BLUE}Blue ($BLUE_URL):${NC}  $([ "$BLUE_STATUS" != "000" ] && echo "✓ Accessible (HTTP $BLUE_STATUS)" || echo "✗ Not accessible")"
+echo "  ${GREEN}Green ($GREEN_URL):${NC} $([ "$GREEN_STATUS" != "000" ] && echo "✓ Accessible (HTTP $GREEN_STATUS)" || echo "✗ Not accessible")"
 echo ""
 
 # Create backup directory
@@ -157,24 +196,8 @@ mkdir -p "$BACKUP_DIR"
 print_info "Backup directory: $BACKUP_DIR"
 echo ""
 
-# Configure hostnames
-if [ "$AUTO_MODE" = false ]; then
-  echo "Enter hostname or IP to access containers"
-  echo "Common options: localhost, 127.0.0.1, or your NAS IP (e.g., 192.168.1.200)"
-  echo ""
-  read -p "Blue hostname/IP (default: localhost): " BLUE_HOST
-  BLUE_HOST=${BLUE_HOST:-localhost}
-  read -p "Green hostname/IP (default: localhost): " GREEN_HOST
-  GREEN_HOST=${GREEN_HOST:-localhost}
-else
-  # Auto mode: use localhost as default
-  BLUE_HOST="${BLUE_HOST:-localhost}"
-  GREEN_HOST="${GREEN_HOST:-localhost}"
-fi
-
-echo ""
-print_info "Blue will use: http://${BLUE_HOST}:${BLUE_PORT}"
-print_info "Green will use: http://${GREEN_HOST}:${GREEN_PORT}"
+print_info "Blue instance: $BLUE_URL"
+print_info "Green instance: $GREEN_URL"
 echo ""
 
 # Select consolidation direction (only in interactive mode)
@@ -192,7 +215,7 @@ fi
 # AUTHENTICATE BLUE
 # ============================================================================
 
-if [ "$BLUE_RUNNING" = "1" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
+if [ "$BLUE_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
   print_header "🔐 Authenticating Blue Deployment"
   
   # Check for environment variables first (useful for automation)
@@ -217,7 +240,7 @@ if [ "$BLUE_RUNNING" = "1" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2"
   fi
   
   BLUE_JSON=$(jq -n --arg user "$BLUE_USER" --arg pass "$BLUE_PASSWORD" '{username: $user, password: $pass}')
-  BLUE_TOKEN=$(curl -s -X POST "http://${BLUE_HOST}:${BLUE_PORT}/api/auth/login" \
+  BLUE_TOKEN=$(curl -s -X POST "$BLUE_URL/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "$BLUE_JSON" \
     | jq -r '.sessionToken' 2>/dev/null || echo "null")
@@ -234,7 +257,7 @@ fi
 # AUTHENTICATE GREEN
 # ============================================================================
 
-if [ "$GREEN_RUNNING" = "1" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
+if [ "$GREEN_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
   print_header "🔐 Authenticating Green Deployment"
   
   # Check for environment variables first (useful for automation)
@@ -259,7 +282,7 @@ if [ "$GREEN_RUNNING" = "1" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2
   fi
   
   GREEN_JSON=$(jq -n --arg user "$GREEN_USER" --arg pass "$GREEN_PASSWORD" '{username: $user, password: $pass}')
-  GREEN_TOKEN=$(curl -s -X POST "http://${GREEN_HOST}:${GREEN_PORT}/api/auth/login" \
+  GREEN_TOKEN=$(curl -s -X POST "$GREEN_URL/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "$GREEN_JSON" \
     | jq -r '.sessionToken' 2>/dev/null || echo "null")
@@ -280,14 +303,14 @@ if [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "3" ]; then
   print_header "📤 Exporting Users from Blue"
   
   curl -s -H "Authorization: Bearer $BLUE_TOKEN" \
-    "http://${BLUE_HOST}:${BLUE_PORT}/api/users/export" > "$BACKUP_DIR/blue-users.json"
+    "$BLUE_URL/api/users/export" > "$BACKUP_DIR/blue-users.json"
   
   BLUE_USER_COUNT=$(jq '.userCount' "$BACKUP_DIR/blue-users.json" 2>/dev/null || echo "0")
   print_success "Exported $BLUE_USER_COUNT users from Blue"
   
   print_header "📥 Importing Blue Users into Green"
   
-  IMPORT_RESULT=$(curl -s -X POST "http://${GREEN_HOST}:${GREEN_PORT}/api/users/import?mode=merge" \
+  IMPORT_RESULT=$(curl -s -X POST "$GREEN_URL/api/users/import?mode=merge" \
     -H "Authorization: Bearer $GREEN_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$BACKUP_DIR/blue-users.json")
@@ -309,14 +332,14 @@ if [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; then
   print_header "📤 Exporting Users from Green"
   
   curl -s -H "Authorization: Bearer $GREEN_TOKEN" \
-    "http://${GREEN_HOST}:${GREEN_PORT}/api/users/export" > "$BACKUP_DIR/green-users.json"
+    "$GREEN_URL/api/users/export" > "$BACKUP_DIR/green-users.json"
   
   GREEN_USER_COUNT=$(jq '.userCount' "$BACKUP_DIR/green-users.json" 2>/dev/null || echo "0")
   print_success "Exported $GREEN_USER_COUNT users from Green"
   
   print_header "📥 Importing Green Users into Blue"
   
-  IMPORT_RESULT=$(curl -s -X POST "http://${BLUE_HOST}:${BLUE_PORT}/api/users/import?mode=merge" \
+  IMPORT_RESULT=$(curl -s -X POST "$BLUE_URL/api/users/import?mode=merge" \
     -H "Authorization: Bearer $BLUE_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$BACKUP_DIR/green-users.json")
@@ -336,15 +359,15 @@ fi
 
 print_header "🔍 Verification"
 
-if [ "$BLUE_RUNNING" = "1" ]; then
+if [ "$BLUE_STATUS" != "000" ]; then
   BLUE_FINAL_COUNT=$(curl -s -H "Authorization: Bearer $BLUE_TOKEN" \
-    "http://${BLUE_HOST}:${BLUE_PORT}/api/users" | jq 'length' 2>/dev/null || echo "0")
+    "$BLUE_URL/api/users" | jq '.users | length' 2>/dev/null || echo "0")
   echo "${BLUE}Blue:${NC}  Total users: $BLUE_FINAL_COUNT"
 fi
 
-if [ "$GREEN_RUNNING" = "1" ]; then
+if [ "$GREEN_STATUS" != "000" ]; then
   GREEN_FINAL_COUNT=$(curl -s -H "Authorization: Bearer $GREEN_TOKEN" \
-    "http://${GREEN_HOST}:${GREEN_PORT}/api/users" | jq 'length' 2>/dev/null || echo "0")
+    "$GREEN_URL/api/users" | jq '.users | length' 2>/dev/null || echo "0")
   echo "${GREEN}Green:${NC} Total users: $GREEN_FINAL_COUNT"
 fi
 
