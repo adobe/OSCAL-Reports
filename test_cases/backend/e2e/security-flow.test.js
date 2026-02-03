@@ -25,9 +25,6 @@ describe('End-to-End Security Flow Tests (v1.6.5)', () => {
     app = express();
     app.use(express.json());
 
-    // Mock session storage
-    const sessions = new Map();
-    
     // Mock user database
     const users = {
       'user@example.com': {
