@@ -1,0 +1,73 @@
+flowchart TB
+    subgraph Internet["🌐 Internet"]
+        Users["👥 Users<br/>Browser/API"]
+    end
+    
+    subgraph AWS["☁️ AWS Cloud US-East-1"]
+        subgraph LoadBalancer["🔄 Application Load Balancer ALB"]
+            ALB["Port 80/443<br/>Health Checks<br/>SSL Termination"]
+        end
+        
+        subgraph OSCAL["🖥️ OSCAL Instances Always On"]
+            Green["🟢 Green Instance<br/>t3.small 2vCPU 2GB<br/>Port: 3019<br/>$15.18/month"]
+            Blue["🔵 Blue Instance<br/>t3.small 2vCPU 2GB<br/>Port: 3020<br/>$15.18/month"]
+        end
+        
+        subgraph Automation["⚙️ Automation Layer"]
+            Lambda["🔧 Lambda Function<br/>Wake/Sleep Controller<br/>$0.20/month"]
+            CW["📊 CloudWatch Events<br/>Idle Check 30 min<br/>$0.50/month"]
+            DDB["💾 DynamoDB<br/>Activity Tracking<br/>Last Activity Timestamp<br/>$0.25/month"]
+        end
+        
+        subgraph AI["🤖 Ollama AI Server Auto-Scaling"]
+            ASG["🔄 Auto Scaling Group<br/>Min: 0, Max: 1<br/>Desired: 0 when idle"]
+            Ollama["🧠 Ollama Instance<br/>t3.xlarge 4vCPU 16GB<br/>Port: 11434<br/>Models: Mistral 7B + Llama<br/>$0.1664/hour<br/>150 hours/month = $24.96"]
+        end
+        
+        subgraph Storage["💾 Storage"]
+            EBS1["📦 EBS Volume<br/>40 GB OSCAL<br/>$3.20/month"]
+            EBS2["📦 EBS Volume<br/>100 GB Ollama<br/>$8.00/month"]
+        end
+    end
+    
+    Users -->|HTTPS| ALB
+    ALB -->|Health Check| Green
+    ALB -->|Health Check| Blue
+    ALB -->|Route Traffic| Green
+    ALB -->|Route Traffic| Blue
+    
+    Green -.->|AI Query| Lambda
+    Blue -.->|AI Query| Lambda
+    
+    Lambda -->|Check Status| ASG
+    Lambda -->|Scale Up 0 to 1| ASG
+    Lambda -->|Record Activity| DDB
+    
+    CW -->|Every 30 min| Lambda
+    CW -->|Check Idle| DDB
+    
+    Lambda -.->|Idle 4hrs<br/>Scale Down 1 to 0| ASG
+    
+    ASG -->|Manages| Ollama
+    
+    Green -->|API Call| Ollama
+    Blue -->|API Call| Ollama
+    
+    Ollama -.->|Model Storage| EBS2
+    Green -.->|App Data| EBS1
+    Blue -.->|App Data| EBS1
+    
+    style Users fill:#e1f5ff,stroke:#0066cc,stroke-width:2px
+    style ALB fill:#ff9900,stroke:#cc7a00,stroke-width:3px
+    style Green fill:#90EE90,stroke:#228B22,stroke-width:2px
+    style Blue fill:#87CEEB,stroke:#4682B4,stroke-width:2px
+    style Lambda fill:#FF9900,stroke:#cc7a00,stroke-width:2px
+    style CW fill:#FF4F8B,stroke:#cc3366,stroke-width:2px
+    style DDB fill:#4053D6,stroke:#2c3a8f,stroke-width:2px
+    style ASG fill:#FFA500,stroke:#cc8400,stroke-width:2px
+    style Ollama fill:#9370DB,stroke:#6a4ca6,stroke-width:3px
+    style EBS1 fill:#569A31,stroke:#3d6d23,stroke-width:2px
+    style EBS2 fill:#569A31,stroke:#3d6d23,stroke-width:2px
+    
+    classDef awsGroup fill:#f9f9f9,stroke:#232F3E,stroke-width:2px,stroke-dasharray: 5 5
+    class LoadBalancer,OSCAL,Automation,AI,Storage awsGroup

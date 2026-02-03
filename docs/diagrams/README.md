@@ -1,0 +1,85 @@
+# 📊 AWS Architecture Diagrams
+
+This folder contains Mermaid diagram files for the AWS deployment architecture.
+
+## Files
+
+1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram showing all AWS components
+2. **workflow-timeline.mmd** - Sequence diagram showing the wake/sleep workflow
+
+## 🎨 Convert to PNG/GIF for Email
+
+### Option 1: Online Converter (Easiest) ⭐
+
+1. **Mermaid Live Editor**: https://mermaid.live/
+   - Copy the contents of the `.mmd` file
+   - Paste into the editor
+   - Click "Download PNG" or "Download SVG"
+   - PNG is ready to attach to email!
+
+2. **Mermaid.ink**: https://mermaid.ink/
+   - Use URL format: `https://mermaid.ink/img/[base64-encoded-diagram]`
+   - Or use their online tool
+
+### Option 2: VS Code Extension
+
+1. Install "Markdown Preview Mermaid Support" extension
+2. Open the `.mmd` file
+3. Right-click and select "Export as PNG"
+
+### Option 3: Command Line (for automation)
+
+```bash
+# Install mermaid-cli
+npm install -g @mermaid-js/mermaid-cli
+
+# Convert to PNG
+mmdc -i aws-auto-scaling-architecture.mmd -o aws-architecture.png -w 1920 -H 1080
+
+# Convert to SVG (for better quality)
+mmdc -i aws-auto-scaling-architecture.mmd -o aws-architecture.svg
+```
+
+### Option 4: Python Script
+
+```bash
+# Install playwright (required by mermaid-cli)
+npm install -g @mermaid-js/mermaid-cli
+npx playwright install chromium
+
+# Convert all diagrams
+for file in *.mmd; do
+    mmdc -i "$file" -o "${file%.mmd}.png" -w 1920 -H 1080 -b white
+done
+```
+
+## 🖼️ Recommended Settings for Email
+
+- **Format**: PNG (best compatibility)
+- **Width**: 1920px (high quality)
+- **Height**: Auto or 1080px
+- **Background**: White
+- **Theme**: Default or Forest
+
+## 📧 Email-Ready Formats
+
+After conversion, you'll have:
+- `aws-auto-scaling-architecture.png` - Main architecture
+- `workflow-timeline.png` - Sequence diagram
+
+Both are ready to insert directly into emails!
+
+## 🎨 Customization
+
+To modify the diagrams:
+1. Edit the `.mmd` files
+2. Adjust colors using `style` commands
+3. Change layout with `flowchart TB` (top-bottom) or `LR` (left-right)
+4. Reconvert to PNG
+
+## 💡 Tips
+
+- Use PNG for emails (better compatibility)
+- Use SVG for presentations (scalable)
+- Use PDF for print documents
+- Keep width at 1920px for HD displays

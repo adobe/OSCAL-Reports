@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Architecture Diagram Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1920px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #232F3E;
+            text-align: center;
+        }
+        .diagram {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .instructions {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .button-group {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #FF9900;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        button:hover {
+            background: #cc7a00;
+        }
+        .cost-box {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .cost-box h2 {
+            color: #28a745;
+            margin: 0 0 10px 0;
+        }
+        .cost-amount {
+            font-size: 36px;
+            font-weight: bold;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 AWS Auto-Scaling Architecture for OSCAL + Ollama</h1>
+        
+        <div class="cost-box">
+            <h2>💰 Recommended Setup Cost</h2>
+            <div class="cost-amount">$94.68/month</div>
+            <p style="font-size: 18px; margin: 10px 0;">Annual: $1,136 | Saves $820/year vs Always-On</p>
+        </div>
+
+        <div class="instructions">
+            <h3>📸 How to Save as PNG for Email:</h3>
+            <ol>
+                <li>Right-click on the diagram below</li>
+                <li>Select "Save Image As..." or "Copy Image"</li>
+                <li>Save as PNG or paste directly into your email</li>
+            </ol>
+            <p><strong>Alternative:</strong> Use browser screenshot tool (Cmd+Shift+4 on Mac, Windows+Shift+S on Windows)</p>
+        </div>
+
+        <div class="button-group">
+            <button onclick="downloadDiagram('architecture')">📥 Download Architecture PNG</button>
+            <button onclick="downloadDiagram('workflow')">📥 Download Workflow PNG</button>
+        </div>
+
+        <h2>🏗️ Main Architecture Diagram</h2>
+        <div class="diagram">
+            <div class="mermaid" id="architecture">
+flowchart TB
+    subgraph Internet["🌐 Internet"]
+        Users["👥 Users<br/>Browser/API"]
+    end
+    
+    subgraph AWS["☁️ AWS Cloud US-East-1"]
+        subgraph LoadBalancer["🔄 Application Load Balancer ALB"]
+            ALB["Port 80/443<br/>Health Checks<br/>SSL Termination"]
+        end
+        
+        subgraph OSCAL["🖥️ OSCAL Instances Always On"]
+            Green["🟢 Green Instance<br/>t3.small 2vCPU 2GB<br/>Port: 3019<br/>$15.18/month"]
+            Blue["🔵 Blue Instance<br/>t3.small 2vCPU 2GB<br/>Port: 3020<br/>$15.18/month"]
+        end
+        
+        subgraph Automation["⚙️ Automation Layer"]
+            Lambda["🔧 Lambda Function<br/>Wake/Sleep Controller<br/>$0.20/month"]
+            CW["📊 CloudWatch Events<br/>Idle Check 30 min<br/>$0.50/month"]
+            DDB["💾 DynamoDB<br/>Activity Tracking<br/>Last Activity Timestamp<br/>$0.25/month"]
+        end
+        
+        subgraph AI["🤖 Ollama AI Server Auto-Scaling"]
+            ASG["🔄 Auto Scaling Group<br/>Min: 0, Max: 1<br/>Desired: 0 when idle"]
+            Ollama["🧠 Ollama Instance<br/>t3.xlarge 4vCPU 16GB<br/>Port: 11434<br/>Models: Mistral 7B + Llama<br/>$0.1664/hour<br/>150 hours/month = $24.96"]
+        end
+        
+        subgraph Storage["💾 Storage"]
+            EBS1["📦 EBS Volume<br/>40 GB OSCAL<br/>$3.20/month"]
+            EBS2["📦 EBS Volume<br/>100 GB Ollama<br/>$8.00/month"]
+        end
+    end
+    
+    Users -->|HTTPS| ALB
+    ALB -->|Health Check| Green
+    ALB -->|Health Check| Blue
+    ALB -->|Route Traffic| Green
+    ALB -->|Route Traffic| Blue
+    
+    Green -.->|AI Query| Lambda
+    Blue -.->|AI Query| Lambda
+    
+    Lambda -->|Check Status| ASG
+    Lambda -->|Scale Up 0 to 1| ASG
+    Lambda -->|Record Activity| DDB
+    
+    CW -->|Every 30 min| Lambda
+    CW -->|Check Idle| DDB
+    
+    Lambda -.->|Idle 4hrs<br/>Scale Down 1 to 0| ASG
+    
+    ASG -->|Manages| Ollama
+    
+    Green -->|API Call| Ollama
+    Blue -->|API Call| Ollama
+    
+    Ollama -.->|Model Storage| EBS2
+    Green -.->|App Data| EBS1
+    Blue -.->|App Data| EBS1
+    
+    style Users fill:#e1f5ff,stroke:#0066cc,stroke-width:2px
+    style ALB fill:#ff9900,stroke:#cc7a00,stroke-width:3px
+    style Green fill:#90EE90,stroke:#228B22,stroke-width:2px
+    style Blue fill:#87CEEB,stroke:#4682B4,stroke-width:2px
+    style Lambda fill:#FF9900,stroke:#cc7a00,stroke-width:2px
+    style CW fill:#FF4F8B,stroke:#cc3366,stroke-width:2px
+    style DDB fill:#4053D6,stroke:#2c3a8f,stroke-width:2px
+    style ASG fill:#FFA500,stroke:#cc8400,stroke-width:2px
+    style Ollama fill:#9370DB,stroke:#6a4ca6,stroke-width:3px
+    style EBS1 fill:#569A31,stroke:#3d6d23,stroke-width:2px
+    style EBS2 fill:#569A31,stroke:#3d6d23,stroke-width:2px
+            </div>
+        </div>
+
+        <h2>⏱️ Workflow Timeline</h2>
+        <div class="diagram">
+            <div class="mermaid" id="workflow">
+sequenceDiagram
+    autonumber
+    participant User as 👥 User
+    participant ALB as 🔄 ALB
+    participant OSCAL as 🖥️ OSCAL
+    participant Lambda as 🔧 Lambda
+    participant ASG as ⚙️ Auto Scaling
+    participant Ollama as 🤖 Ollama
+    participant CW as ⏰ CloudWatch
+    
+    Note over Ollama: SLEEPING - Scaled to 0
+    
+    User->>ALB: Access Application
+    ALB->>OSCAL: Route Traffic
+    OSCAL->>User: Render UI
+    
+    Note over User,OSCAL: Viewing reports - no AI<br/>Ollama sleeping $0/hour
+    
+    User->>OSCAL: Click "AI Suggest"
+    OSCAL->>Lambda: Wake Ollama
+    Lambda->>ASG: Scale to 1
+    
+    Note over ASG,Ollama: Starting 2 to 3 min
+    ASG->>Ollama: Launch Instance
+    
+    Note over Ollama: ACTIVE<br/>$0.1664/hour
+    
+    Ollama->>OSCAL: Ready
+    OSCAL->>Ollama: AI Request
+    Ollama->>User: AI Response
+    
+    Note over Ollama: Idle Timer Started
+    
+    loop Every 30 min
+        CW->>Lambda: Check Idle
+        Lambda->>Lambda: Check Time
+    end
+    
+    Note over Ollama: 4 hours idle
+    
+    Lambda->>ASG: Scale to 0
+    ASG->>Ollama: Terminate
+    
+    Note over Ollama: SLEEPING $0/hour
+            </div>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: { 
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+
+        function downloadDiagram(type) {
+            const svgElement = document.querySelector(`#${type} svg`);
+            if (!svgElement) {
+                alert('Diagram not rendered yet. Please wait a moment and try again.');
+                return;
+            }
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Get SVG data
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const svgUrl = URL.createObjectURL(svgBlob);
+            
+            // Create image
+            const img = new Image();
+            img.onload = function() {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                
+                // Download
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `aws-${type}-diagram.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+                
+                URL.revokeObjectURL(svgUrl);
+            };
+            img.src = svgUrl;
+        }
+    </script>
+</body>
+</html>
