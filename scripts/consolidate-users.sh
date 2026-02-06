@@ -36,13 +36,10 @@ set -e
 BLUE_URL="${BLUE_URL:-http://blue.oscal.keekar.com}"
 GREEN_URL="${GREEN_URL:-http://green.oscal.keekar.com}"
 
-# Legacy configuration (deprecated - use BLUE_URL and GREEN_URL instead)
-BLUE_CONTAINER="oscal-report-generator-blue"
-BLUE_PORT="3020"
-GREEN_CONTAINER="oscal-report-generator-green"
-GREEN_PORT="3019"
+# Legacy container/port names (deprecated; BLUE_URL/GREEN_URL used instead)
+# BLUE_CONTAINER, BLUE_PORT, GREEN_CONTAINER, GREEN_PORT removed to satisfy ShellCheck SC2034
 
-BACKUP_DIR="$HOME/oscal-user-consolidation-$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$HOME/oscal-user-consolidation-$(date +%Y%m%d-%H%M%S)""$HOME/oscal-user-consolidation-$(date +%Y%m%d-%H%M%S)"
 
 # Parse command-line arguments
 AUTO_MODE=false
@@ -247,7 +244,7 @@ if [ "$AUTO_MODE" = false ]; then
   echo "  2) Green → Blue (merge Green users into Blue)"
   echo "  3) Bi-directional ⭐ (merge both ways - RECOMMENDED)"
   echo ""
-  read -p "Enter choice (1-3, default: 3): " DIRECTION
+  read -rp "Enter choice (1-3, default: 3): " DIRECTION
   DIRECTION=${DIRECTION:-3}
 fi
 
@@ -255,7 +252,7 @@ fi
 # AUTHENTICATE BLUE
 # ============================================================================
 
-if [ "$BLUE_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
+if [ "$BLUE_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; }; then
   print_header "🔐 Authenticating Blue Deployment"
   
   # Check for environment variables first (useful for automation)
@@ -264,7 +261,7 @@ if [ "$BLUE_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
       BLUE_USER="admin"
       print_info "Using default username: admin"
     else
-      read -p "Blue username (default: admin): " BLUE_USER
+      read -rp "Blue username (default: admin): " BLUE_USER
       BLUE_USER=${BLUE_USER:-admin}
     fi
   else
@@ -273,7 +270,7 @@ if [ "$BLUE_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
   fi
   
   if [ -z "$BLUE_PASSWORD" ]; then
-    read -sp "Blue password: " BLUE_PASSWORD
+    read -rsp "Blue password: " BLUE_PASSWORD
     echo ""
   else
     print_info "Using password from environment variable"
@@ -311,7 +308,7 @@ fi
 # AUTHENTICATE GREEN
 # ============================================================================
 
-if [ "$GREEN_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ] ); then
+if [ "$GREEN_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; }; then
   print_header "🔐 Authenticating Green Deployment"
   
   # Check for environment variables first (useful for automation)
@@ -320,7 +317,7 @@ if [ "$GREEN_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
       GREEN_USER="admin"
       print_info "Using default username: admin"
     else
-      read -p "Green username (default: admin): " GREEN_USER
+      read -rp "Green username (default: admin): " GREEN_USER
       GREEN_USER=${GREEN_USER:-admin}
     fi
   else
@@ -329,7 +326,7 @@ if [ "$GREEN_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
   fi
   
   if [ -z "$GREEN_PASSWORD" ]; then
-    read -sp "Green password: " GREEN_PASSWORD
+    read -rsp "Green password: " GREEN_PASSWORD
     echo ""
   else
     print_info "Using password from environment variable"

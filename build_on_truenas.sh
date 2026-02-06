@@ -561,7 +561,7 @@ fi
 log "Removing dangling images..."
 DANGLING_IMAGES=$(docker images -f "dangling=true" -q)
 if [ -n "$DANGLING_IMAGES" ]; then
-  docker rmi $DANGLING_IMAGES 2>&1 | while IFS= read -r line; do log "  [docker] $line"; done || true
+  docker rmi "$DANGLING_IMAGES" 2>&1 | while IFS= read -r line; do log "  [docker] $line"; done || true
   print_success "Removed dangling images"
 else
   print_info "No dangling images to remove"

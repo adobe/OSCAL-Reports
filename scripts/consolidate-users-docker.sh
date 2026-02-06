@@ -87,7 +87,7 @@ echo ""
 
 if [ "$BLUE_ONLY_COUNT" -gt 0 ]; then
   echo "Users to copy from Blue to Green:"
-  comm -23 "$BACKUP_DIR/blue-usernames.txt" "$BACKUP_DIR/green-usernames.txt" | while read user; do
+  comm -23 "$BACKUP_DIR/blue-usernames.txt" "$BACKUP_DIR/green-usernames.txt" | while read -r user; do
     echo "  ✓ $user"
   done
   echo ""
@@ -95,7 +95,7 @@ fi
 
 if [ "$GREEN_ONLY_COUNT" -gt 0 ]; then
   echo "Users to copy from Green to Blue:"
-  comm -13 "$BACKUP_DIR/blue-usernames.txt" "$BACKUP_DIR/green-usernames.txt" | while read user; do
+  comm -13 "$BACKUP_DIR/blue-usernames.txt" "$BACKUP_DIR/green-usernames.txt" | while read -r user; do
     echo "  ✓ $user"
   done
   echo ""
@@ -104,10 +104,6 @@ fi
 # Merge Blue → Green
 if [ "$BLUE_ONLY_COUNT" -gt 0 ]; then
   print_header "📥 Merging Blue Users into Green"
-  
-  # Load both user arrays
-  BLUE_USERS=$(cat "$BACKUP_DIR/blue-users.json")
-  GREEN_USERS=$(cat "$BACKUP_DIR/green-users.json")
   
   # Create merged array (Green + new from Blue)
   MERGED=$(jq -s '.[0] as $green | .[1] as $blue | 
@@ -128,10 +124,6 @@ fi
 # Merge Green → Blue  
 if [ "$GREEN_ONLY_COUNT" -gt 0 ]; then
   print_header "📥 Merging Green Users into Blue"
-  
-  # Load both user arrays
-  BLUE_USERS=$(cat "$BACKUP_DIR/blue-users.json")
-  GREEN_USERS=$(cat "$BACKUP_DIR/green-users.json")
   
   # Create merged array (Blue + new from Green)
   MERGED=$(jq -s '.[0] as $blue | .[1] as $green | 

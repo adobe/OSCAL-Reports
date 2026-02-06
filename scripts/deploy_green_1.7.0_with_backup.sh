@@ -53,6 +53,7 @@ print_header "📦 Step 1: Backup config and users"
 
 mkdir -p "$BACKUP_DIR"
 mkdir -p "$BACKUP_DIR/config_app"
+# shellcheck disable=SC2034
 BACKED_UP=0
 
 if [ -d "$CONFIG_APP" ]; then
@@ -60,6 +61,7 @@ if [ -d "$CONFIG_APP" ]; then
     if [ -f "${CONFIG_APP}/${f}" ]; then
       cp "${CONFIG_APP}/${f}" "$BACKUP_DIR/config_app/"
       print_success "Backed up config/app/${f}"
+      # shellcheck disable=SC2034
       BACKED_UP=1
     fi
   done
@@ -69,6 +71,7 @@ if [ -d "$DATA_VOLUME_GREEN" ]; then
   BACKUP_ARCHIVE="${BACKUP_DIR}/data-green.tar.gz"
   if tar -czf "$BACKUP_ARCHIVE" -C "$REPO_ROOT" data-green 2>/dev/null; then
     print_success "Backed up data volume to $BACKUP_ARCHIVE"
+    # shellcheck disable=SC2034
     BACKED_UP=1
   fi
 fi
