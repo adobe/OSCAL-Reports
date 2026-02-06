@@ -20,7 +20,7 @@ echo "  2) mkesharw_adobe (Adobe EMU - for Adobe repo)"
 echo "  3) Show current status"
 echo "  4) Exit"
 echo ""
-read -p "Enter choice [1-4]: " choice
+read -rp "Enter choice [1-4]: " choice
 
 case $choice in
     1)

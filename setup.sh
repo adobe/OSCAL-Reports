@@ -339,8 +339,8 @@ do_debug() {
   
   # Configuration files
   print_info "Configuration Files:"
-  [ -f "config/app/config.json" ] && print_success "config.json exists" || print_warning "config.json missing"
-  [ -f "config/app/users.json" ] && print_success "users.json exists" || print_warning "users.json missing"
+  if [ -f "config/app/config.json" ]; then print_success "config.json exists"; else print_warning "config.json missing"; fi
+  if [ -f "config/app/users.json" ]; then print_success "users.json exists"; else print_warning "users.json missing"; fi
   echo ""
   
   # Recent logs
