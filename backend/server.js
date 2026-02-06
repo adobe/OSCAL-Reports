@@ -1259,6 +1259,7 @@ app.get('/api/users/export', authenticate, requireRole(ROLES.PLATFORM_ADMIN), as
  * Query params:
  *   - mode=merge (default): Skip users with duplicate IDs or usernames
  *   - mode=override: Update existing users if ID matches, create new if not
+ *   - mode=replace-by-username: Replace existing user by username (sync Blue/Green when same user has different IDs)
  * 
  * Requires Platform Admin role.
  * 
@@ -1364,6 +1365,49 @@ app.post('/api/users/import', authenticate, requireRole(ROLES.PLATFORM_ADMIN), a
             });
             console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
           }
+        }
+      });
+    } else if (mode === 'replace-by-username') {
+      // Replace-by-username: Update existing user by username match, else add new. Used for Blue/Green sync when same user has different IDs (e.g. OIDC JIT on one side).
+      importedUsers.forEach(importUser => {
+        const existingByUsername = existingUsers.find(u => u.username === importUser.username);
+        const existingByIdIndex = existingUsers.findIndex(u => u.id === importUser.id);
+        if (existingByUsername) {
+          const idx = existingUsers.indexOf(existingByUsername);
+          existingUsers[idx] = {
+            ...importUser,
+            updatedAt: new Date().toISOString(),
+            importedAt: new Date().toISOString()
+          };
+          results.updated++;
+          results.updatedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ✏️  Replaced by username: ${importUser.username} (${importUser.id})`);
+        } else if (existingByIdIndex >= 0) {
+          existingUsers[existingByIdIndex] = {
+            ...importUser,
+            updatedAt: new Date().toISOString(),
+            importedAt: new Date().toISOString()
+          };
+          results.updated++;
+          results.updatedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ✏️  Updated: ${importUser.username} (${importUser.id})`);
+        } else {
+          existingUsers.push({
+            ...importUser,
+            importedAt: new Date().toISOString()
+          });
+          results.added++;
+          results.addedUsers.push({
+            id: importUser.id,
+            username: importUser.username
+          });
+          console.log(`  ➕ Added: ${importUser.username} (${importUser.id})`);
         }
       });
     } else {
