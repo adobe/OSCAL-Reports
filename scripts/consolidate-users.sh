@@ -1,7 +1,7 @@
 #!/bin/bash
 # Consolidate Users Between Blue and Green Deployments
 # Author: Mukesh Kesharwani
-# Version: 2.0.1
+# Version: 2.0.2
 #
 # This script synchronizes users between Blue and Green deployments,
 # ensuring users registered on either instance can login to both.
@@ -47,6 +47,8 @@ BACKUP_DIR="$HOME/oscal-user-consolidation-$(date +%Y%m%d-%H%M%S)"
 # Parse command-line arguments
 AUTO_MODE=false
 DIRECTION=""
+# replace-by-username: sync users when same username exists with different ID (e.g. OIDC JIT on one side). merge: skip duplicates only.
+IMPORT_MODE="${CONSOLIDATE_IMPORT_MODE:-replace-by-username}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -81,6 +83,10 @@ while [[ $# -gt 0 ]]; do
       GREEN_PASSWORD="$2"
       shift 2
       ;;
+    --import-mode)
+      IMPORT_MODE="$2"
+      shift 2
+      ;;
     --help|-h)
       echo "Usage: $0 [OPTIONS]"
       echo ""
@@ -92,6 +98,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.com)"
       echo "  --blue-password PASS      Blue admin password (for automation)"
       echo "  --green-password PASS     Green admin password (for automation)"
+      echo "  --import-mode MODE        merge (skip duplicates) | replace-by-username (default, sync same user across Blue/Green)"
       echo "  --help, -h                Show this help message"
       echo ""
       echo "Environment Variables:"
@@ -99,10 +106,11 @@ while [[ $# -gt 0 ]]; do
       echo "  GREEN_URL                 Green instance URL"
       echo "  BLUE_USERNAME             Blue admin username (default: admin)"
       echo "  GREEN_USERNAME            Green admin username (default: admin)"
-      echo "  BLUE_PASSWORD             Blue admin password"
-      echo "  GREEN_PASSWORD            Green admin password"
-      echo ""
-      echo "⚠️  IMPORTANT: TLS Certificate Compatibility"
+  echo "  BLUE_PASSWORD             Blue admin password"
+  echo "  GREEN_PASSWORD            Green admin password"
+  echo "  CONSOLIDATE_IMPORT_MODE   merge | replace-by-username (default)"
+  echo ""
+  echo "  ⚠️  IMPORTANT: TLS Certificate Compatibility"
       echo "  When defining instance URLs, use INTERNAL IP ADDRESSES instead of hostnames"
       echo "  if TLS certificates don't match the hostname. APIs may fail with certificate"
       echo "  mismatch errors (e.g., certificate for 'keekar.ddns.net' vs hostname 'green.oscal.keekar.com')."
@@ -271,14 +279,28 @@ if [ "$BLUE_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
     print_info "Using password from environment variable"
   fi
   
-  BLUE_JSON=$(jq -n --arg user "$BLUE_USER" --arg pass "$BLUE_PASSWORD" '{username: $user, password: $pass}')
-  BLUE_TOKEN=$(curl -s -X POST "$BLUE_URL/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d "$BLUE_JSON" \
-    | jq -r '.sessionToken' 2>/dev/null || echo "null")
+  if [ -z "$BLUE_PASSWORD" ]; then
+    print_error "Blue password cannot be empty."
+    exit 1
+  fi
   
-  if [ "$BLUE_TOKEN" = "null" ] || [ -z "$BLUE_TOKEN" ]; then
+  BLUE_JSON=$(jq -n --arg user "$BLUE_USER" --arg pass "$BLUE_PASSWORD" '{username: $user, password: $pass}')
+  BLUE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BLUE_URL/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "$BLUE_JSON")
+  BLUE_HTTP_CODE=$(echo "$BLUE_RESPONSE" | tail -n1)
+  BLUE_BODY=$(echo "$BLUE_RESPONSE" | sed '$d')
+  BLUE_TOKEN=$(echo "$BLUE_BODY" | jq -r '.sessionToken // empty' 2>/dev/null)
+  
+  if [ "$BLUE_TOKEN" = "" ] || [ -z "$BLUE_TOKEN" ]; then
     print_error "Blue authentication failed!"
+    if [ "$BLUE_HTTP_CODE" = "000" ]; then
+      echo "  → Could not reach $BLUE_URL (connection refused, DNS, or network issue)."
+      echo "  → If using hostnames over HTTPS, try --blue-url http://INTERNAL_IP:PORT (see script --help)."
+    else
+      echo "  → HTTP $BLUE_HTTP_CODE"
+      echo "$BLUE_BODY" | jq -r '.message // .error // .' 2>/dev/null || echo "$BLUE_BODY"
+    fi
     exit 1
   fi
   
@@ -313,14 +335,28 @@ if [ "$GREEN_STATUS" != "000" ] && ( [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
     print_info "Using password from environment variable"
   fi
   
-  GREEN_JSON=$(jq -n --arg user "$GREEN_USER" --arg pass "$GREEN_PASSWORD" '{username: $user, password: $pass}')
-  GREEN_TOKEN=$(curl -s -X POST "$GREEN_URL/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d "$GREEN_JSON" \
-    | jq -r '.sessionToken' 2>/dev/null || echo "null")
+  if [ -z "$GREEN_PASSWORD" ]; then
+    print_error "Green password cannot be empty."
+    exit 1
+  fi
   
-  if [ "$GREEN_TOKEN" = "null" ] || [ -z "$GREEN_TOKEN" ]; then
+  GREEN_JSON=$(jq -n --arg user "$GREEN_USER" --arg pass "$GREEN_PASSWORD" '{username: $user, password: $pass}')
+  GREEN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$GREEN_URL/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "$GREEN_JSON")
+  GREEN_HTTP_CODE=$(echo "$GREEN_RESPONSE" | tail -n1)
+  GREEN_BODY=$(echo "$GREEN_RESPONSE" | sed '$d')
+  GREEN_TOKEN=$(echo "$GREEN_BODY" | jq -r '.sessionToken // empty' 2>/dev/null)
+  
+  if [ "$GREEN_TOKEN" = "" ] || [ -z "$GREEN_TOKEN" ]; then
     print_error "Green authentication failed!"
+    if [ "$GREEN_HTTP_CODE" = "000" ]; then
+      echo "  → Could not reach $GREEN_URL (connection refused, DNS, or network issue)."
+      echo "  → If using hostnames over HTTPS, try --green-url http://INTERNAL_IP:PORT (see script --help)."
+    else
+      echo "  → HTTP $GREEN_HTTP_CODE"
+      echo "$GREEN_BODY" | jq -r '.message // .error // .' 2>/dev/null || echo "$GREEN_BODY"
+    fi
     exit 1
   fi
   
@@ -340,9 +376,9 @@ if [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "3" ]; then
   BLUE_USER_COUNT=$(jq '.userCount' "$BACKUP_DIR/blue-users.json" 2>/dev/null || echo "0")
   print_success "Exported $BLUE_USER_COUNT users from Blue"
   
-  print_header "📥 Importing Blue Users into Green"
+  print_header "📥 Importing Blue Users into Green (mode=$IMPORT_MODE)"
   
-  IMPORT_RESULT=$(curl -s -X POST "$GREEN_URL/api/users/import?mode=merge" \
+  IMPORT_RESULT=$(curl -s -X POST "$GREEN_URL/api/users/import?mode=$IMPORT_MODE" \
     -H "Authorization: Bearer $GREEN_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$BACKUP_DIR/blue-users.json")
@@ -350,9 +386,14 @@ if [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "3" ]; then
   echo "$IMPORT_RESULT" | jq
   
   ADDED=$(echo "$IMPORT_RESULT" | jq -r '.results.added' 2>/dev/null || echo "0")
+  UPDATED=$(echo "$IMPORT_RESULT" | jq -r '.results.updated' 2>/dev/null || echo "0")
   SKIPPED=$(echo "$IMPORT_RESULT" | jq -r '.results.skipped' 2>/dev/null || echo "0")
   
-  print_success "Blue → Green: $ADDED users added, $SKIPPED skipped (duplicates)"
+  print_success "Blue → Green: $ADDED added, $UPDATED updated, $SKIPPED skipped"
+  if [ "${SKIPPED:-0}" -gt 0 ]; then
+    echo "  Skipped users:"
+    echo "$IMPORT_RESULT" | jq -r '.results.skippedUsers[]? | "    - \(.username): \(.reason)"' 2>/dev/null || true
+  fi
   echo ""
 fi
 
@@ -369,9 +410,9 @@ if [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; then
   GREEN_USER_COUNT=$(jq '.userCount' "$BACKUP_DIR/green-users.json" 2>/dev/null || echo "0")
   print_success "Exported $GREEN_USER_COUNT users from Green"
   
-  print_header "📥 Importing Green Users into Blue"
+  print_header "📥 Importing Green Users into Blue (mode=$IMPORT_MODE)"
   
-  IMPORT_RESULT=$(curl -s -X POST "$BLUE_URL/api/users/import?mode=merge" \
+  IMPORT_RESULT=$(curl -s -X POST "$BLUE_URL/api/users/import?mode=$IMPORT_MODE" \
     -H "Authorization: Bearer $BLUE_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$BACKUP_DIR/green-users.json")
@@ -379,9 +420,14 @@ if [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; then
   echo "$IMPORT_RESULT" | jq
   
   ADDED=$(echo "$IMPORT_RESULT" | jq -r '.results.added' 2>/dev/null || echo "0")
+  UPDATED=$(echo "$IMPORT_RESULT" | jq -r '.results.updated' 2>/dev/null || echo "0")
   SKIPPED=$(echo "$IMPORT_RESULT" | jq -r '.results.skipped' 2>/dev/null || echo "0")
   
-  print_success "Green → Blue: $ADDED users added, $SKIPPED skipped (duplicates)"
+  print_success "Green → Blue: $ADDED added, $UPDATED updated, $SKIPPED skipped"
+  if [ "${SKIPPED:-0}" -gt 0 ]; then
+    echo "  Skipped users:"
+    echo "$IMPORT_RESULT" | jq -r '.results.skippedUsers[]? | "    - \(.username): \(.reason)"' 2>/dev/null || true
+  fi
   echo ""
 fi
 

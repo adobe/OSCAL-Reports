@@ -100,9 +100,28 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 - Admin credentials for both deployments
 - Volume persistence must be enabled (upgrade first!)
 
+**Keeping script in sync (Local, Blue, Green):** Use `sync-consolidation-script.sh` to copy the same script to Blue and Green folders so you can check in from all three. See [USER_CONSOLIDATION_GUIDE.md](../docs/USER_CONSOLIDATION_GUIDE.md#keeping-the-script-in-sync-local-blue-green).
+
 ---
 
-### 5. `deploy_from_dockerhub.sh` ⭐ NEW
+### 5. `sync-consolidation-script.sh`
+Copies `consolidate-users.sh` to Blue and Green script folders so Local, Blue, and Green all have the same script for check-in.
+
+**Usage (from repo root):**
+```bash
+./scripts/sync-consolidation-script.sh
+```
+
+**Custom paths:**
+```bash
+BLUE_SCRIPTS_DIR=/path/to/Blue/scripts GREEN_SCRIPTS_DIR=/path/to/Green/scripts ./scripts/sync-consolidation-script.sh
+```
+
+**Default targets:** `/mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue/scripts` and `...-Green/scripts`. Override with env vars if your paths differ.
+
+---
+
+### 6. `deploy_from_dockerhub.sh` ⭐ NEW
 Fast deployment script that pulls pre-built images from Docker Hub.
 
 **What it does:**
