@@ -46,6 +46,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'Access control is implemented through role-based access control (RBAC) system. Users are assigned roles based on their job functions, and access permissions are granted according to the principle of least privilege. Access requests are reviewed and approved by authorized personnel.',
       responsibleParty: 'Shared',
       controlType: 'Automated',
+      testingObjective: 'Verify that access controls prevent unauthorized access and enforce least privilege principles.',
       testingMethod: 'Automated by Tools',
       testingFrequency: 'Continuous',
       riskRating: 'Low'
@@ -58,6 +59,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'System maintains comprehensive audit logs of all security-relevant events including user authentication, authorization decisions, data access, and administrative actions. Logs are stored securely, protected from tampering, and reviewed regularly.',
       responsibleParty: 'Shared',
       controlType: 'Automated',
+      testingObjective: 'Confirm that audit logs capture all security-relevant events and are protected from unauthorized modification.',
       testingMethod: 'Automated by Tools',
       testingFrequency: 'Daily',
       riskRating: 'Low'
@@ -70,6 +72,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'System configurations are managed through version-controlled configuration management system. Baseline configurations are established, documented, and maintained. Changes to configurations require approval and are tracked through change management process.',
       responsibleParty: 'Shared',
       controlType: 'Orchestrated',
+      testingObjective: 'Validate that configuration baselines are maintained and changes follow approved change management procedures.',
       testingMethod: 'Manual Testing',
       testingFrequency: 'Monthly',
       riskRating: 'Medium'
@@ -82,6 +85,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'Multi-factor authentication (MFA) is required for all user accounts. Authentication mechanisms include password-based authentication combined with additional factors such as SMS codes, authenticator apps, or hardware tokens.',
       responsibleParty: 'Shared',
       controlType: 'Automated',
+      testingObjective: 'Ensure multi-factor authentication is enforced for all user accounts and authentication mechanisms function correctly.',
       testingMethod: 'Automated by Tools',
       testingFrequency: 'Continuous',
       riskRating: 'Low'
@@ -94,6 +98,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'Incident response procedures are documented and tested regularly. Security incidents are detected, analyzed, contained, and remediated according to established procedures. Incident response team is trained and ready to respond to security events.',
       responsibleParty: 'Shared',
       controlType: 'Process',
+      testingObjective: 'Verify that incident response procedures are effective and the team is prepared to handle security incidents.',
       testingMethod: 'Manual Testing',
       testingFrequency: 'Quarterly',
       riskRating: 'Medium'
@@ -106,6 +111,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'Data in transit is protected using TLS 1.2 or higher. Data at rest is encrypted using industry-standard encryption algorithms. Encryption keys are managed securely and rotated regularly.',
       responsibleParty: 'Shared',
       controlType: 'Automated',
+      testingObjective: 'Confirm that data encryption is properly implemented for data in transit and at rest using approved algorithms.',
       testingMethod: 'Automated by Tools',
       testingFrequency: 'Continuous',
       riskRating: 'Low'
@@ -115,6 +121,7 @@ const CONTROL_TEMPLATES = {
       implementation: 'Network security is implemented through firewalls, intrusion detection/prevention systems, and network segmentation. Network traffic is monitored and analyzed for suspicious activities.',
       responsibleParty: 'Shared',
       controlType: 'Automated',
+      testingObjective: 'Validate that network security controls effectively prevent unauthorized network access and detect threats.',
       testingMethod: 'Automated by Tools',
       testingFrequency: 'Continuous',
       riskRating: 'Low'
@@ -352,6 +359,7 @@ export async function suggestControlImplementation(control, existingControls = [
     suggestions.status = suggestions.status || 'not-assessed';
     suggestions.responsibleParty = suggestions.responsibleParty || 'Shared';
     suggestions.controlType = suggestions.controlType || 'Orchestrated';
+    suggestions.testingObjective = suggestions.testingObjective || 'Verify that the control is implemented and operating effectively as intended.';
     suggestions.testingMethod = suggestions.testingMethod || 'Manual Testing';
     suggestions.testingFrequency = suggestions.testingFrequency || 'Quarterly';
     suggestions.riskRating = suggestions.riskRating || 'Medium';
@@ -490,6 +498,7 @@ export async function suggestControlImplementation(control, existingControls = [
       implementation: generateGenericImplementation(control),
       responsibleParty: 'Shared',
       controlType: 'Orchestrated',
+      testingObjective: 'Verify that the control is implemented and operating effectively as intended.',
       testingMethod: 'Manual Testing',
       testingFrequency: 'Quarterly',
       riskRating: 'Medium',
@@ -564,6 +573,7 @@ function averageSimilarControls(similarControls) {
   const statusCounts = {};
   const responsiblePartyCounts = {};
   const controlTypeCounts = {};
+  const testingObjectiveCounts = {};
   const testingMethodCounts = {};
   const testingFrequencyCounts = {};
   const riskRatingCounts = {};
@@ -573,6 +583,7 @@ function averageSimilarControls(similarControls) {
     if (control.status) statusCounts[control.status] = (statusCounts[control.status] || 0) + 1;
     if (control.responsibleParty) responsiblePartyCounts[control.responsibleParty] = (responsiblePartyCounts[control.responsibleParty] || 0) + 1;
     if (control.controlType) controlTypeCounts[control.controlType] = (controlTypeCounts[control.controlType] || 0) + 1;
+    if (control.testingObjective) testingObjectiveCounts[control.testingObjective] = (testingObjectiveCounts[control.testingObjective] || 0) + 1;
     if (control.testingMethod) testingMethodCounts[control.testingMethod] = (testingMethodCounts[control.testingMethod] || 0) + 1;
     if (control.testingFrequency) testingFrequencyCounts[control.testingFrequency] = (testingFrequencyCounts[control.testingFrequency] || 0) + 1;
     if (control.riskRating) riskRatingCounts[control.riskRating] = (riskRatingCounts[control.riskRating] || 0) + 1;
@@ -583,6 +594,7 @@ function averageSimilarControls(similarControls) {
   result.status = Object.keys(statusCounts).reduce((a, b) => statusCounts[a] > statusCounts[b] ? a : b, 'not-assessed');
   result.responsibleParty = Object.keys(responsiblePartyCounts).reduce((a, b) => responsiblePartyCounts[a] > responsiblePartyCounts[b] ? a : b, 'Shared');
   result.controlType = Object.keys(controlTypeCounts).reduce((a, b) => controlTypeCounts[a] > controlTypeCounts[b] ? a : b, 'Orchestrated');
+  result.testingObjective = Object.keys(testingObjectiveCounts).reduce((a, b) => testingObjectiveCounts[a] > testingObjectiveCounts[b] ? a : b, 'Verify that the control is implemented and operating effectively as intended.');
   result.testingMethod = Object.keys(testingMethodCounts).reduce((a, b) => testingMethodCounts[a] > testingMethodCounts[b] ? a : b, 'Manual Testing');
   result.testingFrequency = Object.keys(testingFrequencyCounts).reduce((a, b) => testingFrequencyCounts[a] > testingFrequencyCounts[b] ? a : b, 'Quarterly');
   result.riskRating = Object.keys(riskRatingCounts).reduce((a, b) => riskRatingCounts[a] > riskRatingCounts[b] ? a : b, 'Medium');
@@ -614,6 +626,7 @@ function getDefaultSuggestion(control) {
       implementation: truncateImplementationText('This control is implemented through documented policies and procedures. Policies are reviewed and updated regularly to ensure they remain current and effective.'),
       responsibleParty: 'Shared',
       controlType: 'Policy',
+      testingObjective: 'Verify that policies and procedures are documented, current, and effectively communicated.',
       testingMethod: 'Manual Testing',
       testingFrequency: 'Annually',
       riskRating: 'Medium'
@@ -626,6 +639,7 @@ function getDefaultSuggestion(control) {
       implementation: truncateImplementationText('Continuous monitoring and detection capabilities are implemented through automated security tools. Events are analyzed in real-time, and alerts are generated for suspicious activities.'),
       responsibleParty: 'Shared',
       controlType: 'Automated',
+      testingObjective: 'Confirm that monitoring and detection systems are functioning correctly and identifying threats.',
       testingMethod: 'Automated by Tools',
       testingFrequency: 'Continuous',
       riskRating: 'Low'
@@ -638,6 +652,7 @@ function getDefaultSuggestion(control) {
     implementation: truncateImplementationText('This control is implemented based on organizational requirements and system architecture. Appropriate security measures are in place and aligned with the control description.'),
     responsibleParty: 'Shared',
     controlType: 'Orchestrated',
+    testingObjective: 'Verify that the control is implemented and operating effectively as intended.',
     testingMethod: 'Manual Testing',
     testingFrequency: 'Quarterly',
     riskRating: 'Medium'
@@ -728,6 +743,7 @@ export async function suggestMultipleControls(controls, existingControls = []) {
           implementation: generateGenericImplementation(control),
           responsibleParty: 'Shared',
           controlType: 'Orchestrated',
+          testingObjective: 'Verify that the control is implemented and operating effectively as intended.',
           testingMethod: 'Manual Testing',
           testingFrequency: 'Quarterly',
           riskRating: 'Medium',

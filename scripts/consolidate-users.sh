@@ -1,7 +1,7 @@
 #!/bin/bash
 # Consolidate Users Between Blue and Green Deployments
 # Author: Mukesh Kesharwani
-# Version: 2.0.0
+# Version: 2.0.1
 #
 # This script synchronizes users between Blue and Green deployments,
 # ensuring users registered on either instance can login to both.
@@ -11,6 +11,14 @@
 #   ./consolidate-users.sh --auto             # Automatic bi-directional sync
 #   ./consolidate-users.sh --blue-to-green    # One-way: Blue → Green
 #   ./consolidate-users.sh --green-to-blue    # One-way: Green → Blue
+#
+# IMPORTANT - TLS Certificate Compatibility:
+#   ⚠️  Use INTERNAL IP ADDRESSES (http://192.168.x.x:port) instead of hostnames
+#       when TLS certificates don't match the hostname. API authentication will fail
+#       with SSL/TLS certificate mismatch errors if hostname != certificate CN/SAN.
+#
+#   ✓ RECOMMENDED: --blue-url http://192.168.1.200:3020
+#   ✗ MAY FAIL:    --blue-url https://blue.oscal.keekar.com (if cert doesn't match)
 #
 # Features:
 #   - Bi-directional user synchronization (default)
@@ -94,9 +102,18 @@ while [[ $# -gt 0 ]]; do
       echo "  BLUE_PASSWORD             Blue admin password"
       echo "  GREEN_PASSWORD            Green admin password"
       echo ""
+      echo "⚠️  IMPORTANT: TLS Certificate Compatibility"
+      echo "  When defining instance URLs, use INTERNAL IP ADDRESSES instead of hostnames"
+      echo "  if TLS certificates don't match the hostname. APIs may fail with certificate"
+      echo "  mismatch errors (e.g., certificate for 'keekar.ddns.net' vs hostname 'green.oscal.keekar.com')."
+      echo ""
+      echo "  ✓ RECOMMENDED: http://192.168.1.200:3019  (internal IP, no TLS issues)"
+      echo "  ✗ MAY FAIL:    https://green.oscal.keekar.com  (TLS certificate mismatch)"
+      echo ""
       echo "Examples:"
       echo "  $0 --auto"
       echo "  $0 --auto --blue-url http://localhost:3020 --green-url http://localhost:3019"
+      echo "  $0 --auto --blue-url http://192.168.1.200:3020 --green-url http://192.168.1.200:3019"
       echo "  BLUE_PASSWORD=secret GREEN_PASSWORD=secret $0 --auto"
       echo ""
       echo "Interactive mode (no flags): Prompts for sync direction"
@@ -140,6 +157,21 @@ print_header() {
 # ============================================================================
 
 print_header "👥 User Consolidation - Blue ⟷ Green"
+
+# Display TLS/Certificate Warning
+print_warning "⚠️  IMPORTANT: TLS Certificate Compatibility"
+echo ""
+echo "  When consolidating between instances, use INTERNAL IP ADDRESSES instead of"
+echo "  hostnames if TLS certificates don't match. API authentication may fail with"
+echo "  certificate mismatch errors (e.g., cert for 'example.com' vs 'subdomain.example.com')."
+echo ""
+echo "  ${GREEN}✓ RECOMMENDED:${NC} http://192.168.1.200:3019  (internal IP, no TLS issues)"
+echo "  ${RED}✗ MAY FAIL:${NC}    https://green.oscal.keekar.com  (TLS certificate mismatch)"
+echo ""
+echo "  Current configuration:"
+echo "    Blue:  $BLUE_URL"
+echo "    Green: $GREEN_URL"
+echo ""
 
 if [ "$AUTO_MODE" = true ]; then
   echo "Running in automatic mode..."
@@ -428,8 +460,13 @@ echo "   • Existing users were preserved (not overwritten)"
 echo "   • Password hashes were maintained exactly"
 echo "   • Session data and preferences are deployment-specific"
 echo ""
+echo "⚠️  TLS Certificate Reminder:"
+echo "   • Use internal IP addresses (http://192.168.1.x:port) for consolidation"
+echo "   • Avoid hostnames with certificate mismatches (https://subdomain.example.com)"
+echo "   • This prevents API authentication failures due to SSL/TLS errors"
+echo ""
 echo "🔄 To re-consolidate after new registrations:"
-echo "   ./consolidate-users.sh --auto"
+echo "   ./consolidate-users.sh --auto --blue-url http://IP:PORT --green-url http://IP:PORT"
 echo ""
 echo "💡 Tip: Add this to a cron job for automatic synchronization!"
 echo "   Example: 0 */6 * * * cd /path/to/scripts && ./consolidate-users.sh --auto"

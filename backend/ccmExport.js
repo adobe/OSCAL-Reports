@@ -42,6 +42,7 @@ export async function generateCCMExport(controls, systemInfo) {
     { header: 'Next Review Date', key: 'nextReviewDate', width: 15 },
     { header: 'Control Type', key: 'controlType', width: 35 },
     { header: 'Evidence Location', key: 'evidence', width: 35 },
+    { header: 'Assessment/Testing Objective', key: 'testingObjective', width: 40 },
     { header: 'Testing Method', key: 'testingProcedure', width: 35 },
     { header: 'Testing Frequency', key: 'testingFrequency', width: 18 },
     { header: 'Last Test Date', key: 'lastTestDate', width: 15 },

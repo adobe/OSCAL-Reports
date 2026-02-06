@@ -317,6 +317,17 @@ function ControlEditModal({ control, onClose, onSave, allControls = [], organiza
                 ) : (
                   <>
                     <div className="form-group">
+                      <label>Assessment/Testing Objective</label>
+                      <textarea
+                        value={editedControl.testingObjective || ''}
+                        onChange={(e) => handleChange('testingObjective', e.target.value)}
+                        className="form-control"
+                        rows="3"
+                        placeholder="Define the objective of assessing this control (e.g., Verify that access controls prevent unauthorized data access)..."
+                      />
+                    </div>
+
+                    <div className="form-group">
                       <label>Evidence Location</label>
                       <textarea
                         value={editedControl.evidence || ''}
