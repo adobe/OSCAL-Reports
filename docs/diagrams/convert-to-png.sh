@@ -17,14 +17,12 @@ fi
 
 # Convert architecture diagram
 echo "📊 Converting architecture diagram..."
-mmdc -i aws-auto-scaling-architecture.mmd \
+if mmdc -i aws-auto-scaling-architecture.mmd \
      -o aws-auto-scaling-architecture.png \
      -w 1920 \
      -H 1080 \
      -b white \
-     -t default
-
-if [ $? -eq 0 ]; then
+     -t default; then
     echo "✅ Architecture diagram created: aws-auto-scaling-architecture.png"
 else
     echo "❌ Failed to convert architecture diagram"
@@ -32,14 +30,12 @@ fi
 
 # Convert workflow timeline
 echo "📊 Converting workflow timeline..."
-mmdc -i workflow-timeline.mmd \
+if mmdc -i workflow-timeline.mmd \
      -o workflow-timeline.png \
      -w 1920 \
      -H 1200 \
      -b white \
-     -t default
-
-if [ $? -eq 0 ]; then
+     -t default; then
     echo "✅ Workflow timeline created: workflow-timeline.png"
 else
     echo "❌ Failed to convert workflow timeline"

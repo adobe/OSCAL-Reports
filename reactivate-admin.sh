@@ -30,7 +30,7 @@ fi
 echo "🔧 Reactivating admin user in $USERS_FILE..."
 
 # Use Python to safely update the JSON file
-python3 << EOF
+if python3 << EOF
 import json
 import sys
 
@@ -64,8 +64,7 @@ except Exception as e:
     print(f"❌ Error: {e}")
     sys.exit(1)
 EOF
-
-if [ $? -eq 0 ]; then
+then
     echo ""
     echo "✅ Admin user has been reactivated!"
     echo "📝 Next steps:"

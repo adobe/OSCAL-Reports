@@ -26,6 +26,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+# shellcheck disable=SC2034
 MAGENTA='\033[0;35m'
 NC='\033[0m'  # No Color
 
@@ -81,6 +82,7 @@ done
 
 # Docker Hub configuration
 DOCKER_HUB_IMAGE="keekar/oscal_reports:latest"
+# shellcheck disable=SC2034
 DOCKER_HUB_REGISTRY="hub.docker.com"
 
 # Persistent data volume base path
@@ -211,13 +213,13 @@ REQUIRED_SPACE=524288  # 500MB in KB
 
 if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
   print_error "Insufficient disk space"
-  echo "  Available: $(($AVAILABLE_SPACE / 1024)) MB"
-  echo "  Required:  $(($REQUIRED_SPACE / 1024)) MB"
+  echo "  Available: $((AVAILABLE_SPACE / 1024)) MB"
+  echo "  Required:  $((REQUIRED_SPACE / 1024)) MB"
   echo ""
   print_info "Free up space with: docker system prune -a"
   exit 1
 else
-  print_success "Sufficient disk space: $(($AVAILABLE_SPACE / 1024)) MB available"
+  print_success "Sufficient disk space: $((AVAILABLE_SPACE / 1024)) MB available"
 fi
 
 # Check if container exists
@@ -238,7 +240,7 @@ print_header "🔒 Deployment Lock Check"
 # Check for existing lock file
 if [ -f "$LOCK_FILE" ]; then
   LOCK_AGE=$(($(date +%s) - $(stat -f%m "$LOCK_FILE" 2>/dev/null || stat -c%Y "$LOCK_FILE" 2>/dev/null)))
-  LOCK_AGE_MIN=$(($LOCK_AGE / 60))
+  LOCK_AGE_MIN=$((LOCK_AGE / 60))
   
   if [ $LOCK_AGE -gt 1800 ]; then
     # Lock is older than 30 minutes, consider it stale
@@ -265,7 +267,7 @@ fi
 # Create lock file
 log "Creating deployment lock..."
 echo "$$" > "$LOCK_FILE"
-echo "$(date)" >> "$LOCK_FILE"
+date >> "$LOCK_FILE"
 print_success "Deployment lock created"
 
 # Ensure lock is removed on exit
@@ -307,7 +309,7 @@ else
   while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
     ATTEMPTS=$((ATTEMPTS + 1))
     echo ""
-    read -p "Username (default: admin, Enter to skip): " ADMIN_USER
+    read -rp "Username (default: admin, Enter to skip): " ADMIN_USER
     
     if [ -z "$ADMIN_USER" ]; then
       print_info "API backup skipped by user"
@@ -315,7 +317,7 @@ else
     fi
     
     ADMIN_USER=${ADMIN_USER:-admin}
-    read -sp "Password: " ADMIN_PASSWORD
+    read -rsp "Password: " ADMIN_PASSWORD
     echo ""
     
     if [ -z "$ADMIN_PASSWORD" ]; then
@@ -325,12 +327,10 @@ else
     
     # Authenticate
     print_info "Authenticating..."
-    JSON_PAYLOAD=$(jq -n \
+    if ! JSON_PAYLOAD=$(jq -n \
       --arg user "$ADMIN_USER" \
       --arg pass "$ADMIN_PASSWORD" \
-      '{username: $user, password: $pass}' 2>/dev/null)
-    
-    if [ $? -ne 0 ]; then
+      '{username: $user, password: $pass}' 2>/dev/null); then
       print_error "jq not found - cannot create JSON payload"
       print_info "Install jq or skip API backup"
       break
@@ -477,7 +477,7 @@ else
       
       # Show backed up files
       print_info "Backed up files:"
-      tar -tzf "$VOLUME_BACKUP_FILE" 2>/dev/null | head -10 | while read line; do
+      tar -tzf "$VOLUME_BACKUP_FILE" 2>/dev/null | head -10 | while read -r line; do
         echo "    $line"
       done
       
