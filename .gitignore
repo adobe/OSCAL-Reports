@@ -17,6 +17,7 @@ build/
 # Sensitive configuration files (CRITICAL - DO NOT COMMIT)
 config/app/config.json
 config/app/users.json
+config/app/okta_oidc_state.json
 backend/auth/users.json
 backend/config.json
 credentials.txt

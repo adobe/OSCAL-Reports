@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
+import OktaCallback from './components/OktaCallback';
 import UserManagement from './components/UserManagement';
 import SettingsWithTabs from './components/SettingsWithTabs';
 import UseCases from './components/UseCases';
@@ -467,6 +468,42 @@ function App() {
     }
   };
 
+  const handleExportSAR = async (validationOptions = {}) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const response = await axios.post('/api/generate-sar', {
+        metadata: catalogue?.catalog?.metadata || catalogue?.metadata,
+        controls,
+        assessmentInfo: {
+          title: systemInfo.title ? `${systemInfo.title} - Security Assessment Results` : 'Security Assessment Results',
+          description: 'Assessment results for implemented security controls',
+          version: systemInfo.version || '1.0',
+          assessmentPlanRef: '#assessment-plan',
+          startDate: new Date().toISOString(),
+          endDate: new Date().toISOString(),
+          assessor: 'Security Assessment Team'
+        },
+        validationOptions  // Pass validation options to backend
+      });
+
+      const blob = new Blob([JSON.stringify(response.data, null, 2)], {
+        type: 'application/json'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = generateFileName('sar.json');
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate SAR');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExportExcel = async () => {
     setLoading(true);
     setError('');
@@ -798,6 +835,7 @@ function App() {
 
                 <ExportButtons
                   onExportSSP={handleExportSSP}
+                  onExportSAR={handleExportSAR}
                   onExportExcel={handleExportExcel}
                   onExportCCM={handleExportCCM}
                   onExportPDF={handleExportPDF}
@@ -847,6 +885,10 @@ function AppWithUseCases() {
     );
   }
 
+  // Show Okta OIDC callback handler when returning from Okta
+  if (!isAuthenticated && typeof window !== 'undefined' && window.location.pathname === '/auth/okta/callback') {
+    return <OktaCallback />;
+  }
   // Show login if not authenticated
   if (!isAuthenticated) {
     return <Login />;

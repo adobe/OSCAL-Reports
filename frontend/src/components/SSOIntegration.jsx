@@ -3,7 +3,7 @@
  * Platform Admin only
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import './SSOIntegration.css';
@@ -12,11 +12,12 @@ import './SSOIntegration.css';
 
 function SSOIntegration({ onClose, embedded = false }) {
   const { canManageUsers, getAuthConfig } = useAuth();
-  const [activeTab, setActiveTab] = useState('saml');
+  const [activeTab, setActiveTab] = useState('oauth');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [testing, setTesting] = useState(false);
+  const messageContainerRef = useRef(null);
 
   // SAML Configuration
   const [samlConfig, setSamlConfig] = useState({
@@ -67,6 +68,7 @@ function SSOIntegration({ onClose, embedded = false }) {
       okta: {
         enabled: false,
         domain: '',
+        authServerId: '', // e.g. "default" for Custom Auth Server; leave blank for org server
         clientId: '',
         clientSecret: '',
         redirectUri: `${window.location.origin}/auth/okta/callback`,
@@ -84,7 +86,11 @@ function SSOIntegration({ onClose, embedded = false }) {
       'Platform Admin': 'admin,administrator',
       'User': 'user,member',
       'Assessor': 'assessor,auditor'
-    }
+    },
+    jitProvisioning: false,
+    jitDefaultRole: 'User',
+    groupToRoleMapping: {},
+    syncRoleFromGroups: true
   });
 
   useEffect(() => {
@@ -183,6 +189,7 @@ function SSOIntegration({ onClose, embedded = false }) {
             okta: {
               enabled: false,
               domain: '',
+              authServerId: '',
               clientId: '',
               clientSecret: '',
               redirectUri: `${window.location.origin}/auth/okta/callback`,
@@ -203,7 +210,11 @@ function SSOIntegration({ onClose, embedded = false }) {
             'User': 'user,member',
             'Assessor': 'assessor,auditor',
             ...(response.data.oauth.roleMapping || {})
-          }
+          },
+          jitProvisioning: response.data.oauth.jitProvisioning === true,
+          jitDefaultRole: response.data.oauth.jitDefaultRole || 'User',
+          groupToRoleMapping: response.data.oauth.groupToRoleMapping && typeof response.data.oauth.groupToRoleMapping === 'object' ? response.data.oauth.groupToRoleMapping : {},
+          syncRoleFromGroups: response.data.oauth.syncRoleFromGroups !== false
         });
       }
       
@@ -241,10 +252,43 @@ function SSOIntegration({ onClose, embedded = false }) {
     }
   };
 
+  const scrollMessageIntoView = () => {
+    requestAnimationFrame(() => {
+      messageContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
   const handleTestConnection = async (provider) => {
+    // Require Platform Admin to run test
+    if (!canManageUsers()) {
+      setMessage('❌ Only Platform Admins can test SSO connections.');
+      scrollMessageIntoView();
+      setTimeout(() => setMessage(''), 5000);
+      return;
+    }
+
+    // For OAuth/Okta: require OAuth enabled, provider enabled, and minimal config
+    if (activeTab === 'oauth') {
+      const providerKey = provider.toLowerCase().replace(' ', '');
+      const providerConfig = oauthConfig.providers?.[providerKey];
+      if (!oauthConfig.enabled || !providerConfig?.enabled) {
+        setMessage(`⚠️ Please enable "OAuth / OIDC" above and enable "${provider}" first.`);
+        scrollMessageIntoView();
+        setTimeout(() => setMessage(''), 6000);
+        return;
+      }
+      if (providerKey === 'okta' && (!providerConfig.domain?.trim() || !providerConfig.clientId?.trim())) {
+        setMessage('⚠️ Please enter Okta Domain and Client ID to test the connection.');
+        scrollMessageIntoView();
+        setTimeout(() => setMessage(''), 6000);
+        return;
+      }
+    }
+
     try {
       setTesting(true);
       setMessage(`🔄 Testing ${provider} connection...`);
+      scrollMessageIntoView();
 
       const response = await axios.post(
         '/api/sso/test',
@@ -263,6 +307,7 @@ function SSOIntegration({ onClose, embedded = false }) {
       setTesting(false);
       setTimeout(() => setMessage(''), 5000);
     }
+    scrollMessageIntoView();
   };
 
   const handleFetchMetadata = async () => {
@@ -339,6 +384,9 @@ function SSOIntegration({ onClose, embedded = false }) {
           ? 'Configure SAML 2.0 and OAuth 2.0 / OpenID Connect providers for enterprise single sign-on'
           : 'View SAML 2.0 and OAuth 2.0 / OpenID Connect configuration (Read-Only Mode)'}
       </div>
+      <div style={{ padding: '0 2rem', fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+        Client ID and secrets are stored in <strong>config/app/config.json</strong> (or CONFIG_PATH / Docker <strong>/data/config.json</strong>) under <code>ssoConfig.oauth.providers</code>.
+      </div>
       
       {!canEdit && (
         <div style={{ 
@@ -354,38 +402,33 @@ function SSOIntegration({ onClose, embedded = false }) {
         </div>
       )}
 
-      {message && (
-        <div className={`sso-message ${message.includes('✅') ? 'success' : message.includes('🔄') ? 'info' : 'error'}`}>
-          {message}
-        </div>
-      )}
+      <div ref={messageContainerRef} style={{ minHeight: message ? undefined : 0 }}>
+        {message && (
+          <div className={`sso-message ${message.includes('✅') ? 'success' : message.includes('🔄') ? 'info' : 'error'}`}>
+            {message}
+          </div>
+        )}
+      </div>
 
       <div className="sso-tabs" style={{ display: 'flex', visibility: 'visible', borderBottom: '2px solid #e0e0e0', padding: '0 2rem', background: '#f8f9fa' }}>
         <button
-          className={`sso-tab ${activeTab === 'saml' ? 'active' : ''}`}
-          onClick={() => {
-            console.log('SAML tab clicked');
-            setActiveTab('saml');
-          }}
-          style={{ display: 'block', visibility: 'visible' }}
-        >
-          🔒 SAML 2.0
-        </button>
-        <button
           className={`sso-tab ${activeTab === 'oauth' ? 'active' : ''}`}
-          onClick={() => {
-            console.log('OAuth tab clicked');
-            setActiveTab('oauth');
-          }}
+          onClick={() => setActiveTab('oauth')}
           style={{ display: 'block', visibility: 'visible' }}
         >
           🌐 OAuth / OIDC
         </button>
+        <button
+          className={`sso-tab ${activeTab === 'saml' ? 'active' : ''}`}
+          onClick={() => setActiveTab('saml')}
+          style={{ display: 'block', visibility: 'visible' }}
+        >
+          🔒 SAML 2.0
+        </button>
       </div>
 
       <div className="sso-content" style={{ display: 'block', visibility: 'visible', opacity: 1, flex: 1, overflowY: 'auto', padding: '2rem', minHeight: '300px', background: 'white' }}>
-        {!activeTab && <div style={{ padding: '2rem', color: '#333' }}>No tab selected. Defaulting to SAML...</div>}
-        {(activeTab === 'saml' || !activeTab) && (
+        {activeTab === 'saml' && (
           <div className="saml-config">
             <div className="config-section">
               <div className="section-header-row">
@@ -641,7 +684,7 @@ function SSOIntegration({ onClose, embedded = false }) {
           </div>
         )}
 
-        {activeTab === 'oauth' && (
+        {(activeTab === 'oauth' || !activeTab) && (
           <div className="oauth-config">
             <div className="config-section">
               <div className="section-header-row">
@@ -660,6 +703,267 @@ function SSOIntegration({ onClose, embedded = false }) {
               <div className="info-banner">
                 <strong>ℹ️ OAuth 2.0 / OpenID Connect</strong>
                 <p>Integrate with popular OAuth providers like Azure AD, Google, Okta, GitHub, and more.</p>
+              </div>
+
+              {/* Okta OAuth 2.0 - First / default provider */}
+              <div className="provider-config">
+                <div className="provider-header">
+                  <div className="provider-title">
+                    <span className="provider-icon">🔷</span>
+                    <h4>Okta OAuth 2.0</h4>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={oauthConfig.providers.okta.enabled}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oauthConfig.providers.okta, enabled: e.target.checked }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled}
+                    />
+                    <span className="toggle-slider"></span>
+                    <span className="toggle-label">{oauthConfig.providers.okta.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </label>
+                </div>
+
+                <div className="form-row-3">
+                  <div className="form-group">
+                    <label>Okta Domain</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="your-domain.okta.com or your-domain.oktapreview.com"
+                      value={oauthConfig.providers.okta.domain}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oauthConfig.providers.okta, domain: e.target.value }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Authorization Server ID</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="default (leave blank for org server)"
+                      value={oauthConfig.providers.okta.authServerId || ''}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oauthConfig.providers.okta, authServerId: e.target.value.trim() }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
+                    />
+                    <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
+                      Use <strong>default</strong> if your Okta app uses a Custom Authorization Server. Leave blank for the legacy org server.
+                    </small>
+                  </div>
+                  <div className="form-group">
+                    <label>Client ID</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="client-id"
+                      value={oauthConfig.providers.okta.clientId}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oauthConfig.providers.okta, clientId: e.target.value }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
+                    />
+                  </div>
+                </div>
+                <div className="form-row-2" style={{ marginTop: '0.5rem' }}>
+                  <div className="form-group">
+                    <label>Client Secret</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      placeholder="client-secret"
+                      value={oauthConfig.providers.okta.clientSecret}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oauthConfig.providers.okta, clientSecret: e.target.value }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
+                    />
+                  </div>
+                </div>
+
+                <div className="config-group" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
+                  <h4>👤 JIT provisioning & role from Okta groups</h4>
+                  <p className="section-description">Create user on first sign-in if missing, reactivate if deactivated, assign role from Okta group membership.</p>
+                  <div className="form-group">
+                    <label className="toggle-switch" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={oauthConfig.jitProvisioning === true}
+                        onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, jitProvisioning: e.target.checked })}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      />
+                      <span className="toggle-slider"></span>
+                      <span>Enable JIT provisioning (create user if not in users.json)</span>
+                    </label>
+                  </div>
+                  <div className="form-row-2" style={{ marginTop: '0.5rem' }}>
+                    <div className="form-group">
+                      <label>Default role for new users</label>
+                      <select
+                        className="form-control"
+                        value={oauthConfig.jitDefaultRole || 'User'}
+                        onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, jitDefaultRole: e.target.value })}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      >
+                        <option value="User">User</option>
+                        <option value="Assessor">Assessor</option>
+                        <option value="Platform Admin">Platform Admin</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="toggle-switch" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={oauthConfig.syncRoleFromGroups !== false}
+                          onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, syncRoleFromGroups: e.target.checked })}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                        />
+                        <span className="toggle-slider"></span>
+                        <span>Sync role from Okta groups on every login</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ marginTop: '1rem' }}>
+                    <label>Okta group → app role mapping</label>
+                    <small style={{ display: 'block', marginBottom: '0.5rem', color: '#666' }}>
+                      Add Okta group names and app role. Ensure your Okta Authorization Server returns a <strong>groups</strong> claim.
+                    </small>
+                    {Object.entries(oauthConfig.groupToRoleMapping || {}).filter(([k]) => k && !k.startsWith('__')).map(([groupName, appRole]) => (
+                      <div key={groupName} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="Okta group name"
+                          value={groupName}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            if (!canEdit) return;
+                            const next = { ...(oauthConfig.groupToRoleMapping || {}) };
+                            delete next[groupName];
+                            if (v) next[v] = appRole;
+                            setOauthConfig({ ...oauthConfig, groupToRoleMapping: next });
+                          }}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                          style={{ flex: 1 }}
+                        />
+                        <select
+                          className="form-control"
+                          value={appRole}
+                          onChange={(e) => canEdit && setOauthConfig({
+                            ...oauthConfig,
+                            groupToRoleMapping: { ...(oauthConfig.groupToRoleMapping || {}), [groupName]: e.target.value }
+                          })}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                          style={{ width: '160px' }}
+                        >
+                          <option value="User">User</option>
+                          <option value="Assessor">Assessor</option>
+                          <option value="Platform Admin">Platform Admin</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => canEdit && setOauthConfig({
+                            ...oauthConfig,
+                            groupToRoleMapping: Object.fromEntries(Object.entries(oauthConfig.groupToRoleMapping || {}).filter(([k]) => k !== groupName))
+                          })}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. OSCAL-Admins"
+                        id="new-group-name"
+                        style={{ flex: 1, maxWidth: '240px' }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const input = document.getElementById('new-group-name');
+                            const v = (input?.value || '').trim();
+                            if (v && canEdit) {
+                              setOauthConfig({
+                                ...oauthConfig,
+                                groupToRoleMapping: { ...(oauthConfig.groupToRoleMapping || {}), [v]: oauthConfig.jitDefaultRole || 'User' }
+                              });
+                              if (input) input.value = '';
+                            }
+                          }
+                        }}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      />
+                      <select
+                        className="form-control"
+                        id="new-group-role"
+                        defaultValue="User"
+                        style={{ width: '140px' }}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      >
+                        <option value="User">User</option>
+                        <option value="Assessor">Assessor</option>
+                        <option value="Platform Admin">Platform Admin</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          const input = document.getElementById('new-group-name');
+                          const roleSelect = document.getElementById('new-group-role');
+                          const v = (input?.value || '').trim();
+                          const role = (roleSelect?.value || 'User');
+                          if (v && canEdit) {
+                            setOauthConfig({
+                              ...oauthConfig,
+                              groupToRoleMapping: { ...(oauthConfig.groupToRoleMapping || {}), [v]: role }
+                            });
+                            if (input) input.value = '';
+                          }
+                        }}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      >
+                        Add mapping
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  className="btn-test"
+                  onClick={() => handleTestConnection('Okta')}
+                  disabled={testing}
+                  title={!oauthConfig.enabled || !oauthConfig.providers.okta.enabled ? 'Enable OAuth and Okta above first' : (!oauthConfig.providers.okta.domain?.trim() || !oauthConfig.providers.okta.clientId?.trim()) ? 'Enter Okta Domain and Client ID to test' : 'Test connection to Okta'}
+                >
+                  {testing ? '⏳ Testing...' : '🔍 Test Okta Connection'}
+                </button>
               </div>
 
               {/* Azure AD */}
@@ -848,96 +1152,6 @@ function SSOIntegration({ onClose, embedded = false }) {
                 </button>
               </div>
 
-              {/* Okta */}
-              <div className="provider-config">
-                <div className="provider-header">
-                  <div className="provider-title">
-                    <span className="provider-icon">🔷</span>
-                    <h4>Okta OAuth 2.0</h4>
-                  </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={oauthConfig.providers.okta.enabled}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, enabled: e.target.checked }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled}
-                    />
-                    <span className="toggle-slider"></span>
-                    <span className="toggle-label">{oauthConfig.providers.okta.enabled ? 'Enabled' : 'Disabled'}</span>
-                  </label>
-                </div>
-
-                <div className="form-row-3">
-                  <div className="form-group">
-                    <label>Okta Domain</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="your-domain.okta.com"
-                      value={oauthConfig.providers.okta.domain}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, domain: e.target.value }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Client ID</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="client-id"
-                      value={oauthConfig.providers.okta.clientId}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, clientId: e.target.value }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Client Secret</label>
-                    <input
-                      type="password"
-                      className="form-control"
-                      placeholder="client-secret"
-                      value={oauthConfig.providers.okta.clientSecret}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, clientSecret: e.target.value }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  className="btn-test"
-                  onClick={() => handleTestConnection('Okta')}
-                  disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled || testing}
-                >
-                  🔍 Test Okta Connection
-                </button>
-              </div>
-
               {/* GitHub */}
               <div className="provider-config">
                 <div className="provider-header">
@@ -1008,29 +1222,6 @@ function SSOIntegration({ onClose, embedded = false }) {
                 >
                   🔍 Test GitHub Connection
                 </button>
-              </div>
-
-              {/* OAuth Role Mapping */}
-              <div className="config-group">
-                <h4>👥 OAuth Role Mapping</h4>
-                <p className="section-description">Map OAuth claims/roles to application roles (comma-separated)</p>
-
-                {Object.keys(oauthConfig.roleMapping).map(appRole => (
-                  <div className="form-group" key={appRole}>
-                    <label>{appRole}</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="e.g., admin,administrator"
-                      value={oauthConfig.roleMapping[appRole]}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        roleMapping: { ...oauthConfig.roleMapping, [appRole]: e.target.value }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled}
-                    />
-                  </div>
-                ))}
               </div>
             </div>
           </div>

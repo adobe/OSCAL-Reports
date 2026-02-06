@@ -114,6 +114,18 @@
   cursor: not-allowed;
 }
 
+.login-button.okta-login-btn {
+  background: #fff;
+  color: #007dc1;
+  border: 2px solid #007dc1;
+  box-shadow: none;
+}
+
+.login-button.okta-login-btn:hover {
+  background: #f0f9ff;
+  box-shadow: 0 2px 8px rgba(0, 125, 193, 0.2);
+}
+
 /* Self-Registration Panel */
 .self-registration-panel {
   background: #f8f9fa;

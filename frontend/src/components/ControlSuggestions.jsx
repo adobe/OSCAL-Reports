@@ -352,6 +352,24 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hide
               </div>
             )}
 
+            {suggestions.testingObjective && (
+              <div className="suggestion-item">
+                <div className="suggestion-label">
+                  <strong>Assessment/Testing Objective:</strong>
+                  <button
+                    className="apply-field-btn"
+                    onClick={() => handleApplySuggestion('testingObjective')}
+                    title="Apply this suggestion"
+                  >
+                    Apply
+                  </button>
+                </div>
+                <div className="suggestion-value">
+                  {suggestions.testingObjective}
+                </div>
+              </div>
+            )}
+
             {suggestions.testingMethod && (
               <div className="suggestion-item">
                 <div className="suggestion-label">

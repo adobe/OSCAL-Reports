@@ -7,38 +7,184 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.7.0] - Planned
+## [1.7.0] - 2025-02-05
 
 ### Release Notes
-- **Status**: Planned for Next Release
+- **Status**: Released
 - **Breaking Changes**: None
 - **Backward Compatible**: Yes
-- **Focus**: International framework expansion - German BSI security standards
+- **Focus**: NIST SP 800-53 compliance & Security Assessment Results (SAR) generation
 
-### Planned
+### Added
 
-#### New Framework Support
-- **BSI Grundschutz++ Integration** 🇩🇪
-  - Added German IT security standards from BSI (Bundesamt für Sicherheit in der Informationstechnik)
-  - Grundschutz++ Kompendium catalogue support
-  - Source: [BSI Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
-  - OSCAL-compliant format (compatible with existing infrastructure)
-  - German-language controls with bilingual implementation support
-  - Full export support (OSCAL JSON, Excel, PDF, CCM)
-  - AI-powered suggestions for German controls (Mistral 7B multilingual support)
+#### NIST SP 800-53 Compliance Enhancement
+- **Assessment/Testing Objective Field** 🎯
+  - New field in Testing & Evidence section for assessment objectives
+  - Maps to NIST SP 800-53 `assessment-objective` → OSCAL `local-objective`
+  - Placed at top of Testing & Evidence section per assessment workflow
+  - Role-based access: Requires Assessor role to edit
+  - Optional field with AI-powered suggestions
+  - Full support across all export formats
 
-#### Documentation
-- **BSI Catalogue Integration Guide** (`docs/BSI_CATALOGUE_INTEGRATION.md`)
-  - Comprehensive BSI background and usage guide
-  - German control implementation guidance
-  - Language considerations and translation resources
-  - AI integration for German security terminology
-  - Troubleshooting and best practices
+#### OSCAL Security Assessment Results (SAR) Generation
+- **New SAR Export Format** 📋
+  - Complete OSCAL-compliant Security Assessment Results document generation
+  - Proper NIST SP 800-53 field mappings:
+    - `testingObjective` → `assessment-objective` → `local-objective` → `description`
+    - `testingProcedure` → `assessment-method` → `description`
+  - Includes observations, findings, and reviewed-controls
+  - Assessment metadata with timestamps and assessor information
+  - Export button: "Export SAR (Assessment Results)"
+  - Separate from SSP export for proper compliance documentation
 
-#### Frontend Enhancements
-- Added BSI Grundschutz++ to catalogue selection dropdown
-- German flag indicator (🇩🇪) for German-language catalogues
-- Support for German characters (umlauts, ß) in all export formats
+#### Data Persistence & Integration
+- **Excel Import/Export Support**
+  - New "Assessment/Testing Objective" column in CCM Excel exports
+  - Import/export round-trip support
+  - Column positioned logically after Evidence Location
+
+- **AI Suggestion Enhancement**
+  - AI-generated suggestions now include Testing Objectives
+  - Context-aware objectives based on control family (AC, AU, CM, etc.)
+  - Template-based fallbacks for offline/failed AI scenarios
+  - Applied across all control templates in suggestion engine
+
+#### Security Enhancements (OWASP Compliance)
+- **DoS Prevention** 🛡️
+  - Request size limits: Maximum 1000 controls per SAR/SSP generation
+  - Metadata size limits: 100KB maximum
+  - Prevents resource exhaustion attacks (OWASP API4:2023)
+
+- **Security Audit Logging** 📊
+  - Comprehensive logging for SAR/SSP generation
+  - IP address tracking for security monitoring
+  - Success/failure tracking with timestamps
+  - Production-safe error handling (detailed logs in dev only)
+
+- **OWASP Compliance**
+  - Full compliance with OWASP Top 10 2025 (10/10 categories)
+  - Full compliance with OWASP API Security Top 10 (10/10 categories)
+  - Full compliance with OWASP GenAI Top 10 (10/10 categories)
+  - Security review documentation included
+
+### Documentation
+
+#### New Documentation
+- **User Guide** (`docs/USER_GUIDE.md`) 📖
+  - Complete user documentation for all features
+  - Assessment fields explanation with examples
+  - Testing Objective vs Testing Method guidance
+  - Export instructions and best practices
+  - Role-based workflows
+
+- **OSCAL SAR Guide** (`docs/OSCAL_SAR.md`) 📘
+  - Comprehensive SAR generation documentation
+  - NIST SP 800-53 field mapping tables
+  - SAR vs SSP comparison and use cases
+  - OSCAL document structure examples
+  - Compliance requirements (FedRAMP, StateRAMP, FISMA)
+  - Troubleshooting guide
+
+- **OWASP Compliance Summary** (`docs/OWASP_COMPLIANCE_SUMMARY.md`) 🔒
+  - Executive security compliance summary
+  - Implementation highlights and evidence
+  - Security testing checklist
+  - Production deployment readiness
+
+- **Security Implementation Review** (`docs/SECURITY_IMPLEMENTATION_REVIEW.md`) 🔐
+  - Detailed OWASP compliance analysis (all 30 categories)
+  - Security enhancements documentation
+  - Testing recommendations
+  - Action items and monitoring guidelines
+
+#### Updated Documentation
+- **README** - Added User Documentation and Security sections
+- **Version bump** - All package.json files updated to 1.7.0
+
+### Technical Details
+
+#### Backend Changes
+- **New Module**: `backend/sarGenerator.js`
+  - Complete SAR document generation
+  - OSCAL-compliant sanitization
+  - UUID generation for tracking
+  - Observations, findings, and reviewed-controls generation
+
+- **New Endpoint**: `POST /api/generate-sar`
+  - Security Assessment Results generation
+  - Request validation and size limits
+  - OSCAL schema validation support
+  - Comprehensive error handling and logging
+
+- **Enhanced Endpoints**: `POST /api/generate-ssp`
+  - Added request size validation
+  - Enhanced security logging
+  - Production-safe error handling
+
+- **Updated Modules**:
+  - `ccmExport.js` - Added Testing Objective column
+  - `ccmImport.js` - Import support for Testing Objective
+  - `controlSuggestionEngine.js` - AI suggestions for objectives
+  - `server.js` - Security enhancements and SAR endpoint
+
+#### Frontend Changes
+- **Updated Components**:
+  - `ControlItemCCM.jsx` - Testing Objective field in Testing & Evidence tab
+  - `ControlEditModal.jsx` - Testing Objective in modal editor
+  - `ControlItem.jsx` - Testing Objective in non-CCM controls
+  - `ControlSuggestions.jsx` - AI suggestion display for objectives
+  - `ExportButtons.jsx` - New SAR export button
+  - `App.jsx` - SAR export handler
+
+### Security
+
+#### OWASP Compliance
+- ✅ OWASP Top 10 2025: All 10 categories compliant
+- ✅ OWASP API Security Top 10: All 10 categories compliant
+- ✅ OWASP GenAI Top 10: All 10 categories compliant
+
+#### Security Features
+- Role-Based Access Control (RBAC) for sensitive fields
+- Input sanitization and validation
+- Request size limits for DoS prevention
+- Comprehensive security audit logging
+- CSRF protection with Bearer token architecture
+- Production-safe error handling
+- Rate limiting (100 req/15min per IP)
+
+### Testing
+
+#### Test Coverage
+- Input validation tests
+- Authorization tests
+- DoS prevention tests
+- Data integrity tests
+- OSCAL validation tests
+
+### Migration Notes
+
+#### For Existing Users
+- **No Breaking Changes**: Fully backward compatible
+- **Optional Field**: Testing Objective is optional, won't affect existing controls
+- **Data Migration**: Not required, new field will be empty for existing controls
+- **AI Suggestions**: Will include objectives for new suggestions
+
+#### For Developers
+- New field: `testingObjective` in control objects
+- New export format: SAR (assessment-results.json)
+- New API endpoint: `/api/generate-sar`
+- Enhanced security logging in all generation endpoints
+
+### Known Issues
+- None
+
+### Upgrade Instructions
+1. Pull latest code from repository
+2. Run `npm install` in root, backend, and frontend directories
+3. Restart servers
+4. No database migration needed (client-side storage)
+5. Test SAR export functionality
+6. Review security documentation
 
 ---
 
