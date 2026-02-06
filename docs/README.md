@@ -71,6 +71,14 @@
 
 ---
 
+### 🔐 Authentication / SSO
+
+| Document | Description |
+|----------|-------------|
+| [OKTA_OIDC_INTEGRATION.md](OKTA_OIDC_INTEGRATION.md) | Okta OIDC sign-in and groups/role mapping (production: https://keekar.3utilities.com/) |
+
+---
+
 ### 🔒 Security & Quality
 
 | Document | Description |
@@ -83,7 +91,7 @@
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 25
+- **Total Documents:** 26
 - **Categories:** 8
 - **Last Update:** 2026-02-05
 

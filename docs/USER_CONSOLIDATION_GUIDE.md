@@ -54,6 +54,40 @@ The `/api/users/export` and `/api/users/import` endpoints were failing because E
      http://green.oscal.keekar.com/api/users/export
    ```
 
+## Keeping the script in sync (Local, Blue, Green)
+
+The same `consolidate-users.sh` should be used in all three places so you can check in updates to repos from any of them.
+
+| Place | Typical path | How to update |
+|-------|--------------|----------------|
+| **Local laptop** | `~/Documents/OSCAL_Reports/scripts/` | Edit here, then commit and push. |
+| **Blue** | `/mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue/scripts/` | Run sync script (see below) or `git pull` if Blue is a clone. |
+| **Green** | `/mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green/scripts/` | Run sync script or `git pull` if Green is a clone. |
+
+**Option A – Sync from Local (when Blue/Green paths are available, e.g. NAS mounted):**
+
+From the **Local** repo root (OSCAL_Reports):
+
+```bash
+./scripts/sync-consolidation-script.sh
+```
+
+This copies `scripts/consolidate-users.sh` into the Blue and Green `scripts/` directories (default paths above). Override paths if needed:
+
+```bash
+BLUE_SCRIPTS_DIR=/path/to/Blue/scripts GREEN_SCRIPTS_DIR=/path/to/Green/scripts ./scripts/sync-consolidation-script.sh
+```
+
+Then check in from Blue and Green repos if they are separate clones.
+
+**Option B – Single repo, pull on each server:**
+
+1. Edit and commit `scripts/consolidate-users.sh` in the Local repo, then push.
+2. On the Blue server: `cd /path/to/OSCAL-Report-Generator-Blue && git pull`.
+3. On the Green server: `cd /path/to/OSCAL-Report-Generator-Green && git pull`.
+
+---
+
 ## Two Consolidation Methods
 
 ### Method 1: Direct Docker Access (Immediate - Use This Now)
@@ -120,6 +154,12 @@ GREEN_PASSWORD='admin#03feb2026' \
 
 # One-way sync (Green → Blue only)
 ./scripts/consolidate-users.sh --green-to-blue
+
+# Use replace-by-username (default) so same user on both sides gets synced even if Green had them with different ID (e.g. OIDC JIT)
+./scripts/consolidate-users.sh --auto
+
+# Use merge mode (skip duplicates only; does not overwrite existing user by username)
+./scripts/consolidate-users.sh --auto --import-mode merge
 ```
 
 **Environment Variables**:
@@ -196,13 +236,34 @@ crontab -e
 - **Green**: 16 + 4 = **20 users**
 - All users can login to both instances
 
+## Why a user (e.g. ciurdar@adobe.com) might not replicate
+
+If a user exists on Blue but does not appear on Green after consolidation (or the other way around), the usual cause is **merge mode** behavior:
+
+- **Merge mode** (old default): Users with the same **username** or **id** on the target are **skipped**. So if Green already had a user `ciurdar` (e.g. created by OIDC/JIT with a different id), Blue’s `ciurdar` is not imported and you see “Username already exists”.
+- **Replace-by-username mode** (new default): For each imported user, if the target already has a user with the same **username**, that target user is **replaced** with the imported one (same password hash, so they can log in on both sides). Use this for full Blue/Green sync.
+
+**Fix:** Run consolidation with the default **replace-by-username** so both sides get the same user record:
+
+```bash
+# Bi-directional sync with replace-by-username (default)
+./consolidate-users.sh --auto
+```
+
+Or explicitly:
+
+```bash
+./consolidate-users.sh --auto --import-mode replace-by-username
+```
+
+Ensure the **backend** on both Blue and Green has the updated import API that supports `mode=replace-by-username` (see CHANGELOG / recent backend commits). The script prints added/updated/skipped and, when there are skips, lists skipped users and reasons.
+
 ## Safety Features
 
-- **No deletions**: Existing users are never deleted
-- **No overwrites**: Duplicate users are automatically skipped
+- **No deletions**: Existing users are never deleted (replace-by-username overwrites the same username only)
 - **Automatic backups**: All user data is backed up before merge
 - **Password preservation**: Password hashes are maintained exactly
-- **Merge mode**: By default, only adds new users, never modifies existing ones
+- **Replace-by-username (default)**: Syncs same user across Blue/Green even when one side had them with a different ID (e.g. OIDC JIT). Use `--import-mode merge` to only add new users and never overwrite
 
 ## Backup Locations
 
@@ -259,6 +320,15 @@ GREEN_CONTAINER="your-green-container-name"
 - Verify URLs are correct
 - Check if services are running: `docker ps`
 - Test connectivity: `curl http://blue.oscal.keekar.com/`
+
+### User on Blue but not on Green (e.g. ciurdar@adobe.com)
+
+**Problem**: Green already had a user with the same username (e.g. from OIDC JIT) with a different id, so merge mode skipped the Blue user.
+
+**Solution**:
+1. Run consolidation with **replace-by-username** (script default): `./consolidate-users.sh --auto`
+2. Ensure both Blue and Green backends support `mode=replace-by-username` (deploy latest backend if needed)
+3. Re-run bi-directional sync; the script will show “Replaced by username” for that user
 
 ## Next Steps
 
