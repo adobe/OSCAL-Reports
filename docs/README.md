@@ -62,19 +62,30 @@
 
 ---
 
-### 🔒 Quality
+### 👥 User Documentation
 
 | Document | Description |
 |----------|-------------|
+| [USER_GUIDE.md](USER_GUIDE.md) | Complete user guide for application features |
+| [OSCAL_SAR.md](OSCAL_SAR.md) | OSCAL Security Assessment Results (SAR) guide |
+
+---
+
+### 🔒 Security & Quality
+
+| Document | Description |
+|----------|-------------|
+| [OWASP_COMPLIANCE_SUMMARY.md](OWASP_COMPLIANCE_SUMMARY.md) | Executive OWASP compliance summary |
+| [SECURITY_IMPLEMENTATION_REVIEW.md](SECURITY_IMPLEMENTATION_REVIEW.md) | Detailed security review and OWASP analysis |
 | [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA processes and testing |
 
 ---
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 21
-- **Categories:** 6
-- **Last Update:** 2026-02-03
+- **Total Documents:** 25
+- **Categories:** 8
+- **Last Update:** 2026-02-05
 
 ---
 
@@ -87,10 +98,10 @@ Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRAC
 Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
 
 ### 👤 **End User**
-Start with: [DOCKER_HUB_README.md](DOCKER_HUB_README.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
+Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
 
-### 🔐 **Security Reviewer**
-Start with: [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
+### 🔐 **Security Reviewer / Assessor**
+Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
 
 ### ✅ **QA/Tester**
 Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)

@@ -27,9 +27,17 @@ import { checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
 import { checkAIAvailability, detectModelFamily } from './aiModelRouter.js';
 import { addIntegrityHash, verifyIntegrityHash, getIntegrityInfo } from './integrityService.js';
 import { getLogStats, cleanupOldLogs } from './aiLogger.js';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { 
   initializeDefaultUsers, 
   authenticateUser, 
+  createSessionForOidcUser,
+  findOrCreateOidcUser,
   validateSession, 
   logout as logoutUser,
   getAllUsers,
@@ -842,6 +850,251 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Okta OIDC state store (CSRF): state -> { createdAt, redirectUri }. TTL 15 min. Persisted to file so server restarts don't invalidate in-flight logins.
+const oktaOidcStateStore = new Map();
+const OKTA_STATE_TTL_MS = 15 * 60 * 1000;
+const OKTA_STATE_FILE = path.join(__dirname, '..', 'config', 'app', 'okta_oidc_state.json');
+
+function loadOktaStateFromFile() {
+  try {
+    if (!fs.existsSync(OKTA_STATE_FILE)) return;
+    const raw = fs.readFileSync(OKTA_STATE_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    const now = Date.now();
+    if (data && typeof data === 'object') {
+      for (const [state, entry] of Object.entries(data)) {
+        if (entry?.createdAt && (now - entry.createdAt) < OKTA_STATE_TTL_MS) {
+          oktaOidcStateStore.set(state, { createdAt: entry.createdAt, redirectUri: entry.redirectUri || '' });
+        }
+      }
+    }
+  } catch (_) {
+    // ignore
+  }
+}
+
+function persistOktaState() {
+  try {
+    const dir = path.dirname(OKTA_STATE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const now = Date.now();
+    const obj = {};
+    for (const [state, data] of oktaOidcStateStore.entries()) {
+      if (data?.createdAt && (now - data.createdAt) < OKTA_STATE_TTL_MS) {
+        obj[state] = { createdAt: data.createdAt, redirectUri: data.redirectUri || '' };
+      }
+    }
+    fs.writeFileSync(OKTA_STATE_FILE, JSON.stringify(obj), 'utf8');
+  } catch (_) {
+    // ignore
+  }
+}
+
+function cleanupOktaState() {
+  const now = Date.now();
+  for (const [state, data] of oktaOidcStateStore.entries()) {
+    if (now - data.createdAt > OKTA_STATE_TTL_MS) oktaOidcStateStore.delete(state);
+  }
+  persistOktaState();
+}
+
+loadOktaStateFromFile();
+setInterval(cleanupOktaState, 60 * 1000);
+
+/**
+ * Fetch Okta OIDC discovery document and return { authorization_endpoint, token_endpoint, userinfo_endpoint }.
+ * Tries: oauth2/{authServerId}/.well-known, then .well-known, then oauth2/default/.well-known.
+ */
+async function fetchOktaDiscovery(domain, authServerId) {
+  const base = `https://${domain}`;
+  const toTry = authServerId
+    ? [`${base}/oauth2/${authServerId}/.well-known/openid-configuration`]
+    : [
+        `${base}/.well-known/openid-configuration`,
+        `${base}/oauth2/default/.well-known/openid-configuration`
+      ];
+  for (const url of toTry) {
+    try {
+      const res = await axios.get(url, { timeout: 8000, validateStatus: () => true });
+      if (res.status === 200 && res.data?.authorization_endpoint) {
+        return {
+          authorization_endpoint: res.data.authorization_endpoint,
+          token_endpoint: res.data.token_endpoint,
+          userinfo_endpoint: res.data.userinfo_endpoint
+        };
+      }
+    } catch (_) {
+      // continue to next URL
+    }
+  }
+  if (authServerId) {
+    const fallback = `${base}/.well-known/openid-configuration`;
+    try {
+      const res = await axios.get(fallback, { timeout: 8000, validateStatus: () => true });
+      if (res.status === 200 && res.data?.authorization_endpoint) {
+        return {
+          authorization_endpoint: res.data.authorization_endpoint,
+          token_endpoint: res.data.token_endpoint,
+          userinfo_endpoint: res.data.userinfo_endpoint
+        };
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+  return null;
+}
+
+/**
+ * Start Okta OIDC login: redirect browser to Okta authorization URL
+ * Uses OIDC discovery when possible so the correct authorize URL is used (avoids 404).
+ */
+app.get('/api/auth/okta/authorize', async (req, res) => {
+  try {
+    const config = loadConfig();
+    const oauth = config.ssoConfig?.oauth;
+    const okta = oauth?.providers?.okta;
+    if (!oauth?.enabled || !okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim()) {
+      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      return res.redirect(302, `${back}/?error=okta_not_configured`);
+    }
+    const redirectUri = (okta.redirectUri || '').trim() || `${req.protocol}://${req.get('host')}/auth/okta/callback`;
+    const state = crypto.randomBytes(16).toString('hex');
+    oktaOidcStateStore.set(state, { createdAt: Date.now(), redirectUri });
+    persistOktaState();
+    const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const authServerId = (okta.authServerId || '').trim();
+    const scope = (okta.scope || 'openid profile email').trim();
+    const params = new URLSearchParams({
+      client_id: okta.clientId,
+      response_type: 'code',
+      scope,
+      redirect_uri: redirectUri,
+      state
+    });
+    let authorizeUrl;
+    const discovery = await fetchOktaDiscovery(domain, authServerId);
+    if (discovery?.authorization_endpoint) {
+      const sep = discovery.authorization_endpoint.includes('?') ? '&' : '?';
+      authorizeUrl = `${discovery.authorization_endpoint}${sep}${params.toString()}`;
+    } else {
+      const oauth2Path = authServerId ? `oauth2/${authServerId}/v1` : 'oauth2/v1';
+      authorizeUrl = `https://${domain}/${oauth2Path}/authorize?${params.toString()}`;
+    }
+    res.redirect(302, authorizeUrl);
+  } catch (err) {
+    console.error('❌ Okta authorize error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Exchange Okta authorization code for tokens and create app session
+ * No auth required (called from frontend callback with code from Okta).
+ */
+app.post('/api/auth/okta/exchange-token', async (req, res) => {
+  try {
+    const { code, state } = req.body;
+    if (!code || !state) {
+      return res.status(400).json({ success: false, error: 'Missing code or state' });
+    }
+    let stateData = oktaOidcStateStore.get(state);
+    if (!stateData) {
+      loadOktaStateFromFile();
+      stateData = oktaOidcStateStore.get(state);
+    }
+    if (!stateData) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
+    }
+    oktaOidcStateStore.delete(state);
+    persistOktaState();
+
+    const config = loadConfig();
+    const okta = config.ssoConfig?.oauth?.providers?.okta;
+    if (!okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim() || !okta?.clientSecret?.trim()) {
+      return res.status(400).json({ success: false, error: 'Okta OIDC is not configured.' });
+    }
+    const redirectUri = (okta.redirectUri || '').trim() || stateData.redirectUri;
+    const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const authServerId = (okta.authServerId || '').trim();
+    let tokenUrl;
+    let userinfoUrl;
+    const discovery = await fetchOktaDiscovery(domain, authServerId);
+    if (discovery?.token_endpoint && discovery?.userinfo_endpoint) {
+      tokenUrl = discovery.token_endpoint;
+      userinfoUrl = discovery.userinfo_endpoint;
+    } else {
+      const oauth2Path = authServerId ? `oauth2/${authServerId}/v1` : 'oauth2/v1';
+      tokenUrl = `https://${domain}/${oauth2Path}/token`;
+      userinfoUrl = `https://${domain}/${oauth2Path}/userinfo`;
+    }
+    const tokenRes = await axios.post(
+      tokenUrl,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: okta.clientId,
+        client_secret: okta.clientSecret
+      }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
+    );
+    const accessToken = tokenRes.data?.access_token;
+    if (!accessToken) {
+      return res.status(401).json({ success: false, error: 'Okta did not return an access token.' });
+    }
+    const userinfoRes = await axios.get(userinfoUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 10000
+    });
+    const profile = userinfoRes.data || {};
+    const email = profile.email || profile.sub;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Okta did not return user email.' });
+    }
+    const oauthConfig = config.ssoConfig?.oauth || {};
+    const jitProvisioning = oauthConfig.jitProvisioning === true;
+    const rawDefault = (oauthConfig.jitDefaultRole || 'User').trim();
+    const jitDefaultRole = [ROLES.PLATFORM_ADMIN, ROLES.ASSESSOR, ROLES.USER].includes(rawDefault) ? rawDefault : ROLES.USER;
+    const groupToRoleMapping = oauthConfig.groupToRoleMapping && typeof oauthConfig.groupToRoleMapping === 'object' ? oauthConfig.groupToRoleMapping : {};
+    const syncRoleFromGroups = oauthConfig.syncRoleFromGroups !== false;
+    const user = await findOrCreateOidcUser(email, profile, {
+      jitProvisioning,
+      jitDefaultRole,
+      groupToRoleMapping,
+      syncRoleFromGroups
+    });
+    if (!user) {
+      return res.status(403).json({
+        success: false,
+        error: 'No application user found for this Okta account. Ask an admin to add your email to Users, enable JIT provisioning, or sign in with username/password.'
+      });
+    }
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName
+      },
+      sessionToken: user.sessionToken
+    });
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 400) {
+      const oktaError = err.response?.data?.error_description || err.response?.data?.error;
+      const message = oktaError || 'Okta token exchange failed. Code may be expired.';
+      return res.status(400).json({
+        success: false,
+        error: typeof message === 'string' ? message : 'Okta token exchange failed. Code may be expired.'
+      });
+    }
+    console.error('❌ Okta exchange-token error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Okta sign-in failed.' });
+  }
+});
+
 /**
  * Logout endpoint
  */
@@ -1384,15 +1637,26 @@ app.post('/api/users/:userId/reset-password', authenticate, requireRole(ROLES.PL
 
 /**
  * Get SSO configuration
+ * Any authenticated user can read (so Settings shows correct enabled state and saved values).
+ * Client secrets are masked for non–Platform Admins.
  */
-app.get('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), (req, res) => {
+app.get('/api/sso/config', authenticate, (req, res) => {
   try {
     const config = loadConfig();
     const ssoConfig = config.ssoConfig || {
       saml: { enabled: false },
       oauth: { enabled: false }
     };
-    
+    const isPlatformAdmin = req.user?.role === ROLES.PLATFORM_ADMIN;
+    if (!isPlatformAdmin && ssoConfig.oauth?.providers) {
+      const masked = JSON.parse(JSON.stringify(ssoConfig));
+      for (const p of ['azure', 'google', 'okta', 'github']) {
+        if (masked.oauth.providers[p]?.clientSecret) {
+          masked.oauth.providers[p].clientSecret = '********';
+        }
+      }
+      return res.json(masked);
+    }
     console.log('📖 SSO config loaded');
     res.json(ssoConfig);
   } catch (error) {
@@ -1465,8 +1729,15 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
     } else {
       // OAuth providers
       const providerName = provider.toLowerCase().replace(' ', '');
-      isValid = config.providers && config.providers[providerName]?.clientId;
-      if (!isValid) errors.push('Missing client configuration');
+      const prov = config.providers?.[providerName];
+      isValid = prov?.clientId;
+      if (!prov?.clientId) errors.push('Missing Client ID');
+      if (providerName === 'okta') {
+        if (!prov?.domain?.trim()) {
+          isValid = false;
+          errors.push('Missing Okta Domain (e.g. your-domain.okta.com)');
+        }
+      }
     }
     
     if (isValid) {
@@ -2855,9 +3126,32 @@ function filterOSCALImplementedRequirement(implementedReq) {
 }
 
 // Generate OSCAL SSP
+// OWASP API Security: Implements request size limits to prevent DoS attacks
 app.post('/api/generate-ssp', async (req, res) => {
   try {
     const { metadata, controls, systemInfo, validationOptions = {} } = req.body;
+    
+    // SECURITY: API4:2023 - Unrestricted Resource Consumption Prevention
+    // Limit number of controls to prevent DoS attacks
+    if (controls && controls.length > 1000) {
+      return res.status(400).json({
+        error: 'Request too large',
+        message: 'Maximum 1000 controls per SSP generation request',
+        limit: 1000,
+        received: controls.length
+      });
+    }
+    
+    // SECURITY: Limit metadata size to prevent memory exhaustion
+    const metadataSize = JSON.stringify(metadata || {}).length;
+    if (metadataSize > 100000) { // 100KB
+      return res.status(400).json({
+        error: 'Metadata too large',
+        message: 'Metadata must be less than 100KB',
+        limit: '100KB',
+        received: `${Math.round(metadataSize / 1024)}KB`
+      });
+    }
     
     // Debug: Log first control to see what structure we're receiving
     if (controls && controls.length > 0) {
@@ -3114,6 +3408,7 @@ app.post('/api/generate-ssp', async (req, res) => {
               'nextReviewDate': 'next-review-date',
               'controlType': 'control-type',
               'evidence': 'evidence',
+              'testingObjective': 'testing-objective',
               'testingProcedure': 'testing-procedure',
               'testingFrequency': 'testing-frequency',
               'lastTestDate': 'last-test-date',
@@ -3246,6 +3541,114 @@ app.post('/api/generate-ssp', async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to generate SSP',
       details: error.message 
+    });
+  }
+});
+
+// Generate Security Assessment Results (SAR)
+// OWASP API Security: Implements request size limits to prevent DoS attacks
+app.post('/api/generate-sar', async (req, res) => {
+  try {
+    const { metadata, controls, assessmentInfo = {}, validationOptions = {} } = req.body;
+    
+    // SECURITY: API4:2023 - Unrestricted Resource Consumption Prevention
+    // Limit number of controls to prevent DoS attacks
+    if (controls && controls.length > 1000) {
+      return res.status(400).json({
+        error: 'Request too large',
+        message: 'Maximum 1000 controls per SAR generation request',
+        limit: 1000,
+        received: controls.length
+      });
+    }
+    
+    // SECURITY: Limit metadata size to prevent memory exhaustion
+    const metadataSize = JSON.stringify(metadata || {}).length;
+    if (metadataSize > 100000) { // 100KB
+      return res.status(400).json({
+        error: 'Metadata too large',
+        message: 'Metadata must be less than 100KB',
+        limit: '100KB',
+        received: `${Math.round(metadataSize / 1024)}KB`
+      });
+    }
+    
+    // SECURITY AUDIT LOG: OWASP A09 - Security Logging and Monitoring
+    // Log SAR generation for audit trail and compliance
+    console.log({
+      timestamp: new Date().toISOString(),
+      action: 'SAR_GENERATION_REQUEST',
+      controlCount: controls?.length || 0,
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.get('user-agent'),
+      assessmentTitle: assessmentInfo?.title || 'N/A'
+    });
+    
+    // Debug: Log request details
+    if (process.env.NODE_ENV === 'development') {
+      console.log('=== DEBUG: SAR Generation Request ===');
+      console.log('Controls count:', controls?.length || 0);
+      console.log('Assessment info:', assessmentInfo);
+      console.log('=====================================');
+    }
+    
+    // Import SAR generator
+    const { generateSAR } = await import('./sarGenerator.js');
+    
+    // Generate SAR document
+    const sarDocument = generateSAR({
+      metadata,
+      controls,
+      assessmentInfo,
+      validationOptions
+    });
+    
+    // SECURITY AUDIT LOG: Log successful SAR generation
+    console.log({
+      timestamp: new Date().toISOString(),
+      action: 'SAR_GENERATION_SUCCESS',
+      controlCount: controls?.length || 0,
+      documentUUID: sarDocument['assessment-results']?.uuid
+    });
+    
+    // Validate if requested
+    if (validationOptions.enableValidation) {
+      try {
+        const { validateOSCALDocument } = await import('./oscalValidator.js');
+        const validationResult = await validateOSCALDocument(sarDocument, 'assessment-results');
+        
+        if (!validationResult.valid) {
+          console.warn('SAR validation warnings:', validationResult.errors);
+          // Continue anyway - warnings don't prevent generation
+        }
+      } catch (validationError) {
+        console.error('SAR validation error:', validationError);
+        // Continue anyway - validation is optional
+      }
+    }
+    
+    // Return SAR document
+    res.json(sarDocument);
+    
+  } catch (error) {
+    // SECURITY AUDIT LOG: Log SAR generation failures for security monitoring
+    console.error({
+      timestamp: new Date().toISOString(),
+      action: 'SAR_GENERATION_ERROR',
+      error: error.message,
+      controlCount: req.body?.controls?.length || 0,
+      ipAddress: req.ip || req.connection.remoteAddress
+    });
+    
+    // Detailed error logging for debugging (development only)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error generating SAR:', error.message);
+      console.error('Stack trace:', error.stack);
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to generate SAR',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred during SAR generation'
     });
   }
 });

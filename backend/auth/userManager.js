@@ -495,6 +495,152 @@ export async function authenticateUser(username, password) {
 }
 
 /**
+ * Resolve app role from Okta/OIDC groups using group-to-role mapping.
+ * If multiple groups match, returns the highest privilege role (Platform Admin > Assessor > User).
+ * @param {string[]} groups - Group names from IdP (e.g. profile.groups)
+ * @param {Object} groupToRoleMapping - Map of IdP group name -> app role
+ * @param {string} defaultRole - Default role when no group matches
+ * @returns {string} - App role
+ */
+function resolveRoleFromGroups(groups, groupToRoleMapping, defaultRole = ROLES.USER) {
+  if (!groupToRoleMapping || typeof groupToRoleMapping !== 'object') return defaultRole;
+  const groupList = Array.isArray(groups) ? groups : (groups && typeof groups === 'string' ? groups.split(',').map(s => s.trim()) : []);
+  const roleOrder = [ROLES.PLATFORM_ADMIN, ROLES.ASSESSOR, ROLES.USER];
+  let assignedRole = null;
+  for (const [groupName, appRole] of Object.entries(groupToRoleMapping)) {
+    if (!appRole || !isValidRole(appRole)) continue;
+    const name = (groupName || '').trim();
+    if (!name) continue;
+    const matches = groupList.some(g => (g || '').toString().trim().toLowerCase() === name.toLowerCase());
+    if (matches && (!assignedRole || roleOrder.indexOf(appRole) < roleOrder.indexOf(assignedRole))) {
+      assignedRole = appRole;
+    }
+  }
+  return assignedRole || defaultRole;
+}
+
+/**
+ * Create session for a user record (shared by createSessionForOidcUser and findOrCreateOidcUser).
+ */
+function createSessionForUserRecord(userRecord, profile = {}) {
+  const sessionToken = generateSessionToken();
+  const sessionData = {
+    userId: userRecord.id,
+    username: userRecord.username,
+    role: userRecord.role,
+    email: userRecord.email,
+    fullName: userRecord.fullName || profile.name || profile.preferred_username,
+    createdAt: Date.now()
+  };
+  sessions.set(sessionToken, sessionData);
+  const { password: _, ...userWithoutPassword } = userRecord;
+  return {
+    ...userWithoutPassword,
+    fullName: userWithoutPassword.fullName || profile.name || profile.preferred_username,
+    sessionToken
+  };
+}
+
+/**
+ * Create session for OIDC/OAuth user (no password - identity verified by IdP)
+ * Used after Okta/OAuth callback: find user by email, create session, return user + token.
+ * @param {string} email - User email (from IdP)
+ * @param {Object} profile - Optional profile (fullName, etc.) from IdP
+ * @returns {Object|null} - User object with sessionToken or null if user not found/inactive
+ */
+export async function createSessionForOidcUser(email, profile = {}) {
+  if (!email || typeof email !== 'string') return null;
+  const normalizedEmail = email.trim().toLowerCase();
+  const users = await loadUsers();
+  const userByEmail = users.find(u => (u.email || u.username || '').toString().trim().toLowerCase() === normalizedEmail);
+  if (!userByEmail) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`❌ OIDC login: no user found for email ${email}`);
+    }
+    return null;
+  }
+  if (!userByEmail.isActive) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`❌ OIDC login: user inactive ${userByEmail.username}`);
+    }
+    return null;
+  }
+  const userIndex = users.findIndex(u => u.id === userByEmail.id);
+  if (userIndex !== -1) {
+    users[userIndex].lastLoginAt = new Date().toISOString();
+    await saveUsers(users);
+  }
+  return createSessionForUserRecord(userByEmail, profile);
+}
+
+/**
+ * Find or create user from OIDC (JIT provisioning), reactivate if deactivated, assign role from groups.
+ * @param {string} email - User email from IdP
+ * @param {Object} profile - IdP profile (name, groups, etc.)
+ * @param {Object} options - { jitProvisioning, jitDefaultRole, groupToRoleMapping, syncRoleFromGroups }
+ * @returns {Object|null} - User with sessionToken or null
+ */
+export async function findOrCreateOidcUser(email, profile = {}, options = {}) {
+  if (!email || typeof email !== 'string') return null;
+  const normalizedEmail = email.trim().toLowerCase();
+  const {
+    jitProvisioning = false,
+    jitDefaultRole = ROLES.USER,
+    groupToRoleMapping = {},
+    syncRoleFromGroups = true
+  } = options;
+  const resolvedRole = resolveRoleFromGroups(profile.groups, groupToRoleMapping, jitDefaultRole);
+  const users = await loadUsers();
+  let userByEmail = users.find(u => (u.email || u.username || '').toString().trim().toLowerCase() === normalizedEmail);
+
+  if (!userByEmail) {
+    if (!jitProvisioning) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`❌ OIDC login: no user for ${email}, JIT disabled`);
+      }
+      return null;
+    }
+    const fullName = profile.name || profile.preferred_username || profile.given_name ? [profile.given_name, profile.family_name].filter(Boolean).join(' ') : email.split('@')[0];
+    await createUser({
+      username: email,
+      email,
+      role: resolvedRole,
+      fullName: fullName || email.split('@')[0],
+      createdVia: 'oidc-jit'
+    }, generatePassword(16));
+    const usersAfter = await loadUsers();
+    userByEmail = usersAfter.find(u => u.email === email);
+    if (!userByEmail) return null;
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ OIDC JIT: created user ${email} with role ${resolvedRole}`);
+    }
+  } else {
+    if (!userByEmail.isActive) {
+      await updateUser(userByEmail.id, { isActive: true });
+      const usersAfter = await loadUsers();
+      userByEmail = usersAfter.find(u => u.id === userByEmail.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ OIDC: reactivated user ${userByEmail.username}`);
+      }
+    }
+    if (syncRoleFromGroups && userByEmail.role !== resolvedRole) {
+      await updateUser(userByEmail.id, { role: resolvedRole });
+      const usersAfter = await loadUsers();
+      userByEmail = usersAfter.find(u => u.id === userByEmail.id);
+    }
+    const usersForLogin = await loadUsers();
+    const loginIndex = usersForLogin.findIndex(u => u.id === userByEmail.id);
+    if (loginIndex !== -1) {
+      usersForLogin[loginIndex].lastLoginAt = new Date().toISOString();
+      await saveUsers(usersForLogin);
+      userByEmail = usersForLogin[loginIndex];
+    }
+  }
+
+  return createSessionForUserRecord(userByEmail, profile);
+}
+
+/**
  * Validate session token
  * @param {string} token - Session token
  * @returns {Object|null} - Session data or null
@@ -875,6 +1021,8 @@ export async function changePassword(userId, oldPassword, newPassword) {
 export default {
   initializeDefaultUsers,
   authenticateUser,
+  createSessionForOidcUser,
+  findOrCreateOidcUser,
   validateSession,
   logout,
   getAllUsers,

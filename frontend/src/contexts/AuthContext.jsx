@@ -78,6 +78,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Complete OIDC login (after Okta callback): set user and token from backend response
+  const completeOidcLogin = (userData, token) => {
+    if (!userData || !token) return;
+    setUser(userData);
+    setSessionToken(token);
+    localStorage.setItem('sessionToken', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+
   // Login function
   const login = async (username, password) => {
     try {
@@ -179,6 +188,7 @@ export const AuthProvider = ({ children }) => {
     error,
     isAuthenticated: !!user,
     login,
+    completeOidcLogin,
     logout,
     changePassword,
     getAuthConfig,
