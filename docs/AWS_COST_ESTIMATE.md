@@ -232,7 +232,7 @@ For non-critical workloads:
 **Quick Access:**
 - **Interactive HTML:** Open `docs/diagrams/generate-diagram.html` in your browser
 - **Mermaid Files:** `docs/diagrams/*.mmd` files
-- **Conversion Script:** Run `docs/diagrams/convert-to-png.sh`
+- **Convert to PNG:** See `docs/diagrams/README.md` (Mermaid Live, VS Code, or `mmdc` command line)
 
 **Three Easy Ways to Get PNG:**
 
@@ -249,7 +249,8 @@ For non-critical workloads:
 3. **Command Line:**
    ```bash
    cd docs/diagrams
-   ./convert-to-png.sh
+   npm install -g @mermaid-js/mermaid-cli
+   for file in *.mmd; do mmdc -i "$file" -o "${file%.mmd}.png" -w 1920 -H 1080 -b white; done
    ```
 
 **Output:** High-resolution PNG images ready for email!
