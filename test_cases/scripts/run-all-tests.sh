@@ -457,7 +457,7 @@ validate_v165_features() {
     
     # Security documentation
     run_check "Security Fixes Documentation" \
-        "test -f docs/SECURITY_FIXES.md"
+        "test -f docs/SECURITY.md"
     
     # CHANGELOG update
     run_check "CHANGELOG Updated for v1.6.5" \
