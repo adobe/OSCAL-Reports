@@ -16,12 +16,13 @@ flowchart TB
         subgraph Automation["⚙️ Automation Layer"]
             Lambda["🔧 Lambda Function<br/>Wake/Sleep Controller<br/>$0.20/month"]
             CW["📊 CloudWatch Events<br/>Idle Check 30 min<br/>$0.50/month"]
-            DDB["💾 DynamoDB<br/>Activity Tracking<br/>Last Activity Timestamp<br/>$0.25/month"]
+            S3Activity["📦 S3 Same Bucket as Logs<br/>Activity State last.json<br/>Negligible cost"]
         end
         
         subgraph AI["🤖 Ollama AI Server Auto-Scaling"]
+            NLB["🔀 Ollama NLB (internal)<br/>Port: 11434<br/>OLLAMA_URL = http://&lt;nlb_dns&gt;:11434"]
             ASG["🔄 Auto Scaling Group<br/>Min: 0, Max: 1<br/>Desired: 0 when idle"]
-            Ollama["🧠 Ollama Instance<br/>t3.xlarge 4vCPU 16GB<br/>Port: 11434<br/>Models: Mistral 7B + Llama<br/>$0.1664/hour<br/>150 hours/month = $24.96"]
+            Ollama["🧠 Ollama Instance(s)<br/>t3.2xlarge 8vCPU 32GB<br/>Port: 11434<br/>Boot time → ollama-activity/last.json<br/>1 hr idle → scale to 0"]
         end
         
         subgraph Storage["💾 Storage"]
@@ -41,17 +42,18 @@ flowchart TB
     
     Lambda -->|Check Status| ASG
     Lambda -->|Scale Up 0 to 1| ASG
-    Lambda -->|Record Activity| DDB
+    Lambda -->|Read/Write Activity| S3Activity
     
     CW -->|Every 30 min| Lambda
-    CW -->|Check Idle| DDB
+    Lambda -->|Read Idle State| S3Activity
     
-    Lambda -.->|Idle 4hrs<br/>Scale Down 1 to 0| ASG
+    Lambda -.->|Idle 1 hr<br/>Scale Down to 0| ASG
     
     ASG -->|Manages| Ollama
+    NLB -->|Forward| Ollama
     
-    Green -->|API Call| Ollama
-    Blue -->|API Call| Ollama
+    Green -->|OLLAMA_URL| NLB
+    Blue -->|OLLAMA_URL| NLB
     
     Ollama -.->|Model Storage| EBS2
     Green -.->|App Data| EBS1
@@ -63,8 +65,9 @@ flowchart TB
     style Blue fill:#87CEEB,stroke:#4682B4,stroke-width:2px
     style Lambda fill:#FF9900,stroke:#cc7a00,stroke-width:2px
     style CW fill:#FF4F8B,stroke:#cc3366,stroke-width:2px
-    style DDB fill:#4053D6,stroke:#2c3a8f,stroke-width:2px
+    style S3Activity fill:#569A31,stroke:#3d6d23,stroke-width:2px
     style ASG fill:#FFA500,stroke:#cc8400,stroke-width:2px
+    style NLB fill:#9b59b6,stroke:#6a4ca6,stroke-width:2px
     style Ollama fill:#9370DB,stroke:#6a4ca6,stroke-width:3px
     style EBS1 fill:#569A31,stroke:#3d6d23,stroke-width:2px
     style EBS2 fill:#569A31,stroke:#3d6d23,stroke-width:2px

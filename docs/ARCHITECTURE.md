@@ -904,7 +904,7 @@ cd ../backend && NODE_ENV=production node server.js
 ### Environment Variables
 - `NODE_ENV`: Set to `production` for production deployments
 - `PORT`: Backend server port (default: 3020)
-- `OLLAMA_URL`: Ollama service URL (default: http://localhost:11434)
+- `OLLAMA_URL`: Ollama service URL (default: http://localhost:11434). On AWS with Terraform, use the internal NLB URL: `terraform -chdir=terraform output -raw ollama_url` so Lambda can start the ASG when scaled to 0; same URL works once instances are up.
 - `AWS_REGION`: AWS region for Bedrock (e.g., us-east-1)
 - `BUILD_TIMESTAMP`: Build timestamp for password generation
 - Frontend dev server port: 3021 (configured in `vite.config.js`)

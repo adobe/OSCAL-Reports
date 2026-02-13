@@ -111,8 +111,32 @@ jobs:
         run: |
           echo "Validating tar command syntax..."
           
-          # Check if --exclude comes before file arguments
-          if grep -A 20 "tar -czf" .github/workflows/release.yml | grep -B 5 "\\-\\-exclude" | grep -A 5 "backend/\\*\\.js\\|frontend/dist"; then
+          # Only flag when a single tar command has "tar -czf" (no --exclude before -czf) AND --exclude in the same command.
+          # Uses a state machine so we don't false-positive when "tar -czf" (e.g. frontend) is followed by "tar --exclude ... -czf".
+          BAD_TAR=$(
+            awk '
+              /^[[:space:]]*tar[[:space:]]/ {
+                if (block != "") {
+                  first = block; sub(/\n.*/, "", first)
+                  if (first ~ /tar[[:space:]]+-czf/ && first !~ /tar[[:space:]]+--exclude/ && block ~ /--exclude/) {
+                    print "BAD"; exit 0
+                  }
+                }
+                block = $0
+                next
+              }
+              block != "" { block = block "\n" $0; next }
+              END {
+                if (block != "") {
+                  first = block; sub(/\n.*/, "", first)
+                  if (first ~ /tar[[:space:]]+-czf/ && first !~ /tar[[:space:]]+--exclude/ && block ~ /--exclude/) {
+                    print "BAD"; exit 0
+                  }
+                }
+              }
+            ' .github/workflows/release.yml
+          )
+          if [ -n "$BAD_TAR" ]; then
             echo "❌ ERROR: --exclude options must come BEFORE file arguments in tar commands"
             echo ""
             echo "Correct syntax:"
@@ -237,11 +261,11 @@ jobs:
           echo "Source branch: $HEAD"
           echo "Target branch: $BASE"
           
-          # Check if PR to main is from Pre_Prod
-          if [ "$BASE" == "main" ] && [ "$HEAD" != "Pre_Prod" ]; then
-            echo "❌ ERROR: PRs to main must come from Pre_Prod branch"
+          # Check if PR to main is from Pre_Prod or Quality_Test (branch flow: Development → Quality_Test → Pre_Prod → main)
+          if [ "$BASE" == "main" ] && [ "$HEAD" != "Pre_Prod" ] && [ "$HEAD" != "Quality_Test" ]; then
+            echo "❌ ERROR: PRs to main must come from Pre_Prod or Quality_Test branch"
             echo "Current: $HEAD → main"
-            echo "Required: Pre_Prod → main"
+            echo "Required: Pre_Prod → main or Quality_Test → main"
             exit 1
           fi
           

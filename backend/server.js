@@ -147,7 +147,7 @@ app.use(session(SECURITY_CONFIG.session));
 // This pattern is used by all major REST APIs (GitHub, AWS, Azure, Google Cloud)
 //
 // REFERENCES:
-// - Documentation: docs/SECURITY_FIXES.md (lines 186-332)
+// - Documentation: docs/SECURITY.md
 // - OWASP CSRF Prevention: https://cheatsheetsecurity.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
 // - Auth0 Cookies vs Tokens: https://auth0.com/blog/cookies-vs-tokens-definitive-guide/
 // - Test Coverage: test_cases/backend/integration/csrf-api.test.js (60+ security tests)

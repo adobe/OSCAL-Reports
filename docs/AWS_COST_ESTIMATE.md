@@ -1,6 +1,6 @@
 # 💰 AWS EC2 Cost Estimate for OSCAL Report Generator + Ollama
 
-**Configuration:** 3 EC2 Instances (2 for OSCAL Generator Blue/Green + 1 for Ollama with Mistral & Llama)
+**Configuration:** 2 OSCAL instances (Blue/Green) + Ollama Auto Scaling Group. **Terraform default:** 3 Ollama instances at init; each instance writes boot time to `ollama-activity/last.json`; 1 hr no activity → scale to 0 (see [AWS_TERRAFORM.md](AWS_TERRAFORM.md) and [workflow diagram](diagrams/workflow-timeline.mmd)).
 
 **Last Updated:** January 29, 2026
 
@@ -15,15 +15,15 @@
 **What You Get:**
 - ✅ Application Load Balancer (high availability)
 - ✅ 2x OSCAL instances (Blue/Green deployment, always-on)
-- ✅ Ollama AI server (auto-scales based on activity)
+- ✅ Ollama AI server (auto-scales based on activity, 32 GB RAM / t3.2xlarge)
   - Shuts down when idle
   - Wakes up in 2-3 minutes when AI query received
-  - Stays active for 4 hours after last activity
-  - Auto-shuts down again if no activity
+  - Stays active for 1 hour after last activity
+  - Auto-shuts down after 1 hour if no activity
 - ✅ Lambda automation + CloudWatch monitoring
-- ✅ **42% cheaper** than always-on ($68/month savings)
+- ✅ **Cost-optimized** vs always-on
 
-**Perfect for:** 5-10 users, moderate AI usage (20% uptime ~150 hours/month)
+**Perfect for:** 5-10 users, moderate AI usage (~10-12% uptime ~75-90 hours/month)
 
 ---
 
@@ -31,12 +31,12 @@
 
 | Setup | Monthly | Annual | Ollama Uptime | Best For |
 |-------|---------|--------|---------------|----------|
-| **Auto-Scale (CPU)** ⭐ | **$94.68** | **$1,136** | 20% | **Most users** |
+| **Auto-Scale (CPU)** ⭐ | **~$99.70** | **~$1,196** | ~10-12% | **Most users** |
 | Auto-Scale (GPU) | $148.62 | $1,783 | 20% | Fast AI responses |
 | Always-On (CPU) | $163.03 | $1,956 | 100% | 24/7 availability |
 | Always-On (GPU) | $425.52 | $5,106 | 100% | Enterprise |
 
-**💡 Recommendation:** Start with Auto-Scale CPU setup. Save $820/year!
+**💡 Recommendation:** Start with Auto-Scale t3.2xlarge (32 GB), 1-hour idle. Significant savings vs always-on.
 
 ---
 
@@ -77,8 +77,8 @@ Continue reading for:
 │  │       EC2 Instance               │                       │
 │  │       Ollama AI Server           │                       │
 │  │       Port: 11434                │                       │
-│  │       g4dn.xlarge                │                       │
-│  │       4 vCPU, 16GB RAM, GPU      │                       │
+│  │       g4dn.xlarge / t3.2xlarge   │                       │
+│  │       GPU or 8 vCPU, 32 GB RAM   │                       │
 │  │       Models: Mistral 7B + Llama │                       │
 │  └──────────────────────────────────┘                       │
 │                                                               │
@@ -146,11 +146,11 @@ If GPU acceleration is not required, you can run Ollama on CPU:
 
 #### 🤖 Ollama AI Server (CPU-Only)
 
-**Instance Type:** `t3.xlarge` (4 vCPU, 16 GB RAM) - No GPU
+**Instance Type:** `t3.2xlarge` (8 vCPU, 32 GB RAM) - No GPU
 
 | Component | Specification | Unit Cost | Monthly Cost |
 |-----------|--------------|-----------|--------------|
-| **Instance (CPU)** | t3.xlarge | $0.1664/hour | **$121.47** |
+| **Instance (CPU)** | t3.2xlarge | $0.3328/hour | **$242.94** (always-on) |
 | EBS Storage (100 GB) | gp3 | $0.08/GB-month | $8.00 |
 
 **Subtotal:** **$129.47/month**
@@ -162,12 +162,12 @@ If GPU acceleration is not required, you can run Ollama on CPU:
 | OSCAL Green Instance (t3.small) | $15.18 |
 | OSCAL Blue Instance (t3.small) | $15.18 |
 | OSCAL Storage (40 GB total) | $3.20 |
-| Ollama Instance (t3.xlarge CPU-only) | $121.47 |
+| Ollama Instance (t3.2xlarge CPU-only, 32 GB) | $242.94 (always-on) |
 | Ollama Storage (100 GB) | $8.00 |
-| **TOTAL MONTHLY** | **$163.03** |
-| **TOTAL ANNUAL** | **$1,956.36** |
+| **TOTAL MONTHLY** | **$284.50** (always-on) |
+| **TOTAL ANNUAL** | **$3,414** (always-on) |
 
-**⚠️ Note:** CPU-only inference is 5-10x slower than GPU, but functional for moderate usage.
+**⚠️ Note:** With 1-hour idle auto-scale, Ollama runs ~75-90 hours/month (~$25-30) — see Auto-Scaling section.
 
 ---
 
@@ -181,10 +181,10 @@ If you don't need Blue/Green deployment:
 |-----------|-------------|
 | OSCAL Single Instance (t3.small) | $15.18 |
 | OSCAL Storage (20 GB) | $1.60 |
-| Ollama Instance (t3.xlarge CPU-only) | $121.47 |
+| Ollama Instance (t3.2xlarge CPU-only, 32 GB) | $242.94 (always-on) |
 | Ollama Storage (100 GB) | $8.00 |
-| **TOTAL MONTHLY** | **$146.25** |
-| **TOTAL ANNUAL** | **$1,755.00** |
+| **TOTAL MONTHLY** | **$267.72** (always-on) |
+| **TOTAL ANNUAL** | **$3,213** (always-on) |
 
 ---
 
@@ -289,9 +289,9 @@ For non-critical workloads:
 │           │      Ollama AI Server              │                 │
 │           │      Auto-Scaling Group            │                 │
 │           │      • Scales 0→1 on demand        │                 │
-│           │      • Stays up 4 hours idle       │                 │
+│           │      • Stays up 1 hour idle        │                 │
 │           │      • Auto-shutdown if inactive   │                 │
-│           │      g4dn.xlarge or t3.xlarge     │                 │
+│           │      g4dn.xlarge or t3.2xlarge    │                 │
 │           └────────────────────────────────────┘                 │
 │                            │                                      │
 │                   ┌────────▼──────────┐                          │
@@ -327,27 +327,28 @@ For non-critical workloads:
 
 ### 🤖 Ollama Auto-Scaling Cost Models
 
-#### Scenario 1: Light Usage (20% Uptime) ⭐ **RECOMMENDED**
+#### Scenario 1: Light Usage (~10-12% Uptime) ⭐ **RECOMMENDED**
 
 **Usage Pattern:**
-- Active: 4-6 hours/day (wake on demand, 4-hour idle timeout)
-- Monthly uptime: ~150 hours (20% of 730 hours)
+- Active: wake on demand, **1-hour idle timeout** (auto-shutdown after 1 hour unused)
+- Monthly uptime: ~75-90 hours (~10-12% of 730 hours)
 - Typical for: 5-10 users, 50-100 AI queries/day
+- **Ollama instance:** t3.2xlarge (8 vCPU, **32 GB RAM**) — $0.3328/hour
 
 **Cost Breakdown:**
 
 | Instance Type | Hourly Rate | Monthly Hours | Monthly Cost |
 |--------------|-------------|---------------|-------------|
-| **g4dn.xlarge (GPU)** | $0.526 | 150 | $78.90 |
-| **t3.xlarge (CPU)** | $0.1664 | 150 | $24.96 |
+| **g4dn.xlarge (GPU)** | $0.526 | 90 | $47.34 |
+| **t3.2xlarge (CPU, 32 GB)** | $0.3328 | 90 | $29.95 |
 
 **Total Monthly Cost (Light Usage):**
-- **With GPU:** $69.72 (infra) + $78.90 (Ollama) = **$148.62/month** ($1,783/year)
-- **With CPU:** $69.72 (infra) + $24.96 (Ollama) = **$94.68/month** ($1,136/year)
+- **With GPU:** $69.72 (infra) + $47.34 (Ollama) = **$117.06/month** ($1,405/year)
+- **With CPU (32 GB):** $69.72 (infra) + $29.95 (Ollama) = **$99.67/month** ($1,196/year)
 
 **Savings vs Always-On:**
-- GPU: Save **$277/month** (65% savings)
-- CPU: Save **$68/month** (42% savings)
+- GPU: Significant savings (Ollama runs only when needed)
+- CPU (32 GB): Save **$173/month** vs always-on t3.2xlarge
 
 ---
 
@@ -396,8 +397,8 @@ For non-critical workloads:
 | Configuration | Monthly | Annual | Ollama Uptime | Best For |
 |--------------|---------|--------|---------------|----------|
 | **Basic (No ALB, 24/7)** | $163.03 | $1,956 | 100% | Simple deployments |
-| **Auto-Scale Light (CPU)** ⭐ | $94.68 | $1,136 | 20% | 5-10 users, moderate AI use |
-| **Auto-Scale Light (GPU)** | $148.62 | $1,783 | 20% | 5-10 users, fast AI responses |
+| **Auto-Scale Light (CPU 32 GB)** ⭐ | ~$99.67 | ~$1,196 | ~10-12% | 5-10 users, 1hr idle |
+| **Auto-Scale Light (GPU)** | ~$117 | ~$1,405 | ~12% | 5-10 users, fast AI responses |
 | **Auto-Scale Business (CPU)** | $99.67 | $1,196 | 25% | Office hours only |
 | **Auto-Scale Business (GPU)** | $164.40 | $1,973 | 25% | Office hours, high performance |
 | **Auto-Scale Medium (CPU)** | $130.46 | $1,566 | 50% | 10-20 users |
@@ -407,26 +408,46 @@ For non-critical workloads:
 
 ---
 
-## 🎯 **RECOMMENDED: Auto-Scale Light with CPU**
+## 🎯 **RECOMMENDED: Auto-Scale Light with 32 GB RAM, 1-Hour Idle**
 
 ### 💎 Best Value Setup
 
-**Monthly Cost:** **$94.68** | **Annual Cost:** **$1,136**
+**Monthly Cost:** **~$99.67** | **Annual Cost:** **~$1,196**
 
 **What you get:**
 - ✅ Application Load Balancer (high availability)
 - ✅ Blue/Green OSCAL deployment
-- ✅ Intelligent Ollama auto-scaling
-- ✅ 4-hour idle timeout
+- ✅ Intelligent Ollama auto-scaling (**t3.2xlarge**, 8 vCPU, **32 GB RAM**)
+- ✅ **1-hour idle timeout** — auto-shutdown if Ollama not used for 1 hour
 - ✅ Wakes on-demand when AI query received
-- ✅ ~20% uptime (150 hours/month)
-- ✅ **42% savings** vs always-on
+- ✅ ~10-12% uptime (~75-90 hours/month)
+- ✅ **Significant savings** vs always-on 32 GB
 
-**Savings:** $68/month compared to always-on setup!
+**Savings:** ~$173/month vs always-on t3.2xlarge setup.
 
 ---
 
-## 🔧 Implementation: Auto-Scaling Ollama with 4-Hour Idle Timeout
+### 📐 Reference: 1-Hour Idle + 32 GB RAM (t3.2xlarge) — Standard Setup
+
+The recommended setup uses **1-hour idle timeout** and **32 GB RAM (t3.2xlarge)**. For reference, if you had used different settings:
+
+| Change | Effect on cost |
+|--------|-----------------|
+| **1-hour idle** | Instance shuts down after 1 hour unused → **fewer running hours** (~75–90/month). |
+| **32 GB RAM (t3.2xlarge)** | 8 vCPU, 32 GB — **$0.3328/hour** (us-east-1 on-demand). |
+
+**Instance:** `t3.2xlarge` (8 vCPU, 32 GB RAM) — **$0.3328/hour** (us-east-1 on-demand).
+
+**Rough impact (same usage pattern as “Light”):**
+
+- **1-hour idle + t3.2xlarge (32 GB)** is the standard: ~75–90 hours/month × $0.3328 = **~$25–30** (Ollama).
+- Shorter idle (1 hr) = fewer running hours; 32 GB = $0.3328/hour (us-east-1).
+
+**Summary:** Standard setup is **1-hour idle + t3.2xlarge (32 GB)**. Set `IDLE_TIMEOUT_HOURS = 1` in the Lambda and use a launch template with `t3.2xlarge`. Total auto-scale ~$99.67/month.
+
+---
+
+## 🔧 Implementation: Auto-Scaling Ollama with 1-Hour Idle Timeout
 
 ### How It Works: Real-World Example
 
@@ -442,64 +463,48 @@ Timeline                      Ollama Status              Cost Impact
 8:15 AM  Clicks "AI Suggest"  [WAKING UP...]            Starting...
          (First AI request)    Lambda triggers scale-up
          
-8:18 AM  Ollama responds      [ACTIVE ✅]               $0.1664/hour
+8:18 AM  Ollama responds      [ACTIVE ✅]               $0.3328/hour (t3.2xlarge)
          Models loaded         Last activity: 8:18 AM
          
-8:30 AM  Another AI request   [ACTIVE ✅]               $0.1664/hour
+8:30 AM  Another AI request   [ACTIVE ✅]               $0.3328/hour
                                Last activity: 8:30 AM
          
-9:45 AM  More AI queries      [ACTIVE ✅]               $0.1664/hour
-                               Last activity: 9:45 AM
+9:15 AM  No AI activity       [ACTIVE ✅]               $0.3328/hour
+         (Just viewing)        Last activity: 8:30 AM
+                               Idle: 45 min
          
-11:00 AM No AI activity       [ACTIVE ✅]               $0.1664/hour
-         (Just viewing)        Last activity: 9:45 AM
-                               Idle: 1hr 15min
+9:31 AM  1 hour since last    [SLEEPING]                $0/hour
+         activity              Lambda scales to 0
          
-12:30 PM Lunch break          [ACTIVE ✅]               $0.1664/hour
-         No activity           Last activity: 9:45 AM
-                               Idle: 2hr 45min
+1:45 PM  Clicks "AI Suggest"  [WAKING UP...]            Starting...
+         Lambda triggers scale-up
          
-1:45 PM  Back from lunch      [ACTIVE ✅]               $0.1664/hour
-         4 hours since last    Last activity: 9:45 AM
-         AI query              Idle: 4hr 0min
-                               🔍 Idle check: SHUTDOWN!
+1:48 PM  Ollama active        [ACTIVE ✅]               $0.3328/hour (t3.2xlarge)
+                               Last activity: 1:48 PM
          
-1:46 PM  Ollama shuts down    [SLEEPING - Scaled to 0]  $0/hour
-                               Auto-scaled to 0 instances
+2:30 PM  Last AI query        [ACTIVE ✅]               $0.3328/hour
+                               Last activity: 2:30 PM
          
-2:00 PM  Views reports        [SLEEPING]                $0/hour
-         (No AI needed)
-         
-3:30 PM  AI request again     [WAKING UP...]            Starting...
-                               Lambda triggers scale-up
-         
-3:33 PM  Ollama active        [ACTIVE ✅]               $0.1664/hour
-                               Last activity: 3:33 PM
-         
-5:00 PM  Last AI query        [ACTIVE ✅]               $0.1664/hour
-                               Last activity: 5:00 PM
-         
-9:00 PM  Auto-shutdown        [SLEEPING]                $0/hour
-         (4 hours idle)        Scaled to 0
+3:31 PM  1 hour idle          [SLEEPING]                $0/hour
+         Auto-shutdown         Scaled to 0
          
 ─────────────────────────────────────────────────────────────────────
 
 Daily Summary:
-  Active periods: 8:18 AM - 1:46 PM (5.5 hours)
-                 3:33 PM - 9:00 PM (5.5 hours)
-  Total active: 11 hours
-  Total cost: 11 × $0.1664 = $1.83/day
+  Active periods: 8:18 AM - 9:31 AM (~1.2 hr), 1:48 PM - 3:31 PM (~1.7 hr)
+  Total active: ~2.9 hours
+  Total cost: 2.9 × $0.3328 = ~$0.97/day
   
-Monthly estimate (22 workdays): 22 × $1.83 = $40.26
-Plus infrastructure ($69.72) = $110/month total
+Monthly estimate (22 workdays): 22 × $0.97 = ~$21.34 (Ollama)
+Plus infrastructure ($69.72) = ~$91/month total
 ```
 
 **Key Benefits:**
-- ✅ No wasted compute during lunch breaks
+- ✅ No wasted compute — shuts down after 1 hour idle
 - ✅ No cost during nights/weekends
 - ✅ Automatic wake-up when needed (2-3 min delay)
-- ✅ 4-hour buffer prevents excessive start/stop cycles
-- ✅ ~70-80% cost savings vs always-on
+- ✅ 1-hour idle keeps cost low while allowing short breaks
+- ✅ Significant savings vs always-on t3.2xlarge
 
 ---
 
@@ -509,31 +514,38 @@ Plus infrastructure ($69.72) = $110/month total
 2. **CloudWatch Events** (Idle timeout monitoring)
 3. **Auto Scaling Group** (0-1 instance scaling)
 4. **Application Load Balancer** (Health checks & routing)
-5. **DynamoDB** (Track last activity timestamp)
+5. **S3** (Track last activity timestamp – same bucket used for application logs)
+
+Activity state is stored as a single JSON object in your existing logs bucket (e.g. `s3://your-logs-bucket/ollama-activity/last.json`), so no separate DynamoDB table is required. **Terraform:** Each Ollama instance writes its boot time to this key on startup; Lambda uses `last_activity` for the 1-hour idle check (see [workflow-timeline.mmd](diagrams/workflow-timeline.mmd)).
 
 ---
 
 ### Lambda Function: Ollama Controller
+
+Uses **S3** (same bucket as your application logs) to store `last_activity`. Set Lambda environment variables: `S3_ACTIVITY_BUCKET`, `S3_ACTIVITY_KEY` (e.g. `ollama-activity/last.json`).
 
 ```python
 # lambda/ollama_controller.py
 import boto3
 import json
 from datetime import datetime, timedelta
+import os
 
 ec2 = boto3.client('ec2')
 asg = boto3.client('autoscaling')
-dynamodb = boto3.resource('dynamodb')
+s3 = boto3.client('s3')
 
 OLLAMA_ASG_NAME = 'ollama-ai-server-asg'
-IDLE_TIMEOUT_HOURS = 4
-ACTIVITY_TABLE = 'ollama-activity-tracking'
+IDLE_TIMEOUT_HOURS = 1
+S3_BUCKET = os.environ.get('S3_ACTIVITY_BUCKET', '')
+S3_KEY = os.environ.get('S3_ACTIVITY_KEY', 'ollama-activity/last.json')
 
 def lambda_handler(event, context):
     """
     Handles Ollama instance lifecycle:
     - Wakes up instance when AI query received
-    - Monitors activity and shuts down after 4 hours idle
+    - Monitors activity and shuts down after 1 hour idle
+    State stored in S3 (same bucket as logs).
     """
     
     action = event.get('action')
@@ -546,7 +558,7 @@ def lambda_handler(event, context):
         return {'statusCode': 400, 'body': 'Invalid action'}
 
 def wake_ollama_instance():
-    """Scale up Ollama ASG to 1 instance"""
+    """Scale up Ollama ASG to OLLAMA_DESIRED_CAPACITY (Terraform default: 3 instances)."""
     
     # Check if already running
     response = asg.describe_auto_scaling_groups(
@@ -554,24 +566,25 @@ def wake_ollama_instance():
     )
     
     current_capacity = response['AutoScalingGroups'][0]['DesiredCapacity']
+    desired = int(os.environ.get('OLLAMA_DESIRED_CAPACITY', '3'))
     
-    if current_capacity == 0:
-        print("🚀 Waking up Ollama instance...")
+    if current_capacity < desired:
+        print("🚀 Waking up Ollama instances...")
         asg.set_desired_capacity(
             AutoScalingGroupName=OLLAMA_ASG_NAME,
-            DesiredCapacity=1
+            DesiredCapacity=desired
         )
         
-        # Wait for instance to be ready
+        # Wait for instance(s) to be ready (Terraform Lambda waits for OLLAMA_DESIRED_CAPACITY, default 3)
         waiter = ec2.get_waiter('instance_running')
         instance_id = get_asg_instance_id()
         if instance_id:
             waiter.wait(InstanceIds=[instance_id])
             print(f"✅ Ollama instance {instance_id} is ready")
     else:
-        print("✅ Ollama instance already running")
+        print("✅ Ollama instance(s) already running")
     
-    # Update last activity timestamp
+    # Update last activity timestamp in S3 (same bucket as logs)
     update_activity_timestamp()
     
     return {
@@ -580,23 +593,27 @@ def wake_ollama_instance():
     }
 
 def check_and_shutdown_if_idle():
-    """Check if Ollama has been idle for 4 hours and shut down"""
+    """Check if Ollama has been idle for 1 hour and shut down"""
     
-    table = dynamodb.Table(ACTIVITY_TABLE)
-    response = table.get_item(Key={'id': 'last_activity'})
+    if not S3_BUCKET or not S3_KEY:
+        print("⚠️ S3_ACTIVITY_BUCKET/S3_ACTIVITY_KEY not set, skipping shutdown check")
+        return {'statusCode': 200, 'body': 'No activity config'}
     
-    if 'Item' not in response:
+    try:
+        response = s3.get_object(Bucket=S3_BUCKET, Key=S3_KEY)
+        data = json.loads(response['Body'].read().decode())
+        last_activity = datetime.fromisoformat(data['last_activity'])
+    except Exception:
         print("⚠️ No activity recorded, skipping shutdown check")
         return {'statusCode': 200, 'body': 'No activity data'}
     
-    last_activity = datetime.fromisoformat(response['Item']['timestamp'])
     now = datetime.utcnow()
     idle_duration = now - last_activity
     
     print(f"⏱️ Idle duration: {idle_duration}")
     
     if idle_duration > timedelta(hours=IDLE_TIMEOUT_HOURS):
-        print("😴 Ollama idle for 4+ hours, shutting down...")
+        print("😴 Ollama idle for 1+ hour, shutting down...")
         asg.set_desired_capacity(
             AutoScalingGroupName=OLLAMA_ASG_NAME,
             DesiredCapacity=0
@@ -614,15 +631,12 @@ def check_and_shutdown_if_idle():
         }
 
 def update_activity_timestamp():
-    """Update last activity timestamp in DynamoDB"""
-    table = dynamodb.Table(ACTIVITY_TABLE)
-    table.put_item(
-        Item={
-            'id': 'last_activity',
-            'timestamp': datetime.utcnow().isoformat()
-        }
-    )
-    print("📝 Updated activity timestamp")
+    """Update last activity timestamp in S3 (same bucket as logs)"""
+    if not S3_BUCKET or not S3_KEY:
+        return
+    body = json.dumps({'last_activity': datetime.utcnow().isoformat()})
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=body, ContentType='application/json')
+    print("📝 Updated activity timestamp in S3")
 
 def get_asg_instance_id():
     """Get instance ID from Auto Scaling Group"""
@@ -715,7 +729,7 @@ app.post('/api/ai/suggest-controls', async (req, res) => {
 
 async function waitForOllamaReady(maxWaitSeconds = 120) {
   const startTime = Date.now();
-  const ollamaUrl = process.env.OLLAMA_URL || 'http://ollama-internal:11434';
+  const ollamaUrl = process.env.OLLAMA_URL || 'http://YOUR-OLLAMA-NLB-DNS:11434'; // Set from Terraform output: terraform -chdir=terraform output -raw ollama_url
   
   while (Date.now() - startTime < maxWaitSeconds * 1000) {
     try {
@@ -745,7 +759,7 @@ aws ec2 create-launch-template \
   --version-description "Ollama with Mistral 7B + Llama" \
   --launch-template-data '{
     "ImageId": "ami-0c55b159cbfafe1f0",
-    "InstanceType": "t3.xlarge",
+    "InstanceType": "t3.2xlarge",
     "KeyName": "your-key-pair",
     "SecurityGroupIds": ["sg-ollama"],
     "UserData": "<base64-encoded-startup-script>",
@@ -780,16 +794,30 @@ aws autoscaling create-auto-scaling-group \
 
 ---
 
-### DynamoDB Activity Tracking Table
+### S3 Activity State (Same Bucket as Logs)
+
+Use your **existing logs bucket**; no new table or bucket required. Store the last-activity timestamp in a single JSON object (e.g. `ollama-activity/last.json`).
+
+- **Bucket**: Same S3 bucket you use for application logs.
+- **Key**: e.g. `ollama-activity/last.json` (recommended prefix to keep it separate from log objects).
+- **Object body**: `{"last_activity": "2026-02-08T12:00:00Z"}` (written by Lambda on wake; read by Lambda on idle check).
+
+**Lambda IAM permissions** (add to the role used by `ollama-controller`):
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": "arn:aws:s3:::YOUR-LOGS-BUCKET/ollama-activity/*"
+}
+```
+
+Set Lambda environment variables when creating/updating the function:
 
 ```bash
-# Create DynamoDB table for activity tracking
-aws dynamodb create-table \
-  --table-name ollama-activity-tracking \
-  --attribute-definitions AttributeName=id,AttributeType=S \
-  --key-schema AttributeName=id,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --tags Key=Purpose,Value=OllamaActivityTracking
+# Use same bucket as your application logs
+S3_ACTIVITY_BUCKET=your-logs-bucket
+S3_ACTIVITY_KEY=ollama-activity/last.json
 ```
 
 ---
@@ -800,12 +828,12 @@ aws dynamodb create-table \
 |---------|-------------|-------|
 | **Lambda Executions** | $0.20 | 10,000 invocations @ $0.20/million |
 | **Lambda Duration** | $0.02 | 10,000 × 1s @ $0.0000166667/GB-sec |
-| **DynamoDB** | $0.25 | On-demand pricing, minimal reads/writes |
+| **S3 (activity state)** | Negligible | Same bucket as logs; one small JSON object (GET/PUT) |
 | **CloudWatch Logs** | $0.50 | 1 GB ingested @ $0.50/GB |
 | **CloudWatch Events** | FREE | First 1M events free |
 | **Auto Scaling** | FREE | No additional charge |
 
-**Total Additional Cost:** **~$1.00/month**
+**Total Additional Cost:** **~$0.75/month** (no DynamoDB; S3 cost folded into existing logs bucket usage)
 
 ---
 
@@ -870,7 +898,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 
 **Instances:**
 - 2x t3.small (OSCAL Blue/Green)
-- 1x t3.xlarge (Ollama CPU-only)
+- 1x t3.2xlarge (Ollama CPU-only, 32 GB)
 
 ---
 
@@ -883,7 +911,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 
 **Instances:**
 - 1x t3.small (OSCAL)
-- 1x t3.xlarge (Ollama CPU-only)
+- 1x t3.2xlarge (Ollama CPU-only, 32 GB)
 
 ---
 
@@ -915,7 +943,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 - **Concurrent Requests:** 3-5
 - **Model Switch Time:** 3-5 seconds
 
-### Ollama on t3.xlarge (CPU)
+### Ollama on t3.2xlarge (CPU, 32 GB)
 - **First Request:** 10-20 seconds
 - **Subsequent Requests:** 5-10 seconds
 - **Concurrent Requests:** 1-2
@@ -951,8 +979,8 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 - ✅ **High Availability** with Application Load Balancer
 - ✅ **Blue/Green deployment** maintained
 - ✅ **Intelligent scaling** - Ollama wakes on-demand
-- ✅ **4-hour idle timeout** - auto-shutdown when inactive
-- ✅ **20% uptime** (~150 hours/month) - typical for 5-10 users
+- ✅ **1-hour idle timeout** - auto-shutdown when inactive
+- ✅ **~10-12% uptime** (~75-90 hours/month) - typical for 5-10 users
 - ✅ **Zero waste** - only pay when AI is actually used
 - ✅ **Professional setup** with monitoring & automation
 
@@ -962,11 +990,11 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 3. Ollama instance that auto-scales based on activity:
    - Shuts down when idle
    - Wakes up in ~2-3 minutes when AI query received
-   - Stays active for 4 hours after last activity
+   - Stays active for 1 hour after last activity
    - Auto-shuts down again if no activity
 4. Lambda functions for orchestration
 5. CloudWatch monitoring
-6. DynamoDB activity tracking
+6. S3 activity state (same bucket as logs)
 
 **Perfect For:** Most deployments with 5-10 users and moderate AI usage
 
@@ -1033,13 +1061,11 @@ aws cloudformation create-stack \
 
 #### Step 2: Set Up Ollama Auto-Scaling (45 minutes)
 
+Use your **existing S3 logs bucket** for activity state; no DynamoDB table.
+
 ```bash
-# 1. Create DynamoDB table for activity tracking
-aws dynamodb create-table \
-  --table-name ollama-activity-tracking \
-  --attribute-definitions AttributeName=id,AttributeType=S \
-  --key-schema AttributeName=id,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
+# 1. Ensure Lambda role has S3 access to your logs bucket (see "S3 Activity State" section)
+#    e.g. s3:GetObject, s3:PutObject on arn:aws:s3:::YOUR-LOGS-BUCKET/ollama-activity/*
 
 # 2. Create Launch Template for Ollama
 aws ec2 create-launch-template \
@@ -1063,7 +1089,7 @@ aws autoscaling create-auto-scaling-group \
 cd lambda
 zip -r ollama-controller.zip ollama_controller.py
 
-# 2. Create Lambda function
+# 2. Create Lambda function (set S3 bucket/key – same bucket as logs)
 aws lambda create-function \
   --function-name ollama-controller \
   --runtime python3.11 \
@@ -1071,7 +1097,8 @@ aws lambda create-function \
   --role arn:aws:iam::ACCOUNT:role/lambda-execution-role \
   --zip-file fileb://ollama-controller.zip \
   --timeout 300 \
-  --memory-size 256
+  --memory-size 256 \
+  --environment "Variables={S3_ACTIVITY_BUCKET=your-logs-bucket,S3_ACTIVITY_KEY=ollama-activity/last.json}"
 
 # 3. Grant Lambda permissions
 aws lambda add-permission \
@@ -1102,7 +1129,7 @@ aws events put-targets \
 2. Add environment variables:
    ```bash
    OLLAMA_CONTROLLER_LAMBDA=ollama-controller
-   OLLAMA_URL=http://ollama-internal.local:11434
+   OLLAMA_URL=$(terraform -chdir=terraform output -raw ollama_url)   # e.g. http://oscal-ollama-ollama-nlb-xxx.elb.region.amazonaws.com:11434
    AWS_REGION=us-east-1
    ```
 3. Deploy updated OSCAL application
@@ -1166,7 +1193,7 @@ aws ec2 monitor-instances \
 
 4. **Optimize Based on Usage**
    - If uptime > 50%: Consider always-on setup
-   - If uptime < 10%: Increase idle timeout to 6-8 hours
+   - If uptime < 8%: Consider increasing idle timeout to 2 hours
    - Monitor Lambda invocation costs
 
 ---
@@ -1189,8 +1216,8 @@ aws ec2 monitor-instances \
 │   25% │████████│                            │ $29.95       │
 │       │ (180 hours/month - Business Hours)  │              │
 │       │                                      │              │
-│   20% │██████│                              │ $24.96 ⭐    │
-│       │ (150 hours/month - Light Usage)     │ RECOMMENDED  │
+│  ~10% │██████│                              │ $29.95 ⭐    │
+│       │ (90 hours/month - Light, 1hr idle)   │ RECOMMENDED  │
 │       │                                      │              │
 │   10% │███│                                 │ $12.48       │
 │       │ (75 hours/month - Very Light)       │              │
@@ -1198,9 +1225,9 @@ aws ec2 monitor-instances \
 └────────────────────────────────────────────────────────────┘
 
 💰 Savings vs Always-On (100%):
-  • 20% uptime: Save $96/month ($1,157/year) - 79% savings
-  • 25% uptime: Save $91/month ($1,097/year) - 75% savings
-  • 50% uptime: Save $61/month ($730/year)   - 50% savings
+  • ~10% uptime (1hr idle): Save ~$213/month vs always-on t3.2xlarge
+  • 25% uptime: Save ~$91/month ($1,097/year) - 75% savings
+  • 50% uptime: Save ~$61/month ($730/year)   - 50% savings
 ```
 
 ### Total Monthly Cost Breakdown
@@ -1213,11 +1240,11 @@ aws ec2 monitor-instances \
 │  Load Balancer (ALB)        │████████│ $21.96    23.2%       │
 │  OSCAL Green (t3.small)     │██████│   $15.18    16.0%       │
 │  OSCAL Blue (t3.small)      │██████│   $15.18    16.0%       │
-│  Ollama (t3.xlarge @ 20%)   │██████│   $24.96    26.4%       │
+│  Ollama (t3.2xlarge @ ~10%) │██████│   $29.95    30.0%       │
 │  Storage (EBS)              │████│     $11.20    11.8%       │
 │  Monitoring & Lambda        │██│       $6.20      6.6%       │
 │                                                                │
-│  TOTAL: $94.68/month                                          │
+│  TOTAL: ~$99.67/month                                         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -1225,13 +1252,13 @@ aws ec2 monitor-instances \
 
 ```
                       Auto-Scale    Always-On      Savings
-                      (20% uptime)  (100% uptime)
+                      (~10% uptime) (100% uptime)
 ────────────────────────────────────────────────────────────
-CPU-Only Setup:       $1,136        $1,956         $820 ⭐
-With GPU:             $1,783        $5,106         $3,323
+CPU 32 GB (1hr idle): ~$1,196       ~$3,414        ~$2,218 ⭐
+With GPU:             ~$1,405       $5,106         $3,701
 Business Hours:       $1,196        $1,956         $760
 
-🏆 Best Value: Auto-Scale CPU at $1,136/year (42% savings!)
+🏆 Best Value: Auto-Scale t3.2xlarge (32 GB) at 1hr idle, ~$1,196/year
 ```
 
 ---
