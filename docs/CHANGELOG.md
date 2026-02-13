@@ -85,13 +85,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Compliance requirements (FedRAMP, StateRAMP, FISMA)
   - Troubleshooting guide
 
-- **OWASP Compliance Summary** (`docs/OWASP_COMPLIANCE_SUMMARY.md`) 🔒
+- **OWASP Compliance Summary** (see `docs/SECURITY.md`) 🔒
   - Executive security compliance summary
   - Implementation highlights and evidence
   - Security testing checklist
   - Production deployment readiness
 
-- **Security Implementation Review** (`docs/SECURITY_IMPLEMENTATION_REVIEW.md`) 🔐
+- **Security Implementation Review** (see `docs/SECURITY.md`) 🔐
   - Detailed OWASP compliance analysis (all 30 categories)
   - Security enhancements documentation
   - Testing recommendations
@@ -219,7 +219,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Priority 2: Regression testing of other AI providers
 - Priority 3: Non-AI feature verification
 
-See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
+See `docs/SECURITY.md` for detailed analysis and testing plan.
 
 ### Added
 
@@ -250,7 +250,7 @@ See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
   - Dry-run testing for scripts
 
 #### Documentation
-- **Release Checklist** (`docs/RELEASE_CHECKLIST.md`)
+- **Release Checklist** (see `docs/VERSION_AND_RELEASE.md`)
   - Comprehensive pre-release checklist
   - Release day procedures
   - Common pitfalls and solutions
@@ -334,8 +334,8 @@ See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
 
 #### Documentation
 - **Repository Structure**: All documentation properly organized in `docs/` folder
-- **Security Documentation**: `docs/SECURITY_FIXES.md` with detailed security analysis
-- **Migration Guide**: `docs/CONFIG_MIGRATION_GUIDE.md` for configuration updates
+- **Security Documentation**: `docs/SECURITY.md` with detailed security analysis
+- **Migration Guide**: `docs/CONFIG_AND_USER_MIGRATION.md` for configuration and user migration
 
 ### Fixed
 
@@ -370,7 +370,7 @@ See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
 - **Security**: All other security controls remain active (Bearer auth, RBAC, SSRF protection, rate limiting, input validation)
 - **Files Modified**: 
   - `backend/utils/securityConfig.js` - Updated CSRF_EXEMPT_PATHS
-  - `docs/SECURITY_FIXES.md` - Added comprehensive security documentation
+  - `docs/SECURITY.md` - Added comprehensive security documentation
 
 #### UI: Double Footer Issue
 - **Issue**: UseCases page (Fresh Deployment for New AMS Platform) was displaying duplicate footer sections
@@ -384,7 +384,7 @@ See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
 - **Maintained**: Rate limiting on all endpoints
 - **Maintained**: Role-Based Access Control (RBAC) for administrative operations
 - **Maintained**: Session cookies use `sameSite: 'strict'` for defense-in-depth
-- **Documentation**: Created `docs/SECURITY_FIXES.md` with detailed security analysis
+- **Documentation**: Created `docs/SECURITY.md` with detailed security analysis
 
 ### Testing
 
@@ -398,7 +398,7 @@ See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
 
 ### References
 
-- See `docs/SECURITY_FIXES.md` for detailed security analysis and rationale
+- See `docs/SECURITY.md` for detailed security analysis and rationale
 - See `backend/utils/securityConfig.js` for CSRF configuration and architectural comments
 
 ---
@@ -412,4 +412,4 @@ See `docs/SECURITY_FIXES.md` for detailed analysis and testing plan.
 
 ---
 
-**Note**: For detailed security information, see `docs/SECURITY_FIXES.md`
+**Note**: For detailed security information, see `docs/SECURITY.md`

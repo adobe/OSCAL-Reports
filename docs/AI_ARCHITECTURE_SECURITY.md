@@ -420,7 +420,7 @@ allowPrivateIPs: true
 
 ## Related Documentation
 
-- **Security Fixes:** `docs/SECURITY_FIXES_KODIAK.md`
+- **Security:** `docs/SECURITY.md`
 - **Security Reference:** `docs/SECURITY_QUICK_REFERENCE.md`
 - **SSRF Implementation:** `backend/utils/urlValidator.js`
 - **Security Config:** `backend/utils/securityConfig.js`

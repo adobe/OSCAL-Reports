@@ -1,0 +1,45 @@
+# Example Terraform variables for OSCAL + Ollama AWS deployment
+# Copy to terraform.tfvars and set values (terraform.tfvars is gitignored)
+
+aws_region     = "us-east-1"
+aws_account_id = "432417415905"
+environment    = "prod"
+project_name   = "oscal-ollama"
+
+# Networking
+vpc_cidr          = "10.0.0.0/16"
+allowed_ssh_cidr   = "0.0.0.0/0"  # Restrict to your IP in production, e.g. "1.2.3.4/32"
+
+# EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
+# Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4379 --query 'KeyMaterial' --output text > oscal-aws4379.pem
+key_name = null
+
+# S3: globally unique bucket name (e.g. ams-oscal-432417415905) with subfolders: logs, ollama-activity, config, users
+# Must be lowercase (S3 requirement); globally unique
+s3_logs_bucket_name = "ams-oscal-432417415905"
+
+# Optional: ACM certificate ARN for HTTPS on ALB (omit for HTTP only)
+# alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:432417415905:certificate/..."
+
+# Optional: Host-based routing for Blue and Green (same app at / on two hostnames)
+# Create CNAME records pointing blue.xxx and green.xxx to the ALB DNS (output alb_dns_name).
+# alb_blue_hostname  = "blue.oscal.example.com"
+# alb_green_hostname = "green.oscal.example.com"
+
+# Adobe Image Factory RHEL9 (see docs/IMAGE_FACTORY.md): use_rhel9 = true uses built-in AMI map by region (binary 27205)
+# Must be boolean true (unquoted), not "true" (string)
+# use_rhel9 = true
+# Optional overrides (leave null to use map for aws_region):
+# oscal_ami_id  = null
+# ollama_ami_id = null
+
+# Ollama ASG: max 1 instance (if one present, no new instances); 1 hr no activity -> scale to 0
+ollama_min_size             = 0
+ollama_max_size             = 1
+ollama_desired_capacity      = 1
+ollama_idle_timeout_hours    = 1
+
+# Optional tags
+common_tags = {
+  Team = "Compliance"
+}

@@ -4,8 +4,9 @@ This folder contains Mermaid diagram files for the AWS deployment architecture.
 
 ## Files
 
-1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram showing all AWS components
-2. **workflow-timeline.mmd** - Sequence diagram showing the wake/sleep workflow
+1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram (ALB, Green/Blue, Ollama NLB, ASG, Lambda, S3). OSCAL uses **OLLAMA_URL** (internal NLB:11434) to reach Ollama; Lambda wakes ASG when scaled to 0.
+2. **workflow-timeline.mmd** - Sequence diagram showing wake/sleep workflow (includes NLB in AI request path)
+3. **generate-diagram.html** - Interactive HTML that renders both diagrams and supports PNG download
 
 ## 🎨 Convert to PNG/GIF for Email
 

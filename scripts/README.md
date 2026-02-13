@@ -100,7 +100,7 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 - Admin credentials for both deployments
 - Volume persistence must be enabled (upgrade first!)
 
-**Keeping script in sync (Local, Blue, Green):** Use `sync-consolidation-script.sh` to copy the same script to Blue and Green folders so you can check in from all three. See [USER_CONSOLIDATION_GUIDE.md](../docs/USER_CONSOLIDATION_GUIDE.md#keeping-the-script-in-sync-local-blue-green).
+**Keeping script in sync (Local, Blue, Green):** Use `sync-consolidation-script.sh` to copy the same script to Blue and Green folders so you can check in from all three. See [CONFIG_AND_USER_MIGRATION.md](../docs/CONFIG_AND_USER_MIGRATION.md#user-consolidation).
 
 ---
 
@@ -171,7 +171,7 @@ cd /path/to/OSCAL_Blue  # or OSCAL_Green
 
 **See also:**
 - [DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md) - Complete guide
-- [DEPLOYMENT_COMPARISON.md](../docs/DEPLOYMENT_COMPARISON.md) - Build vs Pull comparison
+- [DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md) - Build vs Pull comparison (see "Deployment Methods Comparison")
 - [DEPLOYMENT_TESTING_GUIDE.md](../docs/DEPLOYMENT_TESTING_GUIDE.md) - Test procedures
 
 ---

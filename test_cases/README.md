@@ -420,7 +420,7 @@ npm run test:coverage
 
 - Check this README first
 - Review test file comments
-- Check `docs/SECURITY_FIXES.md` for security context
+- Check `docs/SECURITY.md` for security context
 - Review Jest documentation: https://jestjs.io/
 
 ### Contributing Tests
@@ -461,7 +461,7 @@ npm run test:coverage
 ## References
 
 - [CHANGELOG.md](../docs/CHANGELOG.md) - Version history
-- [SECURITY_FIXES.md](../docs/SECURITY_FIXES.md) - Security documentation
+- [SECURITY.md](../docs/SECURITY.md) - Security documentation
 - [Jest Documentation](https://jestjs.io/docs/getting-started)
 - [Testing Best Practices](https://testingjavascript.com/)
 

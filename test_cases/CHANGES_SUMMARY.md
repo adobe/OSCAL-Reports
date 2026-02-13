@@ -272,8 +272,8 @@ cd backend && npm run test:coverage
 ### Documentation Updates
 
 ✅ CHANGELOG.md updated  
-✅ SECURITY_FIXES.md created  
-✅ CONFIG_MIGRATION_GUIDE.md reviewed  
+✅ SECURITY.md created  
+✅ CONFIG_AND_USER_MIGRATION.md reviewed  
 ✅ Test suite documented  
 ✅ Quick reference created  
 
@@ -355,7 +355,7 @@ All of the following must be ✅ to consider v1.6.5 test suite complete:
 - [Test Suite README](./README.md)
 - [Test Updates Documentation](../docs/TEST_UPDATES_V1.6.5.md)
 - [Testing Quick Reference](./TESTING_QUICK_REFERENCE.md)
-- [Security Fixes](../docs/SECURITY_FIXES.md)
+- [Security Fixes](../docs/SECURITY.md)
 - [CHANGELOG](../docs/CHANGELOG.md)
 
 ---

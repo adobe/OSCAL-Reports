@@ -183,7 +183,7 @@ test('should reject invalid Bearer token', async () => {
 
 - [Full Test Documentation](./README.md)
 - [v1.6.5 Test Updates](../docs/TEST_UPDATES_V1.6.5.md)
-- [Security Fixes](../docs/SECURITY_FIXES.md)
+- [Security](../docs/SECURITY.md)
 - [CHANGELOG](../docs/CHANGELOG.md)
 
 ---
