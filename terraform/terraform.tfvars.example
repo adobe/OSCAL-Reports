@@ -26,12 +26,14 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # alb_blue_hostname  = "blue.oscal.example.com"
 # alb_green_hostname = "green.oscal.example.com"
 
-# Adobe Image Factory RHEL9 (see docs/IMAGE_FACTORY.md): use_rhel9 = true uses built-in AMI map by region (binary 27205)
-# Must be boolean true (unquoted), not "true" (string)
-# use_rhel9 = true
-# Optional overrides (leave null to use map for aws_region):
+# AMI selection (default: Amazon Linux 2023 when Image Factory not available):
+# - use_image_factory_ami = false (default): use Amazon Linux 2023 (no Image Factory access needed).
+# - use_image_factory_ami = true: use Adobe Image Factory RHEL9 from built-in region map (see docs/IMAGE_FACTORY.md); requires account access to those AMIs.
+# instance_architecture = "x86_64"  # or "arm64" for Amazon Linux 2023.
+# Optional: set explicit AMI IDs (overrides use_image_factory_ami and Amazon Linux fallback):
 # oscal_ami_id  = null
 # ollama_ami_id = null
+# use_image_factory_ami = false
 
 # Ollama ASG: max 1 instance (if one present, no new instances); 1 hr no activity -> scale to 0
 ollama_min_size             = 0

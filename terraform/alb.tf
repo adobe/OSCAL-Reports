@@ -1,4 +1,6 @@
 # Application Load Balancer: Green (3019) and Blue (3020) target groups
+# Default: 50% Green, 50% Blue. Chrome/Firefox User-Agent → Green only (priority 10).
+# Host-based rules (green/blue hostnames) use priority 100/101 when set.
 
 resource "aws_lb" "main" {
   name               = "${var.project_name}-alb"
@@ -19,7 +21,7 @@ resource "aws_lb_target_group" "green" {
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
-    interval            = 30
+    interval            = 10
     timeout             = 5
   }
 }
@@ -35,19 +37,47 @@ resource "aws_lb_target_group" "blue" {
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
-    interval            = 30
+    interval            = 10
     timeout             = 5
   }
 }
 
+# HTTP listener: default 50/50 Green/Blue
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 50
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 50
+      }
+    }
+  }
+}
+
+# Chrome or Firefox User-Agent → Green only (evaluated first, priority 10)
+resource "aws_lb_listener_rule" "browser_green_http" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10
+
+  action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn
+    target_group_arn = aws_lb_target_group.green.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "User-Agent"
+      values           = ["*Chrome*", "*Firefox*"]
+    }
   }
 }
 
@@ -85,6 +115,7 @@ resource "aws_lb_listener_rule" "blue_host_http" {
   }
 }
 
+# HTTPS listener: default 50/50 Green/Blue
 resource "aws_lb_listener" "https" {
   count = var.alb_ssl_certificate_arn != null ? 1 : 0
 
@@ -95,8 +126,36 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.alb_ssl_certificate_arn
 
   default_action {
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 50
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 50
+      }
+    }
+  }
+}
+
+# Chrome or Firefox User-Agent → Green only (HTTPS, priority 10)
+resource "aws_lb_listener_rule" "browser_green_https" {
+  count        = var.alb_ssl_certificate_arn != null ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 10
+
+  action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn
+    target_group_arn = aws_lb_target_group.green.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "User-Agent"
+      values           = ["*Chrome*", "*Firefox*"]
+    }
   }
 }
 

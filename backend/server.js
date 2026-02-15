@@ -5239,11 +5239,11 @@ const closeServer = async () => {
 export default app;
 export { app, server, startServer, closeServer };
 
-// Auto-start server if not in test mode
+// Auto-start server if not in test mode (do not exit on init failure so /health stays up for ALB)
 if (process.env.NODE_ENV !== 'test') {
   startServer().catch(error => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+    console.error('Failed to start server (server may still be listening for /health):', error);
+    // Do not process.exit(1) so ALB health checks can succeed and 502 is avoided
   });
 }
 

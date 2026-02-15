@@ -1,56 +1,15 @@
 # OSCAL Green and Blue instances (always on), ports 3019 and 3020
-# Only lookup Ubuntu AMI when not using RHEL9 (use_rhel9 + Image Factory AMI = RHEL9; no Ubuntu lookup)
-
-data "aws_ami" "oscal" {
-  count       = var.oscal_ami_id == null && (!var.use_rhel9 || local.image_factory_ami_id == null) ? 1 : 0
-  most_recent = true
-  owners      = ["099720109477"]
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "state"
-    values = ["available"]
-  }
-}
+# AMI order: 1) var.oscal_ami_id, 2) Image Factory RHEL9 only if use_image_factory_ami = true, 3) Amazon Linux 2023 (default when Image Factory not available).
 
 locals {
-  oscal_ami_id = var.oscal_ami_id != null ? var.oscal_ami_id : (var.use_rhel9 && local.image_factory_ami_id != null ? local.image_factory_ami_id : data.aws_ami.oscal[0].id)
+  oscal_ami_id     = var.oscal_ami_id != null ? var.oscal_ami_id : (var.use_image_factory_ami && local.image_factory_ami_id != null ? local.image_factory_ami_id : local.default_fallback_ami_id)
+  oscal_ami_id_ok  = local.oscal_ami_id != null && local.oscal_ami_id != ""
 }
 
-# User data: either Docker/podman (run_oscal_via_docker = true) or direct run + S3 mount (default)
-# Direct run: Node 20, s3fs mount of config/green or config/blue to /opt/oscal/data, systemd app unit
+# User data: either Docker/podman (run_oscal_via_docker = true) or direct run with local EBS data (default). RHEL only.
+# Direct run: Node 20, config/users on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
 locals {
-  s3_bucket_name = aws_s3_bucket.logs.id
-
-  # --- Docker user_data (when run_oscal_via_docker = true) ---
-  oscal_user_data_green_ubuntu = <<-EOT
-#!/bin/bash
-set -e
-apt-get update && apt-get install -y ca-certificates curl
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
-docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-docker run -d --name oscal --restart unless-stopped -p 3019:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
-EOT
-  oscal_user_data_blue_ubuntu = <<-EOT
-#!/bin/bash
-set -e
-apt-get update && apt-get install -y ca-certificates curl
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
-docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-docker run -d --name oscal --restart unless-stopped -p 3020:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
-EOT
+  # --- Docker/podman user_data (when run_oscal_via_docker = true) ---
   oscal_user_data_green_rhel9 = <<-EOT
 #!/bin/bash
 set -e
@@ -67,189 +26,30 @@ systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
 podman run -d --name oscal --restart unless-stopped -p 3020:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
-  # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, s3fs, systemd ---
-  oscal_direct_user_data_green_ubuntu = <<-EOT
-#!/bin/bash
-set -e
-export DEBIAN_FRONTEND=noninteractive
-BUCKET="${local.s3_bucket_name}"
-PREFIX="/config/green"
-PORT="3019"
-MOUNT_POINT="/opt/oscal/data"
-APP_USER="ubuntu"
-
-apt-get update
-apt-get install -y ca-certificates curl git
-
-# Node.js 20 (NodeSource)
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
-
-# s3fs for S3 mount
-apt-get install -y s3fs
-sed -i 's/^#*user_allow_other/user_allow_other/' /etc/fuse.conf || echo 'user_allow_other' >> /etc/fuse.conf
-
-mkdir -p /opt/oscal
-mkdir -p /opt/oscal/app
-mkdir -p $MOUNT_POINT
-chown -R ubuntu:ubuntu /opt/oscal
-
-# Systemd oneshot: mount S3 config prefix to /opt/oscal/data (IAM instance profile)
-cat > /etc/systemd/system/oscal-data-mount.service << 'SVC'
-[Unit]
-Description=Mount S3 config/users for OSCAL (Green)
-After=network-online.target
-Before=oscal-reporter.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/s3fs BUCKET_PLACEHOLDER:PREFIX_PLACEHOLDER MOUNT_POINT_PLACEHOLDER -o use_cache=/tmp/s3fs,iam_role=auto,allow_other,uid=1000,gid=1000
-ExecStop=/bin/umount MOUNT_POINT_PLACEHOLDER
-
-[Install]
-WantedBy=multi-user.target
-SVC
-sed -i "s|BUCKET_PLACEHOLDER|$BUCKET|g; s|PREFIX_PLACEHOLDER|$PREFIX|g; s|MOUNT_POINT_PLACEHOLDER|$MOUNT_POINT|g" /etc/systemd/system/oscal-data-mount.service
-
-# Systemd app service (starts after deploy script populates /opt/oscal/app)
-cat > /etc/systemd/system/oscal-reporter.service << SVC
-[Unit]
-Description=OSCAL Report Generator (Green)
-After=network-online.target oscal-data-mount.service
-Requires=oscal-data-mount.service
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/oscal/app/backend
-ExecStart=/usr/bin/node server.js
-Restart=on-failure
-RestartSec=5
-Environment=NODE_ENV=production
-Environment=PORT=$PORT
-Environment=CONFIG_PATH=$MOUNT_POINT/config.json
-Environment=USERS_PATH=$MOUNT_POINT/users.json
-
-[Install]
-WantedBy=multi-user.target
-SVC
-
-systemctl daemon-reload
-systemctl enable oscal-data-mount.service
-systemctl enable oscal-reporter.service
-systemctl start oscal-data-mount.service
-EOT
-
-  oscal_direct_user_data_blue_ubuntu = <<-EOT
-#!/bin/bash
-set -e
-export DEBIAN_FRONTEND=noninteractive
-BUCKET="${local.s3_bucket_name}"
-PREFIX="/config/blue"
-PORT="3020"
-MOUNT_POINT="/opt/oscal/data"
-
-apt-get update
-apt-get install -y ca-certificates curl git
-
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
-apt-get install -y s3fs
-sed -i 's/^#*user_allow_other/user_allow_other/' /etc/fuse.conf || echo 'user_allow_other' >> /etc/fuse.conf
-
-mkdir -p /opt/oscal
-mkdir -p /opt/oscal/app
-mkdir -p $MOUNT_POINT
-chown -R ubuntu:ubuntu /opt/oscal
-
-cat > /etc/systemd/system/oscal-data-mount.service << 'SVC'
-[Unit]
-Description=Mount S3 config/users for OSCAL (Blue)
-After=network-online.target
-Before=oscal-reporter.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/s3fs BUCKET_PLACEHOLDER:PREFIX_PLACEHOLDER MOUNT_POINT_PLACEHOLDER -o use_cache=/tmp/s3fs,iam_role=auto,allow_other,uid=1000,gid=1000
-ExecStop=/bin/umount MOUNT_POINT_PLACEHOLDER
-
-[Install]
-WantedBy=multi-user.target
-SVC
-sed -i "s|BUCKET_PLACEHOLDER|$BUCKET|g; s|PREFIX_PLACEHOLDER|$PREFIX|g; s|MOUNT_POINT_PLACEHOLDER|$MOUNT_POINT|g" /etc/systemd/system/oscal-data-mount.service
-
-cat > /etc/systemd/system/oscal-reporter.service << SVC
-[Unit]
-Description=OSCAL Report Generator (Blue)
-After=network-online.target oscal-data-mount.service
-Requires=oscal-data-mount.service
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/oscal/app/backend
-ExecStart=/usr/bin/node server.js
-Restart=on-failure
-RestartSec=5
-Environment=NODE_ENV=production
-Environment=PORT=$PORT
-Environment=CONFIG_PATH=$MOUNT_POINT/config.json
-Environment=USERS_PATH=$MOUNT_POINT/users.json
-
-[Install]
-WantedBy=multi-user.target
-SVC
-
-systemctl daemon-reload
-systemctl enable oscal-data-mount.service
-systemctl enable oscal-reporter.service
-systemctl start oscal-data-mount.service
-EOT
-
-  # RHEL9 direct-run (dnf, node from NodeSource or dnf, s3fs from EPEL or build)
+  # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL) ---
   oscal_direct_user_data_green_rhel9 = <<-EOT
 #!/bin/bash
 set -e
-BUCKET="${local.s3_bucket_name}"
-PREFIX="/config/green"
 PORT="3019"
-MOUNT_POINT="/opt/oscal/data"
+DATA_DIR="/opt/oscal/data"
 
-dnf install -y curl git
+# Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
+systemctl start amazon-ssm-agent 2>/dev/null || true
+systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+dnf install -y curl git cronie rsync
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 dnf install -y nodejs
 
-# s3fs: EPEL or build from source
-dnf install -y epel-release || true
-dnf install -y s3fs-fuse || yum install -y s3fs-fuse || (dnf install -y gcc-c++ fuse fuse-devel libcurl-devel libxml2-devel openssl-devel && cd /tmp && git clone https://github.com/s3fs-fuse/s3fs-fuse.git && cd s3fs-fuse && ./autogen.sh && ./configure && make && make install)
-# Required for s3fs allow_other so app can read mount
-grep -q '^user_allow_other' /etc/fuse.conf || echo 'user_allow_other' >> /etc/fuse.conf
+systemctl enable crond --now 2>/dev/null || true
 
-mkdir -p /opt/oscal /opt/oscal/app $MOUNT_POINT
+mkdir -p /opt/oscal /opt/oscal/app $DATA_DIR
 chown -R ec2-user:ec2-user /opt/oscal
 
-cat > /etc/systemd/system/oscal-data-mount.service << 'SVC'
-[Unit]
-Description=Mount S3 config/users for OSCAL (Green)
-After=network-online.target
-Before=oscal-reporter.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/s3fs BUCKET_PLACEHOLDER:PREFIX_PLACEHOLDER MOUNT_POINT_PLACEHOLDER -o use_cache=/tmp/s3fs,iam_role=auto,allow_other,uid=1000,gid=1000
-ExecStop=/bin/umount MOUNT_POINT_PLACEHOLDER
-
-[Install]
-WantedBy=multi-user.target
-SVC
-sed -i "s|BUCKET_PLACEHOLDER|$BUCKET|g; s|PREFIX_PLACEHOLDER|$PREFIX|g; s|MOUNT_POINT_PLACEHOLDER|$MOUNT_POINT|g" /etc/systemd/system/oscal-data-mount.service
-
-cat > /etc/systemd/system/oscal-reporter.service << SVC
+cat > /etc/systemd/system/oscal-reporter.service << 'SVC'
 [Unit]
 Description=OSCAL Report Generator (Green)
-After=network-online.target oscal-data-mount.service
-Requires=oscal-data-mount.service
+After=network-online.target
 
 [Service]
 Type=simple
@@ -258,61 +58,46 @@ ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
-Environment=PORT=$PORT
-Environment=CONFIG_PATH=$MOUNT_POINT/config.json
-Environment=USERS_PATH=$MOUNT_POINT/users.json
+Environment=PORT=PORT_PLACEHOLDER
+Environment=CONFIG_PATH=DATA_DIR_PLACEHOLDER/config.json
+Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
 
 [Install]
 WantedBy=multi-user.target
 SVC
+sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g" /etc/systemd/system/oscal-reporter.service
 
 systemctl daemon-reload
-systemctl enable oscal-data-mount.service
 systemctl enable oscal-reporter.service
-systemctl start oscal-data-mount.service
+systemctl start oscal-reporter.service
+# Allow outbound to Ollama NLB (port 11434) if firewalld is active (RHEL)
+firewall-cmd --add-rich-rule='rule family=ipv4 direction=out destination port port=11434 protocol=tcp accept' --permanent 2>/dev/null && firewall-cmd --reload 2>/dev/null || true
 EOT
 
   oscal_direct_user_data_blue_rhel9 = <<-EOT
 #!/bin/bash
 set -e
-BUCKET="${local.s3_bucket_name}"
-PREFIX="/config/blue"
 PORT="3020"
-MOUNT_POINT="/opt/oscal/data"
+DATA_DIR="/opt/oscal/data"
 
-dnf install -y curl git
+# Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
+systemctl start amazon-ssm-agent 2>/dev/null || true
+systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+dnf install -y curl git cronie rsync
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 dnf install -y nodejs
 dnf install -y epel-release || true
-dnf install -y s3fs-fuse || true
-# Required for s3fs allow_other so app can read mount
-grep -q '^user_allow_other' /etc/fuse.conf || echo 'user_allow_other' >> /etc/fuse.conf
 
-mkdir -p /opt/oscal /opt/oscal/app $MOUNT_POINT
+systemctl enable crond --now 2>/dev/null || true
+
+mkdir -p /opt/oscal /opt/oscal/app $DATA_DIR
 chown -R ec2-user:ec2-user /opt/oscal
 
-cat > /etc/systemd/system/oscal-data-mount.service << 'SVC'
-[Unit]
-Description=Mount S3 config/users for OSCAL (Blue)
-After=network-online.target
-Before=oscal-reporter.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/s3fs BUCKET_PLACEHOLDER:PREFIX_PLACEHOLDER MOUNT_POINT_PLACEHOLDER -o use_cache=/tmp/s3fs,iam_role=auto,allow_other,uid=1000,gid=1000
-ExecStop=/bin/umount MOUNT_POINT_PLACEHOLDER
-
-[Install]
-WantedBy=multi-user.target
-SVC
-sed -i "s|BUCKET_PLACEHOLDER|$BUCKET|g; s|PREFIX_PLACEHOLDER|$PREFIX|g; s|MOUNT_POINT_PLACEHOLDER|$MOUNT_POINT|g" /etc/systemd/system/oscal-data-mount.service
-
-cat > /etc/systemd/system/oscal-reporter.service << SVC
+cat > /etc/systemd/system/oscal-reporter.service << 'SVC'
 [Unit]
 Description=OSCAL Report Generator (Blue)
-After=network-online.target oscal-data-mount.service
-Requires=oscal-data-mount.service
+After=network-online.target
 
 [Service]
 Type=simple
@@ -321,26 +106,36 @@ ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
-Environment=PORT=$PORT
-Environment=CONFIG_PATH=$MOUNT_POINT/config.json
-Environment=USERS_PATH=$MOUNT_POINT/users.json
+Environment=PORT=PORT_PLACEHOLDER
+Environment=CONFIG_PATH=DATA_DIR_PLACEHOLDER/config.json
+Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
 
 [Install]
 WantedBy=multi-user.target
 SVC
+sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g" /etc/systemd/system/oscal-reporter.service
 
 systemctl daemon-reload
-systemctl enable oscal-data-mount.service
 systemctl enable oscal-reporter.service
-systemctl start oscal-data-mount.service
+systemctl start oscal-reporter.service
+# Allow outbound to Ollama NLB (port 11434) if firewalld is active (RHEL)
+firewall-cmd --add-rich-rule='rule family=ipv4 direction=out destination port port=11434 protocol=tcp accept' --permanent 2>/dev/null && firewall-cmd --reload 2>/dev/null || true
 EOT
 
-  # Select Docker vs direct by variable
-  oscal_user_data_green = var.run_oscal_via_docker ? (var.use_rhel9 ? local.oscal_user_data_green_rhel9 : local.oscal_user_data_green_ubuntu) : (var.use_rhel9 ? local.oscal_direct_user_data_green_rhel9 : local.oscal_direct_user_data_green_ubuntu)
-  oscal_user_data_blue  = var.run_oscal_via_docker ? (var.use_rhel9 ? local.oscal_user_data_blue_rhel9 : local.oscal_user_data_blue_ubuntu) : (var.use_rhel9 ? local.oscal_direct_user_data_blue_rhel9 : local.oscal_direct_user_data_blue_ubuntu)
+  # RHEL only (dnf/podman)
+  oscal_user_data_green = var.run_oscal_via_docker ? local.oscal_user_data_green_rhel9 : local.oscal_direct_user_data_green_rhel9
+  oscal_user_data_blue  = var.run_oscal_via_docker ? local.oscal_user_data_blue_rhel9 : local.oscal_direct_user_data_blue_rhel9
 }
 
 resource "aws_instance" "oscal_green" {
+  lifecycle {
+    precondition {
+      condition     = local.oscal_ami_id_ok
+      error_message = "OSCAL AMI could not be resolved. Set oscal_ami_id, or use_image_factory_ami = true with Image Factory access, or use a supported region for Amazon Linux (see image_factory_ami.tf)."
+    }
+    # Avoid "collecting instance settings: empty result" when replacing (create new before destroying old)
+    create_before_destroy = true
+  }
   ami                    = local.oscal_ami_id
   instance_type          = "t3.small"
   key_name               = var.key_name
@@ -349,26 +144,33 @@ resource "aws_instance" "oscal_green" {
   iam_instance_profile   = aws_iam_instance_profile.oscal.name
 
   root_block_device {
-    volume_size = 20
+    volume_size = 30
     volume_type = "gp3"
   }
 
   user_data = base64encode(local.oscal_user_data_green)
+
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
 
   tags = {
     Name   = "${var.project_name}-oscal-green"
     Port   = "3019"
   }
 
-  # Avoid "collecting instance settings: empty result" when replacing (create new before destroying old)
-  lifecycle {
-    create_before_destroy = true
-  }
-
   depends_on = [aws_iam_instance_profile.oscal]
 }
 
 resource "aws_instance" "oscal_blue" {
+  lifecycle {
+    precondition {
+      condition     = local.oscal_ami_id_ok
+      error_message = "OSCAL AMI could not be resolved. Set oscal_ami_id, or use_image_factory_ami = true with Image Factory access, or use a supported region for Amazon Linux (see image_factory_ami.tf)."
+    }
+    create_before_destroy = true
+  }
   ami                    = local.oscal_ami_id
   instance_type          = "t3.small"
   key_name               = var.key_name
@@ -377,19 +179,20 @@ resource "aws_instance" "oscal_blue" {
   iam_instance_profile   = aws_iam_instance_profile.oscal.name
 
   root_block_device {
-    volume_size = 20
+    volume_size = 30
     volume_type = "gp3"
   }
 
   user_data = base64encode(local.oscal_user_data_blue)
 
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
   tags = {
     Name   = "${var.project_name}-oscal-blue"
     Port   = "3020"
-  }
-
-  lifecycle {
-    create_before_destroy = true
   }
 
   depends_on = [aws_iam_instance_profile.oscal]

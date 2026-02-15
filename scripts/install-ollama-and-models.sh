@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install Ollama on an Ollama instance and pull default LLM models: Mistral 7B and Gemma 2 2B.
+# Install Ollama on an Ollama instance and pull default LLM models: Mistral 7B and Gemma 3 latest.
 # Can be run standalone (e.g. after SSH into EC2) or invoked from Terraform user_data bootstrap.
 # Usage:
 #   ./install-ollama-and-models.sh           # Full: install Ollama, start serve, pull models
@@ -7,7 +7,7 @@
 set -e
 
 OLLAMA_MODELS_MISTRAL="${OLLAMA_MODELS_MISTRAL:-mistral:7b}"
-OLLAMA_MODELS_GEMMA="${OLLAMA_MODELS_GEMMA:-gemma2:2b}"
+OLLAMA_MODELS_GEMMA="${OLLAMA_MODELS_GEMMA:-gemma3:latest}"
 OLLAMA_READY_TIMEOUT="${OLLAMA_READY_TIMEOUT:-300}"
 
 pull_models() {
@@ -44,14 +44,16 @@ if [ "$PULL_ONLY" = true ]; then
   exit 0
 fi
 
-# Full install: install Ollama, start serve, wait, pull models
-if command -v apt-get >/dev/null 2>&1; then
-  apt-get update && apt-get install -y curl
-elif command -v dnf >/dev/null 2>&1; then
-  dnf install -y curl
-else
-  echo "Unsupported package manager (apt-get or dnf required)." >&2
-  exit 1
+# Full install: ensure curl is available (skip if already present, e.g. curl-minimal on Amazon Linux)
+if ! command -v curl >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update && apt-get install -y curl
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y curl
+  else
+    echo "Unsupported package manager (apt-get or dnf required)." >&2
+    exit 1
+  fi
 fi
 
 if ! command -v ollama >/dev/null 2>&1; then
@@ -59,19 +61,21 @@ if ! command -v ollama >/dev/null 2>&1; then
   curl -fsSL https://ollama.com/install.sh | sh
 fi
 
+# Ensure Ollama listens on all interfaces (default is 127.0.0.1; NLB health checks and Green/Blue need instance IP)
+export OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0}"
+
 if ! pgrep -x ollama >/dev/null 2>&1; then
-  echo "Starting Ollama serve..."
-  if systemctl is-enabled ollama >/dev/null 2>&1; then
+  echo "Starting Ollama serve (OLLAMA_HOST=$OLLAMA_HOST)..."
+  if systemctl list-unit-files --type=service 2>/dev/null | grep -q 'ollama.service'; then
+    mkdir -p /etc/systemd/system/ollama.service.d
+    printf '%s\n' '[Service]' 'Environment="OLLAMA_HOST=0.0.0.0"' > /etc/systemd/system/ollama.service.d/override.conf
+    systemctl daemon-reload
+    systemctl enable ollama 2>/dev/null || true
     pkill -x ollama 2>/dev/null || true
     sleep 2
-    sudo systemctl start ollama
-  elif systemctl list-unit-files --type=service 2>/dev/null | grep -q 'ollama.service'; then
-    sudo systemctl enable ollama
-    pkill -x ollama 2>/dev/null || true
-    sleep 2
-    sudo systemctl start ollama
+    systemctl start ollama
   else
-    nohup ollama serve >/tmp/ollama-serve.log 2>&1 &
+    OLLAMA_HOST=0.0.0.0 nohup ollama serve >/tmp/ollama-serve.log 2>&1 &
     sleep 3
   fi
 fi
