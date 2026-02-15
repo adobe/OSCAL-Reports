@@ -1,40 +1,26 @@
 # Ollama AI server: Auto Scaling Group (default min 0, max 1, desired 1; 1 hr idle -> scale to 0)
-# Only lookup Ubuntu AMI when not using RHEL9 (use_rhel9 + Image Factory AMI = RHEL9; no Ubuntu lookup).
+# AMI order: 1) var.ollama_ami_id, 2) Image Factory RHEL9 only if use_image_factory_ami = true, 3) Amazon Linux 2023 (default when Image Factory not available).
 # Each instance writes boot time to ollama-activity/last.json; Lambda shuts down after 1 hr no activity.
 
-data "aws_ami" "ollama" {
-  count       = var.ollama_ami_id == null && (!var.use_rhel9 || local.image_factory_ami_id == null) ? 1 : 0
-  most_recent = true
-  owners      = ["099720109477"]
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "state"
-    values = ["available"]
-  }
-}
-
 locals {
-  ollama_ami_id = var.ollama_ami_id != null ? var.ollama_ami_id : (var.use_rhel9 && local.image_factory_ami_id != null ? local.image_factory_ami_id : data.aws_ami.ollama[0].id)
+  ollama_ami_id = var.ollama_ami_id != null ? var.ollama_ami_id : (var.use_image_factory_ami && local.image_factory_ami_id != null ? local.image_factory_ami_id : local.default_fallback_ami_id)
   s3_activity_bucket = aws_s3_bucket.logs.id
+  # Fail at plan if no AMI could be resolved (e.g. unsupported region for Amazon Linux).
+  ollama_ami_id_ok = local.ollama_ami_id != null && local.ollama_ami_id != ""
   s3_activity_key     = "ollama-activity/last.json"
-  # User data: install Ollama, start serve, then write boot time to S3 (per diagram) so idle timer runs from latest activity
-  ollama_user_data_ubuntu = templatefile("${path.module}/templates/ollama_user_data_ubuntu.sh", {
+  ollama_user_data   = templatefile("${path.module}/templates/ollama_user_data_rhel9.sh", {
     s3_bucket = local.s3_activity_bucket
     s3_key    = local.s3_activity_key
   })
-  ollama_user_data_rhel9 = templatefile("${path.module}/templates/ollama_user_data_rhel9.sh", {
-    s3_bucket = local.s3_activity_bucket
-    s3_key    = local.s3_activity_key
-  })
-  ollama_user_data = var.use_rhel9 ? local.ollama_user_data_rhel9 : local.ollama_user_data_ubuntu
 }
 
 resource "aws_launch_template" "ollama" {
+  lifecycle {
+    precondition {
+      condition     = local.ollama_ami_id_ok
+      error_message = "Ollama AMI could not be resolved. Set ollama_ami_id, or use_image_factory_ami = true with Image Factory access, or use a supported region for Amazon Linux (see image_factory_ami.tf)."
+    }
+  }
   name_prefix = "${var.project_name}-ollama-"
   image_id     = local.ollama_ami_id
   instance_type = "t3.2xlarge"
@@ -55,6 +41,11 @@ resource "aws_launch_template" "ollama" {
   }
 
   user_data = base64encode(local.ollama_user_data)
+
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
 
   tag_specifications {
     resource_type = "instance"

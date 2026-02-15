@@ -66,13 +66,34 @@ resource "aws_security_group" "oscal" {
     description = "Green/Blue inter-instance (private IP)"
   }
 
-  # Ollama / VPC → Blue/Green: allow instances in VPC (e.g. Ollama) to reach OSCAL on private IP (avoids SG cycle)
+  # Ollama / VPC → Blue/Green: allow instances in VPC (e.g. Ollama) to reach OSCAL on 80, 443, 11434, 3019, 3020
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "VPC to OSCAL (HTTP)"
+  }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "VPC to OSCAL (HTTPS)"
+  }
+  ingress {
+    from_port   = 11434
+    to_port     = 11434
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "VPC to OSCAL (Ollama port)"
+  }
   ingress {
     from_port   = 3019
     to_port     = 3020
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
-    description = "Ollama and VPC to OSCAL (private IP)"
+    description = "VPC to OSCAL (app ports 3019, 3020)"
   }
 
   ingress {
@@ -105,14 +126,20 @@ resource "aws_security_group" "oscal" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Egress to Ollama (port 11434) within VPC; use CIDR to avoid cycle with ollama SG
+  # Egress to VPC: Ollama (11434), app ports (3019, 3020), HTTP/HTTPS (80, 443) for cross-system talk
   egress {
     from_port   = 11434
     to_port     = 11434
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
   }
-
+  egress {
+    from_port   = 3019
+    to_port     = 3020
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "OSCAL to VPC (app ports)"
+  }
   egress {
     from_port   = 80
     to_port     = 80
@@ -145,6 +172,36 @@ resource "aws_security_group" "ollama" {
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
     description = "NLB health checks and VPC access to Ollama"
+  }
+
+  # OSCAL / VPC → Ollama: allow Green/Blue and VPC to reach Ollama on 80, 443, 3019, 3020 (cross-system)
+  ingress {
+    from_port       = 80
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.oscal.id]
+    description = "OSCAL to Ollama (HTTP/HTTPS)"
+  }
+  ingress {
+    from_port       = 3019
+    to_port         = 3020
+    protocol        = "tcp"
+    security_groups = [aws_security_group.oscal.id]
+    description = "OSCAL to Ollama (app ports)"
+  }
+  ingress {
+    from_port   = 80
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "VPC to Ollama (HTTP/HTTPS)"
+  }
+  ingress {
+    from_port   = 3019
+    to_port     = 3020
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "VPC to Ollama (app ports)"
   }
 
   ingress {

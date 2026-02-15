@@ -97,7 +97,7 @@ resource "aws_iam_role_policy" "oscal_invoke_lambda" {
   })
 }
 
-# OSCAL instance: S3 read/write for config and users (direct-run: s3fs mount of config/green, config/blue)
+# OSCAL instance: S3 read/write for config, users, and logs (ec2_automation backup to config/green|blue, logs/green|blue)
 resource "aws_iam_role_policy" "oscal_s3_config" {
   name_prefix = "${var.project_name}-oscal-"
   role        = aws_iam_role.oscal_instance.id
@@ -119,11 +119,18 @@ resource "aws_iam_role_policy" "oscal_s3_config" {
         ]
         Resource = [
           "${aws_s3_bucket.logs.arn}/config/*",
-          "${aws_s3_bucket.logs.arn}/users/*"
+          "${aws_s3_bucket.logs.arn}/users/*",
+          "${aws_s3_bucket.logs.arn}/logs/*"
         ]
       }
     ]
   })
+}
+
+# SSM Session Manager: so you can connect to Green/Blue instances without SSH key
+resource "aws_iam_role_policy_attachment" "oscal_ssm" {
+  role       = aws_iam_role.oscal_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_instance_profile" "oscal" {
@@ -166,6 +173,12 @@ resource "aws_iam_role_policy" "ollama_s3_activity" {
       }
     ]
   })
+}
+
+# SSM Session Manager: so you can connect to Ollama instances without SSH key
+resource "aws_iam_role_policy_attachment" "ollama_ssm" {
+  role       = aws_iam_role.ollama_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_instance_profile" "ollama" {

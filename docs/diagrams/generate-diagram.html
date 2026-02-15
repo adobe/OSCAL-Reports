@@ -77,9 +77,10 @@
         <h1>🚀 AWS Auto-Scaling Architecture for OSCAL + Ollama</h1>
         
         <div class="cost-box">
-            <h2>💰 Recommended Setup Cost</h2>
+            <h2>Recommended Setup Cost</h2>
             <div class="cost-amount">~$99.67/month</div>
             <p style="font-size: 18px; margin: 10px 0;">Annual: ~$1,196 | 1hr idle, t3.2xlarge 32 GB | Saves vs Always-On</p>
+            <p style="font-size: 14px; margin: 8px 0; color: #155724;"><strong>Design:</strong> Config and users reside on EBS at /opt/oscal/data (no S3 mount on RHEL). <em>ec2_automation</em> backs up config, users, and logs to S3 every 10 min (max 10 min data loss if instances are replaced). S3 cost remains negligible.</p>
         </div>
 
         <div class="instructions">
@@ -127,9 +128,9 @@ flowchart TB
             Ollama["🧠 Ollama Instance<br/>t3.2xlarge 8vCPU 32GB<br/>Port: 11434<br/>Models: Mistral 7B + Gemma 2B<br/>$0.3328/hour<br/>90 hours/month = $29.95"]
         end
         
-        subgraph Storage["💾 Storage"]
-            EBS1["📦 EBS Volume<br/>40 GB OSCAL<br/>$3.20/month"]
-            EBS2["📦 EBS Volume<br/>100 GB Ollama<br/>$8.00/month"]
+        subgraph Storage["Storage"]
+            EBS1["EBS Volume OSCAL<br/>40 GB config/users/logs on instance<br/>$3.20/month"]
+            EBS2["EBS Volume Ollama<br/>100 GB<br/>$8.00/month"]
         end
     end
     
@@ -158,8 +159,8 @@ flowchart TB
     Blue -->|OLLAMA_URL| NLB
     
     Ollama -.->|Model Storage| EBS2
-    Green -.->|App Data| EBS1
-    Blue -.->|App Data| EBS1
+    Green -.->|Config/users on EBS<br/>Backup to S3 every 10 min| EBS1
+    Blue -.->|Config/users on EBS<br/>Backup to S3 every 10 min| EBS1
     
     style Users fill:#e1f5ff,stroke:#0066cc,stroke-width:2px
     style ALB fill:#ff9900,stroke:#cc7a00,stroke-width:3px
