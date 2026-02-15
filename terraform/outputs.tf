@@ -1,5 +1,10 @@
 # Outputs for OSCAL + Ollama deployment
 
+output "aws_region" {
+  description = "AWS region (for scripts that need region, e.g. check-ollama-connectivity.sh)"
+  value       = var.aws_region
+}
+
 output "alb_dns_name" {
   description = "DNS name of the Application Load Balancer"
   value       = aws_lb.main.dns_name

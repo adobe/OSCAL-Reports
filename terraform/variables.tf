@@ -46,21 +46,33 @@ variable "key_name" {
 }
 
 variable "oscal_ami_id" {
-  description = "AMI ID for OSCAL instances. For Adobe/AMS: use Adobe Image Factory RHEL9 AMI (see docs/IMAGE_FACTORY.md). Leave null to use latest Ubuntu 22.04."
+  description = "AMI ID for OSCAL instances. For Adobe/AMS: use Adobe Image Factory RHEL9 AMI (see docs/IMAGE_FACTORY.md). Leave null to use Image Factory or Amazon Linux 2023 fallback."
   type        = string
   default     = null
 }
 
 variable "ollama_ami_id" {
-  description = "AMI ID for Ollama instance. For Adobe/AMS: use Adobe Image Factory RHEL9 AMI (see docs/IMAGE_FACTORY.md). Leave null to use latest Ubuntu 22.04."
+  description = "AMI ID for Ollama instance. For Adobe/AMS: use Adobe Image Factory RHEL9 AMI (see docs/IMAGE_FACTORY.md). Leave null to use Image Factory (if use_image_factory_ami = true) or Amazon Linux 2023 (default)."
   type        = string
   default     = null
 }
 
-variable "use_rhel9" {
-  description = "Set true when using Adobe Image Factory RHEL9 AMIs (oscal_ami_id and ollama_ami_id); uses dnf/podman user_data instead of apt/docker."
+variable "use_image_factory_ami" {
+  description = "When true, use Adobe Image Factory RHEL9 AMI from the built-in region map (requires account access to those AMIs). When false (default), use Amazon Linux 2023 to avoid AccessDenied. Set to true only if your account is authorized for Image Factory images."
   type        = bool
   default     = false
+}
+
+variable "use_rhel9" {
+  description = "Deprecated: AMI fallback is now Amazon Linux 2023 (or Image Factory RHEL9 when enabled). Kept for backward compatibility; has no effect."
+  type        = bool
+  default     = true
+}
+
+variable "instance_architecture" {
+  description = "EC2 architecture for Amazon Linux 2023 fallback when Image Factory is not available: x86_64 (default) or arm64."
+  type        = string
+  default     = "x86_64"
 }
 
 # OSCAL run mode: false = direct run on EC2 with S3-mounted config/users; true = Docker/podman container (GHCR image)

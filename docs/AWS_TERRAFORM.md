@@ -6,10 +6,10 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 
 - **VPC** and public subnets (2 AZs)
 - **Application Load Balancer** (ALB) with HTTP (and optional HTTPS) listeners
-- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) EC2 instances (always on, t3.small, 20 GB each). By default they run the app **directly** (Node.js + systemd) with **config and users stored in S3** (mounted via s3fs); set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead.
+- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) EC2 instances (always on, t3.small, 20 GB each). By default they run the app **directly** (Node.js + systemd) with **config and users on EBS** at `/opt/oscal/data` (no S3 mount); **ec2_automation** backs up config, users, and logs to S3 every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead.
 - **Ollama** Auto Scaling Group (default min 3, max 3, desired 3 at init; each instance writes boot time to `ollama-activity/last.json`; 1 hr no activity → scale to 0; t3.2xlarge, 100 GB each)
 - **Lambda** wake/sleep controller and **EventBridge** rule (every 30 min idle check)
-- **S3** bucket for logs, `ollama-activity/last.json` activity state, and (for direct run) **config/users** per instance (`config/green/`, `config/blue/`) so EC2 instances can be destroyed and rebuilt without data loss (see [workflow diagram](diagrams/workflow-timeline.mmd))
+- **S3** bucket for logs, `ollama-activity/last.json` activity state, and **backup** targets (`config/green/`, `config/blue/`, `logs/green/`, `logs/blue/`) populated by ec2_automation so data is retained if instances are replaced (max 10 min loss). See [workflow diagram](diagrams/workflow-timeline.mmd).
 
 Account ID (e.g. 432417415905) is set via variable; no credentials are stored in code. For **Adobe/AMS** deployments, EC2 instances must use **Adobe Image Factory** images (RHEL9 preferred); see [IMAGE_FACTORY.md](IMAGE_FACTORY.md).
 
@@ -120,12 +120,12 @@ After apply, Terraform prints outputs such as:
 
 Use these to configure the OSCAL backend (Lambda name, and **OLLAMA_URL** as below).
 
-### 5. Direct run on EC2 (default) and S3-mounted config/users
+### 5. Direct run on EC2 (default): config on EBS, backup to S3
 
 By default (`run_oscal_via_docker = false`), EC2 instances:
 
-- Install **Node.js 20** and **s3fs** (FUSE).
-- Mount S3 prefixes **config/green/** (Green) and **config/blue/** (Blue) to **/opt/oscal/data** so config and users are stored in S3. You can destroy and rebuild instances without losing data.
+- Install **Node.js 20**.
+- Store **config and users on EBS** at **/opt/oscal/data** (no S3 mount). **ec2_automation** (cron every 10 min) backs up config, users, and logs to S3 (`config/green/`, `config/blue/`, `logs/green/`, `logs/blue/`) so data is retained if instances are replaced (max 10 min loss).
 - Run the app via **systemd** (`oscal-reporter.service`) after code is deployed.
 
 To **deploy application code** after Terraform apply, run from the repo root (SSH key from [Pass](https://www.passwordstore.org/) entry `AWS/OSCAL-AWS4379-SSH` or set `SSH_KEY_FILE`):
@@ -134,18 +134,25 @@ To **deploy application code** after Terraform apply, run from the repo root (SS
 ./scripts/deploy-to-ec2.sh
 ```
 
-**RHEL9 / Amazon Linux:** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh` (default is `ubuntu` for Ubuntu AMI).
+**Amazon Linux 2023 (default) or Image Factory RHEL9:** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 
-**If `oscal-data-mount.service` fails** (S3 mount): SSH to the instance and run `sudo journalctl -xeu oscal-data-mount.service`. Ensure `/etc/fuse.conf` contains `user_allow_other` (Terraform user_data sets this for Ubuntu and RHEL9 on new instances). For an existing RHEL9 instance created before this fix, add `user_allow_other` to `/etc/fuse.conf`, then `sudo systemctl start oscal-data-mount.service`.
-
-This syncs the repo to `/opt/oscal/app` on both instances, runs `npm install` and frontend build, copies the build into `backend/public`, and restarts the systemd service. To deploy to one instance only:
+The deploy script syncs the repo to `/opt/oscal/app` on both instances, runs `npm install` and frontend build, copies the build into `backend/public`, writes **ec2_automation.env** (S3 bucket and paths for backup), installs **ec2_automation** cron, and restarts `oscal-reporter.service`. To deploy to one instance only:
 
 ```bash
 ./scripts/deploy-to-ec2.sh --green-only $(terraform -chdir=terraform output -raw oscal_green_public_ip)
 ./scripts/deploy-to-ec2.sh --blue-only $(terraform -chdir=terraform output -raw oscal_blue_public_ip)
 ```
 
-Config and users live in S3 (bucket prefixes `config/green/`, `config/blue/`), mounted at `/opt/oscal/data` on each instance. To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply.
+Config and users live on each instance at `/opt/oscal/data`; the deploy script does **not** sync them to S3 (ec2_automation performs backups every 10 min). To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply.
+
+#### S3 backup layout (ec2_automation)
+
+In the AWS S3 console, open your bucket → **`config`** or **`logs`** → **`green`** or **`blue`**. ec2_automation on each instance uploads:
+- `config/green/config.json`, `config/green/users.json` (Green)
+- `config/blue/config.json`, `config/blue/users.json` (Blue)
+- `logs/green/`, `logs/blue/` (log files)
+
+Terraform creates folder placeholders; ec2_automation populates them. For new instances, ensure `/opt/oscal/data/config.json` and `users.json` exist (e.g. copy from backup or create from examples) before or after first deploy.
 
 ### Blue/Green host-based routing (optional)
 
@@ -156,6 +163,33 @@ To access Blue and Green with two different hostnames (e.g. `blue.oscal.example.
 3. Run `terraform apply`. The ALB will route by **Host** header: requests to the blue hostname go to Blue (port 3020), requests to the green hostname go to Green (port 3019). Default action (e.g. raw ALB DNS) forwards to Blue.
 
 For HTTPS, use an ACM certificate that covers both hostnames (e.g. wildcard `*.oscal.example.com` or a cert with both SANs).
+
+### Troubleshooting: AI Engine unreachable from Green/Blue
+
+If the app on Green or Blue shows "Cannot reach AI Engine at http://...-nlb-....elb.us-east-1.amazonaws.com:11434/", the issue is connectivity from the EC2 instance to the Ollama NLB (not application code). Check in this order:
+
+1. **Run the connectivity script** (from repo root, same SSH key as deploy):
+   ```bash
+   ./scripts/check-ollama-connectivity.sh
+   ```
+   This SSHs to Green and Blue, runs `curl` to the NLB URL, and prints firewalld status and DNS. Use `--green-only <ip>` or `--blue-only <ip>` to test one instance.
+
+2. **Ollama ASG and target group:** Ensure at least one Ollama instance is running and healthy. In AWS Console: EC2 → Target Groups → select the `*-ollama-11434` group → Targets. If there are no healthy targets, the NLB will accept TCP but the connection may fail or time out. Start the ASG (e.g. trigger Lambda or set desired capacity to 1) and wait for the target to become healthy.
+
+3. **Security groups (Terraform):** OSCAL instances have egress TCP 11434 to the VPC CIDR; Ollama instances have ingress 11434 from the OSCAL security group and from the VPC CIDR (for NLB health checks). No change needed unless you modified SGs.
+
+4. **RHEL firewalld:** If `curl` from the instance fails but security groups are correct, firewalld may be blocking outbound. On the instance:
+   ```bash
+   sudo firewall-cmd --list-all
+   ```
+   To allow outbound to port 11434:
+   ```bash
+   sudo firewall-cmd --add-rich-rule='rule family=ipv4 direction=out destination port port=11434 protocol=tcp accept' --permanent
+   sudo firewall-cmd --reload
+   ```
+   New instances created by Terraform (direct run) already add this rule in user_data.
+
+5. **NACLs:** Default VPC NACLs allow all. If you use custom NACLs, ensure they allow outbound TCP 11434 from the OSCAL subnets and inbound to the Ollama/NLB subnets as needed.
 
 ## Key variables
 

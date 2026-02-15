@@ -10,7 +10,7 @@ EC2 instances created by the OSCAL + Ollama Terraform template **must** use imag
 
 ## Built-in Image Factory RHEL9 AMIs
 
-The template includes **AMI IDs by region** for Adobe Image Factory RHEL9 (binary 27205). When `use_rhel9 = true` and `oscal_ami_id` / `ollama_ami_id` are **null**, Terraform uses the AMI for `aws_region` from this map. **Ubuntu is not looked up** when RHEL9 is selected and the region is in the map, so OSCAL and Ollama instances will launch with the RHEL9 AMI.
+The template includes **AMI IDs by region** for Adobe Image Factory RHEL9 (binary 27205). By default (**`use_image_factory_ami = false`**), Terraform uses **Amazon Linux 2023** so deployments work without Image Factory access and avoid `AccessDenied` / "empty result" errors. Set **`use_image_factory_ami = true`** only when your account has launch permission for the Image Factory AMIs; then when `oscal_ami_id` / `ollama_ami_id` are null, Terraform uses the Image Factory AMI for `aws_region` from this map. **Default fallback is Amazon Linux 2023**; when Image Factory is enabled and available, RHEL9 is used.
 
 | Region         | AMI ID                 |
 |----------------|------------------------|
@@ -39,20 +39,20 @@ For other regions, set `oscal_ami_id` and `ollama_ami_id` explicitly in `terrafo
 
 The Image Factory AMI may be in a different AWS account. Your account (e.g. 432417415905) must have **launch permission** for that AMI (owner shares the AMI with your account in EC2 → AMI → Permissions).
 
-**Workaround until AMI is shared:** In `terraform.tfvars` set `use_rhel9 = false` and run apply again. Instances will use Ubuntu 22.04. After the Image Factory AMI is shared with your account, set `use_rhel9 = true` and apply to replace instances with RHEL9.
+**Fix (default behavior):** Set **`use_image_factory_ami = false`** (default) in `terraform.tfvars` so Terraform uses **Amazon Linux 2023**. No Image Factory access is required. After the Image Factory AMI is shared with your account for your region, set `use_image_factory_ami = true` and apply again to use the Image Factory RHEL9 AMI.
 
 ## How to use Image Factory RHEL9 in this template
 
 1. **Set variables in `terraform.tfvars`**
-   - Enable RHEL9 and (optional) set region; AMI is chosen from the built-in map. **Use unquoted `true`** (boolean), not `"true"` (string):
+   - Set **`use_image_factory_ami = true`** and leave `oscal_ami_id` and `ollama_ami_id` **null** to use Image Factory AMI for `aws_region` when your account has access:
    ```hcl
-   aws_region = "us-east-1"
-   use_rhel9  = true   # boolean: no quotes
-   # oscal_ami_id and ollama_ami_id left null → use Image Factory AMI for aws_region
+   aws_region             = "us-east-1"
+   use_image_factory_ami   = true   # only if account has Image Factory AMI access
+   # oscal_ami_id and ollama_ami_id left null → Image Factory or Amazon Linux 2023
    ```
+   - Default **`use_image_factory_ami = false`** uses Amazon Linux 2023 (no Image Factory needed).
    - Or override with a specific AMI:
    ```hcl
-   use_rhel9     = true
    oscal_ami_id  = "ami-xxxxxxxx"   # optional override
    ollama_ami_id = "ami-xxxxxxxx"   # optional override
    ```
@@ -75,7 +75,7 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 
 | Item | Action |
 |------|--------|
-| AMI source | Adobe Image Factory (RHEL9 preferred) |
+| AMI source | Adobe Image Factory RHEL9 (when enabled) or Amazon Linux 2023 (default fallback) |
 | Where to find AMIs | [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) |
-| Terraform variables | `oscal_ami_id`, `ollama_ami_id`, `use_rhel9 = true` |
+| Terraform variables | `use_image_factory_ami` (default false = Amazon Linux 2023); `oscal_ami_id`, `ollama_ami_id` (null = Image Factory if enabled, else Amazon Linux 2023) |
 | Bucket naming | `AMS-oscal-logs-<account-id>` |
