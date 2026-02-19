@@ -1,5 +1,5 @@
 # OSCAL Green and Blue instances (always on), ports 3019 and 3020
-# AMI order: 1) var.oscal_ami_id, 2) Image Factory RHEL9 only if use_image_factory_ami = true, 3) Amazon Linux 2023 (default when Image Factory not available).
+# AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 (when in map), 3) native Amazon Linux 2023 fallback.
 
 locals {
   oscal_ami_id     = var.oscal_ami_id != null ? var.oscal_ami_id : (var.use_image_factory_ami && local.image_factory_ami_id != null ? local.image_factory_ami_id : local.default_fallback_ami_id)
@@ -10,7 +10,7 @@ locals {
 # Direct run: Node 20, config/users on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
 locals {
   # --- Docker/podman user_data (when run_oscal_via_docker = true) ---
-  oscal_user_data_green_rhel9 = <<-EOT
+  oscal_user_data_green_docker = <<-EOT
 #!/bin/bash
 set -e
 dnf install -y curl podman
@@ -18,7 +18,7 @@ systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
 podman run -d --name oscal --restart unless-stopped -p 3019:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
-  oscal_user_data_blue_rhel9 = <<-EOT
+  oscal_user_data_blue_docker = <<-EOT
 #!/bin/bash
 set -e
 dnf install -y curl podman
@@ -26,16 +26,25 @@ systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
 podman run -d --name oscal --restart unless-stopped -p 3020:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
-  # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL) ---
-  oscal_direct_user_data_green_rhel9 = <<-EOT
+  # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
+  oscal_direct_user_data_green = <<-EOT
 #!/bin/bash
 set -e
 PORT="3019"
 DATA_DIR="/opt/oscal/data"
+SVC_USER="svc_ams-oscal"
+SVC_GROUP="oscal"
+SVC_HOME="/var/lib/svc_ams-oscal"
 
 # Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
 systemctl start amazon-ssm-agent 2>/dev/null || true
 systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+# Service account for OSCAL (app and cron run as this user, not root)
+getent group $SVC_GROUP >/dev/null 2>&1 || groupadd -r $SVC_GROUP
+id $SVC_USER >/dev/null 2>&1 || useradd -r -s /bin/bash -g $SVC_GROUP -d $SVC_HOME -m -c "OSCAL service account" $SVC_USER
+chmod 700 $SVC_HOME 2>/dev/null || true
+usermod -aG $SVC_GROUP ec2-user 2>/dev/null || true
 
 dnf install -y curl git cronie rsync
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
@@ -44,7 +53,8 @@ dnf install -y nodejs
 systemctl enable crond --now 2>/dev/null || true
 
 mkdir -p /opt/oscal /opt/oscal/app $DATA_DIR
-chown -R ec2-user:ec2-user /opt/oscal
+chown -R ec2-user:$SVC_GROUP /opt/oscal
+chmod -R g+rX,g+w /opt/oscal
 
 cat > /etc/systemd/system/oscal-reporter.service << 'SVC'
 [Unit]
@@ -53,6 +63,8 @@ After=network-online.target
 
 [Service]
 Type=simple
+User=SVC_USER_PLACEHOLDER
+Group=SVC_GROUP_PLACEHOLDER
 WorkingDirectory=/opt/oscal/app/backend
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
@@ -65,7 +77,7 @@ Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
 [Install]
 WantedBy=multi-user.target
 SVC
-sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g" /etc/systemd/system/oscal-reporter.service
+sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
@@ -74,15 +86,24 @@ systemctl start oscal-reporter.service
 firewall-cmd --add-rich-rule='rule family=ipv4 direction=out destination port port=11434 protocol=tcp accept' --permanent 2>/dev/null && firewall-cmd --reload 2>/dev/null || true
 EOT
 
-  oscal_direct_user_data_blue_rhel9 = <<-EOT
+  oscal_direct_user_data_blue = <<-EOT
 #!/bin/bash
 set -e
 PORT="3020"
 DATA_DIR="/opt/oscal/data"
+SVC_USER="svc_ams-oscal"
+SVC_GROUP="oscal"
+SVC_HOME="/var/lib/svc_ams-oscal"
 
 # Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
 systemctl start amazon-ssm-agent 2>/dev/null || true
 systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+# Service account for OSCAL (app and cron run as this user, not root)
+getent group $SVC_GROUP >/dev/null 2>&1 || groupadd -r $SVC_GROUP
+id $SVC_USER >/dev/null 2>&1 || useradd -r -s /bin/bash -g $SVC_GROUP -d $SVC_HOME -m -c "OSCAL service account" $SVC_USER
+chmod 700 $SVC_HOME 2>/dev/null || true
+usermod -aG $SVC_GROUP ec2-user 2>/dev/null || true
 
 dnf install -y curl git cronie rsync
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
@@ -92,7 +113,8 @@ dnf install -y epel-release || true
 systemctl enable crond --now 2>/dev/null || true
 
 mkdir -p /opt/oscal /opt/oscal/app $DATA_DIR
-chown -R ec2-user:ec2-user /opt/oscal
+chown -R ec2-user:$SVC_GROUP /opt/oscal
+chmod -R g+rX,g+w /opt/oscal
 
 cat > /etc/systemd/system/oscal-reporter.service << 'SVC'
 [Unit]
@@ -101,6 +123,8 @@ After=network-online.target
 
 [Service]
 Type=simple
+User=SVC_USER_PLACEHOLDER
+Group=SVC_GROUP_PLACEHOLDER
 WorkingDirectory=/opt/oscal/app/backend
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
@@ -113,7 +137,7 @@ Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
 [Install]
 WantedBy=multi-user.target
 SVC
-sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g" /etc/systemd/system/oscal-reporter.service
+sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
@@ -123,8 +147,8 @@ firewall-cmd --add-rich-rule='rule family=ipv4 direction=out destination port po
 EOT
 
   # RHEL only (dnf/podman)
-  oscal_user_data_green = var.run_oscal_via_docker ? local.oscal_user_data_green_rhel9 : local.oscal_direct_user_data_green_rhel9
-  oscal_user_data_blue  = var.run_oscal_via_docker ? local.oscal_user_data_blue_rhel9 : local.oscal_direct_user_data_blue_rhel9
+  oscal_user_data_green = var.run_oscal_via_docker ? local.oscal_user_data_green_docker : local.oscal_direct_user_data_green
+  oscal_user_data_blue  = var.run_oscal_via_docker ? local.oscal_user_data_blue_docker : local.oscal_direct_user_data_blue
 }
 
 resource "aws_instance" "oscal_green" {

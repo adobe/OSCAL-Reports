@@ -4926,7 +4926,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       console.log(`   Testing Ollama: ${tagsUrl}`);
       
       const response = await axios.get(tagsUrl, {
-        timeout: 10000,
+        timeout: 30000,
         headers: headers,
         httpsAgent: fullUrl.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined
       });
@@ -5006,12 +5006,12 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
           message: error.message,
           suggestion: 'Check if AI Engine is running and URL/port are correct'
         };
-      } else if (error.code === 'ETIMEDOUT') {
+      } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
         errorMessage = `Connection timeout to ${fullUrl}`;
         errorDetails = {
           code: error.code,
           message: error.message,
-          suggestion: 'AI Engine may be overloaded or network is slow'
+          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/run-install-ollama-on-instance.sh then scripts/fix-ollama-listen-address.sh on the Ollama instance.'
         };
       } else if (error.response) {
         errorMessage = `AI Engine returned error ${error.response.status}`;

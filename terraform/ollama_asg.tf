@@ -1,5 +1,6 @@
 # Ollama AI server: Auto Scaling Group (default min 0, max 1, desired 1; 1 hr idle -> scale to 0)
-# AMI order: 1) var.ollama_ami_id, 2) Image Factory RHEL9 only if use_image_factory_ami = true, 3) Amazon Linux 2023 (default when Image Factory not available).
+# AMI: same chain as OSCAL (Green/Blue). 1) var.ollama_ami_id, 2) Image Factory Amazon Linux 2023 (when in map), 3) native Amazon Linux 2023 fallback.
+# Add Image Factory Amazon Linux 2023 AMI IDs in image_factory_ami.tf so Ollama and OSCAL use the same base image.
 # Each instance writes boot time to ollama-activity/last.json; Lambda shuts down after 1 hr no activity.
 
 locals {
@@ -8,10 +9,19 @@ locals {
   # Fail at plan if no AMI could be resolved (e.g. unsupported region for Amazon Linux).
   ollama_ami_id_ok = local.ollama_ami_id != null && local.ollama_ami_id != ""
   s3_activity_key     = "ollama-activity/last.json"
-  ollama_user_data   = templatefile("${path.module}/templates/ollama_user_data_rhel9.sh", {
+  ollama_user_data   = templatefile("${path.module}/templates/ollama_user_data.sh", {
     s3_bucket = local.s3_activity_bucket
     s3_key    = local.s3_activity_key
   })
+}
+
+# Use the AMI's root device name so our 150 GB EBS mapping overrides the root volume (not a secondary disk).
+# AMIs can use /dev/sda1 (Amazon Linux 2023) or /dev/xvda (e.g. some RHEL); wrong device = small root + unused 150 GB.
+data "aws_ami" "ollama_root_device" {
+  filter {
+    name   = "image-id"
+    values = [local.ollama_ami_id]
+  }
 }
 
 resource "aws_launch_template" "ollama" {
@@ -31,10 +41,16 @@ resource "aws_launch_template" "ollama" {
 
   vpc_security_group_ids = [aws_security_group.ollama.id]
 
+  # Ensure public IP so EC2 Instance Connect (AWS console "Connect") and SSH from laptop work.
+  network_interfaces {
+    associate_public_ip_address = true
+  }
+
+  # Root volume 150 GB: use AMI's root device name so this overrides the root (avoids 2 GB root when AMI uses /dev/xvda).
   block_device_mappings {
-    device_name = "/dev/sda1"
+    device_name = data.aws_ami.ollama_root_device.root_device_name
     ebs {
-      volume_size           = 100
+      volume_size           = 150
       volume_type           = "gp3"
       delete_on_termination = true
     }
@@ -74,5 +90,17 @@ resource "aws_autoscaling_group" "ollama" {
     key                 = "Name"
     value               = "${var.project_name}-ollama"
     propagate_at_launch = true
+  }
+}
+
+# Look up running Ollama instance(s) in the ASG so we can output public IP for SSH (use public IP from laptop, not private).
+data "aws_instances" "ollama" {
+  filter {
+    name   = "tag:aws:autoscaling:groupName"
+    values = [aws_autoscaling_group.ollama.name]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["running"]
   }
 }
