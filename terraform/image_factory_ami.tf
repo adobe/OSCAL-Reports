@@ -1,31 +1,69 @@
-# Adobe Image Factory RHEL9 AMI IDs by region
-# Source: https://imagefactory.corp.adobe.com/imagefactoryui/ui/binary/27205/rec/true
-# Use only when use_image_factory_ami = true and account is authorized for these AMIs.
-# Default (use_image_factory_ami = false) uses Amazon Linux 2023 to avoid AccessDenied and "empty result" when Image Factory is not available.
+# ------------------------------------------------------------------------------
+# Adobe Image Factory – AMI best practices (docs/IMAGE_FACTORY.md)
+# ------------------------------------------------------------------------------
+# - Default: Adobe Image Factory Amazon Linux 2023 (add AMI IDs below). When not in map, use native Amazon Linux 2023.
+# - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if in map; else native AL2023.
+# - use_image_factory_ami = false: native Amazon Linux 2023 only.
+# - Optional overrides: oscal_ami_id, ollama_ami_id in terraform.tfvars.
+# - S3 bucket naming (AMS): lowercase, e.g. ams-oscal-<account-id> (see s3.tf).
+# - References: Image Factory Wiki, UI (imagefactory.corp.adobe.com).
+# ------------------------------------------------------------------------------
 
+# First choice: Adobe Image Factory Amazon Linux 2023 by region. Used by both OSCAL (Green/Blue) and Ollama.
+# Set image_factory_amazon_linux_ami_us_east_1 in terraform.tfvars, or add entries below; when an entry exists for aws_region, it is used; else native Amazon Linux 2023.
 locals {
-  image_factory_ami_by_region = {
-    us-east-1      = "ami-06e32038c4db99126"
-    us-east-2      = "ami-0e6ea72578cf63ab1"
-    ca-central-1   = "ami-0b86b3588a2259c18"
-    us-west-1      = "ami-0b3303f50bac8b1ec"
-    ap-northeast-1 = "ami-0625a18a1d2b82c2b"
-    eu-west-1      = "ami-08d9240913054c65c"
-    ap-south-1     = "ami-0e9b9bcd954661396"
-    ap-southeast-1 = "ami-018cdba9536e45154"
-    ap-southeast-2 = "ami-0669b9e25d544a79a"
-    eu-central-1   = "ami-0ed16ba3a0888058e"
-    sa-east-1      = "ami-0ed1925ba65d07acf"
-    eu-west-3      = "ami-0913cfb5e6383f339"
-    ap-southeast-3 = "ami-0c584e95e3fc8cfa7"
-    ap-south-2     = "ami-0502476911e5ad219"
-    eu-west-2      = "ami-0a1d6a67f9f81d221"
-    us-west-2      = "ami-08966568ea1741ccf"
-  }
-  image_factory_ami_id = lookup(local.image_factory_ami_by_region, var.aws_region, null)
+  image_factory_amazon_linux_by_region = merge(
+    {
+      # Add more regions here if needed (same AMI for Green, Blue, and Ollama).
+      # Example: "eu-west-1" = "ami-xxxxxxxx"
+    },
+    var.image_factory_amazon_linux_ami_us_east_1 != null ? { "us-east-1" = var.image_factory_amazon_linux_ami_us_east_1 } : {}
+  )
+  image_factory_ami_id_amazon_linux = lookup(local.image_factory_amazon_linux_by_region, var.aws_region, null)
+  image_factory_ami_id_static      = local.image_factory_ami_id_amazon_linux
 }
 
-# Default fallback when Image Factory is not used or not available: Amazon Linux 2023 (all regions).
+# Optional: dynamic lookup like automation_framework – use latest Image Factory AMI by owner + name pattern (when AMIs are shared with this account).
+data "aws_ami" "image_factory" {
+  count = var.use_image_factory_ami && var.image_factory_owner_id != null && var.image_factory_ami_name_pattern != null ? 1 : 0
+
+  most_recent = true
+  owners      = [var.image_factory_owner_id]
+
+  filter {
+    name   = "name"
+    values = [var.image_factory_ami_name_pattern]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = [var.instance_architecture]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+}
+
+locals {
+  # Use dynamic lookup when configured; else Image Factory Amazon Linux 2023 from static map; null → native AL2023.
+  image_factory_ami_id = var.use_image_factory_ami ? (
+    length(data.aws_ami.image_factory) > 0 ? data.aws_ami.image_factory[0].id : local.image_factory_ami_id_static
+  ) : null
+}
+
+# Fallback only when Image Factory is not used or not available: native Amazon Linux 2023 (maintained by Amazon).
 data "aws_ami" "amazon_linux" {
   most_recent  = true
   owners       = ["amazon"]
@@ -57,6 +95,6 @@ data "aws_ami" "amazon_linux" {
 }
 
 locals {
-  # Default fallback AMI when Image Factory is not available (Amazon Linux 2023).
+  # Fallback AMI when Image Factory is not available: native Amazon Linux 2023.
   default_fallback_ami_id = data.aws_ami.amazon_linux.id
 }

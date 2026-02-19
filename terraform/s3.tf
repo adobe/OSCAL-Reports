@@ -1,5 +1,6 @@
 # S3 bucket for logs and Ollama activity state (last.json)
-# Bucket name must be lowercase (S3 requirement); we force lowercase to avoid InvalidBucketName.
+# Best practice (docs/IMAGE_FACTORY.md): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
+# Terraform forces lowercase to satisfy S3 and avoid InvalidBucketName.
 
 resource "aws_s3_bucket" "logs" {
   bucket = lower(var.s3_logs_bucket_name)

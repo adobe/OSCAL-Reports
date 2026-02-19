@@ -11,7 +11,7 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 - **Lambda** wake/sleep controller and **EventBridge** rule (every 30 min idle check)
 - **S3** bucket for logs, `ollama-activity/last.json` activity state, and **backup** targets (`config/green/`, `config/blue/`, `logs/green/`, `logs/blue/`) populated by ec2_automation so data is retained if instances are replaced (max 10 min loss). See [workflow diagram](diagrams/workflow-timeline.mmd).
 
-Account ID (e.g. 432417415905) is set via variable; no credentials are stored in code. For **Adobe/AMS** deployments, EC2 instances must use **Adobe Image Factory** images (RHEL9 preferred); see [IMAGE_FACTORY.md](IMAGE_FACTORY.md).
+Account ID (e.g. 432417415905) is set via variable; no credentials are stored in code. For **Adobe/AMS** deployments, the template **prefers Adobe Image Factory Amazon Linux 2023** (when in map) and **falls back to native Amazon Linux 2023**; see [IMAGE_FACTORY.md](IMAGE_FACTORY.md).
 
 ## Prerequisites
 
@@ -110,15 +110,35 @@ terraform apply
 
 After apply, Terraform prints outputs such as:
 
-- `alb_dns_name` / `alb_url_http` – URL to access the app (HTTP)
+- `alb_dns_name` / `alb_url_http` – URL to access the app (HTTP). When `alb_ssl_certificate_arn` is set, HTTP redirects to HTTPS; use `alb_url_https` for the HTTPS URL.
 - `oscal_green_instance_id`, `oscal_blue_instance_id` – EC2 instance IDs
 - `oscal_green_public_ip`, `oscal_blue_public_ip` – public IPs for SSH and deploy (when in public subnets)
 - `s3_logs_bucket_name`, `s3_activity_key` – for logging and Lambda
 - `lambda_ollama_controller_name` – for OSCAL backend config (wake Ollama)
 - `ollama_asg_name` – Ollama Auto Scaling Group name
+- **`ollama_public_ip`** – Public IP of the running Ollama instance (for **SSH from your laptop**). Use this IP with `ssh -i <key> ec2-user@<ollama_public_ip>`. If the ASG just scaled up, run `terraform refresh` then `terraform output ollama_public_ip`. If the output is empty, the ASG has 0 instances.
+- **`ollama_instance_id`** – Instance ID of the running Ollama instance (for **Session Manager** or AWS CLI).
 - **`ollama_url`** / **`ollama_nlb_dns_name`** – **Use this as `OLLAMA_URL`** so any system in the same VPC can reach Ollama; when the ASG is scaled to 0, Lambda can start it and the same URL works once instances are up.
 
 Use these to configure the OSCAL backend (Lambda name, and **OLLAMA_URL** as below).
+
+### Connecting to the Ollama instance (SSH / Session Manager)
+
+Green and Blue have fixed public IPs in Terraform output. The **Ollama** instance is in an Auto Scaling Group, so its public IP is not fixed. To log in from your laptop:
+
+1. **Use the public IP, not the private IP.** The instance summary in the AWS console shows both. From outside the VPC (e.g. your laptop), you must use the **Public IPv4 address**. Using the private IP will fail (timeout or no route).
+
+2. **Get the public IP:**
+   - After the Ollama ASG has a running instance, run:
+     ```bash
+     cd terraform && terraform refresh && terraform output ollama_public_ip
+     ```
+   - Or in AWS Console: EC2 → Instances → select the instance named `AMS-OSCAL-ollama` → copy **Public IPv4 address**.
+   - Or by instance ID: `aws ec2 describe-instances --instance-ids i-064e57c765ad6f493 --query 'Reservations[].Instances[].[PublicIpAddress]' --output text --region <region>`
+
+3. **SSH** (same key as Green/Blue): `ssh -i <path-to-key.pem> ec2-user@<ollama_public_ip>`
+
+4. **Session Manager** (no SSH key): In EC2 console, select the Ollama instance → Connect → **Session Manager** → Connect. The instance has the required IAM policy (`AmazonSSMManagedInstanceCore`). If Session Manager does not appear or fails, wait 2–3 minutes after the instance started for the SSM agent to register.
 
 ### 5. Direct run on EC2 (default): config on EBS, backup to S3
 
@@ -134,7 +154,7 @@ To **deploy application code** after Terraform apply, run from the repo root (SS
 ./scripts/deploy-to-ec2.sh
 ```
 
-**Amazon Linux 2023 (default) or Image Factory RHEL9:** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
+**Amazon Linux 2023 (Image Factory or native):** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 
 The deploy script syncs the repo to `/opt/oscal/app` on both instances, runs `npm install` and frontend build, copies the build into `backend/public`, writes **ec2_automation.env** (S3 bucket and paths for backup), installs **ec2_automation** cron, and restarts `oscal-reporter.service`. To deploy to one instance only:
 
@@ -163,6 +183,19 @@ To access Blue and Green with two different hostnames (e.g. `blue.oscal.example.
 3. Run `terraform apply`. The ALB will route by **Host** header: requests to the blue hostname go to Blue (port 3020), requests to the green hostname go to Green (port 3019). Default action (e.g. raw ALB DNS) forwards to Blue.
 
 For HTTPS, use an ACM certificate that covers both hostnames (e.g. wildcard `*.oscal.example.com` or a cert with both SANs).
+
+### HTTPS setup (ACM and HTTP-to-HTTPS redirect)
+
+To serve the app over HTTPS with an AWS-issued certificate and redirect all HTTP traffic to HTTPS:
+
+1. **Request an ACM certificate** (AWS Console → Certificate Manager, or CLI) for a **custom domain** you own (e.g. `oscal.example.com`). ACM does **not** issue certificates for the default ALB DNS name (e.g. `ams-oscal-alb-....elb.amazonaws.com`). Create the certificate in the **same region** as the ALB (e.g. us-east-1).
+2. **Validate the certificate** via DNS (add the CNAME record ACM provides) or email.
+3. **Create a CNAME** (or Route53 alias): your custom domain → ALB DNS name (output `alb_dns_name`). Example: `oscal.example.com` → `ams-oscal-alb-94037178.us-east-1.elb.amazonaws.com`.
+4. **Set in `terraform.tfvars`:** `alb_ssl_certificate_arn = "arn:aws:acm:region:account:certificate/id"` (use the ARN from Certificate Manager). Optionally set `alb_green_hostname` and `alb_blue_hostname` for green/blue hostnames (use the same cert with SANs or a wildcard).
+5. **Apply:** `terraform apply`. The ALB will have an HTTPS listener on port 443 using the ACM certificate. The HTTP listener (port 80) will **redirect** all requests to HTTPS (301). Use `alb_url_https` output or `https://your-domain.com`.
+6. **Use:** `https://your-domain.com` for production. HTTP requests to the ALB (e.g. `http://your-domain.com`) will redirect to `https://your-domain.com`.
+
+**Direct instance URLs (IP:3019, IP:3020):** AWS ACM certificates cannot be installed on EC2 instances; ACM works only with AWS services (ALB, CloudFront, API Gateway). To access Green or Blue over HTTPS, use **ALB hostnames** (`alb_green_hostname`, `alb_blue_hostname`) with a CNAME to the ALB and the same ACM cert—traffic is then HTTPS via the ALB. The raw IP:port URLs (e.g. `http://3.234.177.204:3019`, `http://54.145.135.149:3020`) remain HTTP and are suitable for debug or internal use only.
 
 ### Troubleshooting: AI Engine unreachable from Green/Blue
 

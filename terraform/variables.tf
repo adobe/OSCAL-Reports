@@ -45,32 +45,54 @@ variable "key_name" {
   default     = null
 }
 
+# Image Factory best practices: docs/IMAGE_FACTORY.md – prefer Image Factory, fallback to native Amazon Linux.
 variable "oscal_ami_id" {
-  description = "AMI ID for OSCAL instances. For Adobe/AMS: use Adobe Image Factory RHEL9 AMI (see docs/IMAGE_FACTORY.md). Leave null to use Image Factory or Amazon Linux 2023 fallback."
+  description = "AMI ID for OSCAL instances. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/IMAGE_FACTORY.md."
   type        = string
   default     = null
 }
 
 variable "ollama_ami_id" {
-  description = "AMI ID for Ollama instance. For Adobe/AMS: use Adobe Image Factory RHEL9 AMI (see docs/IMAGE_FACTORY.md). Leave null to use Image Factory (if use_image_factory_ami = true) or Amazon Linux 2023 (default)."
+  description = "AMI ID for Ollama instance. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/IMAGE_FACTORY.md."
   type        = string
   default     = null
 }
 
 variable "use_image_factory_ami" {
-  description = "When true, use Adobe Image Factory RHEL9 AMI from the built-in region map (requires account access to those AMIs). When false (default), use Amazon Linux 2023 to avoid AccessDenied. Set to true only if your account is authorized for Image Factory images."
+  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 if in map; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/IMAGE_FACTORY.md."
   type        = bool
-  default     = false
+  default     = true
+}
+
+# Optional: dynamic lookup (like automation_framework) – when set, use latest Image Factory AMI by owner + name pattern instead of static map.
+variable "image_factory_owner_id" {
+  description = "Optional: AWS account ID that owns the Image Factory AMIs (e.g. from automation_framework). When set with image_factory_ami_name_pattern, Terraform looks up the most recent AMI by name instead of using the static region map."
+  type        = string
+  default     = null
+}
+
+variable "image_factory_ami_name_pattern" {
+  description = "Optional: AMI name filter for dynamic lookup (e.g. 'Adobe*Amazon*Linux*'). Used with image_factory_owner_id when use_image_factory_ami = true. Leave null to use static map in image_factory_ami.tf."
+  type        = string
+  default     = null
+}
+
+# Optional: set Image Factory Amazon Linux 2023 AMI per region from tfvars (no need to edit image_factory_ami.tf).
+# When set, used for both OSCAL (Green/Blue) and Ollama. Get AMI IDs from Image Factory UI (Amazon Linux 2023).
+variable "image_factory_amazon_linux_ami_us_east_1" {
+  description = "Optional: Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1. When set, used for Green, Blue, and Ollama. Get from Image Factory UI. Leave null to use static map in image_factory_ami.tf or native AL2023."
+  type        = string
+  default     = null
 }
 
 variable "use_rhel9" {
-  description = "Deprecated: AMI fallback is now Amazon Linux 2023 (or Image Factory RHEL9 when enabled). Kept for backward compatibility; has no effect."
+  description = "Deprecated; has no effect. Kept for backward compatibility (tfvars may still reference it)."
   type        = bool
   default     = true
 }
 
 variable "instance_architecture" {
-  description = "EC2 architecture for Amazon Linux 2023 fallback when Image Factory is not available: x86_64 (default) or arm64."
+  description = "EC2 architecture for Image Factory and native Amazon Linux 2023 fallback: x86_64 (default) or arm64."
   type        = string
   default     = "x86_64"
 }
@@ -82,17 +104,46 @@ variable "run_oscal_via_docker" {
   default     = false
 }
 
-# S3
+# S3 (best practice: docs/IMAGE_FACTORY.md – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
-  description = "Name for S3 bucket (e.g. ams-oscal-432417415905); Terraform creates subfolders: logs, ollama-activity, config, users; must be globally unique"
+  description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, ollama-activity, config, users."
   type        = string
 }
 
-# ALB
+# ALB / HTTPS
 variable "alb_ssl_certificate_arn" {
-  description = "ACM certificate ARN for HTTPS listener (optional; omit for HTTP only)"
+  description = "Existing ACM certificate ARN for HTTPS listener (optional). Ignored when create_alb_certificate is true."
   type        = string
   default     = null
+}
+
+variable "create_alb_certificate" {
+  description = "When true, Terraform requests an ACM certificate for alb_domain_name and attaches it to the ALB. You add DNS validation CNAMEs and the domain→ALB record manually in Route53."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.create_alb_certificate || (var.alb_domain_name != null && var.alb_domain_name != "")
+    error_message = "When create_alb_certificate is true, alb_domain_name must be set."
+  }
+}
+
+variable "alb_domain_name" {
+  description = "Primary domain for the ALB (e.g. oscal.amsgovcloud.com.au). Required when create_alb_certificate is true. Add DNS validation CNAMEs and an A/alias to ALB manually in Route53."
+  type        = string
+  default     = null
+}
+
+variable "alb_certificate_ready" {
+  description = "Set to true only after the ACM cert is Issued (after you add the CNAMEs from acm_certificate_validation_records in Route53). Until then, ALB keeps HTTP listener so the site stays up. Then run apply again to switch to HTTPS."
+  type        = bool
+  default     = false
+}
+
+variable "alb_ssl_policy" {
+  description = "ALB HTTPS listener SSL policy. Must match any existing HTTPS listener on the same ALB. See: aws elbv2 describe-ssl-policies --load-balancer-type application"
+  type        = string
+  default     = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
 }
 
 variable "alb_blue_hostname" {

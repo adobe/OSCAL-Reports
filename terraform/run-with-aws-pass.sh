@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Load AWS credentials from Pass and run Terraform (or import EC2 key from Pass).
+# For apply: use ./run-with-aws-pass.sh apply (not raw terraform apply) so existing ALB
+# port 80/443 listeners are removed automatically if Terraform will create the HTTPS listener.
 #
 # Usage:
+#   ./run-with-aws-pass.sh apply [options]       apply (removes orphan ALB listeners first if needed)
 #   ./run-with-aws-pass.sh [terraform args...]   e.g. ./run-with-aws-pass.sh plan
 #   ./run-with-aws-pass.sh import-key [region]   import EC2 key from Pass (region defaults to us-east-1)
 
@@ -52,9 +55,38 @@ import_ec2_key() {
   echo "Imported EC2 key pair '$key_name' in $region. Set key_name = \"$key_name\" in terraform.tfvars and run: ./run-with-aws-pass.sh apply"
 }
 
+# Before apply: if Terraform will create ALB HTTPS listener but port 80/443 listeners already exist
+# (e.g. created manually), delete them so apply does not fail with DuplicateListener.
+remove_orphan_alb_listeners_if_needed() {
+  command -v aws >/dev/null 2>&1 || return 0
+  if terraform state list 2>/dev/null | grep -q 'aws_lb_listener\.https\[0\]'; then
+    return 0
+  fi
+  alb_arn=$(terraform state show -no-color aws_lb.main 2>/dev/null | grep -E '^\s*arn\s*=' | sed -E 's/.*=\s*"(.*)"/\1/' | tr -d ' ')
+  [ -z "$alb_arn" ] && return 0
+  region=$(terraform output -raw aws_region 2>/dev/null) || region="us-east-1"
+  export AWS_DEFAULT_REGION="$region"
+  # Get all listeners; filter to port 80 and 443 in bash (reliable across CLI versions)
+  list=$(aws elbv2 describe-listeners --load-balancer-arn "$alb_arn" --query 'Listeners[].[Port,ListenerArn]' --output text 2>/dev/null) || return 0
+  while read -r port arn; do
+    [ -z "$arn" ] && continue
+    case "$port" in
+      80|443)
+        echo "Removing existing listener port $port (so Terraform can create it): $arn"
+        aws elbv2 delete-listener --listener-arn "$arn" || { echo "Error: failed to delete listener $arn" >&2; exit 1; }
+        ;;
+    esac
+  done <<< "$list"
+}
+
 case "${1:-}" in
   import-key)
     import_ec2_key "${2:-us-east-1}"
+    ;;
+  apply)
+    load_aws_credentials
+    remove_orphan_alb_listeners_if_needed
+    exec terraform "$@"
     ;;
   *)
     load_aws_credentials
