@@ -7,6 +7,7 @@ set -e
 
 # Source env file if present (written by deploy-to-ec2.sh)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
 [ -f "$SCRIPT_DIR/ec2_automation.env" ] && . "$SCRIPT_DIR/ec2_automation.env"
 
 CONFIG_PATH="${CONFIG_PATH:-/opt/oscal/data/config.json}"
@@ -36,7 +37,7 @@ otel_log() {
   local attrs="\"service.name\":\"ec2-automation\",\"service.version\":\"1.0\",\"event.outcome\":\"${outcome:-}\""
   [ -n "$DEPLOYMENT_ROLE" ] && attrs="$attrs,\"deployment.role\":\"$DEPLOYMENT_ROLE\""
   [ -n "$extra" ] && attrs="$attrs,$extra"
-  echo "{\"timestamp\":\"$ts\",\"severityNumber\":$severity_num,\"body\":\"$(echo "$message" | sed 's/"/\\"/g')\",\"attributes\":{$attrs}}" >> "$LOG_FILE"
+  echo "{\"timestamp\":\"$ts\",\"severityNumber\":$severity_num,\"body\":\"${message//\"/\\\"}\",\"attributes\":{$attrs}}" >> "$LOG_FILE"
 }
 
 # Ensure AWS CLI is installed
@@ -69,14 +70,37 @@ ensure_git() {
   return 0
 }
 
+# Restore config and users from S3 when missing locally (use last backup as default)
+restore_from_s3() {
+  [ -z "$S3_BUCKET" ] && return 0
+  local prefix="${S3_CONFIG_PREFIX:-config/${DEPLOYMENT_ROLE:-unknown}}"
+  local data_dir
+  data_dir="$(dirname "$CONFIG_PATH")"
+  mkdir -p "$data_dir"
+  if [ ! -f "$CONFIG_PATH" ]; then
+    if aws s3 cp "s3://${S3_BUCKET}/${prefix}/config.json" "$CONFIG_PATH" --quiet 2>/dev/null; then
+      otel_log "info" "Restored config.json from S3 (${S3_BUCKET}/${prefix}/)" "success" "\"restore.source\":\"s3\""
+    fi
+  fi
+  if [ ! -f "$USERS_PATH" ]; then
+    if aws s3 cp "s3://${S3_BUCKET}/${prefix}/users.json" "$USERS_PATH" --quiet 2>/dev/null; then
+      otel_log "info" "Restored users.json from S3 (${S3_BUCKET}/${prefix}/)" "success" "\"restore.source\":\"s3\""
+    fi
+  fi
+}
+
 # Backup config and users to S3
 backup_to_s3() {
   [ -z "$S3_BUCKET" ] && return 0
   local prefix="${S3_CONFIG_PREFIX:-config/${DEPLOYMENT_ROLE:-unknown}}"
-  if [ -f "$CONFIG_PATH" ]; then
+  if [ ! -f "$CONFIG_PATH" ]; then
+    otel_log warn "S3 backup skipped: config.json not found at $CONFIG_PATH" "failure" "\"backup.skipped\":\"config_missing\""
+  else
     aws s3 cp "$CONFIG_PATH" "s3://${S3_BUCKET}/${prefix}/config.json" --quiet 2>/dev/null || true
   fi
-  if [ -f "$USERS_PATH" ]; then
+  if [ ! -f "$USERS_PATH" ]; then
+    otel_log warn "S3 backup skipped: users.json not found at $USERS_PATH" "failure" "\"backup.skipped\":\"users_missing\""
+  else
     aws s3 cp "$USERS_PATH" "s3://${S3_BUCKET}/${prefix}/users.json" --quiet 2>/dev/null || true
   fi
   local logs_prefix="${S3_LOGS_PREFIX:-logs/${DEPLOYMENT_ROLE:-unknown}}"
@@ -100,9 +124,17 @@ update_and_restart() {
   (cd "$APP_DIR" && npm install --no-audit --no-fund 2>/dev/null) || true
   (cd "$APP_DIR/backend" && npm install --no-audit --no-fund 2>/dev/null) || true
   (cd "$APP_DIR/frontend" && npm install --no-audit --no-fund 2>/dev/null && npm run build 2>/dev/null) || true
-  [ -d "$APP_DIR/frontend/dist" ] && mkdir -p "$APP_DIR/backend/public" && cp -r "$APP_DIR/frontend/dist"/* "$APP_DIR/backend/public/" 2>/dev/null || true
+  if [ -d "$APP_DIR/frontend/dist" ]; then
+    mkdir -p "$APP_DIR/backend/public"
+    cp -r "$APP_DIR/frontend/dist"/* "$APP_DIR/backend/public/" 2>/dev/null || true
+  fi
   if sudo systemctl is-active --quiet oscal-reporter.service 2>/dev/null; then
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
+    # Brief wait then verify /health so ALB target stays healthy (avoids 502/504)
+    app_port="3019"
+    [ "$DEPLOYMENT_ROLE" = "blue" ] && app_port="3020"
+    sleep 3
+    curl -sf --connect-timeout 3 "http://127.0.0.1:${app_port}/health" >/dev/null 2>&1 || true
   fi
   return 0
 }
@@ -117,6 +149,7 @@ if ! ensure_aws_cli; then
 fi
 
 if [ "$OUTCOME" = "success" ] && [ -n "$S3_BUCKET" ]; then
+  restore_from_s3 || true
   backup_to_s3 || { OUTCOME="failure"; EXTRA="\"error.type\":\"BackupFailed\""; }
 fi
 

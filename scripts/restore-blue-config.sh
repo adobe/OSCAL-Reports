@@ -91,7 +91,7 @@ if [ "$FROM_BACKUP" = true ]; then
   # Prefer: data-volume > legacy-config > volume (legacy name)
   LATEST_TAR=""
   for tarball in data-volume-backup.tar.gz legacy-config-backup.tar.gz volume-backup.tar.gz; do
-    for f in "$BACKUPS_BASE"/dockerhub-deploy-*/$tarball; do
+    for f in "$BACKUPS_BASE"/dockerhub-deploy-*/"$tarball"; do
       [ -f "$f" ] || continue
       if [ -z "$LATEST_TAR" ] || [ "$f" -nt "$LATEST_TAR" ]; then
         LATEST_TAR="$f"

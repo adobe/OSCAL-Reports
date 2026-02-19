@@ -17,6 +17,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
 SSH_USER="${SSH_USER:-ec2-user}"
 INSTALL_SCRIPT="$REPO_ROOT/scripts/install-ollama-and-models.sh"
+FIX_LISTEN_SCRIPT="$REPO_ROOT/scripts/fix-ollama-listen-address.sh"
 
 # Load AWS credentials from Pass if not already set (same entry as run-with-aws-pass.sh)
 load_aws_if_needed() {
@@ -81,8 +82,38 @@ get_ollama_instance_ip() {
   echo "$ip"
 }
 
+# Minimum free space on root (MB). Cleanup runs when below this; install is skipped if still below after cleanup. Default 2G.
+OLLAMA_MIN_FREE_MB="${OLLAMA_MIN_FREE_MB:-2048}"
+
+# Check free space on instance; if below threshold, run dnf/yum/journal/tmp cleanup. Exit 1 if still below after cleanup.
+check_and_free_ollama_disk_space() {
+  local key="$1"
+  local ip="$2"
+  ssh -i "$key" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${ip}" "sudo bash -s" << REMOTE_SPACE
+set -e
+avail_mb=\$(df -m / | awk 'NR==2{print \$4}')
+if [ "\$avail_mb" -lt ${OLLAMA_MIN_FREE_MB} ]; then
+  echo "Low disk space (\${avail_mb} MB free). Freeing dnf/yum cache, journal, /tmp..."
+  dnf clean all 2>/dev/null || yum clean all 2>/dev/null || true
+  rm -rf /var/cache/dnf 2>/dev/null || rm -rf /var/cache/yum 2>/dev/null || true
+  journalctl --vacuum-time=1d 2>/dev/null || true
+  journalctl --vacuum-size=100M 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -mtime +1 -delete 2>/dev/null || true
+  echo "After cleanup: \$(df -h / | awk 'NR==2{print \$4}') free"
+  avail_mb=\$(df -m / | awk 'NR==2{print \$4}')
+  if [ "\$avail_mb" -lt ${OLLAMA_MIN_FREE_MB} ]; then
+    echo "ERROR: Still only \${avail_mb} MB free. Free more space (e.g. remove an Ollama model: ollama rm <name>) or replace the instance (scripts/replace-ollama-instance-ami.sh)." >&2
+    exit 1
+  fi
+else
+  echo "Disk space OK (\${avail_mb} MB free)."
+fi
+REMOTE_SPACE
+}
+
 # --- main ---
 [ ! -f "$INSTALL_SCRIPT" ] && { echo "ERROR: Install script not found: $INSTALL_SCRIPT" >&2; exit 1; }
+[ ! -f "$FIX_LISTEN_SCRIPT" ] && { echo "ERROR: Fix listen script not found: $FIX_LISTEN_SCRIPT" >&2; exit 1; }
 
 load_aws_if_needed
 resolve_ssh || exit 1
@@ -94,6 +125,10 @@ if [ -z "$OLLAMA_IP" ]; then
 fi
 
 echo "Ollama instance IP: $OLLAMA_IP"
+echo "Checking disk space on instance (cleanup if below ${OLLAMA_MIN_FREE_MB} MB free)..."
+check_and_free_ollama_disk_space "$SSH_KEY" "$OLLAMA_IP"
 echo "Running install-ollama-and-models.sh on instance (with sudo for dnf/systemctl)..."
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${OLLAMA_IP}" "sudo bash -s" < "$INSTALL_SCRIPT"
-echo "Done."
+echo "Applying fix-ollama-listen-address.sh so NLB and Green/Blue can reach Ollama on 0.0.0.0:11434..."
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${OLLAMA_IP}" "sudo bash -s" < "$FIX_LISTEN_SCRIPT"
+echo "Done. Wait 1–2 min for NLB target health, then test from Green/Blue: curl http://<ollama_nlb_dns>:11434/api/tags"

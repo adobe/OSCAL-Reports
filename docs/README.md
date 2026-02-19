@@ -52,7 +52,7 @@
 | [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Config migration and user consolidation (Blue/Green) |
 | [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) | AWS EC2 cost estimate and Ollama auto-scaling |
 | [AWS_TERRAFORM.md](AWS_TERRAFORM.md) | Terraform for OSCAL + Ollama on AWS (ALB, Green/Blue, Ollama NLB, Lambda, OLLAMA_URL) |
-| [IMAGE_FACTORY.md](IMAGE_FACTORY.md) | Adobe Image Factory RHEL9 AMIs for Terraform (AMS deployments) |
+| [IMAGE_FACTORY.md](IMAGE_FACTORY.md) | Adobe Image Factory Amazon Linux 2023 AMIs for Terraform (AMS deployments) |
 | [AWS_SANDBOX_REQUEST.md](AWS_SANDBOX_REQUEST.md) | Jira ticket and URL for requesting designated AWS Sandbox account |
 
 ---
