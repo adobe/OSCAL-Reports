@@ -850,10 +850,46 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Okta OIDC state store (CSRF): state -> { createdAt, redirectUri }. TTL 15 min. Persisted to file so server restarts don't invalidate in-flight logins.
-const oktaOidcStateStore = new Map();
+// Okta OIDC state: signed state (preferred, works across restarts and load-balanced instances) + legacy in-memory/file store.
 const OKTA_STATE_TTL_MS = 15 * 60 * 1000;
+const oktaOidcStateStore = new Map();
 const OKTA_STATE_FILE = path.join(__dirname, '..', 'config', 'app', 'okta_oidc_state.json');
+
+function base64UrlEncode(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function base64UrlDecode(str) {
+  const padded = str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice(0, (4 - (str.length % 4)) % 4);
+  return Buffer.from(padded, 'base64');
+}
+
+/** Create signed state payload so any instance can validate (no server-side store needed). */
+function createSignedOktaState(redirectUri, clientSecret) {
+  const payload = { redirectUri: redirectUri || '', createdAt: Date.now(), rnd: crypto.randomBytes(8).toString('hex') };
+  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload), 'utf8'));
+  const sig = crypto.createHmac('sha256', clientSecret || '').update(payloadB64).digest();
+  return `${payloadB64}.${base64UrlEncode(sig)}`;
+}
+
+/** Verify signed state; returns { redirectUri } or null. */
+function verifySignedOktaState(state, clientSecret) {
+  if (!state || typeof state !== 'string' || !clientSecret) return null;
+  const dot = state.indexOf('.');
+  if (dot <= 0 || dot === state.length - 1) return null;
+  const payloadB64 = state.slice(0, dot);
+  const sigB64 = state.slice(dot + 1);
+  try {
+    const expectedSig = crypto.createHmac('sha256', clientSecret).update(payloadB64).digest();
+    const expectedB64 = base64UrlEncode(expectedSig);
+    if (sigB64 !== expectedB64) return null;
+    const payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8'));
+    if (!payload || typeof payload.createdAt !== 'number') return null;
+    if (Date.now() - payload.createdAt > OKTA_STATE_TTL_MS) return null;
+    return { redirectUri: payload.redirectUri || '' };
+  } catch (_) {
+    return null;
+  }
+}
 
 function loadOktaStateFromFile() {
   try {
@@ -862,9 +898,9 @@ function loadOktaStateFromFile() {
     const data = JSON.parse(raw);
     const now = Date.now();
     if (data && typeof data === 'object') {
-      for (const [state, entry] of Object.entries(data)) {
+      for (const [s, entry] of Object.entries(data)) {
         if (entry?.createdAt && (now - entry.createdAt) < OKTA_STATE_TTL_MS) {
-          oktaOidcStateStore.set(state, { createdAt: entry.createdAt, redirectUri: entry.redirectUri || '' });
+          oktaOidcStateStore.set(s, { createdAt: entry.createdAt, redirectUri: entry.redirectUri || '' });
         }
       }
     }
@@ -879,9 +915,9 @@ function persistOktaState() {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const now = Date.now();
     const obj = {};
-    for (const [state, data] of oktaOidcStateStore.entries()) {
+    for (const [s, data] of oktaOidcStateStore.entries()) {
       if (data?.createdAt && (now - data.createdAt) < OKTA_STATE_TTL_MS) {
-        obj[state] = { createdAt: data.createdAt, redirectUri: data.redirectUri || '' };
+        obj[s] = { createdAt: data.createdAt, redirectUri: data.redirectUri || '' };
       }
     }
     fs.writeFileSync(OKTA_STATE_FILE, JSON.stringify(obj), 'utf8');
@@ -892,8 +928,8 @@ function persistOktaState() {
 
 function cleanupOktaState() {
   const now = Date.now();
-  for (const [state, data] of oktaOidcStateStore.entries()) {
-    if (now - data.createdAt > OKTA_STATE_TTL_MS) oktaOidcStateStore.delete(state);
+  for (const [s, data] of oktaOidcStateStore.entries()) {
+    if (now - data.createdAt > OKTA_STATE_TTL_MS) oktaOidcStateStore.delete(s);
   }
   persistOktaState();
 }
@@ -975,26 +1011,34 @@ function decodeGroupsFromJwt(jwtString) {
  */
 app.get('/api/auth/okta/authorize', async (req, res) => {
   try {
-    const config = loadConfig();
+    const config = getResolvedConfig();
     const oauth = config.ssoConfig?.oauth;
     const okta = oauth?.providers?.okta;
     if (!oauth?.enabled || !okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim()) {
       const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
-    const redirectUri = (okta.redirectUri || '').trim() || `${req.protocol}://${req.get('host')}/auth/okta/callback`;
-    const state = crypto.randomBytes(16).toString('hex');
-    oktaOidcStateStore.set(state, { createdAt: Date.now(), redirectUri });
-    persistOktaState();
+    // Redirect URI: env override (for servers behind proxy) > Settings → SSO > request-derived.
+    const envRedirect = (process.env.OSCAL_OKTA_REDIRECT_URI || '').trim().replace(/\/+$/, '');
+    const configuredRedirect = (okta.redirectUri || '').trim();
+    let redirectUri = envRedirect || configuredRedirect || `${req.protocol}://${req.get('host')}/auth/okta/callback`;
+    redirectUri = redirectUri.replace(/\/+$/, ''); // Okta requires exact match; no trailing slash
+    // #region agent log
+    const cid = (okta.clientId || '');
+    const logPayload = {location:'server.js:Okta authorize',message:'redirect_uri and client_id sent to Okta',data:{configuredRedirect,redirectUri,clientIdMasked:cid.length>=10?cid.slice(0,6)+'...'+cid.slice(-4):'(short)',redirectUriLength:redirectUri.length,redirectUriLastChar:redirectUri.slice(-1)},timestamp:Date.now(),hypothesisId:'H1_H2_H3'};
+    fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logPayload)}).catch(()=>{});
+    try { fs.appendFileSync(path.join(__dirname,'okta-debug.ndjson'), JSON.stringify(logPayload) + '\n'); } catch (_) {}
+    console.log('[OKTA_DEBUG] ' + JSON.stringify(logPayload));
+    // #endregion
+    // Signed state works across server restarts and load-balanced instances; no server-side store needed
+    const clientSecret = (okta.clientSecret || '').trim();
+    const state = clientSecret
+      ? createSignedOktaState(redirectUri, clientSecret)
+      : (() => { const s = crypto.randomBytes(16).toString('hex'); oktaOidcStateStore.set(s, { createdAt: Date.now(), redirectUri }); persistOktaState(); return s; })();
     const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const authServerId = (okta.authServerId || '').trim();
-    let scope = (okta.scope || 'openid profile email').trim();
-    // Request groups so Okta includes groups claim in token for role inheritance
-    const oauthConfig = config.ssoConfig?.oauth || {};
-    const hasGroupMapping = oauthConfig.groupToRoleMapping && typeof oauthConfig.groupToRoleMapping === 'object' && Object.keys(oauthConfig.groupToRoleMapping).some(k => k && !String(k).startsWith('__'));
-    if (hasGroupMapping || oauthConfig.syncRoleFromGroups !== false) {
-      if (!scope.toLowerCase().includes('groups')) scope = (scope + ' groups').trim();
-    }
+    // Use only scopes configured in Okta (do not auto-add 'groups' — many Auth Servers don't have that scope; groups claim can be "Always" in Okta)
+    const scope = (okta.scope || 'openid profile email').trim();
     const params = new URLSearchParams({
       client_id: okta.clientId,
       response_type: 'code',
@@ -1028,21 +1072,26 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
     if (!code || !state) {
       return res.status(400).json({ success: false, error: 'Missing code or state' });
     }
-    let stateData = oktaOidcStateStore.get(state);
-    if (!stateData) {
-      loadOktaStateFromFile();
-      stateData = oktaOidcStateStore.get(state);
-    }
-    if (!stateData) {
-      return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
-    }
-    oktaOidcStateStore.delete(state);
-    persistOktaState();
-
     const config = getResolvedConfig();
     const okta = config.ssoConfig?.oauth?.providers?.okta;
     if (!okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim() || !okta?.clientSecret?.trim()) {
       return res.status(400).json({ success: false, error: 'Okta OIDC is not configured.' });
+    }
+    // Prefer signed state (works across restarts and load-balanced instances)
+    let stateData = verifySignedOktaState(state, (okta.clientSecret || '').trim());
+    if (!stateData) {
+      stateData = oktaOidcStateStore.get(state);
+      if (!stateData) {
+        loadOktaStateFromFile();
+        stateData = oktaOidcStateStore.get(state);
+      }
+      if (stateData) {
+        oktaOidcStateStore.delete(state);
+        persistOktaState();
+      }
+    }
+    if (!stateData) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
     }
     const redirectUri = (okta.redirectUri || '').trim() || stateData.redirectUri;
     const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
