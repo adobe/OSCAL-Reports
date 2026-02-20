@@ -856,6 +856,10 @@ After setup, test the integration:
    - Automatic migration from legacy locations
    - Script integration for secure deployment
 
+3. **Pass-backed sensitive config**
+   - Passwords, tokens, and keys (SMTP password, Slack webhook, AI API token, AWS Bedrock credentials, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager.
+   - `config.json` holds only pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. The backend resolves these at runtime via `getResolvedConfig()` and never persists plaintext secrets. GET APIs return raw config (pointers or masked values) so the client never receives resolved secrets.
+
 ### General Security
 
 1. **Input Validation**: URLs are validated before fetching

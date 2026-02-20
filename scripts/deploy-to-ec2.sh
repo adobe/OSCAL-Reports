@@ -12,6 +12,8 @@
 #   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8
 #   SSH_KEY_FILE=/path/to/key.pem ./scripts/deploy-to-ec2.sh
 #
+# Terraform: All terraform commands (output, apply) use terraform/run-with-aws-pass.sh.
+#
 # Environment:
 #   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4379-SSH)
 #   SSH_KEY_FILE         If set, use this key file instead of Pass
@@ -60,13 +62,19 @@ resolve_ssh_key() {
   exit 1
 }
 
+# Run Terraform via wrapper (loads AWS creds from Pass). Do not run terraform directly.
+tf_output() {
+  [ -x "$REPO_ROOT/terraform/run-with-aws-pass.sh" ] || return 1
+  "$REPO_ROOT/terraform/run-with-aws-pass.sh" output "$@" 2>/dev/null
+}
+
 # Get S3 bucket name from Terraform output (for ec2_automation.env on instances)
 get_s3_bucket() {
   local tfdir="$1"
   if [ ! -d "$tfdir" ] || [ ! -f "$tfdir/terraform.tfstate" ]; then
     return 1
   fi
-  (cd "$tfdir" && terraform output -raw s3_logs_bucket_name 2>/dev/null) || return 1
+  tf_output -raw s3_logs_bucket_name || return 1
 }
 
 # Get instance IPs from Terraform output (optional)
@@ -75,11 +83,9 @@ get_terraform_ips() {
   if [ ! -d "$tfdir" ] || [ ! -f "$tfdir/terraform.tfstate" ]; then
     return 1
   fi
-  cd "$tfdir"
   local green blue
-  green=$(terraform output -raw oscal_green_public_ip 2>/dev/null || terraform output -raw oscal_green_private_ip 2>/dev/null || true)
-  blue=$(terraform output -raw oscal_blue_public_ip 2>/dev/null || terraform output -raw oscal_blue_private_ip 2>/dev/null || true)
-  cd - >/dev/null
+  green=$(tf_output -raw oscal_green_public_ip 2>/dev/null || tf_output -raw oscal_green_private_ip 2>/dev/null || true)
+  blue=$(tf_output -raw oscal_blue_public_ip 2>/dev/null || tf_output -raw oscal_blue_private_ip 2>/dev/null || true)
   if [ -n "$green" ] && [ -n "$blue" ]; then
     echo "$green $blue"
     return 0
@@ -290,7 +296,7 @@ if [ -z "$GREEN_ONLY" ] && [ -z "$BLUE_ONLY" ]; then
     GREEN_IP=$(echo "$IPS" | awk '{print $1}')
     BLUE_IP=$(echo "$IPS" | awk '{print $2}')
   else
-    print_error "Run from repo root after 'terraform apply' or use --green-only IP / --blue-only IP"
+    print_error "Run from repo root after './terraform/run-with-aws-pass.sh apply' or use --green-only IP / --blue-only IP"
     exit 1
   fi
 fi
@@ -329,15 +335,15 @@ check_acm_validation_and_ticket() {
   local tfdir="${1:-$REPO_ROOT/terraform}"
   [ ! -d "$tfdir" ] || [ ! -f "$tfdir/terraform.tfstate" ] && return 0
   local json
-  json=$(cd "$tfdir" && terraform output -json acm_certificate_validation_records 2>/dev/null) || return 0
+  json=$(tf_output -json acm_certificate_validation_records 2>/dev/null) || return 0
   # Empty array or null => no cert workflow
   if [ -z "$json" ] || [ "$json" = "[]" ] || [ "$json" = "null" ]; then
     return 0
   fi
   local alb_dns
-  alb_dns=$(cd "$tfdir" && terraform output -raw alb_dns_name 2>/dev/null) || alb_dns=""
+  alb_dns=$(tf_output -raw alb_dns_name 2>/dev/null) || alb_dns=""
   local domain_url
-  domain_url=$(cd "$tfdir" && terraform output -raw alb_domain_url 2>/dev/null) || domain_url=""
+  domain_url=$(tf_output -raw alb_domain_url 2>/dev/null) || domain_url=""
   [ -z "$domain_url" ] && domain_url="https://oscal.amsgovcloud.com.au"
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -376,7 +382,7 @@ check_acm_validation_and_ticket() {
     echo "Subject: Add DNS records for oscal.amsgovcloud.com.au (ACM validation + ALB)"
     echo ""
     echo "1) Add these CNAME records so AWS ACM can validate the certificate:"
-    echo "$json" | jq -r '.[] | "   Name: \(.name)\n   Type: \(.type)\n   Value: \(.value)\n"' 2>/dev/null || (cd "$tfdir" && terraform output acm_certificate_validation_records 2>/dev/null)
+    echo "$json" | jq -r '.[] | "   Name: \(.name)\n   Type: \(.type)\n   Value: \(.value)\n"' 2>/dev/null || tf_output acm_certificate_validation_records 2>/dev/null
     echo "2) After the certificate shows 'Issued' in AWS ACM, add an A record (alias) or CNAME:"
     echo "   Hostname: oscal.amsgovcloud.com.au"
     echo "   Target:   ${alb_dns:-<run: terraform output alb_dns_name>}"

@@ -10,6 +10,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { atomicWriteJSON } from './utils/atomicWrite.js';
+import { resolvePassPointers, passInsert } from './utils/passResolver.js';
+import {
+  SENSITIVE_CONFIG_KEYS,
+  getByPath,
+  setByPath,
+  isMaskedOrEmpty
+} from './utils/sensitiveConfigKeys.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,8 +112,8 @@ const DEFAULT_CONFIG = {
 };
 
 /**
- * Load configuration from file
- * Creates default config if file doesn't exist
+ * Load configuration from file (raw: _pass pointers are not resolved).
+ * Creates default config if file doesn't exist.
  */
 function loadConfig() {
   try {
@@ -135,6 +142,48 @@ function loadConfig() {
     console.log('🔄 Returning default configuration');
     return DEFAULT_CONFIG;
   }
+}
+
+/**
+ * Load config and resolve all _pass pointers (for server-side use only).
+ * Returns a deep clone with secrets resolved from pass; do not send to client.
+ */
+function getResolvedConfig() {
+  const raw = loadConfig();
+  const clone = JSON.parse(JSON.stringify(raw));
+  resolvePassPointers(clone);
+  return clone;
+}
+
+/**
+ * Prepare config for save: write new plaintext secrets to pass and replace with pointers.
+ * For masked/empty/pointer values, keep existing value from current raw config.
+ * Returns config object safe to persist (no plaintext secrets for sensitive keys).
+ *
+ * @param {Object} configToSave - Merged config (incoming from API)
+ * @param {Object} existingRaw - Current raw config from loadConfig()
+ * @returns {{ config: Object, passErrors: string[] }} config to pass to saveConfig(), and any pass insert errors
+ */
+function prepareConfigWithPassPointers(configToSave, existingRaw) {
+  const result = JSON.parse(JSON.stringify(configToSave));
+  const passErrors = [];
+  for (const { path: keyPath, passEntry } of SENSITIVE_CONFIG_KEYS) {
+    const incoming = getByPath(configToSave, keyPath);
+    if (isMaskedOrEmpty(incoming)) {
+      const existing = getByPath(existingRaw, keyPath);
+      setByPath(result, keyPath, existing !== undefined ? existing : { _pass: passEntry });
+    } else if (typeof incoming === 'string' && incoming.trim() !== '') {
+      const insertResult = passInsert(passEntry, incoming.trim());
+      if (insertResult.success) {
+        setByPath(result, keyPath, { _pass: passEntry });
+      } else {
+        passErrors.push(`${keyPath}: ${insertResult.error}`);
+        setByPath(result, keyPath, getByPath(existingRaw, keyPath) ?? { _pass: passEntry });
+      }
+    }
+    // else: already a pointer or other type; leave as-is (setByPath from existing if needed)
+  }
+  return { config: result, passErrors };
 }
 
 /**
@@ -375,12 +424,17 @@ function validateConfig(config) {
     }
   }
   
-  // Validate Published SOA URL if provided
+  // Validate Published SOA URL if provided (allow internal /api/published-soa/ path or external URL)
   if (config.publishedSoaUrl && config.publishedSoaUrl.trim() !== '') {
-    try {
-      new URL(config.publishedSoaUrl);
-    } catch (e) {
-      errors.push('Invalid Published SOA/CCM URL');
+    const url = config.publishedSoaUrl.trim();
+    if (url.startsWith('/api/published-soa/')) {
+      // Internal stored file path – no URL parse needed
+    } else {
+      try {
+        new URL(url);
+      } catch (e) {
+        errors.push('Invalid Published SOA/CCM URL');
+      }
     }
   }
   
@@ -388,6 +442,13 @@ function validateConfig(config) {
     valid: errors.length === 0,
     errors
   };
+}
+
+/**
+ * Get configuration directory (parent of config.json). Used for published-soa storage etc.
+ */
+function getConfigDir() {
+  return path.dirname(getConfigPath());
 }
 
 /**
@@ -407,11 +468,14 @@ function configExists() {
 
 export {
   loadConfig,
+  getResolvedConfig,
+  prepareConfigWithPassPointers,
   saveConfig,
   updateConfig,
   getConfigValue,
   resetConfig,
   validateConfig,
+  getConfigDir,
   getConfigFilePath,
   configExists,
   DEFAULT_CONFIG

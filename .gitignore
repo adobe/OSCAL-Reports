@@ -110,6 +110,8 @@ volumes/
 # User-uploaded files (if applicable)
 uploads/
 user-data/
+backend/Published_OSCAL/
+config/app/published-soa/
 .cursor/
 
 # Terraform (tfvars may contain secrets)

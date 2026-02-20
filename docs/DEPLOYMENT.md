@@ -437,6 +437,20 @@ email_blacklist.json     # Blocked email domains
 rate_limit.json          # API rate limiting rules
 ```
 
+### Published SOA/CCM uploads (Published_OSCAL)
+
+Uploaded published SOA/CCM JSON files (Platform Settings → Published SOA/CCM URL → upload) are stored in **`backend/Published_OSCAL/`** (next to the app’s `public/` directory, not under it). They are **not** served as static files: access is only via the application API (`GET /api/baseline-report`, `GET /api/published-soa/:filename`), so web crawlers and scanners cannot reach them.
+
+**Restrict directory permissions** so only the application service user can read/write:
+
+```bash
+# Example: app runs as svc_ams-oscal
+chown -R svc_ams-oscal:svc_ams-oscal backend/Published_OSCAL
+chmod 750 backend/Published_OSCAL
+```
+
+On first use, the app creates the directory (mode `0750`) and, if present, migrates existing files from `config/app/published-soa/` into `Published_OSCAL/`.
+
 ### Backup Configuration
 
 ```bash
@@ -450,15 +464,35 @@ mv config.backup.20260122 config
 docker restart oscal-report-generator-blue
 ```
 
+### Sensitive settings and pass
+
+Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token, AWS Bedrock keys, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager. `config.json` holds only pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. The app resolves these at runtime and never persists plaintext secrets in config.
+
+**Pass entry names:**
+
+| Setting | Pass entry |
+|--------|------------|
+| SMTP password | `OSCAL/smtp-password` |
+| Slack webhook URL | `OSCAL/slack-webhook-url` |
+| AI API token | `OSCAL/ai-api-token` |
+| AI AWS Access Key ID | `OSCAL/ai-aws-access-key-id` |
+| AI AWS Secret Access Key | `OSCAL/ai-aws-secret-access-key` |
+| SSO Azure client secret | `OSCAL/sso-oauth-azure-client-secret` |
+| SSO Google client secret | `OSCAL/sso-oauth-google-client-secret` |
+| SSO Okta client secret | `OSCAL/sso-oauth-okta-client-secret` |
+| SSO GitHub client secret | `OSCAL/sso-oauth-github-client-secret` |
+
+- **Local (laptop):** Install and initialize `pass`; create entries with `pass insert OSCAL/smtp-password` etc. Set `OSCAL_PASS_DISABLED=1` to skip pass (secrets then empty; useful for dev without pass). Optional: `PASSWORD_STORE_DIR` for store location.
+- **TrueNAS / Docker:** For pass-backed secrets, either install pass inside the container and mount the host’s `~/.password-store` (or a dedicated store) into the container, or run pass on the host and use a script to inject resolved values. Prefer mounting a volume for `~/.password-store` and running `pass insert OSCAL/...` on the host (or copying the store into the volume).
+- **EC2 (direct run):** Pass is set up for the service account `svc_ams-oscal`. Ensure the app runs as that user and config is under `/opt/oscal/data`. Add secrets with `sudo -u svc_ams-oscal pass insert OSCAL/smtp-password` etc. on the instance.
+
 ### Environment Variables
 
-For sensitive configuration, use environment variables:
+For non-pass configuration (e.g. JWT), use environment variables:
 
 ```bash
 # In .env file (not committed to git)
-SMTP_PASSWORD=your_smtp_password
 JWT_SECRET=your_jwt_secret
-AI_API_KEY=your_ai_api_key
 
 # In docker run
 docker run -d \
@@ -467,6 +501,8 @@ docker run -d \
   -p 3020:3020 \
   oscal-report-generator:latest
 ```
+
+Sensitive Platform Settings (SMTP password, AI tokens, SSO client secrets) are stored in pass; see [Sensitive settings and pass](#sensitive-settings-and-pass) above.
 
 ---
 

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Scale Ollama ASG to 1, wait for instance to be running, then run install + fix on the instance.
-# Uses AWS credentials and SSH key from Pass (same entries as run-install-ollama-on-instance.sh).
+# Replace the Ollama instance so the new one uses the current launch template AMI (e.g. Image Factory Amazon Linux 2023).
+# Steps: scale ASG to 0, wait for instance to terminate, terraform apply (updates launch template if AMI changed), scale to 1, install Ollama on new instance.
+# Run after setting image_factory_amazon_linux_ami_us_east_1 in terraform.tfvars and applying once, or when switching Ollama to the same AMI as Green/Blue.
 #
 # Usage (from repo root):
-#   ./scripts/scale-up-ollama-and-fix.sh
+#   ./scripts/debug/replace-ollama-instance-ami.sh
 #
-# Environment: Pass entries AWS/AWS4379 Sandbox (AWS creds), AWS/OSCAL-AWS4379-SSH (SSH key);
-#   or set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN and SSH_KEY_FILE.
+# Environment: Pass entries AWS/AWS4379 Sandbox (AWS creds), AWS/OSCAL-AWS4379-SSH (SSH key); or set AWS_* and SSH_KEY_FILE.
 
 set -e
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
 AWS_PASS_ENTRY="${AWS_PASS_ENTRY:-AWS/AWS4379 Sandbox}"
-MAX_WAIT="${OLLAMA_SCALE_UP_WAIT:-300}"
+MAX_WAIT_TERMINATE="${OLLAMA_REPLACE_TERMINATE_WAIT:-300}"
 
 # Load AWS credentials from Pass if not already set
 load_aws_if_needed() {
@@ -71,48 +71,52 @@ current_cap=$(aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names "$asg_name" \
   --query 'AutoScalingGroups[0].DesiredCapacity' \
   --output text 2>/dev/null || echo "0")
-echo "Current desired capacity: $current_cap"
 
 if [ "${current_cap:-0}" -eq 0 ]; then
-  echo "Setting desired capacity to 1..."
+  echo "ASG already at 0. Running terraform apply to update launch template..."
+else
+  echo "Setting desired capacity to 0 to terminate current instance..."
   aws autoscaling set-desired-capacity \
     --region "$region" \
     --auto-scaling-group-name "$asg_name" \
-    --desired-capacity 1
-  echo "Waiting for instance to be running (up to ${MAX_WAIT}s)..."
+    --desired-capacity 0
+  echo "Waiting for instance to terminate (up to ${MAX_WAIT_TERMINATE}s)..."
   elapsed=0
-  while [ "$elapsed" -lt "$MAX_WAIT" ]; do
+  while [ "$elapsed" -lt "$MAX_WAIT_TERMINATE" ]; do
     ip=$(get_instance_ip "$asg_name" "$region")
-    if [ -n "$ip" ] && [ "$ip" != "None" ]; then
-      echo "Instance is running: $ip (after ${elapsed}s)"
+    if [ -z "$ip" ] || [ "$ip" = "None" ]; then
+      echo "Instance terminated (after ${elapsed}s)."
       break
     fi
     sleep 15
     elapsed=$((elapsed + 15))
   done
-  if [ -z "$ip" ] || [ "$ip" = "None" ]; then
-    echo "ERROR: Timeout waiting for Ollama instance. Check EC2 console and ASG." >&2
-    exit 1
-  fi
-else
   ip=$(get_instance_ip "$asg_name" "$region")
-  if [ -z "$ip" ] || [ "$ip" = "None" ]; then
-    echo "ASG desired capacity is $current_cap but no running instance IP found. Waiting up to ${MAX_WAIT}s..."
-    elapsed=0
-    while [ "$elapsed" -lt "$MAX_WAIT" ]; do
-      ip=$(get_instance_ip "$asg_name" "$region")
-      [ -n "$ip" ] && [ "$ip" != "None" ] && break
-      sleep 15
-      elapsed=$((elapsed + 15))
-    done
-  fi
-  if [ -z "$ip" ] || [ "$ip" = "None" ]; then
-    echo "ERROR: No running Ollama instance found." >&2
+  if [ -n "$ip" ] && [ "$ip" != "None" ]; then
+    echo "ERROR: Timeout waiting for instance to terminate. Check EC2 console." >&2
     exit 1
   fi
-  echo "Using existing instance: $ip"
 fi
 
-echo "Running install and fix on instance $ip..."
-export OLLAMA_INSTANCE_IP="$ip"
-exec "$REPO_ROOT/scripts/run-install-ollama-on-instance.sh"
+echo "Running terraform apply to refresh launch template (new AMI for next instance)..."
+if [ -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ]; then
+  (cd "$TERRAFORM_DIR" && ./run-with-aws-pass.sh apply -auto-approve) || {
+    echo "WARNING: terraform apply failed or was skipped. Proceeding to scale up; new instance may still use old AMI if apply did not run." >&2
+  }
+else
+  echo "WARNING: $TERRAFORM_DIR/run-with-aws-pass.sh not found. Run manually: cd $TERRAFORM_DIR && ./run-with-aws-pass.sh apply -auto-approve" >&2
+  read -r -p "Continue to scale up anyway? [y/N] " reply
+  case "${reply}" in
+    [yY]|[yY][eE][sS]) ;;
+    *) exit 1 ;;
+  esac
+fi
+
+echo "Setting desired capacity to 1 to launch new instance (Image Factory Amazon Linux or native AL2023)..."
+aws autoscaling set-desired-capacity \
+  --region "$region" \
+  --auto-scaling-group-name "$asg_name" \
+  --desired-capacity 1
+
+echo "Running install and fix on the new instance..."
+exec "$REPO_ROOT/scripts/debug/scale-up-ollama-and-fix.sh"
