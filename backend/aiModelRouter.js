@@ -10,7 +10,7 @@
 
 import { generateImplementationWithMistral, checkMistralAvailability, loadMistralConfig } from './mistralService.js';
 import { generateImplementationWithGemma, checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
-import { loadConfig } from './configManager.js';
+import { getResolvedConfig } from './configManager.js';
 
 /**
  * Detect which model family is being used based on configuration
@@ -18,7 +18,7 @@ import { loadConfig } from './configManager.js';
  */
 export async function detectModelFamily() {
   try {
-    const config = await loadConfig();
+    const config = getResolvedConfig();
     
     if (!config.aiConfig || !config.aiConfig.enabled) {
       return 'unknown';

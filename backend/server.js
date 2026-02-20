@@ -20,7 +20,7 @@ import { generatePDFReport } from './pdfExport.js';
 import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
-import { loadConfig, saveConfig, validateConfig } from './configManager.js';
+import { loadConfig, getResolvedConfig, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir } from './configManager.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
 import { checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
@@ -946,6 +946,30 @@ async function fetchOktaDiscovery(domain, authServerId) {
 }
 
 /**
+ * Decode JWT payload (no signature verification; token was obtained from Okta server-side).
+ * Returns the 'groups' claim as an array, or null if missing/not a JWT.
+ * Okta often puts groups in the access token or ID token, not in userinfo.
+ */
+function decodeGroupsFromJwt(jwtString) {
+  if (!jwtString || typeof jwtString !== 'string') return null;
+  const parts = jwtString.trim().split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const padded = payload + '==='.slice(0, (4 - (payload.length % 4)) % 4);
+    const decoded = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    const groups = decoded.groups;
+    if (Array.isArray(groups)) return groups;
+    if (typeof groups === 'string') return [groups];
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Start Okta OIDC login: redirect browser to Okta authorization URL
  * Uses OIDC discovery when possible so the correct authorize URL is used (avoids 404).
  */
@@ -964,7 +988,13 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
     persistOktaState();
     const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const authServerId = (okta.authServerId || '').trim();
-    const scope = (okta.scope || 'openid profile email').trim();
+    let scope = (okta.scope || 'openid profile email').trim();
+    // Request groups so Okta includes groups claim in token for role inheritance
+    const oauthConfig = config.ssoConfig?.oauth || {};
+    const hasGroupMapping = oauthConfig.groupToRoleMapping && typeof oauthConfig.groupToRoleMapping === 'object' && Object.keys(oauthConfig.groupToRoleMapping).some(k => k && !String(k).startsWith('__'));
+    if (hasGroupMapping || oauthConfig.syncRoleFromGroups !== false) {
+      if (!scope.toLowerCase().includes('groups')) scope = (scope + ' groups').trim();
+    }
     const params = new URLSearchParams({
       client_id: okta.clientId,
       response_type: 'code',
@@ -1009,7 +1039,7 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
     oktaOidcStateStore.delete(state);
     persistOktaState();
 
-    const config = loadConfig();
+    const config = getResolvedConfig();
     const okta = config.ssoConfig?.oauth?.providers?.okta;
     if (!okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim() || !okta?.clientSecret?.trim()) {
       return res.status(400).json({ success: false, error: 'Okta OIDC is not configured.' });
@@ -1048,6 +1078,20 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
       timeout: 10000
     });
     const profile = userinfoRes.data || {};
+    // Okta often returns groups in the access token or ID token, not userinfo. Merge into profile for role resolution.
+    let groups = Array.isArray(profile.groups) ? [...profile.groups] : (profile.groups ? [profile.groups] : null);
+    const tokenGroups = decodeGroupsFromJwt(accessToken);
+    if (tokenGroups && tokenGroups.length) {
+      groups = groups ? [...new Set([...groups, ...tokenGroups])] : tokenGroups;
+    }
+    const idToken = tokenRes.data?.id_token;
+    if (idToken) {
+      const idGroups = decodeGroupsFromJwt(idToken);
+      if (idGroups && idGroups.length) {
+        groups = groups ? [...new Set([...groups, ...idGroups])] : idGroups;
+      }
+    }
+    if (groups && groups.length) profile.groups = groups;
     const email = profile.email || profile.sub;
     if (!email) {
       return res.status(400).json({ success: false, error: 'Okta did not return user email.' });
@@ -1714,18 +1758,22 @@ app.get('/api/sso/config', authenticate, (req, res) => {
 
 /**
  * Save SSO configuration
+ * Sensitive fields (client secrets) are stored in pass; only pointers written to config.
  */
 app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
     const ssoConfig = req.body;
-    const currentConfig = loadConfig();
-    
-    currentConfig.ssoConfig = ssoConfig;
-    const saveResult = await saveConfig(currentConfig);
-    
+    const existingRaw = loadConfig();
+    const currentConfig = { ...existingRaw, ssoConfig };
+    const { config: toSave, passErrors } = prepareConfigWithPassPointers(currentConfig, existingRaw);
+    if (passErrors.length > 0) {
+      console.warn('⚠️ Pass insert warnings for SSO config:', passErrors);
+    }
+    const saveResult = await saveConfig(toSave);
+
     if (saveResult.success) {
       console.log(`✅ SSO config saved by ${req.user.username}`);
-      res.json({ 
+      const response = {
         success: true,
         message: saveResult.message || 'SSO configuration saved successfully',
         verification: {
@@ -1733,18 +1781,22 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
           timestamp: saveResult.timestamp,
           discrepancies: saveResult.discrepancies
         }
-      });
+      };
+      if (passErrors.length > 0) {
+        response.passWarnings = passErrors;
+      }
+      res.json(response);
     } else {
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to save SSO configuration',
         details: saveResult.error
       });
     }
   } catch (error) {
     console.error('❌ Error saving SSO config:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to save SSO configuration',
-      message: error.message 
+      message: error.message
     });
   }
 });
@@ -1890,15 +1942,21 @@ app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFOR
  */
 app.post('/api/messaging/test-email', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const { emailConfig } = req.body;
-    
-    if (!emailConfig) {
-      return res.status(400).json({ 
+    const { emailConfig: bodyEmailConfig } = req.body;
+    if (!bodyEmailConfig) {
+      return res.status(400).json({
         success: false,
-        error: 'Email configuration is required' 
+        error: 'Email configuration is required'
       });
     }
-    
+    const resolved = getResolvedConfig();
+    const emailConfig = {
+      ...resolved.messagingConfig?.email,
+      ...bodyEmailConfig,
+      smtpPassword: (typeof bodyEmailConfig.smtpPassword === 'object' && bodyEmailConfig.smtpPassword?._pass)
+        ? (resolved.messagingConfig?.email?.smtpPassword ?? '')
+        : (bodyEmailConfig.smtpPassword ?? resolved.messagingConfig?.email?.smtpPassword ?? '')
+    };
     const { testEmailConfig } = await import('./messagingService.js');
     const result = await testEmailConfig(emailConfig);
     
@@ -1917,15 +1975,21 @@ app.post('/api/messaging/test-email', authenticate, requireRole(ROLES.PLATFORM_A
  */
 app.post('/api/messaging/test-slack', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const { slackConfig } = req.body;
-    
-    if (!slackConfig) {
-      return res.status(400).json({ 
+    const { slackConfig: bodySlackConfig } = req.body;
+    if (!bodySlackConfig) {
+      return res.status(400).json({
         success: false,
-        error: 'Slack configuration is required' 
+        error: 'Slack configuration is required'
       });
     }
-    
+    const resolved = getResolvedConfig();
+    const slackConfig = {
+      ...resolved.messagingConfig?.slack,
+      ...bodySlackConfig,
+      webhookUrl: (typeof bodySlackConfig.webhookUrl === 'object' && bodySlackConfig.webhookUrl?._pass)
+        ? (resolved.messagingConfig?.slack?.webhookUrl ?? '')
+        : (bodySlackConfig.webhookUrl ?? resolved.messagingConfig?.slack?.webhookUrl ?? '')
+    };
     const { testSlackConfig } = await import('./messagingService.js');
     const result = await testSlackConfig(slackConfig);
     
@@ -1936,6 +2000,170 @@ app.post('/api/messaging/test-slack', authenticate, requireRole(ROLES.PLATFORM_A
       success: false,
       error: error.message || 'Failed to test Slack configuration' 
     });
+  }
+});
+
+// Published SOA/CCM stored files: under Published_OSCAL next to backend (same level as public/).
+// Not under public/ so never served as static – only via API. Restrict dir permissions to app user only.
+const PUBLISHED_OSCAL_DIR_NAME = 'Published_OSCAL';
+const PUBLISHED_SOA_SAFE_FILENAME = /^[a-zA-Z0-9_.-]+\.json$/;
+const PUBLISHED_SOA_MAX_BODY_MB = 10;
+
+function getPublishedSoaDir() {
+  return path.join(__dirname, PUBLISHED_OSCAL_DIR_NAME);
+}
+
+function ensurePublishedOscalDir() {
+  const dir = getPublishedSoaDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o750 });
+    migratePublishedSoaFromConfigDir();
+  }
+  return dir;
+}
+
+function migratePublishedSoaFromConfigDir() {
+  try {
+    const oldDir = path.join(getConfigDir(), 'published-soa');
+    if (!fs.existsSync(oldDir) || !fs.statSync(oldDir).isDirectory()) return;
+    const newDir = getPublishedSoaDir();
+    const entries = fs.readdirSync(oldDir, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.isFile() && e.name.endsWith('.json') && isSafePublishedSoaFilename(e.name)) {
+        const src = path.join(oldDir, e.name);
+        const dest = path.join(newDir, e.name);
+        if (!fs.existsSync(dest)) {
+          fs.copyFileSync(src, dest);
+          console.log(`📂 Migrated published SOA file to Published_OSCAL: ${e.name}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Migration from config/published-soa skipped:', err.message);
+  }
+}
+
+function isSafePublishedSoaFilename(name) {
+  return typeof name === 'string' && name.length > 0 && PUBLISHED_SOA_SAFE_FILENAME.test(name) && !name.includes('..');
+}
+
+// List stored published SOA/CCM JSON files
+app.get('/api/settings/published-soa/files', authenticate, (req, res) => {
+  try {
+    const dir = ensurePublishedOscalDir();
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const files = entries
+      .filter((e) => e.isFile() && e.name.endsWith('.json') && isSafePublishedSoaFilename(e.name))
+      .map((e) => {
+        const fullPath = path.join(dir, e.name);
+        let size = 0;
+        try {
+          size = fs.statSync(fullPath).size;
+        } catch (_) { /* ignore */ }
+        return { name: e.name, size };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ files });
+  } catch (error) {
+    console.error('❌ Error listing published-soa files:', error.message);
+    res.status(500).json({ error: 'Failed to list stored files', details: error.message });
+  }
+});
+
+// Upload published SOA/CCM JSON file (base64 body)
+app.post('/api/settings/published-soa/upload', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), (req, res) => {
+  try {
+    const { filename, content } = req.body || {};
+    if (!filename || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Missing filename or content (base64)' });
+    }
+    if (!isSafePublishedSoaFilename(filename)) {
+      return res.status(400).json({ error: 'Invalid filename; use only .json files with safe names (letters, numbers, dots, underscores, hyphens)' });
+    }
+    const dir = ensurePublishedOscalDir();
+    let buf;
+    try {
+      buf = Buffer.from(content, 'base64');
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid base64 content' });
+    }
+    if (buf.length > PUBLISHED_SOA_MAX_BODY_MB * 1024 * 1024) {
+      return res.status(400).json({ error: `File too large (max ${PUBLISHED_SOA_MAX_BODY_MB}MB)` });
+    }
+    const filePath = path.join(dir, filename);
+    fs.writeFileSync(filePath, buf, 'utf8');
+    console.log(`✅ Published SOA file saved: ${filename}`);
+    res.json({ success: true, filename });
+  } catch (error) {
+    console.error('❌ Error uploading published-soa file:', error.message);
+    res.status(500).json({ error: 'Failed to save file', details: error.message });
+  }
+});
+
+// Serve a stored published SOA/CCM file (for Multi-Report Comparison)
+app.get('/api/published-soa/:filename', optionalAuth, (req, res) => {
+  try {
+    const { filename } = req.params;
+    if (!isSafePublishedSoaFilename(filename)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    const dir = getPublishedSoaDir();
+    const filePath = path.join(dir, filename);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      console.warn('📂 Published SOA file not found:', { filename, dir, filePath, dirExists: fs.existsSync(dir) });
+      return res.status(404).json({ error: 'File not found' });
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.sendFile(path.resolve(filePath));
+  } catch (error) {
+    console.error('❌ Error serving published-soa file:', error.message);
+    res.status(500).json({ error: 'Failed to serve file', details: error.message });
+  }
+});
+
+// Serve the configured baseline report (Multi-Report Comparison) – always resolved server-side
+app.get('/api/baseline-report', optionalAuth, async (req, res) => {
+  try {
+    const config = loadConfig();
+    const url = config.publishedSoaUrl || '';
+    if (!url.trim()) {
+      return res.status(404).json({ error: 'No published report URL configured' });
+    }
+    if (url.startsWith('/api/published-soa/')) {
+      const filename = url.replace(/^\/api\/published-soa\//, '').trim();
+      if (!isSafePublishedSoaFilename(filename)) {
+        return res.status(400).json({ error: 'Invalid filename in config' });
+      }
+      const dir = getPublishedSoaDir();
+      const filePath = path.resolve(path.join(dir, filename));
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        console.warn('📂 Baseline file not found:', { filename, filePath });
+        return res.status(404).json({ error: 'File not found' });
+      }
+      res.setHeader('Content-Type', 'application/json');
+      return res.sendFile(filePath);
+    }
+    const urlValidation = await validateUrl(url, {
+      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+    });
+    if (!urlValidation.valid) {
+      return res.status(400).json({ error: 'Invalid or blocked URL', details: urlValidation.error });
+    }
+    const axios = (await import('axios')).default;
+    const resp = await axios.get(urlValidation.url, {
+      responseType: 'json',
+      timeout: 30000,
+      headers: { Accept: 'application/json' },
+    });
+    res.setHeader('Content-Type', 'application/json');
+    res.json(resp.data);
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return res.status(404).json({ error: 'Published report not found at URL' });
+    }
+    console.error('❌ Error serving baseline report:', error.message);
+    res.status(500).json({ error: 'Failed to fetch published report', details: error.message });
   }
 });
 
@@ -2000,10 +2228,10 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
         ...existingConfig.aiConfig,
         ...incomingConfig.aiConfig
       },
-      // Explicitly include publishedSoaUrl (even if empty string)
-      publishedSoaUrl: incomingConfig.publishedSoaUrl !== undefined 
-        ? incomingConfig.publishedSoaUrl 
-        : existingConfig.publishedSoaUrl || ''
+      // Explicitly include publishedSoaUrl from request (GitHub URL, /api/published-soa/filename.json, or empty)
+      publishedSoaUrl: incomingConfig.publishedSoaUrl !== undefined
+        ? (typeof incomingConfig.publishedSoaUrl === 'string' ? incomingConfig.publishedSoaUrl.trim() : String(incomingConfig.publishedSoaUrl || ''))
+        : (existingConfig.publishedSoaUrl || '')
     };
     
     console.log('💾 Received incoming config - publishedSoaUrl:', incomingConfig.publishedSoaUrl);
@@ -2019,9 +2247,15 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
         details: validation.errors 
       });
     }
+
+    // Store new secrets in pass and replace with pointers for persist
+    const { config: toSave, passErrors } = prepareConfigWithPassPointers(newConfig, existingConfig);
+    if (passErrors.length > 0) {
+      console.warn('⚠️ Pass insert warnings for settings:', passErrors);
+    }
     
     // Save configuration with disk verification
-    const saveResult = await saveConfig(newConfig);
+    const saveResult = await saveConfig(toSave);
     
     if (saveResult.success) {
       console.log('✅ Settings saved successfully');
@@ -2039,6 +2273,9 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
           configPath: saveResult.configPath
         }
       };
+      if (passErrors.length > 0) {
+        response.passWarnings = passErrors;
+      }
       
       // Include discrepancies if verification found issues
       if (saveResult.discrepancies) {
@@ -4618,8 +4855,8 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
   try {
     const { provider = 'ollama', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
     
-    // Load config for maxTokens settings
-    const config = await loadConfig();
+    // Load config for maxTokens and fallback credentials (resolved from pass when stored there)
+    const config = getResolvedConfig();
     const maxTokensConfig = config.aiConfig?.maxTokens || { connectionTest: 10, controlGeneration: 150, general: 512 };
     
     console.log(`🔍 Testing ${provider} connection...`);
@@ -5011,7 +5248,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         errorDetails = {
           code: error.code,
           message: error.message,
-          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/run-install-ollama-on-instance.sh then scripts/fix-ollama-listen-address.sh on the Ollama instance.'
+          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/run-install-ollama-on-instance.sh then scripts/debug/fix-ollama-listen-address.sh on the Ollama instance.'
         };
       } else if (error.response) {
         errorMessage = `AI Engine returned error ${error.response.status}`;
