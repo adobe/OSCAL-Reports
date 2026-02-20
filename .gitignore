@@ -18,6 +18,7 @@ build/
 config/app/config.json
 config/app/users.json
 config/app/okta_oidc_state.json
+backend/okta-debug.ndjson
 backend/auth/users.json
 backend/config.json
 credentials.txt

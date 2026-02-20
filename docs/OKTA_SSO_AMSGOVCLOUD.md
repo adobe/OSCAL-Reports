@@ -71,16 +71,16 @@ To get **role inheritance from Okta groups**, the authorization server must incl
    - **Include in token type:** Access Token (and ID token if you want).
    - **Value type:** Groups.
    - **Filter:** e.g. `.*` for all groups, or a regex for specific groups (e.g. `^OSCAL-`).
-4. **Scopes** tab: Ensure a scope (e.g. `groups`) includes this claim, and that your Access Policy grants that scope to the client.
-5. In your **Application** (from Step 1), under Sign-on or Grant type, ensure the app is configured to use this Authorization Server (so the token request uses it).
+4. When adding the claim, set **Include in** to **Always** so the claim is in the token without requiring a separate `groups` scope (avoids "One or more scopes are not configured").
+5. In your **Application** (from Step 1), ensure it uses this Authorization Server.
 
 ### Option B: Default org authorization server
 
 - With the **default** org server, you can often add a **groups** claim to the **ID token** only (not the access token). Add a claim as above and include it in the ID token. The OSCAL app reads groups from both access and ID tokens, so ID token groups will work.
 
-### Ensure scope includes groups
+### Avoid "One or more scopes are not configured"
 
-- When the OSCAL app has group-to-role mapping or “Sync role from Okta groups” enabled, it requests the `groups` scope automatically. In Okta, ensure the scope that contains the `groups` claim is granted by your Access Policy for this client.
+- The app does **not** request a `groups` scope by default. In Okta, set the `groups` claim to **Always** include in the token (Claims → groups → Include in: Always). Then you do not need a `groups` scope and will not see that error.
 
 ---
 
@@ -130,6 +130,7 @@ To get **role inheritance from Okta groups**, the authorization server must incl
 
 | Issue | Where to check |
 |------|-----------------|
+| **"One or more scopes are not configured for the authorization server resource"** | Set the `groups` claim in Okta to **Always** include in the token (no `groups` scope). The app only requests `openid profile email` by default. |
 | “Okta sign-in is not configured” | OSCAL app: Settings → SSO → OAuth and Okta enabled; Okta Domain and Client ID set. |
 | Redirect URI mismatch | Okta app Callback URI and OSCAL Redirect URI must be exactly `https://oscal.amsgovcloud.com.au/auth/okta/callback`. |
 | Role not updating from groups | Okta: Authorization Server has `groups` claim; scope that includes groups is granted. OSCAL: “Sync role from Okta groups” on; group → role mapping has correct Okta group names. |
