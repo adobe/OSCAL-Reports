@@ -804,6 +804,26 @@ function SSOIntegration({ onClose, embedded = false }) {
                       disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
                     />
                   </div>
+                  <div className="form-group">
+                    <label>Redirect URI (callback URL)</label>
+                    <input
+                      type="url"
+                      className="form-control"
+                      placeholder="https://your-app-domain/auth/okta/callback"
+                      value={oauthConfig.providers.okta.redirectUri || ''}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oauthConfig.providers.okta, redirectUri: e.target.value.trim() }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
+                    />
+                    <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
+                      Must match the Sign-in redirect URI in your Okta app and the URL where users access this app (e.g. https://oscal.amsgovcloud.com.au/auth/okta/callback). Leave blank to use current browser origin.
+                    </small>
+                  </div>
                 </div>
 
                 <div className="config-group" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
