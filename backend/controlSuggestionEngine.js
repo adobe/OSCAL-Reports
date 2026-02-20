@@ -9,7 +9,7 @@
  */
 
 import { generateImplementationWithAI } from './aiModelRouter.js';
-import { loadConfig } from './configManager.js';
+import { getResolvedConfig } from './configManager.js';
 
 /**
  * Helper function to truncate implementation text to 250 characters
@@ -178,7 +178,7 @@ export async function suggestControlImplementation(control, existingControls = [
   // Load organization name from config for AI-generated message
   let organizationName = 'Adobe'; // Default fallback
   try {
-    const config = await loadConfig();
+    const config = getResolvedConfig();
     organizationName = config.aiConfig?.organizationName || 'Adobe';
   } catch (error) {
     // Use default if config load fails

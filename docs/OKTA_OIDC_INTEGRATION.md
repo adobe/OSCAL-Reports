@@ -1,6 +1,8 @@
 # Okta OIDC Integration Guide
 
-This guide walks you through integrating [Keekar's OSCAL SOA/SSP/CCM Generator](https://keekar.3utilities.com/) with Okta for sign-in and optional role mapping from Okta groups.
+This guide walks you through integrating the OSCAL SOA/SSP/CCM Generator with Okta for sign-in and optional role mapping from Okta groups.
+
+**For the deployment at https://oscal.amsgovcloud.com.au/**, use the step-by-step guide: [OKTA_SSO_AMSGOVCLOUD.md](OKTA_SSO_AMSGOVCLOUD.md).
 
 ---
 
@@ -130,7 +132,7 @@ To map Okta groups to app roles (Platform Admin, Assessor, User):
 3. **Default role for new users:** e.g. **User** (used when no group matches or groups claim is missing).
 4. Save settings.
 
-The app reads `profile.groups` from the userinfo response (or token) and resolves the highest matching role.
+The app reads groups from the **userinfo** response and from the **access token** and **ID token** (JWT payload), then resolves the highest matching role. Okta often puts groups in the token rather than userinfo; the backend merges all sources automatically.
 
 ---
 

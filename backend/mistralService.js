@@ -11,7 +11,7 @@
 import axios from 'axios';
 import http from 'http';
 import https from 'https';
-import { loadConfig } from './configManager.js';
+import { getResolvedConfig } from './configManager.js';
 import { logAIInteraction, logAIError } from './aiLogger.js';
 
 // AWS SDK imports (lazy loaded when needed)
@@ -37,7 +37,7 @@ export async function loadMistralConfig() {
   mistralConfig = null;
   
   try {
-    const config = await loadConfig();
+    const config = getResolvedConfig();
     
     // Priority 1: Check Settings AI Config (highest priority - user configured)
     let aiUrl = null;

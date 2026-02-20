@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.1] - 2025-02-20
+
+### Release Notes
+- **Status**: Released
+- **Breaking Changes**: None
+- **Backward Compatible**: Yes
+- **Focus**: Pass-backed sensitive configuration (secrets in pass, pointers in config)
+
+### Added
+
+#### Pass-backed sensitive configuration
+- **Secrets in pass, pointers in config**
+  - SSO Integration: All OAuth client secrets (Azure, Google, Okta, GitHub) stored in [pass](https://www.passwordstore.org/); `config.json` holds only pointers (e.g. `{ "_pass": "OSCAL/sso-oauth-azure-client-secret" }`).
+  - Messaging: SMTP password and Slack webhook URL stored in pass (`OSCAL/smtp-password`, `OSCAL/slack-webhook-url`).
+  - AI Integration: API token and AWS Bedrock credentials stored in pass (`OSCAL/ai-api-token`, `OSCAL/ai-aws-access-key-id`, `OSCAL/ai-aws-secret-access-key`).
+  - Backend resolves pointers at runtime via `getResolvedConfig()`; GET APIs return raw config (pointers or masked) so the client never receives resolved secrets.
+  - New modules: `backend/utils/passResolver.js`, `backend/utils/sensitiveConfigKeys.js`. Optional env: `OSCAL_PASS_DISABLED=1` to skip pass (local dev), `PASSWORD_STORE_DIR` for store location.
+
+### Documentation
+- **DEPLOYMENT.md**: New "Sensitive settings and pass" section with pass entry table and deployment notes (local, TrueNAS/Docker, EC2).
+- **ARCHITECTURE.md**: New "Pass-backed sensitive config" subsection under Configuration Security.
+- **config.json.example**: Sensitive fields use pointer examples.
+
+---
+
 ## [1.7.0] - 2025-02-05
 
 ### Release Notes

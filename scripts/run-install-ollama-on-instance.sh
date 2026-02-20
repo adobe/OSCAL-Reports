@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
 SSH_USER="${SSH_USER:-ec2-user}"
 INSTALL_SCRIPT="$REPO_ROOT/scripts/install-ollama-and-models.sh"
-FIX_LISTEN_SCRIPT="$REPO_ROOT/scripts/fix-ollama-listen-address.sh"
+FIX_LISTEN_SCRIPT="$REPO_ROOT/scripts/debug/fix-ollama-listen-address.sh"
 
 # Load AWS credentials from Pass if not already set (same entry as run-with-aws-pass.sh)
 load_aws_if_needed() {
@@ -102,7 +102,7 @@ if [ "\$avail_mb" -lt ${OLLAMA_MIN_FREE_MB} ]; then
   echo "After cleanup: \$(df -h / | awk 'NR==2{print \$4}') free"
   avail_mb=\$(df -m / | awk 'NR==2{print \$4}')
   if [ "\$avail_mb" -lt ${OLLAMA_MIN_FREE_MB} ]; then
-    echo "ERROR: Still only \${avail_mb} MB free. Free more space (e.g. remove an Ollama model: ollama rm <name>) or replace the instance (scripts/replace-ollama-instance-ami.sh)." >&2
+    echo "ERROR: Still only \${avail_mb} MB free. Free more space (e.g. remove an Ollama model: ollama rm <name>) or replace the instance (scripts/debug/replace-ollama-instance-ami.sh)." >&2
     exit 1
   fi
 else
