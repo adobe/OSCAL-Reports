@@ -137,4 +137,13 @@ To get **role inheritance from Okta groups**, the authorization server must incl
 | User not found / 403 after Okta login | Enable JIT provisioning in Settings → SSO, or add the user’s email to **Users** (Platform Admin). |
 | Invalid or expired state | Complete sign-in within a few minutes; try “Sign in with Okta” again from the login page. |
 
+| **"The client secret supplied for a confidential client is invalid"** | Okta is rejecting the client secret. In **Okta Admin** (same org as Okta Domain, e.g. `aemgovau.oktapreview.com`): (1) **Applications** → your OIDC app — confirm **Client ID** matches. (2) **Client secret** must match exactly: copy from Okta or regenerate and update app config / `OSCAL_OKTA_CLIENT_SECRET` on the server. (3) **Sign-in redirect URIs** must include `https://oscal.amsgovcloud.com.au/auth/okta/callback`. On EC2, set secret via env `OSCAL_OKTA_CLIENT_SECRET` or ensure config has the correct secret. |
+
+### How secrets are stored
+
+- **With pass:** If the server has [pass](https://www.passwordstore.org/) and the store is available, saving the Okta client secret in the GUI stores it in pass and only a `_pass` pointer is written to config. At runtime the app resolves the pointer and uses the secret.
+- **Without pass (e.g. EC2):** If pass is not installed or not available, saving the client secret in the GUI stores it as **plaintext in config** so the app still works. The API may return a warning that the secret was stored in config.
+- **Env override:** Setting `OSCAL_OKTA_CLIENT_SECRET` on the server overrides the config/pass value and is useful when pass is not set up (e.g. systemd `Environment=OSCAL_OKTA_CLIENT_SECRET=...`).
+- **Okta domain:** You can enter the domain with or without `https://` in the GUI; the app normalizes it to hostname only (e.g. `aemgovau.oktapreview.com`) when saving.
+
 For more detail on Okta OIDC and groups, see [OKTA_OIDC_INTEGRATION.md](OKTA_OIDC_INTEGRATION.md).

@@ -174,7 +174,7 @@ const Login = () => {
             
             <div className="beta-release-banner">
               <a 
-                href="https://keekar.3utilities.com" 
+                href="https://oscal.amsgovcloud.com.au/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="beta-link"

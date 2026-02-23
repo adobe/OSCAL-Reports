@@ -173,12 +173,14 @@ function prepareConfigWithPassPointers(configToSave, existingRaw) {
       const existing = getByPath(existingRaw, keyPath);
       setByPath(result, keyPath, existing !== undefined ? existing : { _pass: passEntry });
     } else if (typeof incoming === 'string' && incoming.trim() !== '') {
-      const insertResult = passInsert(passEntry, incoming.trim());
+      const trimmed = incoming.trim();
+      const insertResult = passInsert(passEntry, trimmed);
       if (insertResult.success) {
         setByPath(result, keyPath, { _pass: passEntry });
       } else {
-        passErrors.push(`${keyPath}: ${insertResult.error}`);
-        setByPath(result, keyPath, getByPath(existingRaw, keyPath) ?? { _pass: passEntry });
+        // Pass unavailable (e.g. not installed on EC2): store plaintext in config so the app works
+        setByPath(result, keyPath, trimmed);
+        passErrors.push(`${keyPath}: pass unavailable (${insertResult.error}); secret stored in config`);
       }
     }
     // else: already a pointer or other type; leave as-is (setByPath from existing if needed)

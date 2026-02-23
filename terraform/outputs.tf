@@ -52,6 +52,16 @@ output "alb_url_green" {
   value       = var.alb_green_hostname != null ? (local.alb_cert_arn != null ? "https://${var.alb_green_hostname}" : "http://${var.alb_green_hostname}") : (local.alb_cert_arn != null ? "https://${aws_lb.main.dns_name}" : "http://${aws_lb.main.dns_name}")
 }
 
+output "alb_target_group_green_arn" {
+  description = "ARN of the Green target group (for health checks and 503 diagnostics)"
+  value       = aws_lb_target_group.green.arn
+}
+
+output "alb_target_group_blue_arn" {
+  description = "ARN of the Blue target group (for health checks and 503 diagnostics)"
+  value       = aws_lb_target_group.blue.arn
+}
+
 output "oscal_green_instance_id" {
   description = "EC2 instance ID for OSCAL Green (port 3019)"
   value       = aws_instance.oscal_green.id

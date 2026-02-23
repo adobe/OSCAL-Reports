@@ -11,6 +11,10 @@ import { execSync, spawnSync } from 'child_process';
 
 const PASS_DISABLED = process.env.OSCAL_PASS_DISABLED === '1' || process.env.OSCAL_PASS_DISABLED === 'true';
 
+/** Default pass store for OSCAL service user on EC2/Linux when systemd does not set HOME/PASSWORD_STORE_DIR */
+const LINUX_SVC_HOME = '/var/lib/svc_ams-oscal';
+const LINUX_PASS_STORE = `${LINUX_SVC_HOME}/.password-store`;
+
 /**
  * Check if a value is a _pass pointer object.
  * @param {*} v
@@ -20,9 +24,13 @@ function isPassPointer(v) {
   return v && typeof v === 'object' && typeof v._pass === 'string' && v._pass.trim() !== '';
 }
 
+/** Pass entries that are OAuth client secrets: often stored with label on first line, secret on last. */
+const OAUTH_CLIENT_SECRET_ENTRIES = ['OSCAL/sso-oauth-okta-client-secret', 'OSCAL/sso-oauth-azure-client-secret', 'OSCAL/sso-oauth-google-client-secret', 'OSCAL/sso-oauth-github-client-secret'];
+
 /**
- * Run `pass show <entry>` and return first line of output, or empty string on failure.
- * Does not log the secret. Logs only "resolved pass entry" or "missing entry" (no value).
+ * Run `pass show <entry>` and return the secret line.
+ * For OAuth client secret entries, uses the last non-empty line if multiple lines (label + secret).
+ * Otherwise returns the first line. Does not log the secret.
  *
  * @param {string} entry - Pass entry name (e.g. OSCAL/smtp-password)
  * @returns {string}
@@ -31,9 +39,12 @@ function passShow(entry) {
   if (PASS_DISABLED) {
     return '';
   }
-  const storeDir = process.env.PASSWORD_STORE_DIR;
   const env = { ...process.env };
-  if (storeDir) {
+  let storeDir = process.env.PASSWORD_STORE_DIR;
+  if (!storeDir && process.platform === 'linux') {
+    env.HOME = process.env.HOME || LINUX_SVC_HOME;
+    env.PASSWORD_STORE_DIR = LINUX_PASS_STORE;
+  } else if (storeDir) {
     env.PASSWORD_STORE_DIR = storeDir;
   }
   try {
@@ -42,8 +53,12 @@ function passShow(entry) {
       env,
       stdio: ['pipe', 'pipe', 'pipe']
     });
-    const firstLine = out.split('\n')[0] || '';
-    return firstLine.trim();
+    const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return '';
+    if (lines.length > 1 && OAUTH_CLIENT_SECRET_ENTRIES.includes(entry)) {
+      return lines[lines.length - 1];
+    }
+    return lines[0];
   } catch (err) {
     if (err.status !== 1 && err.code !== 'ENOENT') {
       console.warn(`[pass] Failed to resolve entry "${entry}": ${err.message}`);
@@ -92,34 +107,60 @@ export function resolvePassPointers(obj) {
 
 /**
  * Insert or update a pass entry with the given secret.
- * Uses `pass insert -m` so the value is the only line (no trailing newline from echo).
+ * Uses `pass insert -m` so the value is the only line.
+ * Newlines are stripped (not replaced with space) so the stored value is a single line;
+ * passShow() returns the first line, so this ensures we store exactly what we'll read.
  *
  * @param {string} entry - Pass entry name (e.g. OSCAL/smtp-password)
- * @param {string} value - Secret value (single line; avoid newlines)
+ * @param {string} value - Secret value (single line; newlines are stripped)
  * @returns {{ success: boolean, error?: string }}
  */
 export function passInsert(entry, value) {
   if (PASS_DISABLED) {
     return { success: false, error: 'Pass is disabled (OSCAL_PASS_DISABLED)' };
   }
-  const storeDir = process.env.PASSWORD_STORE_DIR;
   const env = { ...process.env };
-  if (storeDir) {
+  let storeDir = process.env.PASSWORD_STORE_DIR;
+  // On Linux (e.g. EC2 systemd), if PASSWORD_STORE_DIR not set, use service user's store so GUI save works
+  if (!storeDir && process.platform === 'linux') {
+    env.HOME = process.env.HOME || LINUX_SVC_HOME;
+    env.PASSWORD_STORE_DIR = LINUX_PASS_STORE;
+    storeDir = LINUX_PASS_STORE;
+  } else if (storeDir) {
     env.PASSWORD_STORE_DIR = storeDir;
   }
+  // Strip newlines so we store one line; avoids corrupting secrets when pasted with trailing newline
+  const singleLine = (value || '').replace(/\r?\n/g, '').trim();
   try {
     const proc = spawnSync('pass', ['insert', '-m', entry], {
-      input: (value || '').replace(/\r?\n/g, ' ').trim(),
+      input: singleLine,
       encoding: 'utf8',
       env,
       stdio: ['pipe', 'pipe', 'pipe']
     });
     if (proc.status !== 0) {
       const err = (proc.stderr || proc.error?.message || 'Unknown error').trim();
+      console.warn('[pass] insert failed', {
+        'service.name': 'oscal-report-generator',
+        'event.action': 'pass_insert_failed',
+        'event.outcome': 'failure',
+        entry,
+        error: err,
+        hasPasswordStoreDir: !!process.env.PASSWORD_STORE_DIR,
+        hasStoreDirInEnv: !!storeDir
+      });
       return { success: false, error: err };
     }
     return { success: true };
   } catch (err) {
+    console.warn('[pass] insert threw', {
+      'service.name': 'oscal-report-generator',
+      'event.action': 'pass_insert_error',
+      'event.outcome': 'failure',
+      entry,
+      error: err.message,
+      hasPasswordStoreDir: !!process.env.PASSWORD_STORE_DIR
+    });
     return { success: false, error: err.message };
   }
 }
