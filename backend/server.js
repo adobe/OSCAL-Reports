@@ -33,6 +33,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 import { 
   initializeDefaultUsers, 
   authenticateUser, 
@@ -863,15 +864,31 @@ function base64UrlDecode(str) {
   return Buffer.from(padded, 'base64');
 }
 
-/** Create signed state payload so any instance can validate (no server-side store needed). */
-function createSignedOktaState(redirectUri, clientSecret) {
-  const payload = { redirectUri: redirectUri || '', createdAt: Date.now(), rnd: crypto.randomBytes(8).toString('hex') };
+/** Generate PKCE code_verifier (43–128 chars per RFC 7636). */
+function generateCodeVerifier() {
+  return base64UrlEncode(crypto.randomBytes(32));
+}
+
+/** Compute PKCE code_challenge = base64url(SHA256(ASCII(code_verifier))). */
+function computeCodeChallenge(codeVerifier) {
+  const hash = crypto.createHash('sha256').update(codeVerifier, 'utf8').digest();
+  return base64UrlEncode(hash);
+}
+
+/** Create signed state payload so any instance can validate (no server-side store needed). Includes code_verifier for PKCE when Okta requires it. */
+function createSignedOktaState(redirectUri, clientSecret, codeVerifier) {
+  const payload = {
+    redirectUri: redirectUri || '',
+    createdAt: Date.now(),
+    rnd: crypto.randomBytes(8).toString('hex'),
+    ...(codeVerifier ? { codeVerifier } : {})
+  };
   const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload), 'utf8'));
   const sig = crypto.createHmac('sha256', clientSecret || '').update(payloadB64).digest();
   return `${payloadB64}.${base64UrlEncode(sig)}`;
 }
 
-/** Verify signed state; returns { redirectUri } or null. */
+/** Verify signed state; returns { redirectUri, codeVerifier? } or null. */
 function verifySignedOktaState(state, clientSecret) {
   if (!state || typeof state !== 'string' || !clientSecret) return null;
   const dot = state.indexOf('.');
@@ -885,7 +902,10 @@ function verifySignedOktaState(state, clientSecret) {
     const payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8'));
     if (!payload || typeof payload.createdAt !== 'number') return null;
     if (Date.now() - payload.createdAt > OKTA_STATE_TTL_MS) return null;
-    return { redirectUri: payload.redirectUri || '' };
+    return {
+      redirectUri: payload.redirectUri || '',
+      ...(payload.codeVerifier ? { codeVerifier: payload.codeVerifier } : {})
+    };
   } catch (_) {
     return null;
   }
@@ -900,7 +920,11 @@ function loadOktaStateFromFile() {
     if (data && typeof data === 'object') {
       for (const [s, entry] of Object.entries(data)) {
         if (entry?.createdAt && (now - entry.createdAt) < OKTA_STATE_TTL_MS) {
-          oktaOidcStateStore.set(s, { createdAt: entry.createdAt, redirectUri: entry.redirectUri || '' });
+          oktaOidcStateStore.set(s, {
+            createdAt: entry.createdAt,
+            redirectUri: entry.redirectUri || '',
+            ...(entry.codeVerifier ? { codeVerifier: entry.codeVerifier } : {})
+          });
         }
       }
     }
@@ -917,7 +941,11 @@ function persistOktaState() {
     const obj = {};
     for (const [s, data] of oktaOidcStateStore.entries()) {
       if (data?.createdAt && (now - data.createdAt) < OKTA_STATE_TTL_MS) {
-        obj[s] = { createdAt: data.createdAt, redirectUri: data.redirectUri || '' };
+        obj[s] = {
+          createdAt: data.createdAt,
+          redirectUri: data.redirectUri || '',
+          ...(data.codeVerifier ? { codeVerifier: data.codeVerifier } : {})
+        };
       }
     }
     fs.writeFileSync(OKTA_STATE_FILE, JSON.stringify(obj), 'utf8');
@@ -1006,6 +1034,17 @@ function decodeGroupsFromJwt(jwtString) {
 }
 
 /**
+ * Get effective Okta client secret: from config (after pass resolution) or from env OSCAL_OKTA_CLIENT_SECRET.
+ * Use this so EC2/containers can set the secret via env when pass is not available.
+ */
+function getEffectiveOktaClientSecret(okta) {
+  if (!okta) return '';
+  const fromConfig = (okta.clientSecret != null && typeof okta.clientSecret === 'string') ? okta.clientSecret.trim() : '';
+  const fromEnv = (process.env.OSCAL_OKTA_CLIENT_SECRET || '').trim();
+  return fromConfig || fromEnv;
+}
+
+/**
  * Start Okta OIDC login: redirect browser to Okta authorization URL
  * Uses OIDC discovery when possible so the correct authorize URL is used (avoids 404).
  */
@@ -1018,23 +1057,21 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
       const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
+    // Client secret: config (pass-resolved) or env OSCAL_OKTA_CLIENT_SECRET (for EC2 when pass not set up)
+    const clientSecret = getEffectiveOktaClientSecret(okta);
+    if (!clientSecret) {
+      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      return res.redirect(302, `${back}/?error=okta_not_configured`);
+    }
     // Redirect URI: env override (for servers behind proxy) > Settings → SSO > request-derived.
     const envRedirect = (process.env.OSCAL_OKTA_REDIRECT_URI || '').trim().replace(/\/+$/, '');
     const configuredRedirect = (okta.redirectUri || '').trim();
     let redirectUri = envRedirect || configuredRedirect || `${req.protocol}://${req.get('host')}/auth/okta/callback`;
     redirectUri = redirectUri.replace(/\/+$/, ''); // Okta requires exact match; no trailing slash
-    // #region agent log
-    const cid = (okta.clientId || '');
-    const logPayload = {location:'server.js:Okta authorize',message:'redirect_uri and client_id sent to Okta',data:{configuredRedirect,redirectUri,clientIdMasked:cid.length>=10?cid.slice(0,6)+'...'+cid.slice(-4):'(short)',redirectUriLength:redirectUri.length,redirectUriLastChar:redirectUri.slice(-1)},timestamp:Date.now(),hypothesisId:'H1_H2_H3'};
-    fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logPayload)}).catch(()=>{});
-    try { fs.appendFileSync(path.join(__dirname,'okta-debug.ndjson'), JSON.stringify(logPayload) + '\n'); } catch (_) {}
-    console.log('[OKTA_DEBUG] ' + JSON.stringify(logPayload));
-    // #endregion
-    // Signed state works across server restarts and load-balanced instances; no server-side store needed
-    const clientSecret = (okta.clientSecret || '').trim();
-    const state = clientSecret
-      ? createSignedOktaState(redirectUri, clientSecret)
-      : (() => { const s = crypto.randomBytes(16).toString('hex'); oktaOidcStateStore.set(s, { createdAt: Date.now(), redirectUri }); persistOktaState(); return s; })();
+    // PKCE: required when Okta has "Require PKCE" enabled; harmless when not required
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = computeCodeChallenge(codeVerifier);
+    const state = createSignedOktaState(redirectUri, clientSecret, codeVerifier);
     const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const authServerId = (okta.authServerId || '').trim();
     // Use only scopes configured in Okta (do not auto-add 'groups' — many Auth Servers don't have that scope; groups claim can be "Always" in Okta)
@@ -1044,13 +1081,25 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
       response_type: 'code',
       scope,
       redirect_uri: redirectUri,
-      state
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256'
     });
     let authorizeUrl;
     const discovery = await fetchOktaDiscovery(domain, authServerId);
     if (discovery?.authorization_endpoint) {
-      const sep = discovery.authorization_endpoint.includes('?') ? '&' : '?';
-      authorizeUrl = `${discovery.authorization_endpoint}${sep}${params.toString()}`;
+      const ensureHost = (url, host) => {
+        try {
+          const u = new URL(url);
+          u.host = host;
+          return u.toString();
+        } catch (_) {
+          return url;
+        }
+      };
+      const authEndpoint = ensureHost(discovery.authorization_endpoint, domain);
+      const sep = authEndpoint.includes('?') ? '&' : '?';
+      authorizeUrl = `${authEndpoint}${sep}${params.toString()}`;
     } else {
       const oauth2Path = authServerId ? `oauth2/${authServerId}/v1` : 'oauth2/v1';
       authorizeUrl = `https://${domain}/${oauth2Path}/authorize?${params.toString()}`;
@@ -1074,11 +1123,12 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
     }
     const config = getResolvedConfig();
     const okta = config.ssoConfig?.oauth?.providers?.okta;
-    if (!okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim() || !okta?.clientSecret?.trim()) {
+    const clientSecret = getEffectiveOktaClientSecret(okta);
+    if (!okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim() || !clientSecret) {
       return res.status(400).json({ success: false, error: 'Okta OIDC is not configured.' });
     }
     // Prefer signed state (works across restarts and load-balanced instances)
-    let stateData = verifySignedOktaState(state, (okta.clientSecret || '').trim());
+    let stateData = verifySignedOktaState(state, clientSecret);
     if (!stateData) {
       stateData = oktaOidcStateStore.get(state);
       if (!stateData) {
@@ -1094,33 +1144,62 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
     }
     const redirectUri = (okta.redirectUri || '').trim() || stateData.redirectUri;
+    const codeVerifier = stateData.codeVerifier || '';
     const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const authServerId = (okta.authServerId || '').trim();
     let tokenUrl;
     let userinfoUrl;
     const discovery = await fetchOktaDiscovery(domain, authServerId);
     if (discovery?.token_endpoint && discovery?.userinfo_endpoint) {
-      tokenUrl = discovery.token_endpoint;
-      userinfoUrl = discovery.userinfo_endpoint;
+      // Use configured domain as host so we hit the same tenant we're configured for (Okta discovery can return a different host)
+      const ensureHost = (url, host) => {
+        try {
+          const u = new URL(url);
+          u.host = host;
+          return u.toString();
+        } catch (_) {
+          return url;
+        }
+      };
+      tokenUrl = ensureHost(discovery.token_endpoint, domain);
+      userinfoUrl = ensureHost(discovery.userinfo_endpoint, domain);
     } else {
       const oauth2Path = authServerId ? `oauth2/${authServerId}/v1` : 'oauth2/v1';
       tokenUrl = `https://${domain}/${oauth2Path}/token`;
       userinfoUrl = `https://${domain}/${oauth2Path}/userinfo`;
     }
+    const tokenBody = {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      client_id: okta.clientId,
+      client_secret: clientSecret
+    };
+    if (codeVerifier) {
+      tokenBody.code_verifier = codeVerifier;
+    }
     const tokenRes = await axios.post(
       tokenUrl,
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-        client_id: okta.clientId,
-        client_secret: okta.clientSecret
-      }).toString(),
+      new URLSearchParams(tokenBody).toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
     );
     const accessToken = tokenRes.data?.access_token;
     if (!accessToken) {
-      return res.status(401).json({ success: false, error: 'Okta did not return an access token.' });
+      const oktaError = tokenRes.data?.error_description || tokenRes.data?.error || '';
+      const hasSecret = !!clientSecret;
+      console.error('❌ Okta token response missing access_token:', {
+        'service.name': 'oscal-report-generator',
+        'event.action': 'okta_token_exchange_failed',
+        'event.outcome': 'failure',
+        oktaError: oktaError || '(none in body)',
+        status: tokenRes.status,
+        redirectUriMatch: redirectUri,
+        clientSecretConfigured: hasSecret
+      });
+      return res.status(401).json({
+        success: false,
+        error: oktaError || 'Okta did not return an access token.'
+      });
     }
     const userinfoRes = await axios.get(userinfoUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1175,13 +1254,29 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
       sessionToken: user.sessionToken
     });
   } catch (err) {
-    if (axios.isAxiosError(err) && err.response?.status === 400) {
+    if (axios.isAxiosError(err) && err.response) {
+      const status = err.response.status;
       const oktaError = err.response?.data?.error_description || err.response?.data?.error;
-      const message = oktaError || 'Okta token exchange failed. Code may be expired.';
-      return res.status(400).json({
-        success: false,
-        error: typeof message === 'string' ? message : 'Okta token exchange failed. Code may be expired.'
+      console.error('❌ Okta token exchange failed:', {
+        'service.name': 'oscal-report-generator',
+        'event.action': 'okta_token_exchange_failed',
+        oktaStatus: status,
+        oktaError: oktaError || err.response?.data,
+        message: err.message
       });
+      if (status === 400) {
+        const message = oktaError || 'Okta token exchange failed. Code may be expired.';
+        return res.status(400).json({
+          success: false,
+          error: typeof message === 'string' ? message : 'Okta token exchange failed. Code may be expired.'
+        });
+      }
+      if (status === 401) {
+        return res.status(401).json({
+          success: false,
+          error: oktaError || 'Okta rejected client (check Client ID and Client Secret).'
+        });
+      }
     }
     console.error('❌ Okta exchange-token error:', err);
     res.status(500).json({ success: false, error: err.message || 'Okta sign-in failed.' });
@@ -1811,7 +1906,12 @@ app.get('/api/sso/config', authenticate, (req, res) => {
  */
 app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
-    const ssoConfig = req.body;
+    const ssoConfig = typeof req.body === 'object' && req.body !== null ? JSON.parse(JSON.stringify(req.body)) : req.body;
+    // Normalize Okta domain: hostname only (no https:// or trailing slash) so it works like backend expects
+    const okta = ssoConfig?.oauth?.providers?.okta;
+    if (okta?.domain && typeof okta.domain === 'string') {
+      okta.domain = okta.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim() || okta.domain;
+    }
     const existingRaw = loadConfig();
     const currentConfig = { ...existingRaw, ssoConfig };
     const { config: toSave, passErrors } = prepareConfigWithPassPointers(currentConfig, existingRaw);
@@ -1852,57 +1952,100 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
 
 /**
  * Test SSO connection
+ * For Okta: full validation (all fields, redirect URI if provided, Okta discovery).
  */
 app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
     const { provider, config } = req.body;
-    
+
     if (process.env.NODE_ENV === 'development') {
       console.log(`🔍 Testing ${provider} SSO connection...`);
     }
-    
-    // This is a placeholder - actual implementation would test the connection
-    // For now, just validate that required fields are present
-    let isValid = false;
-    let errors = [];
-    
+
     if (provider === 'SAML') {
-      isValid = config.idpEntityId && config.idpSsoUrl && config.spEntityId;
+      const isValid = config.idpEntityId && config.idpSsoUrl && config.spEntityId;
+      const errors = [];
       if (!config.idpEntityId) errors.push('Missing IdP Entity ID');
       if (!config.idpSsoUrl) errors.push('Missing IdP SSO URL');
       if (!config.spEntityId) errors.push('Missing SP Entity ID');
-    } else {
-      // OAuth providers
-      const providerName = provider.toLowerCase().replace(' ', '');
-      const prov = config.providers?.[providerName];
-      isValid = prov?.clientId;
-      if (!prov?.clientId) errors.push('Missing Client ID');
-      if (providerName === 'okta') {
-        if (!prov?.domain?.trim()) {
-          isValid = false;
-          errors.push('Missing Okta Domain (e.g. your-domain.okta.com)');
+      if (isValid) {
+        res.json({ success: true, message: `${provider} configuration appears valid` });
+      } else {
+        res.json({ success: false, error: errors.join(', ') });
+      }
+      return;
+    }
+
+    const providerName = provider.toLowerCase().replace(' ', '');
+    const prov = config.providers?.[providerName];
+
+    if (providerName === 'okta' && prov) {
+      const errors = [];
+      let domain = (prov.domain && typeof prov.domain === 'string') ? prov.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim() : '';
+      if (!domain) {
+        errors.push('Missing Okta Domain (e.g. your-domain.okta.com)');
+      } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(domain) || !domain.includes('.')) {
+        errors.push('Okta Domain must be a valid hostname (e.g. your-domain.okta.com)');
+      }
+      const redirectUri = (prov.redirectUri && typeof prov.redirectUri === 'string') ? prov.redirectUri.trim() : '';
+      if (redirectUri) {
+        try {
+          const urlValidation = await validateUrl(redirectUri, {
+            allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+            allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+          });
+          if (!urlValidation.valid) {
+            errors.push('Invalid Redirect URI: ' + (urlValidation.error || 'URL blocked or invalid'));
+          } else if (process.env.NODE_ENV === 'production' && !urlValidation.url.startsWith('https://')) {
+            errors.push('Redirect URI must use HTTPS in production');
+          }
+        } catch (e) {
+          errors.push('Invalid Redirect URI: ' + (e.message || 'validation failed'));
         }
       }
+      const authServerId = (prov.authServerId && typeof prov.authServerId === 'string') ? prov.authServerId.trim() : '';
+      if (authServerId && !/^[a-zA-Z0-9_-]+$/.test(authServerId)) {
+        errors.push('Authorization Server ID may only contain letters, numbers, hyphens, and underscores');
+      }
+      const clientId = (prov.clientId && typeof prov.clientId === 'string') ? prov.clientId.trim() : '';
+      if (!clientId) errors.push('Missing Client ID');
+      const clientSecret = (prov.clientSecret && typeof prov.clientSecret === 'string') ? prov.clientSecret.trim() : '';
+      if (!clientSecret) errors.push('Missing Client Secret');
+
+      if (errors.length > 0) {
+        res.json({ success: false, error: errors.join('; ') });
+        return;
+      }
+
+      const discovery = await fetchOktaDiscovery(domain, authServerId || undefined);
+      if (!discovery) {
+        res.json({
+          success: false,
+          error: 'Okta discovery failed: invalid domain or Authorization Server ID, or could not reach Okta discovery endpoint.',
+        });
+        return;
+      }
+      const msg = discovery.token_endpoint && discovery.authorization_endpoint
+        ? 'Okta configuration is valid; discovery succeeded (authorization and token endpoints found).'
+        : 'Okta discovery succeeded.';
+      res.json({ success: true, message: msg });
+      return;
     }
-    
+
+    // Other OAuth providers: minimal presence check
+    const isValid = prov?.clientId;
+    const errors = [];
+    if (!prov?.clientId) errors.push('Missing Client ID');
     if (isValid) {
-      console.log(`✅ ${provider} test successful`);
-      res.json({ 
-        success: true,
-        message: `${provider} configuration appears valid` 
-      });
+      res.json({ success: true, message: `${provider} configuration appears valid` });
     } else {
-      console.log(`❌ ${provider} test failed:`, errors);
-      res.json({ 
-        success: false,
-        error: errors.join(', ') 
-      });
+      res.json({ success: false, error: errors.join(', ') });
     }
   } catch (error) {
     console.error('❌ SSO test error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: error.message 
+      error: error.message,
     });
   }
 });

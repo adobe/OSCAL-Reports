@@ -12,6 +12,10 @@
 #   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8
 #   SSH_KEY_FILE=/path/to/key.pem ./scripts/deploy-to-ec2.sh
 #
+# Blue vs Green: Only PORT differs (Blue=3020, Green=3019). Same unit file, S3 prefix (config/blue vs config/green),
+# and ec2_automation.env DEPLOYMENT_ROLE. If Blue fails to start, check journalctl (shown on health failure);
+# common causes: bad config/users, missing pass vault, or wrong PORT in unit (script now forces PORT per role).
+#
 # Terraform: All terraform commands (output, apply) use terraform/run-with-aws-pass.sh.
 #
 # Environment:
@@ -98,37 +102,67 @@ deploy_one() {
   local role="$2"
   local key="$3"
   local s3_bucket="$4"
+  local results_file="${5:-}"
   local port
   [ "$role" = "green" ] && port="3019" || port="3020"
 
   print_info "Deploying to $role at $ip (port $port)..."
 
-  # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass for that user (for tokens/credentials).
-  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
-    set -e
-    if ! getent group $SVC_GROUP >/dev/null 2>&1; then sudo groupadd -r $SVC_GROUP; fi
-    if ! id $SVC_USER >/dev/null 2>&1; then
-      sudo useradd -r -s /bin/bash -g $SVC_GROUP -d $SVC_HOME -m -c 'OSCAL service account' $SVC_USER
-      sudo chmod 700 $SVC_HOME
-    fi
-    sudo usermod -aG $SVC_GROUP $SSH_USER 2>/dev/null || true
-    command -v aws >/dev/null 2>&1 || sudo dnf install -y awscli 2>/dev/null || sudo yum install -y awscli 2>/dev/null || true
-    command -v git >/dev/null 2>&1 || sudo dnf install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null || true
-    command -v pass >/dev/null 2>&1 || { sudo dnf install -y epel-release 2>/dev/null; sudo dnf install -y pass gnupg2 2>/dev/null || sudo yum install -y pass gnupg2 2>/dev/null; }
-    if [ ! -d \"$SVC_HOME/.password-store\" ]; then
-      sudo -u $SVC_USER gpg --batch --no-tty --generate-key 2>/dev/null << GPGEOF || true
+  # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass (same logic as scripts/debug/install-pass-svc-oscal.sh).
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$SSH_USER" << 'REMOTEPASS' || true
+set -e
+REMOTE_SSH_USER="${1:-ec2-user}"
+SVC_USER="svc_ams-oscal"
+SVC_GROUP="oscal"
+SVC_HOME="/var/lib/svc_ams-oscal"
+export PATH="/usr/local/bin:$PATH"
+
+if ! getent group "$SVC_GROUP" >/dev/null 2>&1; then sudo groupadd -r "$SVC_GROUP"; fi
+if ! id "$SVC_USER" >/dev/null 2>&1; then
+  sudo useradd -r -s /bin/bash -g "$SVC_GROUP" -d "$SVC_HOME" -m -c "OSCAL service account" "$SVC_USER"
+  sudo chmod 700 "$SVC_HOME"
+fi
+sudo usermod -aG "$SVC_GROUP" "$REMOTE_SSH_USER" 2>/dev/null || true
+command -v aws >/dev/null 2>&1 || sudo dnf install -y awscli 2>/dev/null || sudo yum install -y awscli 2>/dev/null || true
+
+# --- Install dependencies (tree, pass, gnupg2, git, make) ---
+sudo dnf install -y tree 2>/dev/null || sudo yum install -y tree 2>/dev/null || true
+sudo dnf install -y --allowerasing gnupg2 2>/dev/null || sudo yum install -y gnupg2 2>/dev/null || true
+command -v gpg >/dev/null 2>&1 || { echo "Failed to install gpg"; exit 1; }
+command -v git >/dev/null 2>&1 || sudo dnf install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null || true
+command -v make >/dev/null 2>&1 || sudo dnf install -y make 2>/dev/null || sudo yum install -y make 2>/dev/null || true
+# Pass: package first, then from source (Amazon Linux 2023 often has no pass package)
+if ! command -v pass >/dev/null 2>&1; then
+  sudo dnf install -y pass 2>/dev/null || sudo yum install -y pass 2>/dev/null || true
+fi
+if ! command -v pass >/dev/null 2>&1; then
+  TMP_PASS=$(mktemp -d)
+  if git clone --depth 1 https://github.com/zx2c4/password-store.git "$TMP_PASS" 2>/dev/null; then :; elif git clone --depth 1 https://git.zx2c4.com/password-store "$TMP_PASS" 2>/dev/null; then :; else rm -rf "$TMP_PASS"; exit 1; fi
+  if [ -f "$TMP_PASS/Makefile" ]; then (cd "$TMP_PASS" && sudo make install PREFIX=/usr/local); fi
+  rm -rf "$TMP_PASS"
+fi
+command -v pass >/dev/null 2>&1 || { echo "Failed to install pass"; exit 1; }
+
+if [ ! -d "$SVC_HOME/.password-store" ]; then
+  sudo -u "$SVC_USER" env HOME="$SVC_HOME" gpg-agent --daemon 2>/dev/null || true
+  sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" gpg --batch --no-tty --yes --generate-key 2>/dev/null << 'GPGEOF'
 Key-Type: RSA
 Key-Length: 2048
-Name-Real: $SVC_USER
-Name-Email: $SVC_USER@localhost
+Name-Real: svc_ams-oscal
+Name-Email: svc_ams-oscal@localhost
 Expire-Date: 0
 %no-protection
 %commit
 GPGEOF
-      KEY_ID=\$(sudo -u $SVC_USER gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/ {print \$5; exit}')
-      if [ -n \"\$KEY_ID\" ]; then sudo -u $SVC_USER pass init \"\$KEY_ID\" 2>/dev/null || true; fi
-    fi
-  " 2>/dev/null || true
+  KEY_ID=$(sudo -u "$SVC_USER" env HOME="$SVC_HOME" gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/ {print $5; exit}')
+  # Run pass init from SVC_HOME so any subprocess (e.g. find) restores cwd to a dir svc_ams-oscal can access; avoids "find: Failed to restore initial working directory: /home/ec2-user: Permission denied"
+  if [ -n "$KEY_ID" ]; then sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" sh -c "cd \"$SVC_HOME\" && pass init \"$KEY_ID\""; fi
+fi
+REMOTEPASS
+  # Check if pass is usable by service user (store exists and pass runs)
+  if ! ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo -u $SVC_USER env PATH=/usr/local/bin:/usr/bin:/bin HOME=$SVC_HOME test -d $SVC_HOME/.password-store 2>/dev/null && sudo -u $SVC_USER env PATH=/usr/local/bin:/usr/bin:/bin HOME=$SVC_HOME pass ls >/dev/null 2>&1"; then
+    PASS_MISSING_ANY=1
+  fi
   print_success "Service account $SVC_USER and Pass vault ensured"
 
   # Ensure /opt/oscal dirs; temporarily ec2-user-owned so rsync can write; later chown to svc_ams-oscal
@@ -220,11 +254,16 @@ Environment=NODE_ENV=production
 Environment=PORT=PORT_PLACEHOLDER
 Environment=CONFIG_PATH=/opt/oscal/data/config.json
 Environment=USERS_PATH=/opt/oscal/data/users.json
+Environment=HOME=SVC_HOME_PLACEHOLDER
+Environment=PASSWORD_STORE_DIR=SVC_HOME_PLACEHOLDER/.password-store
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# HOME and PASSWORD_STORE_DIR required so GUI save uses pass vault (not plaintext in config)
 
 [Install]
 WantedBy=multi-user.target
 SVCEOF
-        sudo sed -i \"s/PORT_PLACEHOLDER/$port/g;s/SVC_USER_PLACEHOLDER/$SVC_USER/g;s/SVC_GROUP_PLACEHOLDER/$SVC_GROUP/g\" /etc/systemd/system/oscal-reporter.service
+        SVC_HOME=/var/lib/svc_ams-oscal
+        sudo sed -i \"s/PORT_PLACEHOLDER/$port/g;s/SVC_USER_PLACEHOLDER/$SVC_USER/g;s/SVC_GROUP_PLACEHOLDER/$SVC_GROUP/g;s|SVC_HOME_PLACEHOLDER|$SVC_HOME|g\" /etc/systemd/system/oscal-reporter.service
         sudo systemctl daemon-reload
         sudo systemctl enable oscal-reporter.service
         sudo systemctl start oscal-reporter.service
@@ -235,26 +274,40 @@ SVCEOF
       fi
     fi
     sudo chown -R $SVC_USER:$SVC_GROUP /opt/oscal
+    # Always ensure PORT matches this role (Blue=3020, Green=3019) so health check and ALB target use correct port
+    sudo sed -i \"s/^Environment=PORT=.*/Environment=PORT=$port/\" /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
     grep -q '^User=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/^\[Service\]/a User=$SVC_USER' /etc/systemd/system/oscal-reporter.service; sudo sed -i '/^User=/a Group=$SVC_GROUP' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    grep -q 'Environment=PATH=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=PATH=/usr/local/bin:/usr/bin:/bin' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    grep -q 'Environment=HOME=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=HOME=/var/lib/svc_ams-oscal' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    grep -q 'Environment=PASSWORD_STORE_DIR=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=HOME=/a Environment=PASSWORD_STORE_DIR=/var/lib/svc_ams-oscal/.password-store' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    sudo systemctl daemon-reload
+    sudo systemctl restart oscal-reporter.service 2>/dev/null || true
     echo OK
   "
 
   print_success "Deployed to $role at $ip"
+  # Restart so new code and env (HOME/PASSWORD_STORE_DIR) are active
+  print_info "Restarting oscal-reporter.service..."
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo systemctl restart oscal-reporter.service" 2>/dev/null || true
   # Verify app responds (ALB needs healthy targets; avoid 502/504)
-  print_info "Waiting 15s then checking /health on instance (retry up to 3 times)..."
-  sleep 15
+  print_info "Waiting 20s then checking /health (retry up to 5 times)..."
+  sleep 20
   health_ok=""
-  for attempt in 1 2 3; do
+  for attempt in 1 2 3 4 5; do
     if curl -sf --connect-timeout 5 "http://${ip}:${port}/health" >/dev/null 2>&1; then
       health_ok=1
       break
     fi
-    [ "$attempt" -lt 3 ] && sleep 5
+    [ "$attempt" -lt 5 ] && sleep 5
   done
   if [ -n "$health_ok" ]; then
     print_success "App is up at http://${ip}:${port}/health"
+    [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok" >> "$results_file"
   else
     print_warning "App /health not yet responding at http://${ip}:${port}/health (check: sudo systemctl status oscal-reporter.service; config/users on EBS at /opt/oscal/data)"
+    [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip fail" >> "$results_file"
+    print_info "Recent oscal-reporter.service logs (for debugging):"
+    ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo journalctl -u oscal-reporter.service -n 30 --no-pager 2>/dev/null" 2>/dev/null || true
   fi
   print_info "ALB idle_timeout should be 300s (see terraform/alb.tf) to avoid 504 on long requests."
 }
@@ -308,14 +361,70 @@ resolve_ssh_key
 # S3 bucket for ec2_automation.env on instances (backup target; config/users live on EBS)
 S3_BUCKET=$(get_s3_bucket "$TERRAFORM_DIR" || true)
 
+# Results file for post-deploy summary and health status (option 2, 4)
+DEPLOY_RESULTS_FILE=$(mktemp)
+trap 'rm -f "$DEPLOY_RESULTS_FILE"' EXIT
+
+PASS_MISSING_ANY=0
 if [ -n "$GREEN_IP" ]; then
-  deploy_one "$GREEN_IP" "green" "$SSH_KEY" "$S3_BUCKET"
+  deploy_one "$GREEN_IP" "green" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
 fi
 if [ -n "$BLUE_IP" ]; then
-  deploy_one "$BLUE_IP" "blue" "$SSH_KEY" "$S3_BUCKET"
+  deploy_one "$BLUE_IP" "blue" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
 fi
 
+# If Pass is not installed/initialized on any instance, warn and prompt
+if [ "${PASS_MISSING_ANY:-0}" = "1" ]; then
+  echo ""
+  print_warning "Pass is not installed or not initialized for $SVC_USER on one or more instances."
+  echo -e "  ${YELLOW}Secrets (e.g. Okta client secret) will be stored in plain text in config.json.${NC}"
+  echo ""
+  echo "  Would you like to continue with deployment anyway? [y/N]"
+  if [ -t 0 ]; then
+    read -r response
+    case "${response:-n}" in
+      [yY]|[yY][eE][sS]) ;;
+      *) print_error "Deployment aborted. Install and initialize Pass first, then re-run deploy."
+        echo "  Run: ./scripts/debug/install-pass-svc-oscal.sh"
+        echo "  Then add secrets (e.g. Okta): sudo -u $SVC_USER pass insert OSCAL/sso-oauth-okta-client-secret"
+        exit 1
+        ;;
+    esac
+  else
+    print_error "Deployment completed but Pass is not available. Secrets will be stored in config.json."
+    echo "  To use Pass for secrets, run: ./scripts/debug/install-pass-svc-oscal.sh"
+  fi
+fi
+
+# Summary: deployed instances and health (option 4)
 print_success "Deploy complete."
+if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
+  echo ""
+  print_info "Summary:"
+  while read -r role ip status; do
+    [ -z "$role" ] && continue
+    if [ "$status" = "ok" ]; then
+      echo -e "  ${GREEN}✓${NC} $role ($ip): healthy"
+    else
+      echo -e "  ${RED}✗${NC} $role ($ip): /health not responding"
+    fi
+  done < "$DEPLOY_RESULTS_FILE"
+fi
+echo ""
+# Post-deploy: pass vault check (option 1)
+print_info "Pass vault status (secrets in vault vs config):"
+if [ -x "$REPO_ROOT/scripts/check-pass-vault-on-ec2.sh" ]; then
+  "$REPO_ROOT/scripts/check-pass-vault-on-ec2.sh" 2>/dev/null || true
+else
+  echo "  (run ./scripts/check-pass-vault-on-ec2.sh for details)"
+fi
+echo ""
+# Fail script if any instance failed health check (option 2)
+HEALTH_FAIL=$(grep -c ' fail$' "$DEPLOY_RESULTS_FILE" 2>/dev/null || echo 0)
+if [ "${HEALTH_FAIL:-0}" -gt 0 ]; then
+  print_error "One or more instances failed health check. Fix and re-run deploy or check: sudo systemctl status oscal-reporter.service"
+  exit 1
+fi
 print_info "ALB default route goes to Blue (3020). If you get 502 Bad Gateway, wait 1–2 min for target health checks then retry the ALB URL."
 
 # Apply Terraform so any drift (e.g. ALB idle_timeout) is applied. Does not destroy or replace Green/Blue instances.

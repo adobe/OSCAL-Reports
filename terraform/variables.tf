@@ -141,7 +141,7 @@ variable "alb_certificate_ready" {
 }
 
 variable "alb_ssl_policy" {
-  description = "ALB HTTPS listener SSL policy. Must match any existing HTTPS listener on the same ALB. See: aws elbv2 describe-ssl-policies --load-balancer-type application"
+  description = "ALB HTTPS listener SSL policy (Secure listener settings). Default: Post-quantum TLS — ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09 (Recommended). Must match any existing HTTPS listener on the same ALB. See: aws elbv2 describe-ssl-policies --load-balancer-type application"
   type        = string
   default     = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
 }

@@ -246,12 +246,18 @@ See `terraform/variables.tf` and `terraform/terraform.tfvars.example` for the fu
 
 ## Post-deploy: OSCAL backend and Ollama URL
 
-1. Set the OSCAL backend to call the Lambda to wake Ollama before AI requests (see [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) for integration example).
-2. Set `OLLAMA_CONTROLLER_LAMBDA` (or equivalent) to the value of `lambda_ollama_controller_name` output.
-3. **Ollama URL (recommended):** Set **`OLLAMA_URL`** to the **`ollama_url`** Terraform output (internal NLB). Example:
+1. **Ollama URL (required):** Set **`OLLAMA_URL`** to the **`ollama_url`** Terraform output (internal NLB). Example:
    - `OLLAMA_URL=http://<ollama_nlb_dns_name>:11434`
    - Get the value: `terraform -chdir=terraform output -raw ollama_url`
-   - Any system in the same VPC (e.g. OSCAL Green/Blue, or another app) can use this URL. When the Ollama ASG is scaled to 0, the backend invokes the Lambda to wake the ASG; once instances are up and registered with the NLB, the same URL works again. No need to use instance private IPs.
+   - Any system in the same VPC (e.g. OSCAL Green/Blue) can use this URL.
+2. **Wake Lambda (so the Ollama instance comes up on first AI request):** Set **`OLLAMA_WAKE_LAMBDA`** on Green/Blue to the Terraform output **`lambda_ollama_controller_name`** (e.g. `AMS-OSCAL-ollama-controller`). Then when the app makes an AI request and Ollama is unreachable (ASG at 0), the backend invokes the Lambda to scale the ASG to 1, waits ~90s, and retries once. Without this, requests from Blue/Green reach the NLB but the NLB has no healthy targets when ASG is 0, so the instance never "comes up" from the user's perspective. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`.
+3. **Alternative:** Set `ollama_min_size = 1` (and `ollama_desired_capacity = 1`) in Terraform so one Ollama instance is always running; then wake-on-request is optional.
+
+## Troubleshooting: Ollama instance not coming up despite requests from Blue/Green
+
+**Cause:** The Ollama ASG can scale to 0 after idle (1 hr by default). When Blue or Green makes an AI API call, the request goes to the NLB; if the ASG has 0 instances, the NLB has **no healthy targets**, so the connection fails (timeout or refused). The Lambda "wake" action scales the ASG to 1, but **nothing was invoking that Lambda** when the app tried to reach Ollama—so the instance never came up.
+
+**Fix:** (1) Set **`OLLAMA_WAKE_LAMBDA`** on Green and Blue to the Terraform output `lambda_ollama_controller_name`. The backend invokes this Lambda when an Ollama request fails, waits ~90s, then retries once. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`. (2) Or set `ollama_min_size = 1` and `ollama_desired_capacity = 1` in Terraform so one instance is always running.
 
 ## Troubleshooting: Cannot reach Ollama NLB from Blue (or Green)
 
@@ -298,6 +304,36 @@ curl -s http://AMS-OSCAL-ollama-nlb-1e9cc53ead74707a.elb.us-east-1.amazonaws.com
 **3. Ensure Ollama is listening on the instance**
 
 On the Ollama instance, the service must be running and listening on 11434 (we fixed this earlier with systemd). If the target stays **Unhealthy**, SSH to the Ollama instance and run: `sudo systemctl status ollama` and `curl -s http://127.0.0.1:11434/api/tags`.
+
+## Troubleshooting: 503 Service Unavailable
+
+The ALB returns **503 Service Temporarily Unavailable** when the target group that was selected for the request has **no healthy targets**. Even if one instance (e.g. Blue) is up and responding, you can still see 503 in these cases:
+
+1. **You are using the Green hostname**  
+   If `alb_green_hostname` is set (e.g. `green.oscal.example.com`), requests to that host go **only** to the Green target group (priority 100). If Green has no healthy targets (instance down, app not on 3019, or `/health` failing), the ALB returns 503. Blue being healthy does not help for that hostname.
+
+2. **Both target groups are unhealthy**  
+   The default action forwards with weights (50/50 or 99/1 Green/Blue). The ALB only routes to healthy targets; if **both** Green and Blue have no healthy targets, every request gets 503.
+
+3. **Blue is unhealthy in the ALB’s view**  
+   “Blue works” from your laptop (e.g. `curl http://blue-ip:3020/health`) can still be **Unhealthy** in the target group if the ALB health check fails (e.g. health checks use the instance **private** IP from inside the VPC; security group or app binding could differ).
+
+**What to do**
+
+- **Check target health**  
+  From the repo root (with Terraform applied and AWS credentials as for Terraform):
+
+  ```bash
+  ./scripts/check-alb-target-health.sh
+  ```
+
+  Or in the AWS Console: **EC2 → Target Groups →** select the Green/Blue target groups and open the **Targets** tab to see Healthy/Unhealthy.
+
+- **Use the Blue URL when only Blue is up**  
+  If Green is unhealthy, use the **Blue** URL (e.g. `alb_blue_hostname` or the main ALB URL). With weighted forwarding, the ALB sends traffic only to healthy target groups, so the main ALB URL will use Blue if Green has no healthy targets. If you were using the **Green** hostname, switch to the Blue hostname or the main ALB DNS name.
+
+- **Fix Green so both are healthy**  
+  On the Green instance: ensure the app is listening on **port 3019**, bound to **0.0.0.0** (not only 127.0.0.1), and that `GET http://<green-private-ip>:3019/health` returns **200**. Security groups already allow the ALB to reach instances on 3019 and 3020.
 
 ## Remote state (optional)
 

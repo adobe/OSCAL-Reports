@@ -1,6 +1,7 @@
 # Application Load Balancer: Green (3019) and Blue (3020) target groups
-# Default: 50% Green, 50% Blue. Chrome/Firefox User-Agent → prefer Green (99%), fallback to Blue when Green unhealthy (priority 10).
-# Host-based rules (green/blue hostnames) use priority 100/101 when set.
+# Health check: /health on 3019 (green) and 3020 (blue).
+# Traffic by User-Agent: Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11).
+# Default (including curl probe): 50% green, 50% blue. Host-based rules (green/blue hostnames) use priority 100/101 when set.
 # idle_timeout 300s avoids 504 Gateway Timeout when backend takes >60s (e.g. AI/report generation).
 # HTTPS only when cert is ready: use alb_certificate_ready (true after DNS validation CNAMEs added and cert Issued) or existing alb_ssl_certificate_arn.
 # Keeps HTTP listener until then so ALB is not broken while cert is Pending validation.
@@ -19,6 +20,7 @@ resource "aws_lb" "main" {
   idle_timeout       = 300
 }
 
+# Green target group: ALB health check = http://<green-instance-ip>:3019/health (IP is each registered target)
 resource "aws_lb_target_group" "green" {
   name     = "${var.project_name}-green"
   port     = 3019
@@ -27,14 +29,23 @@ resource "aws_lb_target_group" "green" {
 
   health_check {
     path                = "/health"
+    port                = "3019"
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     interval            = 10
     timeout             = 5
+    matcher             = "200"
+  }
+
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = false
   }
 }
 
+# Blue target group: ALB health check = http://<blue-instance-ip>:3020/health (IP is each registered target)
 resource "aws_lb_target_group" "blue" {
   name     = "${var.project_name}-blue"
   port     = 3020
@@ -43,11 +54,19 @@ resource "aws_lb_target_group" "blue" {
 
   health_check {
     path                = "/health"
+    port                = "3020"
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     interval            = 10
     timeout             = 5
+    matcher             = "200"
+  }
+
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = false
   }
 }
 
@@ -69,6 +88,10 @@ resource "aws_lb_listener" "http_forward" {
       target_group {
         arn    = aws_lb_target_group.blue.arn
         weight = 50
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
       }
     }
   }
@@ -92,7 +115,7 @@ resource "aws_lb_listener" "http_redirect" {
   }
 }
 
-# Chrome or Firefox User-Agent → prefer Green; if Green has no healthy targets, traffic goes to Blue (forward to both with weights).
+# Chrome or Firefox User-Agent → 60% Green, 40% Blue (priority 10; evaluated before Edge/Safari so Chrome does not match Safari).
 resource "aws_lb_listener_rule" "browser_green_http" {
   count        = local.alb_use_https ? 0 : 1
   listener_arn = aws_lb_listener.http_forward[0].arn
@@ -103,11 +126,15 @@ resource "aws_lb_listener_rule" "browser_green_http" {
     forward {
       target_group {
         arn    = aws_lb_target_group.green.arn
-        weight = 99
+        weight = 60
       }
       target_group {
         arn    = aws_lb_target_group.blue.arn
-        weight = 1
+        weight = 40
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
       }
     }
   }
@@ -120,14 +147,60 @@ resource "aws_lb_listener_rule" "browser_green_http" {
   }
 }
 
+# Edge or Safari User-Agent → 60% Blue, 40% Green (priority 11).
+resource "aws_lb_listener_rule" "browser_edge_safari_http" {
+  count        = local.alb_use_https ? 0 : 1
+  listener_arn = aws_lb_listener.http_forward[0].arn
+  priority     = 11
+
+  action {
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 40
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 60
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
+  }
+
+  condition {
+    http_header {
+      http_header_name = "User-Agent"
+      values           = ["*Edg*", "*Edge*", "*Safari*"]
+    }
+  }
+}
+
+# Green hostname: prefer Green (99%), fallback to Blue when Green has no healthy targets (avoids 503).
 resource "aws_lb_listener_rule" "green_host_http" {
   count        = !local.alb_use_https && var.alb_green_hostname != null ? 1 : 0
   listener_arn = aws_lb_listener.http_forward[0].arn
   priority     = 100
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.green.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 99
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 1
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
   }
 
   condition {
@@ -137,14 +210,28 @@ resource "aws_lb_listener_rule" "green_host_http" {
   }
 }
 
+# Blue hostname: prefer Blue (99%), fallback to Green when Blue has no healthy targets (avoids 503).
 resource "aws_lb_listener_rule" "blue_host_http" {
   count        = !local.alb_use_https && var.alb_blue_hostname != null ? 1 : 0
   listener_arn = aws_lb_listener.http_forward[0].arn
   priority     = 101
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 1
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 99
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
   }
 
   condition {
@@ -154,7 +241,11 @@ resource "aws_lb_listener_rule" "blue_host_http" {
   }
 }
 
-# HTTPS listener: default 50/50 Green/Blue; uses latest TLS policy (variable alb_ssl_policy)
+# HTTPS listener (443): Secure listener settings aligned with AWS Console.
+# - Security policy: Post-quantum TLS — ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09 (variable alb_ssl_policy).
+# - Default SSL/TLS server certificate: From ACM (local.alb_cert_arn — e.g. oscal.amsgovcloud.com.au).
+# - Client certificate handling: Mutual authentication (mTLS) disabled.
+# Group stickiness required when target groups have stickiness enabled (satisfies AWS CreateListener validation).
 resource "aws_lb_listener" "https" {
   count = local.alb_use_https ? 1 : 0
 
@@ -163,6 +254,10 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = var.alb_ssl_policy
   certificate_arn   = local.alb_cert_arn
+
+  mutual_authentication {
+    mode = "off"
+  }
 
   default_action {
     type = "forward"
@@ -175,11 +270,15 @@ resource "aws_lb_listener" "https" {
         arn    = aws_lb_target_group.blue.arn
         weight = 50
       }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
     }
   }
 }
 
-# Chrome or Firefox User-Agent → prefer Green; if Green has no healthy targets, traffic goes to Blue (HTTPS, priority 10).
+# Chrome or Firefox User-Agent → 60% Green, 40% Blue (HTTPS, priority 10).
 resource "aws_lb_listener_rule" "browser_green_https" {
   count        = local.alb_use_https ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
@@ -190,11 +289,15 @@ resource "aws_lb_listener_rule" "browser_green_https" {
     forward {
       target_group {
         arn    = aws_lb_target_group.green.arn
-        weight = 99
+        weight = 60
       }
       target_group {
         arn    = aws_lb_target_group.blue.arn
-        weight = 1
+        weight = 40
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
       }
     }
   }
@@ -207,14 +310,60 @@ resource "aws_lb_listener_rule" "browser_green_https" {
   }
 }
 
+# Edge or Safari User-Agent → 60% Blue, 40% Green (HTTPS, priority 11).
+resource "aws_lb_listener_rule" "browser_edge_safari_https" {
+  count        = local.alb_use_https ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 11
+
+  action {
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 40
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 60
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
+  }
+
+  condition {
+    http_header {
+      http_header_name = "User-Agent"
+      values           = ["*Edg*", "*Edge*", "*Safari*"]
+    }
+  }
+}
+
+# Green hostname (HTTPS): prefer Green (99%), fallback to Blue when Green has no healthy targets (avoids 503).
 resource "aws_lb_listener_rule" "green_host_https" {
   count        = local.alb_use_https && var.alb_green_hostname != null ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 100
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.green.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 99
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 1
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
   }
 
   condition {
@@ -224,14 +373,28 @@ resource "aws_lb_listener_rule" "green_host_https" {
   }
 }
 
+# Blue hostname (HTTPS): prefer Blue (99%), fallback to Green when Blue has no healthy targets (avoids 503).
 resource "aws_lb_listener_rule" "blue_host_https" {
   count        = local.alb_use_https && var.alb_blue_hostname != null ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 101
 
   action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.green.arn
+        weight = 1
+      }
+      target_group {
+        arn    = aws_lb_target_group.blue.arn
+        weight = 99
+      }
+      stickiness {
+        enabled  = true
+        duration = 86400
+      }
+    }
   }
 
   condition {
