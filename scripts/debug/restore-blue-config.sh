@@ -5,8 +5,8 @@
 # deployment directory (the repo root that contains scripts/ and data-blue/).
 #
 # Usage:
-#   ./scripts/restore-blue-config.sh --from-backup   # Restore from latest deploy backup
-#   ./scripts/restore-blue-config.sh --from-green    # Copy config/users from Green to Blue
+#   ./scripts/debug/restore-blue-config.sh --from-backup   # Restore from latest deploy backup
+#   ./scripts/debug/restore-blue-config.sh --from-green    # Copy config/users from Green to Blue
 #
 # Author: OSCAL Reports project
 # License: GPL-3.0-or-later

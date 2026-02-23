@@ -123,7 +123,7 @@ The deploy script (`scripts/deploy_from_dockerhub.sh`) creates a backup tarball 
 
 ```bash
 cd /path/to/OSCAL_Reports_Blue   # or your Blue deployment root
-./scripts/restore-blue-config.sh --from-backup
+./scripts/debug/restore-blue-config.sh --from-backup
 ```
 
 This finds the most recent `data-volume-backup.tar.gz` (or legacy backup), extracts it into `data-blue/`, and restarts the Blue container.
@@ -134,7 +134,7 @@ If Green is on the same host and has the correct config and users, copy them to 
 
 ```bash
 cd /path/to/OSCAL_Reports   # repo root where both data-blue and data-green exist
-./scripts/restore-blue-config.sh --from-green
+./scripts/debug/restore-blue-config.sh --from-green
 ```
 
 This copies `config.json` and `users.json` from `data-green/` to `data-blue/` and restarts the Blue container.
