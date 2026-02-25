@@ -86,7 +86,7 @@ git push --no-verify
 ## Documentation
 
 For complete documentation, see:
-- [VERSION_CONTROL_WORKFLOW.md](../docs/VERSION_CONTROL_WORKFLOW.md)
+- [VERSION_AND_RELEASE.md](../docs/VERSION_AND_RELEASE.md)
 - [BRANCHING_STRATEGY.md](../docs/BRANCHING_STRATEGY.md)
 
 ## Adding New Hooks

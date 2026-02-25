@@ -1,0 +1,66 @@
+# Example Terraform variables for OSCAL + Ollama AWS deployment
+# Copy to terraform.tfvars and set values (terraform.tfvars is gitignored)
+
+aws_region     = "us-east-1"
+aws_account_id = "432417415905"
+environment    = "prod"
+project_name   = "oscal-ollama"
+
+# Networking
+vpc_cidr          = "10.0.0.0/16"
+allowed_ssh_cidr   = "0.0.0.0/0"  # Restrict to your IP in production, e.g. "1.2.3.4/32"
+
+# EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
+# Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4379 --query 'KeyMaterial' --output text > oscal-aws4379.pem
+key_name = null
+
+# S3 (best practice from docs/IMAGE_FACTORY.md): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
+# Subfolders: logs, ollama-activity, config, users. Terraform lowercases the value.
+s3_logs_bucket_name = "ams-oscal-432417415905"
+
+# ------------------------------------------------------------------------------
+# ALB HTTPS and custom domain (e.g. https://oscal.amsgovcloud.com.au/)
+# ------------------------------------------------------------------------------
+# Option A – Terraform requests the certificate: set create_alb_certificate = true and alb_domain_name.
+# After apply: add the CNAMEs from output acm_certificate_validation_records in Route53 (manual).
+# Then add an A record (alias) for alb_domain_name pointing to the ALB (output alb_dns_name).
+# Option B – Use an existing cert: set alb_ssl_certificate_arn and leave create_alb_certificate = false.
+# ------------------------------------------------------------------------------
+# create_alb_certificate = true
+# alb_domain_name        = "oscal.amsgovcloud.com.au"
+# alb_certificate_ready   = false  # Set to true ONLY after ACM cert is Issued (CNAMEs added in Route53); then apply to create 443 listener
+# alb_ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"   # match existing ALB policy (optional)
+# alb_ssl_certificate_arn = null   # ignored when create_alb_certificate = true
+
+# Optional: existing ACM certificate ARN (when create_alb_certificate = false)
+# alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:432417415905:certificate/..."
+
+# Optional: Host-based routing for Blue and Green (same app at / on two hostnames)
+# Create CNAME records pointing blue.xxx and green.xxx to the ALB DNS (output alb_dns_name).
+# alb_blue_hostname  = "blue.oscal.example.com"
+# alb_green_hostname = "green.oscal.example.com"
+
+# ------------------------------------------------------------------------------
+# Image Factory / AMI (docs/IMAGE_FACTORY.md): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023
+# ------------------------------------------------------------------------------
+# - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if AMI set below or in image_factory_ami.tf; else native AL2023.
+# - use_image_factory_ami = false: use only native Amazon Linux 2023 (e.g. sandbox without Image Factory access).
+# - Set image_factory_amazon_linux_ami_us_east_1 to Adobe Image Factory Amazon Linux 2023 AMI (from Image Factory UI) so Green, Blue, and Ollama use it.
+# - Leave oscal_ami_id and ollama_ami_id null so both use the same chain (Image Factory AL2023 or native AL2023).
+# ------------------------------------------------------------------------------
+# use_image_factory_ami = true
+# image_factory_amazon_linux_ami_us_east_1 = null   # Set to "ami-xxxxxxxx" from Image Factory UI (Amazon Linux 2023) for us-east-1
+# oscal_ami_id          = null
+# ollama_ami_id         = null
+# instance_architecture = "x86_64"  # or "arm64"
+
+# Ollama ASG: max 1 instance (if one present, no new instances); 1 hr no activity -> scale to 0
+ollama_min_size             = 0
+ollama_max_size             = 1
+ollama_desired_capacity      = 1
+ollama_idle_timeout_hours    = 1
+
+# Optional tags
+common_tags = {
+  Team = "Compliance"
+}

@@ -25,6 +25,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+# shellcheck disable=SC2034
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m'  # No Color
@@ -123,7 +124,8 @@ update_package_json() {
 update_changelog() {
   local new_version="$1"
   local message="$2"
-  local date=$(date +"%Y-%m-%d")
+  local date
+  date=$(date +"%Y-%m-%d")
   
   # Create docs/CHANGELOG.md if it doesn't exist
   if [ ! -f "docs/CHANGELOG.md" ]; then
@@ -140,7 +142,8 @@ EOF
   fi
   
   # Create temporary file with new entry
-  local temp_file=$(mktemp)
+  local temp_file
+  temp_file=$(mktemp)
   
   # Read existing changelog
   cat docs/CHANGELOG.md > "$temp_file"
@@ -215,7 +218,7 @@ print_info "Bump type: $BUMP_TYPE"
 
 # Confirm with user
 echo ""
-read -p "$(echo -e ${YELLOW}Continue with version bump to ${NEW_VERSION}? [y/N]:${NC} )" -n 1 -r
+read -rp "$(echo -e "${YELLOW}Continue with version bump to ${NEW_VERSION}? [y/N]:${NC} ")" -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   print_warning "Version bump cancelled"
@@ -276,7 +279,7 @@ Updated files:
   
   # Ask about creating a tag
   echo ""
-  read -p "$(echo -e ${YELLOW}Create git tag v${NEW_VERSION}? [y/N]:${NC} )" -n 1 -r
+  read -rp "$(echo -e "${YELLOW}Create git tag v${NEW_VERSION}? [y/N]:${NC} ")" -n 1 -r
   echo ""
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION: $CHANGELOG_MESSAGE"

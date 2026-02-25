@@ -1,14 +1,7 @@
 {
   "apiGateways": {
-    "aws": {
-      "enabled": false,
-      "url": "",
-      "region": "ap-southeast-2"
-    },
-    "azure": {
-      "enabled": false,
-      "url": ""
-    }
+    "aws": { "enabled": false, "url": "", "region": "ap-southeast-2" },
+    "azure": { "enabled": false, "url": "" }
   },
   "publishedSoaUrl": "https://raw.githubusercontent.com/keekar2022/OSCAL-Reports/refs/heads/main/AEMGovAu_ComplianceReport_Sample_2025-11-20.json",
   "messagingConfig": {
@@ -20,26 +13,27 @@
       "smtpPort": 587,
       "smtpSecure": false,
       "smtpUser": "",
-      "smtpPassword": "",
+      "smtpPassword": { "_pass": "OSCAL/smtp-password" },
       "fromEmail": "",
       "fromName": "OSCAL Report Generator",
       "loginUrl": ""
     },
     "slack": {
       "enabled": false,
-      "webhookUrl": "",
+      "webhookUrl": { "_pass": "OSCAL/slack-webhook-url" },
       "channel": "#general"
     }
   },
   "aiConfig": {
     "enabled": true,
     "url": "http://localhost:11434",
-    "apiToken": "",
+    "apiToken": { "_pass": "OSCAL/ai-api-token" },
     "model": "mistral",
     "timeout": 120000,
-    "organizationName": "Your Organization"
+    "organizationName": "Your Organization",
+    "awsAccessKeyId": { "_pass": "OSCAL/ai-aws-access-key-id" },
+    "awsSecretAccessKey": { "_pass": "OSCAL/ai-aws-secret-access-key" }
   },
   "lastModified": "",
   "version": "1.0.0"
 }
-

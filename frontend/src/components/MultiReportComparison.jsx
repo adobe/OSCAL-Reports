@@ -91,7 +91,11 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     setError('');
 
     try {
-      const response = await axios.get(publishedSoaUrl);
+      // Stored files: fetch via backend (same-origin). External URLs (e.g. GitHub): fetch directly from browser (restores 1.6.5 behavior, avoids server-side 404/CORS).
+      const isStoredFile = publishedSoaUrl.startsWith('/api/');
+      const response = isStoredFile
+        ? await axios.get('/api/baseline-report', getAuthConfig())
+        : await axios.get(publishedSoaUrl);
       setReports(prev => ({
         ...prev,
         baseline: response.data

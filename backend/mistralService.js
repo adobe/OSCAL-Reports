@@ -11,8 +11,9 @@
 import axios from 'axios';
 import http from 'http';
 import https from 'https';
-import { loadConfig } from './configManager.js';
+import { getResolvedConfig } from './configManager.js';
 import { logAIInteraction, logAIError } from './aiLogger.js';
+import { invokeOllamaWake } from './utils/ollamaWake.js';
 
 // AWS SDK imports (lazy loaded when needed)
 let BedrockRuntimeClient, ConverseCommand;
@@ -37,7 +38,7 @@ export async function loadMistralConfig() {
   mistralConfig = null;
   
   try {
-    const config = await loadConfig();
+    const config = getResolvedConfig();
     
     // Priority 1: Check Settings AI Config (highest priority - user configured)
     let aiUrl = null;
@@ -184,9 +185,15 @@ async function generateWithOllama(control, config, existingControls = []) {
   const generateUrl = config.ollamaUrl.endsWith('/') 
     ? `${config.ollamaUrl}api/generate` 
     : `${config.ollamaUrl}/api/generate`;
-  
-  try {
-    const response = await axios.post(
+
+  const isOllamaUnreachable = (err) =>
+    err?.code === 'ECONNREFUSED' || err?.code === 'ENOTFOUND' ||
+    err?.code === 'ETIMEDOUT' || err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
+
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await axios.post(
       generateUrl,
       {
         model: config.model || 'mistral:7b',
@@ -255,54 +262,66 @@ async function generateWithOllama(control, config, existingControls = []) {
       console.log(`✅ Successfully received response from Ollama (${response.data.response.length} chars)`);
       return cleanedResponse;
     }
-    
+
     console.warn(`⚠️ Invalid response format from Ollama:`, response.data);
     throw new Error('Invalid response format from Ollama');
-  } catch (error) {
-    const latency = Date.now() - startTime;
-    
-    // Log AI error (OTel GenAI Semantic Conventions)
-    logAIError({
-      provider: 'ollama',
-      model: config.model || 'mistral:7b',
-      operation: 'generate',
-      prompt: prompt,
-      error: error,
-      metadata: {
-        controlId: control.id,
-        controlTitle: control.title,
-        controlFamily: control.id?.split('-')[0] || 'unknown',
-        errorCode: error.code,
-        latency: latency
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0 && isOllamaUnreachable(error)) {
+        const waked = await invokeOllamaWake();
+        if (waked) {
+          console.log('⏳ Waiting 90s for Ollama ASG to scale up and NLB target to become healthy...');
+          await new Promise((r) => setTimeout(r, 90000));
+          continue;
+        }
       }
-    });
-    
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      const errorMsg = `Ollama service not reachable at ${config.ollamaUrl}. ` +
-        `Error: ${error.code}. ` +
-        `Please ensure: ` +
-        `1. Ollama container is running (docker ps | grep ollama), ` +
-        `2. Containers are on the same Docker network, ` +
-        `3. OLLAMA_URL environment variable is set correctly (current: ${config.ollamaUrl})`;
-      console.error(`❌ ${errorMsg}`);
-      throw new Error(errorMsg);
-    } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      const errorMsg = `Ollama request timed out after ${config.timeout || 180000}ms. ` +
-        `The service may be overloaded or the model may not be loaded. Falling back to template-based suggestions.`;
-      console.warn(`⚠️ ${errorMsg}`);
-      // Don't throw - let the fallback mechanism handle it
-      throw new Error(errorMsg);
-    } else if (error.response) {
-      const errorMsg = `Ollama returned error ${error.response.status}: ${error.response.statusText}. ` +
-        `Response: ${JSON.stringify(error.response.data)}`;
-      console.error(`❌ ${errorMsg}`);
-      throw new Error(errorMsg);
+      break;
     }
-    console.error(`❌ Unexpected error connecting to Ollama:`, error.message);
-    console.error(`   Code: ${error.code}`);
-    console.error(`   Stack:`, error.stack);
-    throw error;
   }
+
+  const error = lastError;
+  const latency = Date.now() - startTime;
+  logAIError({
+    provider: 'ollama',
+    model: config.model || 'mistral:7b',
+    operation: 'generate',
+    prompt: prompt,
+    error: error,
+    metadata: {
+      controlId: control.id,
+      controlTitle: control.title,
+      controlFamily: control.id?.split('-')[0] || 'unknown',
+      errorCode: error?.code,
+      latency: latency
+    }
+  });
+
+  if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND') {
+    const errorMsg = `Ollama service not reachable at ${config.ollamaUrl}. ` +
+      `Error: ${error.code}. ` +
+      `Please ensure: ` +
+      `1. Ollama container is running (docker ps | grep ollama), ` +
+      `2. Containers are on the same Docker network, ` +
+      `3. OLLAMA_URL environment variable is set correctly (current: ${config.ollamaUrl}). ` +
+      `On EC2: set OLLAMA_WAKE_LAMBDA to the Terraform lambda_ollama_controller_name so the first request can wake the instance.`;
+    console.error(`❌ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  if (error?.code === 'ETIMEDOUT' || error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+    const errorMsg = `Ollama request timed out after ${config.timeout || 180000}ms. ` +
+      `The service may be overloaded or the model may not be loaded.`;
+    console.warn(`⚠️ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  if (error?.response) {
+    const errorMsg = `Ollama returned error ${error.response.status}: ${error.response.statusText}. ` +
+      `Response: ${JSON.stringify(error.response.data)}`;
+    console.error(`❌ ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  console.error(`❌ Unexpected error connecting to Ollama:`, error?.message);
+  console.error(`   Code: ${error?.code}`);
+  throw error;
 }
 
 /**

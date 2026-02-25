@@ -57,6 +57,7 @@ jobs:
           PASSED=0
           
           while IFS= read -r script; do
+            [ -n "$script" ] || continue
             echo ""
             echo "Checking: $script"
             if shellcheck "$script"; then
@@ -116,14 +117,19 @@ jobs:
             echo "Validating git hooks..."
             
             for hook in .githooks/*; do
-              if [ -f "$hook" ] && [ -x "$hook" ]; then
-                echo "Checking: $hook"
-                bash -n "$hook" || {
-                  echo "❌ Syntax error in $hook"
-                  exit 1
-                }
-                echo "✅ $hook syntax valid"
+              [ -f "$hook" ] || continue
+              [ -x "$hook" ] || continue
+              # Only validate files that are shell scripts (shebang or .sh)
+              if ! head -n 1 "$hook" | grep -q '^#!.*sh'; then
+                echo "Skipping non-shell hook: $hook"
+                continue
               fi
+              echo "Checking: $hook"
+              bash -n "$hook" || {
+                echo "❌ Syntax error in $hook"
+                exit 1
+              }
+              echo "✅ $hook syntax valid"
             done
           else
             echo "ℹ️  No .githooks directory found"
@@ -149,6 +155,7 @@ jobs:
           # Check for missing shebang
           echo "Checking for shebangs..."
           for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            [ -n "$script" ] || continue
             if ! head -n 1 "$script" | grep -q "^#!"; then
               echo "⚠️  WARNING: $script missing shebang"
               ISSUES=$((ISSUES + 1))
@@ -158,6 +165,7 @@ jobs:
           # Check for 'set -e' usage
           echo "Checking for error handling..."
           for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            [ -n "$script" ] || continue
             if ! grep -q "set -e" "$script"; then
               echo "ℹ️  INFO: $script doesn't use 'set -e' (consider adding for safety)"
             fi
@@ -166,6 +174,7 @@ jobs:
           # Check for executable permissions
           echo "Checking executable permissions..."
           for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            [ -n "$script" ] || continue
             if [ ! -x "$script" ]; then
               echo "⚠️  WARNING: $script not executable"
               echo "   Fix with: chmod +x $script"
@@ -197,6 +206,7 @@ jobs:
           echo "Testing scripts with --help flag where applicable..."
           
           for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            [ -n "$script" ] || continue
             # Skip git hooks and certain system scripts
             if [[ "$script" == *".githooks"* ]] || [[ "$script" == *"docker-entrypoint"* ]]; then
               echo "Skipping system script: $script"
@@ -205,8 +215,8 @@ jobs:
             
             echo "Testing: $script"
             
-            # Try --help flag (many scripts support it)
-            if bash "$script" --help 2>&1 | grep -q -i "usage\|help\|options"; then
+            # Try --help flag (many scripts support it); do not fail step if script exits non-zero
+            if (bash "$script" --help 2>&1 || true) | grep -q -i "usage\|help\|options"; then
               echo "✅ $script has help documentation"
             else
               echo "ℹ️  $script doesn't have --help (not required)"

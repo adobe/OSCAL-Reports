@@ -191,6 +191,7 @@ function extractControls(ccmSheet) {
       // Control Type and Testing
       controlType: safeGetCell(row, 'control type'),
       evidence: safeGetCell(row, 'evidence location'),
+      testingObjective: safeGetCell(row, 'assessment/testing objective'),
       testingProcedure: safeGetCell(row, 'testing method'),
       testingFrequency: safeGetCell(row, 'testing frequency'),
       lastTestDate: safeGetCell(row, 'last test date'),

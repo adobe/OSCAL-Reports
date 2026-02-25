@@ -8,6 +8,7 @@
 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
+- [Deployment Methods Comparison](#deployment-methods-comparison)
 - [Setup Instructions](#setup-instructions)
   - [GitHub Secrets Configuration](#github-secrets-configuration)
   - [Setup Checklist](#setup-checklist)
@@ -77,6 +78,21 @@ docker run -d \
 # Access the application
 open http://localhost:3020
 ```
+
+### Deployment Methods Comparison
+
+For TrueNAS Blue-Green deployments you can use:
+
+| Method | Script | Speed | Use Case |
+|--------|--------|-------|----------|
+| **Pull-based** | `deploy_from_dockerhub.sh` | 1–3 min | Production, standard updates, automatic rollback |
+| **Build-based** | `build_on_truenas.sh` | 10–15 min | Development, custom builds, offline after clone |
+
+**Pull-based** (recommended for production): Pulls pre-built image from Docker Hub, backs up data, runs health check, auto-rollback on failure. Requires Docker Hub access.
+
+**Build-based**: Clones repo and builds image locally. Use when you need custom code, specific branch, or when Docker Hub is unavailable. No automatic rollback.
+
+---
 
 ### Available Tags
 
@@ -965,7 +981,7 @@ curl http://localhost:3020/health       # Check health
 
 ## Related Documentation
 
-- [TrueNAS Installation](./TRUENAS_INSTALLATION.md)
+- [TrueNAS](./TRUENAS.md)
 - [Cloud Deployment](./CLOUD_DEPLOYMENT.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Deployment Guide](./DEPLOYMENT.md)

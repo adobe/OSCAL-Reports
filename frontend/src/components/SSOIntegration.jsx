@@ -3,7 +3,7 @@
  * Platform Admin only
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import './SSOIntegration.css';
@@ -12,11 +12,12 @@ import './SSOIntegration.css';
 
 function SSOIntegration({ onClose, embedded = false }) {
   const { canManageUsers, getAuthConfig } = useAuth();
-  const [activeTab, setActiveTab] = useState('saml');
+  const [activeTab, setActiveTab] = useState('oauth');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [testing, setTesting] = useState(false);
+  const messageContainerRef = useRef(null);
 
   // SAML Configuration
   const [samlConfig, setSamlConfig] = useState({
@@ -67,6 +68,7 @@ function SSOIntegration({ onClose, embedded = false }) {
       okta: {
         enabled: false,
         domain: '',
+        authServerId: '', // e.g. "default" for Custom Auth Server; leave blank for org server
         clientId: '',
         clientSecret: '',
         redirectUri: `${window.location.origin}/auth/okta/callback`,
@@ -84,12 +86,20 @@ function SSOIntegration({ onClose, embedded = false }) {
       'Platform Admin': 'admin,administrator',
       'User': 'user,member',
       'Assessor': 'assessor,auditor'
-    }
+    },
+    jitProvisioning: false,
+    jitDefaultRole: 'User',
+    groupToRoleMapping: {},
+    syncRoleFromGroups: true
   });
 
   useEffect(() => {
     console.log('SSOIntegration: Component mounted, embedded:', embedded);
-    console.log('SSOIntegration: canManageUsers:', canManageUsers());
+    try {
+      if (typeof canManageUsers === 'function') console.log('SSOIntegration: canManageUsers:', canManageUsers());
+    } catch (e) {
+      console.warn('SSOIntegration: canManageUsers check failed', e);
+    }
     
     // Set a timeout to ensure loading doesn't hang forever
     const timeoutId = setTimeout(() => {
@@ -119,14 +129,21 @@ function SSOIntegration({ onClose, embedded = false }) {
         setTimeout(() => reject(new Error('Request timeout')), 3000)
       );
       
+      const authConfig = typeof getAuthConfig === 'function' ? getAuthConfig() : {};
       const response = await Promise.race([
-        axios.get('/api/sso/config', getAuthConfig()),
+        axios.get('/api/sso/config', authConfig),
         timeoutPromise
       ]);
       
-      console.log('SSOIntegration: API response received', response.data);
+      const data = response?.data;
+      if (data == null || typeof data !== 'object') {
+        setLoading(false);
+        return;
+      }
       
-      if (response.data.saml) {
+      console.log('SSOIntegration: API response received', data);
+      
+      if (data.saml && typeof data.saml === 'object') {
         // Merge with defaults to ensure all required fields exist
         setSamlConfig({
           enabled: false,
@@ -141,27 +158,29 @@ function SSOIntegration({ onClose, embedded = false }) {
           signRequests: true,
           wantAssertionsSigned: true,
           allowUnencryptedAssertions: false,
-          ...response.data.saml,
+          ...data.saml,
           attributeMapping: {
             email: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
             firstName: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
             lastName: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
             role: 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role',
-            ...(response.data.saml.attributeMapping || {})
+            ...(data.saml.attributeMapping && typeof data.saml.attributeMapping === 'object' ? data.saml.attributeMapping : {})
           },
           roleMapping: {
             'Platform Admin': 'admin,platform-admin,administrator',
             'User': 'user,member',
             'Assessor': 'assessor,auditor,compliance',
-            ...(response.data.saml.roleMapping || {})
+            ...(data.saml.roleMapping && typeof data.saml.roleMapping === 'object' && !Array.isArray(data.saml.roleMapping) ? data.saml.roleMapping : {})
           }
         });
       }
-      if (response.data.oauth) {
+      const oauth = data.oauth && typeof data.oauth === 'object' ? data.oauth : null;
+      const providers = oauth?.providers && typeof oauth.providers === 'object' && !Array.isArray(oauth.providers) ? oauth.providers : {};
+      if (oauth) {
         // Merge with defaults to ensure all required fields exist
         setOauthConfig({
           enabled: false,
-          ...response.data.oauth,
+          ...oauth,
           providers: {
             azure: {
               enabled: false,
@@ -170,7 +189,7 @@ function SSOIntegration({ onClose, embedded = false }) {
               tenantId: '',
               redirectUri: `${window.location.origin}/auth/azure/callback`,
               scope: 'openid profile email',
-              ...(response.data.oauth.providers?.azure || {})
+              ...(providers.azure && typeof providers.azure === 'object' ? providers.azure : {})
             },
             google: {
               enabled: false,
@@ -178,16 +197,17 @@ function SSOIntegration({ onClose, embedded = false }) {
               clientSecret: '',
               redirectUri: `${window.location.origin}/auth/google/callback`,
               scope: 'openid profile email',
-              ...(response.data.oauth.providers?.google || {})
+              ...(providers.google && typeof providers.google === 'object' ? providers.google : {})
             },
             okta: {
               enabled: false,
               domain: '',
+              authServerId: '',
               clientId: '',
               clientSecret: '',
               redirectUri: `${window.location.origin}/auth/okta/callback`,
               scope: 'openid profile email',
-              ...(response.data.oauth.providers?.okta || {})
+              ...(providers.okta && typeof providers.okta === 'object' ? providers.okta : {})
             },
             github: {
               enabled: false,
@@ -195,15 +215,19 @@ function SSOIntegration({ onClose, embedded = false }) {
               clientSecret: '',
               redirectUri: `${window.location.origin}/auth/github/callback`,
               scope: 'user:email',
-              ...(response.data.oauth.providers?.github || {})
+              ...(providers.github && typeof providers.github === 'object' ? providers.github : {})
             }
           },
           roleMapping: {
             'Platform Admin': 'admin,administrator',
             'User': 'user,member',
             'Assessor': 'assessor,auditor',
-            ...(response.data.oauth.roleMapping || {})
-          }
+            ...(oauth.roleMapping && typeof oauth.roleMapping === 'object' && !Array.isArray(oauth.roleMapping) ? oauth.roleMapping : {})
+          },
+          jitProvisioning: oauth.jitProvisioning === true,
+          jitDefaultRole: oauth.jitDefaultRole || 'User',
+          groupToRoleMapping: oauth.groupToRoleMapping && typeof oauth.groupToRoleMapping === 'object' && !Array.isArray(oauth.groupToRoleMapping) ? oauth.groupToRoleMapping : {},
+          syncRoleFromGroups: oauth.syncRoleFromGroups !== false
         });
       }
       
@@ -241,10 +265,48 @@ function SSOIntegration({ onClose, embedded = false }) {
     }
   };
 
+  const scrollMessageIntoView = () => {
+    requestAnimationFrame(() => {
+      messageContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
   const handleTestConnection = async (provider) => {
+    // Require Platform Admin to run test
+    if (!canManageUsers()) {
+      setMessage('❌ Only Platform Admins can test SSO connections.');
+      scrollMessageIntoView();
+      setTimeout(() => setMessage(''), 5000);
+      return;
+    }
+
+    // For OAuth/Okta: require OAuth enabled, provider enabled, and minimal config
+    if (activeTab === 'oauth') {
+      const providerKey = provider.toLowerCase().replace(' ', '');
+      const providerConfig = oauthConfig.providers?.[providerKey];
+      if (!oauthConfig.enabled || !providerConfig?.enabled) {
+        setMessage(`⚠️ Please enable "OAuth / OIDC" above and enable "${provider}" first.`);
+        scrollMessageIntoView();
+        setTimeout(() => setMessage(''), 6000);
+        return;
+      }
+      if (providerKey === 'okta') {
+        const hasDomain = !!safeStr(providerConfig?.domain);
+        const hasClientId = !!safeStr(providerConfig?.clientId);
+        const hasClientSecret = !!safeStr(providerConfig?.clientSecret);
+        if (!hasDomain || !hasClientId || !hasClientSecret) {
+          setMessage('⚠️ Please enter Okta Domain, Client ID, and Client Secret to test the connection.');
+          scrollMessageIntoView();
+          setTimeout(() => setMessage(''), 6000);
+          return;
+        }
+      }
+    }
+
     try {
       setTesting(true);
       setMessage(`🔄 Testing ${provider} connection...`);
+      scrollMessageIntoView();
 
       const response = await axios.post(
         '/api/sso/test',
@@ -253,16 +315,17 @@ function SSOIntegration({ onClose, embedded = false }) {
       );
 
       if (response.data.success) {
-        setMessage(`✅ ${provider} connection test successful!`);
+        setMessage(response.data.message ? `✅ ${response.data.message}` : `✅ ${provider} connection test successful!`);
       } else {
-        setMessage(`❌ ${provider} connection test failed: ${response.data.error}`);
+        setMessage(`❌ ${provider} connection test failed: ${response.data.error || 'Unknown error'}`);
       }
     } catch (err) {
-      setMessage(`❌ Test failed: ${err.response?.data?.message || err.message}`);
+      setMessage(`❌ Test failed: ${err.response?.data?.error || err.response?.data?.message || err.message}`);
     } finally {
       setTesting(false);
       setTimeout(() => setMessage(''), 5000);
     }
+    scrollMessageIntoView();
   };
 
   const handleFetchMetadata = async () => {
@@ -317,16 +380,50 @@ function SSOIntegration({ onClose, embedded = false }) {
   }
 
   // Check if user can edit (Platform Admin) or only view (User/Assessor)
-  const canEdit = canManageUsers();
+  let canEdit = false;
+  try {
+    canEdit = typeof canManageUsers === 'function' ? canManageUsers() : false;
+  } catch (_) {
+    canEdit = false;
+  }
 
-  console.log('SSOIntegration: Rendering main content, activeTab:', activeTab, 'canEdit:', canEdit);
+  // Safe string trim (clientSecret etc. may be object e.g. Pass pointer from API)
+  const safeStr = (v) => (typeof v === 'string' ? v.trim() : '');
+
+  // Defensive: ensure Okta provider config exists so we never read .domain etc of undefined
+  const oktaProvider = (oauthConfig?.providers?.okta != null && typeof oauthConfig.providers.okta === 'object')
+    ? oauthConfig.providers.okta
+    : {
+        enabled: false,
+        domain: '',
+        authServerId: '',
+        clientId: '',
+        clientSecret: '',
+        redirectUri: (typeof window !== 'undefined' && window.location?.origin) ? `${window.location.origin}/auth/okta/callback` : '',
+        scope: 'openid profile email'
+      };
+
+  // Defensive: ensure other OAuth providers and SAML config never cause "read of undefined"
+  const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : '';
+  const defaultProvider = (basePath) => ({ enabled: false, clientId: '', clientSecret: '', redirectUri: `${origin}${basePath}`, scope: 'openid profile email' });
+  const azureProvider = (oauthConfig?.providers?.azure != null && typeof oauthConfig.providers.azure === 'object')
+    ? oauthConfig.providers.azure
+    : { ...defaultProvider('/auth/azure/callback'), tenantId: '' };
+  const googleProvider = (oauthConfig?.providers?.google != null && typeof oauthConfig.providers.google === 'object')
+    ? oauthConfig.providers.google
+    : defaultProvider('/auth/google/callback');
+  const githubProvider = (oauthConfig?.providers?.github != null && typeof oauthConfig.providers.github === 'object')
+    ? oauthConfig.providers.github
+    : { ...defaultProvider('/auth/github/callback'), scope: 'user:email' };
+  const safeSamlRoleMapping = (samlConfig?.roleMapping != null && typeof samlConfig.roleMapping === 'object' && !Array.isArray(samlConfig.roleMapping))
+    ? samlConfig.roleMapping
+    : { 'Platform Admin': '', 'User': '', 'Assessor': '' };
+  const safeGroupToRoleMapping = (oauthConfig?.groupToRoleMapping != null && typeof oauthConfig.groupToRoleMapping === 'object' && !Array.isArray(oauthConfig.groupToRoleMapping))
+    ? oauthConfig.groupToRoleMapping
+    : {};
 
   return (
     <div className="sso-integration-container" style={{ minHeight: '400px', background: 'white', display: 'flex', flexDirection: 'column', width: '100%', position: 'relative', zIndex: 1 }}>
-      {/* Debug: Remove this after testing */}
-      <div style={{ background: '#ffeb3b', padding: '0.5rem', fontSize: '0.8rem', color: '#000', display: embedded ? 'none' : 'block' }}>
-        DEBUG: SSO Component Rendered | Loading: {loading.toString()} | CanManage: {canManageUsers().toString()} | ActiveTab: {activeTab}
-      </div>
       {!embedded && (
         <div className="sso-header">
           <h2>🔐 SSO Integration</h2>
@@ -338,6 +435,9 @@ function SSOIntegration({ onClose, embedded = false }) {
         {canEdit 
           ? 'Configure SAML 2.0 and OAuth 2.0 / OpenID Connect providers for enterprise single sign-on'
           : 'View SAML 2.0 and OAuth 2.0 / OpenID Connect configuration (Read-Only Mode)'}
+      </div>
+      <div style={{ padding: '0 2rem', fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+        Client ID and secrets are stored in <strong>config/app/config.json</strong> (or CONFIG_PATH / Docker <strong>/data/config.json</strong>) under <code>ssoConfig.oauth.providers</code>.
       </div>
       
       {!canEdit && (
@@ -354,38 +454,33 @@ function SSOIntegration({ onClose, embedded = false }) {
         </div>
       )}
 
-      {message && (
-        <div className={`sso-message ${message.includes('✅') ? 'success' : message.includes('🔄') ? 'info' : 'error'}`}>
-          {message}
-        </div>
-      )}
+      <div ref={messageContainerRef} style={{ minHeight: message ? undefined : 0 }}>
+        {message && (
+          <div className={`sso-message ${message.includes('✅') ? 'success' : message.includes('🔄') ? 'info' : 'error'}`}>
+            {message}
+          </div>
+        )}
+      </div>
 
       <div className="sso-tabs" style={{ display: 'flex', visibility: 'visible', borderBottom: '2px solid #e0e0e0', padding: '0 2rem', background: '#f8f9fa' }}>
         <button
-          className={`sso-tab ${activeTab === 'saml' ? 'active' : ''}`}
-          onClick={() => {
-            console.log('SAML tab clicked');
-            setActiveTab('saml');
-          }}
-          style={{ display: 'block', visibility: 'visible' }}
-        >
-          🔒 SAML 2.0
-        </button>
-        <button
           className={`sso-tab ${activeTab === 'oauth' ? 'active' : ''}`}
-          onClick={() => {
-            console.log('OAuth tab clicked');
-            setActiveTab('oauth');
-          }}
+          onClick={() => setActiveTab('oauth')}
           style={{ display: 'block', visibility: 'visible' }}
         >
           🌐 OAuth / OIDC
         </button>
+        <button
+          className={`sso-tab ${activeTab === 'saml' ? 'active' : ''}`}
+          onClick={() => setActiveTab('saml')}
+          style={{ display: 'block', visibility: 'visible' }}
+        >
+          🔒 SAML 2.0
+        </button>
       </div>
 
       <div className="sso-content" style={{ display: 'block', visibility: 'visible', opacity: 1, flex: 1, overflowY: 'auto', padding: '2rem', minHeight: '300px', background: 'white' }}>
-        {!activeTab && <div style={{ padding: '2rem', color: '#333' }}>No tab selected. Defaulting to SAML...</div>}
-        {(activeTab === 'saml' || !activeTab) && (
+        {activeTab === 'saml' && (
           <div className="saml-config">
             <div className="config-section">
               <div className="section-header-row">
@@ -573,17 +668,17 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <h4>👥 Role Mapping</h4>
                 <p className="section-description">Map IdP roles/groups to application roles (comma-separated)</p>
 
-                {Object.keys(samlConfig.roleMapping).map(appRole => (
+                {Object.keys(safeSamlRoleMapping).map(appRole => (
                   <div className="form-group" key={appRole}>
                     <label>{appRole}</label>
                     <input
                       type="text"
                       className="form-control"
                       placeholder="e.g., admin,administrator,platform-admin"
-                      value={samlConfig.roleMapping[appRole]}
+                      value={safeSamlRoleMapping[appRole] || ''}
                       onChange={(e) => canEdit && setSamlConfig({
                         ...samlConfig,
-                        roleMapping: { ...samlConfig.roleMapping, [appRole]: e.target.value }
+                        roleMapping: { ...safeSamlRoleMapping, [appRole]: e.target.value }
                       })}
                       disabled={!canEdit || !samlConfig.enabled}
                     />
@@ -641,7 +736,7 @@ function SSOIntegration({ onClose, embedded = false }) {
           </div>
         )}
 
-        {activeTab === 'oauth' && (
+        {(activeTab === 'oauth' || !activeTab) && (
           <div className="oauth-config">
             <div className="config-section">
               <div className="section-header-row">
@@ -662,6 +757,294 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <p>Integrate with popular OAuth providers like Azure AD, Google, Okta, GitHub, and more.</p>
               </div>
 
+              {/* Okta OAuth 2.0 - First / default provider */}
+              <div className="provider-config">
+                <div className="provider-header">
+                  <div className="provider-title">
+                    <span className="provider-icon">🔷</span>
+                    <h4>Okta OAuth 2.0</h4>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={oktaProvider.enabled}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oktaProvider, enabled: e.target.checked }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled}
+                    />
+                    <span className="toggle-slider"></span>
+                    <span className="toggle-label">{oktaProvider.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </label>
+                </div>
+
+                {/* Okta fields: two per row, order: Okta Domain, Redirect URI, Authorization Server ID, Client ID, Client Secret */}
+                <div className="form-row-2">
+                  <div className="form-group">
+                    <label>Okta Domain</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="your-domain.okta.com or your-domain.oktapreview.com"
+                      value={oktaProvider.domain || ''}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oktaProvider, domain: e.target.value }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Redirect URI (callback URL)</label>
+                    <input
+                      type="url"
+                      className="form-control"
+                      placeholder="https://your-app-domain/auth/okta/callback"
+                      value={oktaProvider.redirectUri || ''}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oktaProvider, redirectUri: e.target.value.trim() }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                    />
+                    <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
+                      Must match the Sign-in redirect URI in your Okta app and the URL where users access this app (e.g. https://oscal.amsgovcloud.com.au/auth/okta/callback). Leave blank to use current browser origin.
+                    </small>
+                  </div>
+                </div>
+                <div className="form-row-2" style={{ marginTop: '0.5rem' }}>
+                  <div className="form-group">
+                    <label>Authorization Server ID</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="default (leave blank for org server)"
+                      value={oktaProvider.authServerId || ''}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oktaProvider, authServerId: e.target.value.trim() }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                    />
+                    <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
+                      Use <strong>default</strong> if your Okta app uses a Custom Authorization Server. Leave blank for the legacy org server.
+                    </small>
+                  </div>
+                  <div className="form-group">
+                    <label>Client ID</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="client-id"
+                      value={oktaProvider.clientId || ''}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          okta: { ...oktaProvider, clientId: e.target.value }
+                        }
+                      })}
+                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                    />
+                  </div>
+                </div>
+                <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                  <label>Client Secret</label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    placeholder="client-secret"
+                    value={typeof oktaProvider.clientSecret === 'string' ? oktaProvider.clientSecret : ''}
+                    onChange={(e) => canEdit && setOauthConfig({
+                      ...oauthConfig,
+                      providers: {
+                        ...oauthConfig.providers,
+                        okta: { ...oktaProvider, clientSecret: e.target.value }
+                      }
+                    })}
+                    disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                  />
+                </div>
+
+                <div className="config-group" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
+                  <h4>👤 JIT provisioning & role from Okta groups</h4>
+                  <p className="section-description">Create user on first sign-in if missing, reactivate if deactivated, assign role from Okta group membership.</p>
+                  <div className="form-group">
+                    <label className="toggle-switch" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={oauthConfig.jitProvisioning === true}
+                        onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, jitProvisioning: e.target.checked })}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      />
+                      <span className="toggle-slider"></span>
+                      <span>Enable JIT provisioning (create user if not in users.json)</span>
+                    </label>
+                  </div>
+                  <div className="form-row-2" style={{ marginTop: '0.5rem' }}>
+                    <div className="form-group">
+                      <label>Default role for new users</label>
+                      <select
+                        className="form-control"
+                        value={oauthConfig.jitDefaultRole || 'User'}
+                        onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, jitDefaultRole: e.target.value })}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      >
+                        <option value="User">User</option>
+                        <option value="Assessor">Assessor</option>
+                        <option value="Platform Admin">Platform Admin</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="toggle-switch" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={oauthConfig.syncRoleFromGroups !== false}
+                          onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, syncRoleFromGroups: e.target.checked })}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                        />
+                        <span className="toggle-slider"></span>
+                        <span>Sync role from Okta groups on every login</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ marginTop: '1rem' }}>
+                    <label>Okta group → app role mapping</label>
+                    <small style={{ display: 'block', marginBottom: '0.5rem', color: '#666' }}>
+                      Add Okta group names and app role. Ensure your Okta Authorization Server returns a <strong>groups</strong> claim.
+                    </small>
+                    {Object.entries(safeGroupToRoleMapping).filter(([k]) => k && !k.startsWith('__')).map(([groupName, appRole]) => (
+                      <div key={groupName} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="Okta group name"
+                          value={groupName}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            if (!canEdit) return;
+                            const next = { ...safeGroupToRoleMapping };
+                            delete next[groupName];
+                            if (v) next[v] = appRole;
+                            setOauthConfig({ ...oauthConfig, groupToRoleMapping: next });
+                          }}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                          style={{ flex: 1 }}
+                        />
+                        <select
+                          className="form-control"
+                          value={appRole || 'User'}
+                          onChange={(e) => canEdit && setOauthConfig({
+                            ...oauthConfig,
+                            groupToRoleMapping: { ...safeGroupToRoleMapping, [groupName]: e.target.value }
+                          })}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                          style={{ width: '160px' }}
+                        >
+                          <option value="User">User</option>
+                          <option value="Assessor">Assessor</option>
+                          <option value="Platform Admin">Platform Admin</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => canEdit && setOauthConfig({
+                            ...oauthConfig,
+                            groupToRoleMapping: Object.fromEntries(Object.entries(safeGroupToRoleMapping).filter(([k]) => k !== groupName))
+                          })}
+                          disabled={!canEdit || !oauthConfig.enabled}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. OSCAL-Admins"
+                        id="new-group-name"
+                        style={{ flex: 1, maxWidth: '240px' }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const input = document.getElementById('new-group-name');
+                            const v = (input?.value || '').trim();
+                            if (v && canEdit) {
+                            setOauthConfig({
+                              ...oauthConfig,
+                              groupToRoleMapping: { ...safeGroupToRoleMapping, [v]: oauthConfig.jitDefaultRole || 'User' }
+                            });
+                              if (input) input.value = '';
+                            }
+                          }
+                        }}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      />
+                      <select
+                        className="form-control"
+                        id="new-group-role"
+                        defaultValue="User"
+                        style={{ width: '140px' }}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      >
+                        <option value="User">User</option>
+                        <option value="Assessor">Assessor</option>
+                        <option value="Platform Admin">Platform Admin</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          const input = document.getElementById('new-group-name');
+                          const roleSelect = document.getElementById('new-group-role');
+                          const v = (input?.value || '').trim();
+                          const role = (roleSelect?.value || 'User');
+                          if (v && canEdit) {
+                            setOauthConfig({
+                              ...oauthConfig,
+                              groupToRoleMapping: { ...safeGroupToRoleMapping, [v]: role }
+                            });
+                            if (input) input.value = '';
+                          }
+                        }}
+                        disabled={!canEdit || !oauthConfig.enabled}
+                      >
+                        Add mapping
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  className="btn-test"
+                  onClick={() => handleTestConnection('Okta')}
+                  disabled={testing}
+                  title={
+                    !oauthConfig.enabled || !oktaProvider.enabled
+                      ? 'Enable OAuth and Okta above first'
+                      : (!safeStr(oktaProvider.domain) || !safeStr(oktaProvider.clientId) || !safeStr(oktaProvider.clientSecret))
+                        ? 'Enter Okta Domain, Client ID, and Client Secret to test'
+                        : 'Test connection to Okta (validates all fields and Okta discovery)'
+                  }
+                >
+                  {testing ? '⏳ Testing...' : '🔍 Test Okta Connection'}
+                </button>
+              </div>
+
               {/* Azure AD */}
               <div className="provider-config">
                 <div className="provider-header">
@@ -672,18 +1055,18 @@ function SSOIntegration({ onClose, embedded = false }) {
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      checked={oauthConfig.providers.azure.enabled}
+                      checked={azureProvider.enabled}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          azure: { ...oauthConfig.providers.azure, enabled: e.target.checked }
+                          azure: { ...azureProvider, enabled: e.target.checked }
                         }
                       })}
                       disabled={!canEdit || !oauthConfig.enabled}
                     />
                     <span className="toggle-slider"></span>
-                    <span className="toggle-label">{oauthConfig.providers.azure.enabled ? 'Enabled' : 'Disabled'}</span>
+                    <span className="toggle-label">{azureProvider.enabled ? 'Enabled' : 'Disabled'}</span>
                   </label>
                 </div>
 
@@ -694,15 +1077,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="text"
                       className="form-control"
                       placeholder="your-tenant-id"
-                      value={oauthConfig.providers.azure.tenantId}
+                      value={azureProvider.tenantId || ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          azure: { ...oauthConfig.providers.azure, tenantId: e.target.value }
+                          azure: { ...azureProvider, tenantId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.azure.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled}
                     />
                   </div>
 
@@ -712,15 +1095,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="text"
                       className="form-control"
                       placeholder="application-client-id"
-                      value={oauthConfig.providers.azure.clientId}
+                      value={azureProvider.clientId || ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          azure: { ...oauthConfig.providers.azure, clientId: e.target.value }
+                          azure: { ...azureProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.azure.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled}
                     />
                   </div>
 
@@ -730,15 +1113,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="password"
                       className="form-control"
                       placeholder="client-secret"
-                      value={oauthConfig.providers.azure.clientSecret}
+                      value={typeof azureProvider.clientSecret === 'string' ? azureProvider.clientSecret : ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          azure: { ...oauthConfig.providers.azure, clientSecret: e.target.value }
+                          azure: { ...azureProvider, clientSecret: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.azure.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled}
                     />
                   </div>
                 </div>
@@ -748,7 +1131,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                   <input
                     type="url"
                     className="form-control"
-                    value={oauthConfig.providers.azure.redirectUri}
+                    value={azureProvider.redirectUri || ''}
                     disabled
                     style={{ background: '#f0f0f0' }}
                   />
@@ -758,7 +1141,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('Azure AD')}
-                  disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.azure.enabled || testing}
+                  disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled || testing}
                 >
                   🔍 Test Azure AD Connection
                 </button>
@@ -774,18 +1157,18 @@ function SSOIntegration({ onClose, embedded = false }) {
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      checked={oauthConfig.providers.google.enabled}
+                      checked={googleProvider.enabled}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          google: { ...oauthConfig.providers.google, enabled: e.target.checked }
+                          google: { ...googleProvider, enabled: e.target.checked }
                         }
                       })}
                       disabled={!canEdit || !oauthConfig.enabled}
                     />
                     <span className="toggle-slider"></span>
-                    <span className="toggle-label">{oauthConfig.providers.google.enabled ? 'Enabled' : 'Disabled'}</span>
+                    <span className="toggle-label">{googleProvider.enabled ? 'Enabled' : 'Disabled'}</span>
                   </label>
                 </div>
 
@@ -796,15 +1179,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="text"
                       className="form-control"
                       placeholder="your-app.apps.googleusercontent.com"
-                      value={oauthConfig.providers.google.clientId}
+                      value={googleProvider.clientId || ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          google: { ...oauthConfig.providers.google, clientId: e.target.value }
+                          google: { ...googleProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.google.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !googleProvider.enabled}
                     />
                   </div>
 
@@ -814,15 +1197,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="password"
                       className="form-control"
                       placeholder="client-secret"
-                      value={oauthConfig.providers.google.clientSecret}
+                      value={typeof googleProvider.clientSecret === 'string' ? googleProvider.clientSecret : ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          google: { ...oauthConfig.providers.google, clientSecret: e.target.value }
+                          google: { ...googleProvider, clientSecret: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.google.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !googleProvider.enabled}
                     />
                   </div>
                 </div>
@@ -832,7 +1215,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                   <input
                     type="url"
                     className="form-control"
-                    value={oauthConfig.providers.google.redirectUri}
+                    value={googleProvider.redirectUri || ''}
                     disabled
                     style={{ background: '#f0f0f0' }}
                   />
@@ -842,99 +1225,9 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('Google')}
-                  disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.google.enabled || testing}
+                  disabled={!canEdit || !oauthConfig.enabled || !googleProvider.enabled || testing}
                 >
                   🔍 Test Google Connection
-                </button>
-              </div>
-
-              {/* Okta */}
-              <div className="provider-config">
-                <div className="provider-header">
-                  <div className="provider-title">
-                    <span className="provider-icon">🔷</span>
-                    <h4>Okta OAuth 2.0</h4>
-                  </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={oauthConfig.providers.okta.enabled}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, enabled: e.target.checked }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled}
-                    />
-                    <span className="toggle-slider"></span>
-                    <span className="toggle-label">{oauthConfig.providers.okta.enabled ? 'Enabled' : 'Disabled'}</span>
-                  </label>
-                </div>
-
-                <div className="form-row-3">
-                  <div className="form-group">
-                    <label>Okta Domain</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="your-domain.okta.com"
-                      value={oauthConfig.providers.okta.domain}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, domain: e.target.value }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Client ID</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="client-id"
-                      value={oauthConfig.providers.okta.clientId}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, clientId: e.target.value }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Client Secret</label>
-                    <input
-                      type="password"
-                      className="form-control"
-                      placeholder="client-secret"
-                      value={oauthConfig.providers.okta.clientSecret}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        providers: {
-                          ...oauthConfig.providers,
-                          okta: { ...oauthConfig.providers.okta, clientSecret: e.target.value }
-                        }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  className="btn-test"
-                  onClick={() => handleTestConnection('Okta')}
-                  disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.okta.enabled || testing}
-                >
-                  🔍 Test Okta Connection
                 </button>
               </div>
 
@@ -948,18 +1241,18 @@ function SSOIntegration({ onClose, embedded = false }) {
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      checked={oauthConfig.providers.github.enabled}
+                      checked={githubProvider.enabled}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          github: { ...oauthConfig.providers.github, enabled: e.target.checked }
+                          github: { ...githubProvider, enabled: e.target.checked }
                         }
                       })}
                       disabled={!canEdit || !oauthConfig.enabled}
                     />
                     <span className="toggle-slider"></span>
-                    <span className="toggle-label">{oauthConfig.providers.github.enabled ? 'Enabled' : 'Disabled'}</span>
+                    <span className="toggle-label">{githubProvider.enabled ? 'Enabled' : 'Disabled'}</span>
                   </label>
                 </div>
 
@@ -970,15 +1263,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="text"
                       className="form-control"
                       placeholder="github-client-id"
-                      value={oauthConfig.providers.github.clientId}
+                      value={githubProvider.clientId || ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          github: { ...oauthConfig.providers.github, clientId: e.target.value }
+                          github: { ...githubProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.github.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !githubProvider.enabled}
                     />
                   </div>
 
@@ -988,15 +1281,15 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="password"
                       className="form-control"
                       placeholder="client-secret"
-                      value={oauthConfig.providers.github.clientSecret}
+                      value={typeof githubProvider.clientSecret === 'string' ? githubProvider.clientSecret : ''}
                       onChange={(e) => canEdit && setOauthConfig({
                         ...oauthConfig,
                         providers: {
                           ...oauthConfig.providers,
-                          github: { ...oauthConfig.providers.github, clientSecret: e.target.value }
+                          github: { ...githubProvider, clientSecret: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.github.enabled}
+                      disabled={!canEdit || !oauthConfig.enabled || !githubProvider.enabled}
                     />
                   </div>
                 </div>
@@ -1004,33 +1297,10 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('GitHub')}
-                  disabled={!canEdit || !oauthConfig.enabled || !oauthConfig.providers.github.enabled || testing}
+                  disabled={!canEdit || !oauthConfig.enabled || !githubProvider.enabled || testing}
                 >
                   🔍 Test GitHub Connection
                 </button>
-              </div>
-
-              {/* OAuth Role Mapping */}
-              <div className="config-group">
-                <h4>👥 OAuth Role Mapping</h4>
-                <p className="section-description">Map OAuth claims/roles to application roles (comma-separated)</p>
-
-                {Object.keys(oauthConfig.roleMapping).map(appRole => (
-                  <div className="form-group" key={appRole}>
-                    <label>{appRole}</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="e.g., admin,administrator"
-                      value={oauthConfig.roleMapping[appRole]}
-                      onChange={(e) => canEdit && setOauthConfig({
-                        ...oauthConfig,
-                        roleMapping: { ...oauthConfig.roleMapping, [appRole]: e.target.value }
-                      })}
-                      disabled={!canEdit || !oauthConfig.enabled}
-                    />
-                  </div>
-                ))}
               </div>
             </div>
           </div>
