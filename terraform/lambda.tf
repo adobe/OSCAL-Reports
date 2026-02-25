@@ -1,4 +1,6 @@
 # Lambda: Ollama wake/sleep controller + EventBridge rule (every 30 min)
+# Idle = STOP instance + detach (never terminate). Wake = start saved instance or set ASG desired_capacity to launch new.
+# terraform apply does NOT invoke the Lambda; it only updates infra. To wake after idle: invoke Lambda (action=wake) e.g. ./scripts/debug/run-install-ollama-on-instance.sh wake or from Blue/Green app. With desired_capacity=1, apply will set ASG to 1 and can start an instance if ASG is at 0.
 
 data "archive_file" "ollama_controller" {
   type        = "zip"
@@ -23,6 +25,7 @@ resource "aws_lambda_function" "ollama_controller" {
       OLLAMA_ASG_NAME          = aws_autoscaling_group.ollama.name
       IDLE_TIMEOUT_HOURS       = tostring(var.ollama_idle_timeout_hours)
       OLLAMA_DESIRED_CAPACITY  = tostring(var.ollama_desired_capacity)
+      OLLAMA_MAX_INSTANCES     = tostring(var.ollama_max_size)
     }
   }
 }

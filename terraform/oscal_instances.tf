@@ -78,6 +78,8 @@ Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
 WantedBy=multi-user.target
 SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
+sed -i "/Environment=USERS_PATH=/a Environment=OLLAMA_URL=http://${aws_lb.ollama.dns_name}:11434" /etc/systemd/system/oscal-reporter.service
+sed -i "/Environment=USERS_PATH=/a Environment=OLLAMA_WAKE_LAMBDA=${aws_lambda_function.ollama_controller.function_name}" /etc/systemd/system/oscal-reporter.service
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
@@ -138,6 +140,8 @@ Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
 WantedBy=multi-user.target
 SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
+sed -i "/Environment=USERS_PATH=/a Environment=OLLAMA_URL=http://${aws_lb.ollama.dns_name}:11434" /etc/systemd/system/oscal-reporter.service
+sed -i "/Environment=USERS_PATH=/a Environment=OLLAMA_WAKE_LAMBDA=${aws_lambda_function.ollama_controller.function_name}" /etc/systemd/system/oscal-reporter.service
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service

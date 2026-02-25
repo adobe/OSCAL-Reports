@@ -44,13 +44,14 @@ if [ "$PULL_ONLY" = true ]; then
   exit 0
 fi
 
-# Full install: ensure zstd (required by Ollama install for extraction) and curl are available
+# Full install: ensure zstd (required by Ollama install for extraction) and curl are available.
+# On Amazon Linux 2023, curl-minimal is default; --allowerasing lets dnf replace it with full curl.
 if command -v dnf >/dev/null 2>&1; then
-  dnf install -y zstd curl 2>/dev/null || true
+  dnf install -y --allowerasing zstd curl
 elif command -v yum >/dev/null 2>&1; then
-  yum install -y zstd curl 2>/dev/null || true
+  yum install -y --allowerasing zstd curl
 elif command -v apt-get >/dev/null 2>&1; then
-  apt-get update 2>/dev/null && apt-get install -y zstd curl 2>/dev/null || true
+  apt-get update && apt-get install -y zstd curl
 else
   echo "Unsupported package manager (dnf, yum, or apt-get required)." >&2
   exit 1

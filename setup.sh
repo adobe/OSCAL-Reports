@@ -406,20 +406,8 @@ do_install() {
     echo ""
   fi
   
-  # Copy configuration files
-  print_info "Setting up configuration files..."
-  if [ -d "config" ]; then
-    if [ -f "config/app/config.json" ]; then
-      mkdir -p backend
-      cp config/app/config.json backend/config.json 2>/dev/null || true
-      print_success "Copied config.json"
-    fi
-    if [ -f "config/app/users.json" ]; then
-      mkdir -p backend/auth
-      cp config/app/users.json backend/auth/users.json 2>/dev/null || true
-      print_success "Copied users.json"
-    fi
-  fi
+  # Config and users live in config/app/ only (canonical); no copy to backend
+  print_info "Configuration: config/app/config.json and config/app/users.json (canonical location)"
   echo ""
   
   # Generate credentials

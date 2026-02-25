@@ -256,12 +256,11 @@ app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
       }
     }
     
-    // Check config file
+    // Check config file (CONFIG_PATH, Docker /data, then config/app)
     const configPaths = [
       process.env.CONFIG_PATH,
       '/data/config.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'config.json'),
-      path.join(process.cwd(), 'config.json')
+      path.join(process.cwd(), '..', 'config', 'app', 'config.json')
     ].filter(Boolean);
     
     for (const configPath of configPaths) {
@@ -276,12 +275,11 @@ app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
       }
     }
     
-    // Check users file
+    // Check users file (USERS_PATH, Docker /data, then config/app)
     const usersPaths = [
       process.env.USERS_PATH,
       '/data/users.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
-      path.join(process.cwd(), 'auth', 'users.json')
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json')
     ].filter(Boolean);
     
     for (const usersPath of usersPaths) {
@@ -566,7 +564,6 @@ app.get('/api/auth/diagnostics', (req, res) => {
     const path = require('path');
     const configDir = path.join(process.cwd(), 'config', 'app');
     const usersFile = path.join(configDir, 'users.json');
-    const legacyUsersFile = path.join(process.cwd(), 'backend', 'auth', 'users.json');
     
     const diagnostics = {
       configDirectory: {
@@ -581,10 +578,6 @@ app.get('/api/auth/diagnostics', (req, res) => {
         readable: false,
         writable: false,
         size: 0
-      },
-      legacyUsersFile: {
-        path: legacyUsersFile,
-        exists: fs.existsSync(legacyUsersFile)
       },
       users: {
         count: 0,
@@ -1406,8 +1399,7 @@ app.get('/api/users/export', authenticate, requireRole(ROLES.PLATFORM_ADMIN), as
     const possiblePaths = [
       process.env.USERS_PATH,
       '/data/users.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
-      path.join(process.cwd(), 'auth', 'users.json')
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json')
     ].filter(Boolean);
     
     for (const filePath of possiblePaths) {
@@ -1479,8 +1471,7 @@ app.post('/api/users/import', authenticate, requireRole(ROLES.PLATFORM_ADMIN), a
     const possiblePaths = [
       process.env.USERS_PATH,
       '/data/users.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'users.json'),
-      path.join(process.cwd(), 'auth', 'users.json')
+      path.join(process.cwd(), '..', 'config', 'app', 'users.json')
     ].filter(Boolean);
     
     let usersFilePath = possiblePaths[0];
@@ -5440,7 +5431,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         errorDetails = {
           code: error.code,
           message: error.message,
-          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/run-install-ollama-on-instance.sh then scripts/debug/fix-ollama-listen-address.sh on the Ollama instance.'
+          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/debug/run-install-ollama-on-instance.sh (full flow) or scripts/debug/run-install-ollama-on-instance.sh listener if Ollama is already installed.'
         };
       } else if (error.response) {
         errorMessage = `AI Engine returned error ${error.response.status}`;

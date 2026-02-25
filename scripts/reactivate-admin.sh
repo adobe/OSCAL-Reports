@@ -1,25 +1,31 @@
 #!/bin/bash
 
-# Script to reactivate the admin user in production
-# Usage: ./reactivate-admin.sh [path-to-users.json]
-# 
-# This script checks multiple possible locations for users.json
+# Reactivate the admin user in production.
+# Usage: ./scripts/reactivate-admin.sh [path-to-users.json]
+#   Run from repo root, or pass an absolute path to users.json.
+# Checks: CONFIG_PATH/USERS_PATH env, /opt/oscal/data (EC2), /data (Docker), config/app (repo).
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # If path provided as argument, use it
 if [ -n "$1" ]; then
     USERS_FILE="$1"
+elif [ -n "$USERS_PATH" ] && [ -f "$USERS_PATH" ]; then
+    USERS_FILE="$USERS_PATH"
+elif [ -f "/opt/oscal/data/users.json" ]; then
+    USERS_FILE="/opt/oscal/data/users.json"
+elif [ -f "/data/users.json" ]; then
+    USERS_FILE="/data/users.json"
 elif [ -f "/app/config/app/users.json" ]; then
     USERS_FILE="/app/config/app/users.json"
-elif [ -f "/app/auth/users.json" ]; then
-    USERS_FILE="/app/auth/users.json"
+elif [ -f "$REPO_ROOT/config/app/users.json" ]; then
+    USERS_FILE="$REPO_ROOT/config/app/users.json"
 elif [ -f "config/app/users.json" ]; then
     USERS_FILE="config/app/users.json"
-elif [ -f "backend/auth/users.json" ]; then
-    USERS_FILE="backend/auth/users.json"
 elif [ -f "auth/users.json" ]; then
     USERS_FILE="auth/users.json"
 else
-    USERS_FILE="${1:-config/app/users.json}"
+    USERS_FILE="${1:-$REPO_ROOT/config/app/users.json}"
 fi
 
 if [ ! -f "$USERS_FILE" ]; then
@@ -75,4 +81,3 @@ else
     echo "❌ Failed to reactivate admin user"
     exit 1
 fi
-
