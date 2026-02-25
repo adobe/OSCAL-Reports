@@ -86,7 +86,7 @@ echo ""
 # 1) Listeners
 listeners=$(aws elbv2 describe-listeners --region "$region" --load-balancer-arn "$alb_arn" --query 'Listeners[*].[Port,Protocol]' --output text 2>/dev/null) || true
 has_80=""; has_443=""
-while read -r port proto; do
+while read -r port _; do
   [ "$port" = "80" ]  && has_80=1
   [ "$port" = "443" ] && has_443=1
 done <<< "$listeners"

@@ -218,20 +218,21 @@ check_ollama_volume_size() {
 # ========== 4. Install (disk + install script + pull two models) ==========
 check_and_free_ollama_disk_space() {
   local key="$1" ip="$2"
-  ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${SSH_USER}@${ip}" "sudo bash -s" << REMOTE_SPACE
+  # Quote REMOTE_SPACE so heredoc is literal; pass OLLAMA_MIN_FREE_MB via env so remote can use it
+  ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${SSH_USER}@${ip}" "OLLAMA_MIN_FREE_MB=$OLLAMA_MIN_FREE_MB sudo -E bash -s" << 'REMOTE_SPACE'
 set -e
-avail_mb=\$(df -m / | awk 'NR==2{print \$4}')
-if [ "\$avail_mb" -lt ${OLLAMA_MIN_FREE_MB} ]; then
-  echo "Low disk space (\${avail_mb} MB free). Freeing dnf/yum cache, journal, /tmp..."
+avail_mb=$(df -m / | awk 'NR==2{print $4}')
+if [ "$avail_mb" -lt "${OLLAMA_MIN_FREE_MB:-2048}" ]; then
+  echo "Low disk space (${avail_mb} MB free). Freeing dnf/yum cache, journal, /tmp..."
   dnf clean all 2>/dev/null || yum clean all 2>/dev/null || true
   rm -rf /var/cache/dnf 2>/dev/null || rm -rf /var/cache/yum 2>/dev/null || true
   journalctl --vacuum-time=1d 2>/dev/null || true
   journalctl --vacuum-size=100M 2>/dev/null || true
   find /tmp -maxdepth 1 -type f -mtime +1 -delete 2>/dev/null || true
-  avail_mb=\$(df -m / | awk 'NR==2{print \$4}')
-  if [ "\$avail_mb" -lt ${OLLAMA_MIN_FREE_MB} ]; then echo "ERROR: Still only \${avail_mb} MB free." >&2; exit 1; fi
+  avail_mb=$(df -m / | awk 'NR==2{print $4}')
+  if [ "$avail_mb" -lt "${OLLAMA_MIN_FREE_MB:-2048}" ]; then echo "ERROR: Still only ${avail_mb} MB free." >&2; exit 1; fi
 else
-  echo "Disk space OK (\${avail_mb} MB free)."
+  echo "Disk space OK (${avail_mb} MB free)."
 fi
 REMOTE_SPACE
 }
