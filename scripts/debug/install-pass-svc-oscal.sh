@@ -13,6 +13,8 @@ PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
 SVC_HOME="/var/lib/svc_ams-oscal"
+# SVC_GROUP and SVC_HOME are used in REMOTE_SCRIPT (sent to server); echo for ShellCheck
+echo "Installing pass for $SVC_USER (group $SVC_GROUP, home $SVC_HOME) on target(s)."
 
 SSH_KEY=$(mktemp)
 trap 'rm -f "$SSH_KEY"' EXIT
@@ -38,6 +40,7 @@ esac
 [ -n "$GREEN_IP" ] || [ -n "$BLUE_IP" ] || { echo "Error: Could not get Green or Blue IP from Terraform." >&2; exit 1; }
 
 # Remote script: install pass + gpg, ensure user, generate GPG key, pass init (all as needed)
+# shellcheck disable=SC2016
 REMOTE_SCRIPT='
 set -e
 SVC_USER="svc_ams-oscal"
@@ -95,8 +98,8 @@ if [ ! -d "$SVC_HOME/.password-store" ]; then
   sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" gpg --batch --no-tty --yes --generate-key 2>/dev/null << GPGEOF
 Key-Type: RSA
 Key-Length: 2048
-Name-Real: '"$SVC_USER"'
-Name-Email: '"$SVC_USER"'@localhost
+Name-Real: svc_ams-oscal
+Name-Email: svc_ams-oscal@localhost
 Expire-Date: 0
 %no-protection
 %commit
