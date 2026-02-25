@@ -33,8 +33,6 @@ if [ -z "$alb_arn" ]; then
   if [ -n "$dns" ]; then
     alb_arn=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='$dns'].LoadBalancerArn" --output text 2>/dev/null) || true
   fi
-  dns=$(cd "$TERRAFORM_DIR" && terraform output -raw alb_dns_name 2>/dev/null) && \
-  alb_arn=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='$dns'].LoadBalancerArn" --output text 2>/dev/null) || true
 fi
 if [ -z "$alb_arn" ]; then
   echo "Could not get ALB ARN. Set TERRAFORM_DIR or run from repo with state in terraform/"; exit 1
