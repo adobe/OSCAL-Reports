@@ -398,7 +398,7 @@ Follow the recommended flow for better tracking and organization, but cross-bran
 
 **⚠️ IMPORTANT**: Before merging to Pre_Prod or main, you MUST bump the version number.
 
-The project uses an automated version control workflow to ensure consistency. See [VERSION_CONTROL_WORKFLOW.md](VERSION_CONTROL_WORKFLOW.md) for complete details.
+The project uses an automated version control workflow to ensure consistency. See [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) for complete details.
 
 **Quick Start:**
 

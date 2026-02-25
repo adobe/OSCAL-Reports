@@ -542,6 +542,22 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
                 ) : (
                   <>
                     <div className="form-group">
+                      <label htmlFor={`testing-objective-${control.id}`}>
+                        Assessment/Testing Objective
+                        {!canEditTestingMethod() && <span style={{ marginLeft: '0.5rem', color: '#d97706', fontSize: '0.85em' }}>🔒 Assessor Role Required</span>}
+                      </label>
+                      <textarea
+                        id={`testing-objective-${control.id}`}
+                        className="form-control"
+                        rows="3"
+                        placeholder="Define the objective of assessing this control (e.g., Verify that access controls prevent unauthorized data access)..."
+                        value={control.testingObjective || ''}
+                        onChange={(e) => handleChange('testingObjective', e.target.value)}
+                        disabled={!canEditTestingMethod()}
+                      />
+                    </div>
+
+                    <div className="form-group">
                       <label htmlFor={`evidence-${control.id}`}>Evidence Location</label>
                       <textarea
                         id={`evidence-${control.id}`}

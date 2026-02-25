@@ -11,7 +11,7 @@
 | Document | Description | For |
 |----------|-------------|-----|
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, TrueNAS, Local) | **Start Here** |
-| [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md) | 5-minute TrueNAS installation guide | Quick Setup |
+| [TRUENAS.md](TRUENAS.md) | TrueNAS installation and quick reference | Quick Setup |
 | [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub image documentation | Docker Users |
 
 ---
@@ -23,6 +23,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
 | [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
+| [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md) | AI models (Mistral, Gemma), config, and token limits |
 | [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
 
 ---
@@ -31,7 +32,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [VERSION_CONTROL_WORKFLOW.md](VERSION_CONTROL_WORKFLOW.md) | Automated version bumping and release workflow |
+| [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) | Version bumping, workflow, and release checklist |
 | [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
 | [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
 | [GITHUB_ACCOUNT_GUIDE.md](GITHUB_ACCOUNT_GUIDE.md) | Switching between GitHub accounts |
@@ -45,10 +46,15 @@
 
 | Document | Description |
 |----------|-------------|
-| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub publishing guide |
-| [DEPLOYMENT_COMPARISON.md](DEPLOYMENT_COMPARISON.md) | Build vs Pull deployment comparison |
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub guide (includes build vs pull comparison) |
 | [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub public documentation |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platform deployment (Azure, AWS, GCP) |
+| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Config migration and user consolidation (Blue/Green) |
+| [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) | AWS EC2 cost estimate and Ollama auto-scaling |
+| [AWS_TERRAFORM.md](AWS_TERRAFORM.md) | Terraform for OSCAL + Ollama on AWS (ALB, Green/Blue, Ollama NLB, Lambda, OLLAMA_URL) |
+| [EC2_WEB_HOSTING_BEST_PRACTICES.md](EC2_WEB_HOSTING_BEST_PRACTICES.md) | EC2 web hosting best practices: directory layout, deploy, cron, Blue/Green, troubleshooting, scripts |
+| [IMAGE_FACTORY.md](IMAGE_FACTORY.md) | Adobe Image Factory Amazon Linux 2023 AMIs for Terraform (AMS deployments) |
+| [AWS_SANDBOX_REQUEST.md](AWS_SANDBOX_REQUEST.md) | Jira ticket and URL for requesting designated AWS Sandbox account |
 
 ---
 
@@ -56,41 +62,57 @@
 
 | Document | Description |
 |----------|-------------|
-| [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md) | Quick reference card (5-min setup) |
-| [TRUENAS_INSTALLATION.md](TRUENAS_INSTALLATION.md) | Detailed installation guide |
-| [TRUENAS_APP_CATALOG.md](TRUENAS_APP_CATALOG.md) | Custom app catalog integration |
+| [TRUENAS.md](TRUENAS.md) | TrueNAS installation, quick reference, and app catalog |
 
 ---
 
-### 🔒 Quality
+### 👥 User Documentation
 
 | Document | Description |
 |----------|-------------|
+| [USER_GUIDE.md](USER_GUIDE.md) | Complete user guide for application features |
+| [OSCAL_SAR.md](OSCAL_SAR.md) | OSCAL Security Assessment Results (SAR) guide |
+
+---
+
+### 🔐 Authentication / SSO
+
+| Document | Description |
+|----------|-------------|
+| [OKTA_OIDC_INTEGRATION.md](OKTA_OIDC_INTEGRATION.md) | Okta OIDC sign-in and groups/role mapping (production: https://keekar.3utilities.com/) |
+
+---
+
+### 🔒 Security & Quality
+
+| Document | Description |
+|----------|-------------|
+| [SECURITY.md](SECURITY.md) | OWASP compliance, security features, and vulnerability history |
 | [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA processes and testing |
 
 ---
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 21
-- **Categories:** 6
-- **Last Update:** 2026-02-03
+- **Total Documents:** 27 (consolidated from 48+ in Feb 2026)
+- **Categories:** 8
+- **Last Update:** 2026-02-10
 
 ---
 
 ## 🎯 Quick Links by Role
 
 ### 👨‍💻 **Developer**
-Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [VERSION_CONTROL_WORKFLOW.md](VERSION_CONTROL_WORKFLOW.md)
+Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md)
 
 ### 🚀 **DevOps/Deployment**
-Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
+Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [TRUENAS.md](TRUENAS.md)
 
 ### 👤 **End User**
-Start with: [DOCKER_HUB_README.md](DOCKER_HUB_README.md) → [TRUENAS_QUICK_REFERENCE.md](TRUENAS_QUICK_REFERENCE.md)
+Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [TRUENAS.md](TRUENAS.md)
 
-### 🔐 **Security Reviewer**
-Start with: [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
+### 🔐 **Security Reviewer / Assessor**
+Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
 
 ### ✅ **QA/Tester**
 Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)
@@ -121,16 +143,14 @@ Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEP
 
 ---
 
-## 🔄 Recent Cleanup (2026-01-28)
+## 🔄 Recent Cleanup (2026-02-10)
 
-**Removed 18 files:**
-- Session summaries and workflow analyses
-- Outdated test automation documentation
-- Completed migration guides
-- Duplicate deployment guides
-- Specific PR and bug fix logs
+**Removed 27 files; added 5 consolidated docs:**
+- One-time/outdated: IMMEDIATE_ACTION_REQUIRED, KODIAK_CSRF_RESPONSE, SECURITY_FIX_SUMMARY, SECURITY_FINDINGS_IMPLEMENTATION_SUMMARY, TEST_UPDATES_V1.6.5, GEMMA_IMPLEMENTATION_SUMMARY, VERSION_CONTROL_SETUP_SUMMARY, DOCKER_HUB_DEPLOYMENT_IMPLEMENTATION, DEPLOYMENT_TESTING_GUIDE
+- Consolidated: AI (6→1), TrueNAS (3→1), Security (3→1), Version/Release (3→1), Config/User migration (2→1)
+- Deployment comparison merged into DOCKER_HUB_GUIDE
 
-**Result:** 48% reduction in file count, cleaner organization
+**Result:** ~50% fewer .md files; single entry points per topic
 
 ---
 
@@ -142,4 +162,4 @@ Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEP
 
 ---
 
-*Last updated: 2026-01-28*
+*Last updated: 2026-02-10*

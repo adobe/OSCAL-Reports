@@ -1,6 +1,6 @@
 {
   "name": "oscal-ssp-backend",
-  "version": "1.6.7",
+  "version": "1.7.3",
   "description": "Backend API for Keekar's OSCAL SOA/SSP/CCM Generator",
   "main": "server.js",
   "type": "module",
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.952.0",
+    "@aws-sdk/client-lambda": "^3.995.0",
     "@oscal/oscal-deep-diff": "^1.0.0",
     "@smithy/node-http-handler": "^4.4.6",
     "ajv": "^8.17.1",

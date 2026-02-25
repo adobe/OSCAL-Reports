@@ -17,6 +17,8 @@ build/
 # Sensitive configuration files (CRITICAL - DO NOT COMMIT)
 config/app/config.json
 config/app/users.json
+config/app/okta_oidc_state.json
+backend/okta-debug.ndjson
 backend/auth/users.json
 backend/config.json
 credentials.txt
@@ -109,9 +111,13 @@ volumes/
 # User-uploaded files (if applicable)
 uploads/
 user-data/
+backend/Published_OSCAL/
+config/app/published-soa/
 .cursor/
 
-# Vercel deployment files (NOT USED - Docker deployments only)
-.vercel/
-.vercel
-# Note: vercel.json and .vercelignore are committed to block deployments
+# Terraform (tfvars may contain secrets)
+terraform/*.tfvars
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.zip

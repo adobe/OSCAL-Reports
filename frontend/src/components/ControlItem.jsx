@@ -495,6 +495,18 @@ function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = []
             ) : (
               <>
                 <div className="form-group">
+                  <label htmlFor={`testingObjective-${control.id}`}>Assessment/Testing Objective</label>
+                  <textarea
+                    id={`testingObjective-${control.id}`}
+                    className="form-control"
+                    rows="2"
+                    placeholder="Define the objective of assessing this control..."
+                    value={control.testingObjective || ''}
+                    onChange={(e) => onUpdate(control.id, 'testingObjective', e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
                   <label htmlFor={`evidence-${control.id}`}>Evidence/Artifacts Location</label>
                   <input
                     type="text"

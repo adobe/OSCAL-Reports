@@ -3,7 +3,7 @@
  * Provides user authentication interface
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import './Login.css';
@@ -18,6 +18,15 @@ const Login = () => {
   const [registerEmail, setRegisterEmail] = useState('');
   const [registrationMessage, setRegistrationMessage] = useState('');
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+
+  // Show error from URL (e.g. ?error=okta_not_configured after Okta redirect)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlError = params.get('error');
+    if (urlError === 'okta_not_configured') {
+      setError('Okta sign-in is not configured. Enable OAuth and Okta in Settings → SSO Integration.');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -110,6 +119,17 @@ const Login = () => {
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
+
+          <div className="login-divider" style={{ margin: '1rem 0', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
+            — or —
+          </div>
+          <a
+            href="/api/auth/okta/authorize"
+            className="login-button okta-login-btn"
+            style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '0.5rem' }}
+          >
+            Sign in with Okta
+          </a>
         </form>
 
         {showSelfRegistration && (
@@ -154,7 +174,7 @@ const Login = () => {
             
             <div className="beta-release-banner">
               <a 
-                href="https://keekar.3utilities.com" 
+                href="https://oscal.amsgovcloud.com.au/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="beta-link"
