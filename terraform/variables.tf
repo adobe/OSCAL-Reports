@@ -172,9 +172,14 @@ variable "ollama_min_size" {
 }
 
 variable "ollama_max_size" {
-  description = "Ollama ASG maximum size; expansion stops at this cap (default 1)"
+  description = "Ollama ASG maximum size; never exceed 2. Lambda terminates oldest if count exceeds this (default 1)"
   type        = number
   default     = 1
+
+  validation {
+    condition     = var.ollama_max_size >= 0 && var.ollama_max_size <= 2
+    error_message = "ollama_max_size must be between 0 and 2 (inclusive). Count must never exceed 2."
+  }
 }
 
 variable "ollama_desired_capacity" {

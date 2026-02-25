@@ -47,7 +47,8 @@ resource "aws_iam_role_policy" "lambda_ollama_controller" {
           "ec2:DescribeInstances",
           "ec2:DescribeInstanceStatus",
           "ec2:StopInstances",
-          "ec2:StartInstances"
+          "ec2:StartInstances",
+          "ec2:TerminateInstances"
         ]
         Resource = "*"
       },

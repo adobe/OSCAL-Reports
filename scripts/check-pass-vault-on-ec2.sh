@@ -38,7 +38,7 @@ run_remote() {
     SVC_USER="$SVC_USER" SVC_HOME="$SVC_HOME" INSTANCE_NAME="$name" bash -s << 'REMOTE'
 # Prefer runtime config (same as systemd CONFIG_PATH)
 CONFIG_FILE=""
-for p in /opt/oscal/data/config.json /opt/oscal/app/config/app/config.json /data/config.json; do
+for p in /opt/oscal/data/config.json /data/config.json; do
   [ -f "$p" ] && CONFIG_FILE="$p" && break
 done
 [ -z "$CONFIG_FILE" ] && CONFIG_FILE="/opt/oscal/data/config.json"

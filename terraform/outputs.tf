@@ -1,7 +1,7 @@
 # Outputs for OSCAL + Ollama deployment
 
 output "aws_region" {
-  description = "AWS region (for scripts that need region, e.g. check-ollama-connectivity.sh)"
+  description = "AWS region (for scripts that need region, e.g. scripts/debug/check-ollama-connectivity.sh)"
   value       = var.aws_region
 }
 
@@ -140,4 +140,14 @@ output "ollama_target_group_arn" {
 output "vpc_id" {
   description = "VPC ID"
   value       = aws_vpc.main.id
+}
+
+output "vpc_cidr" {
+  description = "VPC CIDR (e.g. for firewalld allow 11434 from internal only)"
+  value       = var.vpc_cidr
+}
+
+output "ollama_public_subnet_id" {
+  description = "First public subnet ID (for run-instances when launching Ollama outside ASG)"
+  value       = aws_subnet.public[0].id
 }

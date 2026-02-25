@@ -4308,7 +4308,7 @@ print_info() { echo "${BLUE}ℹ${NC}  $1"; }
 Add color coding to all shell scripts:
 - `setup.sh`
 - `build_on_truenas.sh`
-- `reactivate-admin.sh`
+- `scripts/reactivate-admin.sh`
 
 **Benefits:**
 - Easier to scan terminal output

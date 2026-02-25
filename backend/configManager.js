@@ -22,14 +22,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Config file path priority:
-// 1. Environment variable CONFIG_PATH (for custom locations)
+// 1. Environment variable CONFIG_PATH (for custom locations, e.g. EC2 /opt/oscal/data/config.json)
 // 2. /data/config.json (Docker volume mount - PREFERRED)
-// 3. config/app/config.json (legacy location)
-// 4. backend/config.json (original location, for compatibility)
+// 3. config/app/config.json (canonical repo location for local dev)
 const VOLUME_CONFIG_FILE = '/data/config.json';
 const CONFIG_DIR = path.join(__dirname, '..', 'config', 'app');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
-const LEGACY_CONFIG_FILE = path.join(__dirname, 'config.json');
 
 /**
  * Get the config file path based on priority
@@ -46,14 +44,9 @@ function getConfigPath() {
     return VOLUME_CONFIG_FILE;
   }
   
-  // 3. Check config/app directory
+  // 3. Check config/app directory (canonical repo location)
   if (fs.existsSync(CONFIG_FILE)) {
     return CONFIG_FILE;
-  }
-  
-  // 4. Check legacy location
-  if (fs.existsSync(LEGACY_CONFIG_FILE)) {
-    return LEGACY_CONFIG_FILE;
   }
   
   // Default: Use volume location for new installations

@@ -66,7 +66,7 @@ OKTA_PASS_ENTRY=$2
 echo "========== $INSTANCE_NAME =========="
 
 # Config paths (direct run vs Docker)
-CONFIG_PATHS="/opt/oscal/data/config.json /opt/oscal/app/config/app/config.json /data/config.json"
+CONFIG_PATHS="/opt/oscal/data/config.json /data/config.json"
 CONFIG_FILE=""
 for p in $CONFIG_PATHS; do
   if [ -f "$p" ]; then

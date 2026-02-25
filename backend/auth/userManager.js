@@ -15,14 +15,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Users file path priority:
-// 1. Environment variable USERS_PATH (for custom locations)
+// 1. Environment variable USERS_PATH (for custom locations, e.g. EC2 /opt/oscal/data/users.json)
 // 2. /data/users.json (Docker volume mount - PREFERRED)
-// 3. config/app/users.json (legacy location)
-// 4. backend/auth/users.json (original location, for compatibility)
+// 3. config/app/users.json (canonical repo location for local dev)
 const VOLUME_USERS_FILE = '/data/users.json';
 const CONFIG_DIR = path.join(__dirname, '..', '..', 'config', 'app');
 const USERS_FILE = path.join(CONFIG_DIR, 'users.json');
-const LEGACY_USERS_FILE = path.join(__dirname, 'users.json');
 
 /**
  * Get the users file path based on priority
@@ -39,14 +37,9 @@ function getUsersPath() {
     return VOLUME_USERS_FILE;
   }
   
-  // 3. Check config/app directory
+  // 3. Check config/app directory (canonical repo location)
   if (fs.existsSync(USERS_FILE)) {
     return USERS_FILE;
-  }
-  
-  // 4. Check legacy location
-  if (fs.existsSync(LEGACY_USERS_FILE)) {
-    return LEGACY_USERS_FILE;
   }
   
   // Default: Use volume location for new installations

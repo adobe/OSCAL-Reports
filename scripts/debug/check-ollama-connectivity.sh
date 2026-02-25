@@ -4,18 +4,18 @@
 # Run from repo root after Terraform apply. Uses same SSH key as deploy-to-ec2.sh.
 #
 # Usage:
-#   ./scripts/check-ollama-connectivity.sh
-#   ./scripts/check-ollama-connectivity.sh --green-only 1.2.3.4
-#   ./scripts/check-ollama-connectivity.sh --blue-only 5.6.7.8
-#   OLLAMA_URL=http://my-nlb:11434 ./scripts/check-ollama-connectivity.sh
-#   OLLAMA_INSTANCE_IP=1.2.3.4 ./scripts/check-ollama-connectivity.sh   # skip AWS discovery
+#   ./scripts/debug/check-ollama-connectivity.sh
+#   ./scripts/debug/check-ollama-connectivity.sh --green-only 1.2.3.4
+#   ./scripts/debug/check-ollama-connectivity.sh --blue-only 5.6.7.8
+#   OLLAMA_URL=http://my-nlb:11434 ./scripts/debug/check-ollama-connectivity.sh
+#   OLLAMA_INSTANCE_IP=1.2.3.4 ./scripts/debug/check-ollama-connectivity.sh   # skip AWS discovery
 #
 # Environment: SSH_KEY_FILE or Pass entry AWS/OSCAL-AWS4379-SSH; TERRAFORM_DIR (default: terraform);
 #   AWS_REGION or AWS_DEFAULT_REGION (for Ollama instance discovery); OLLAMA_URL; OLLAMA_INSTANCE_IP.
 
 set -e
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
 SSH_USER="${SSH_USER:-ec2-user}"
 PROMPT_QUESTION="Who is the prime minister of Australia?"
@@ -233,4 +233,4 @@ run_on "$BLUE_IP" "Blue" "$SSH_KEY" "$OLLAMA_URL"
 echo "Next steps:"
 echo "  - Timeout from Blue/Green to NLB usually means no healthy targets. In AWS Console: EC2 -> Target Groups -> *-ollama-11434 -> Targets. Ensure at least one target is Healthy."
 echo "  - If the ASG is at 0, set desired capacity to 1 (or trigger Lambda wake). Wait for instance to boot and target to become Healthy (2–5 min), then retry."
-echo "  - On the Ollama instance: ensure Ollama listens on 0.0.0.0 (run: ./scripts/run-install-ollama-on-instance.sh then ./scripts/debug/fix-ollama-listen-address.sh). If firewalld is active, open port 11434: sudo firewall-cmd --permanent --add-port=11434/tcp; sudo firewall-cmd --reload"
+echo "  - On the Ollama instance: ensure Ollama listens on 0.0.0.0 (run: ./scripts/debug/run-install-ollama-on-instance.sh for full flow, or ./scripts/debug/run-install-ollama-on-instance.sh listener [IP] to fix listener only). Firewalld allows 11434 from VPC only (internal)."

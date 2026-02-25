@@ -1008,7 +1008,7 @@ OSCAL_Reports/
 ├── package.json                      # Root package (dev scripts)
 ├── setup.sh                          # Setup script
 ├── build_on_truenas.sh               # TrueNAS build script
-├── reactivate-admin.sh               # Admin reactivation utility
+├── scripts/reactivate-admin.sh       # Admin reactivation utility
 ├── docker-compose.yml                # Docker Compose (root, includes Ollama)
 ├── Dockerfile                        # Dockerfile (root)
 ├── truenas-app.yaml                  # TrueNAS SCALE app config (root)

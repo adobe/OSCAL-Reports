@@ -203,11 +203,11 @@ If the app on Green or Blue shows "Cannot reach AI Engine at http://...-nlb-....
 
 1. **Run the connectivity script** (from repo root, same SSH key as deploy):
    ```bash
-   ./scripts/check-ollama-connectivity.sh
+   ./scripts/debug/check-ollama-connectivity.sh
    ```
    This SSHs to Green and Blue, runs `curl` to the NLB URL, and prints firewalld status and DNS. Use `--green-only <ip>` or `--blue-only <ip>` to test one instance.
 
-2. **Ollama ASG and target group:** Ensure at least one Ollama instance is running and healthy. In AWS Console: EC2 → Target Groups → select the `*-ollama-11434` group → Targets. If there are no healthy targets, the NLB will accept TCP but the connection may fail or time out. Start the ASG (e.g. trigger Lambda or set desired capacity to 1) and wait for the target to become healthy.
+2. **Ollama ASG and target group:** Ensure at least one Ollama instance is running and healthy. In AWS Console: EC2 → Target Groups → select the `*-ollama-11434` group → Targets. If there are no healthy targets, the NLB will accept TCP but the connection may fail or time out. Start the ASG (e.g. trigger Lambda or set desired capacity to 1) and wait for the target to become healthy. **New Ollama instance:** If the target stays **Unhealthy** after scale-up or replace (e.g. user_data timed out), run `./scripts/debug/run-install-ollama-on-instance.sh` (full flow) or `./scripts/debug/run-install-ollama-on-instance.sh listener <ip>` to ensure Ollama listens on 0.0.0.0 and firewalld allows 11434; wait 1–2 min for the target to become healthy.
 
 3. **Security groups (Terraform):** OSCAL instances have egress TCP 11434 to the VPC CIDR; Ollama instances have ingress 11434 from the OSCAL security group and from the VPC CIDR (for NLB health checks). No change needed unless you modified SGs.
 
@@ -223,6 +223,10 @@ If the app on Green or Blue shows "Cannot reach AI Engine at http://...-nlb-....
    New instances created by Terraform (direct run) already add this rule in user_data.
 
 5. **NACLs:** Default VPC NACLs allow all. If you use custom NACLs, ensure they allow outbound TCP 11434 from the OSCAL subnets and inbound to the Ollama/NLB subnets as needed.
+
+6. **Ollama install not completing on Amazon Linux 2023:** User_data installs Ollama at boot; on AL2023, dnf/network can be briefly unavailable. The template retries package install (zstd, curl) a few times. If the instance comes up but Ollama is not running or models are missing:
+   - Check `/var/log/cloud-init-output.log` on the Ollama instance (SSH or Session Manager). Look for errors from `dnf install`, `curl ... ollama.com/install.sh`, or "zstd".
+   - Run the manual install from your laptop (same SSH key and AWS credentials): `./scripts/debug/run-install-ollama-on-instance.sh`. This installs Ollama and models and applies the 0.0.0.0 listen fix. Wait 1–2 min for NLB target health, then test from Green/Blue.
 
 ## Key variables
 
@@ -253,11 +257,21 @@ See `terraform/variables.tf` and `terraform/terraform.tfvars.example` for the fu
 2. **Wake Lambda (so the Ollama instance comes up on first AI request):** Set **`OLLAMA_WAKE_LAMBDA`** on Green/Blue to the Terraform output **`lambda_ollama_controller_name`** (e.g. `AMS-OSCAL-ollama-controller`). Then when the app makes an AI request and Ollama is unreachable (ASG at 0), the backend invokes the Lambda to scale the ASG to 1, waits ~90s, and retries once. Without this, requests from Blue/Green reach the NLB but the NLB has no healthy targets when ASG is 0, so the instance never "comes up" from the user's perspective. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`.
 3. **Alternative:** Set `ollama_min_size = 1` (and `ollama_desired_capacity = 1`) in Terraform so one Ollama instance is always running; then wake-on-request is optional.
 
+## Ollama lifecycle: shutdown is STOP (never terminate)
+
+The idle Lambda **stops** the instance and detaches it from the ASG; it does **not** terminate. The instance ID is saved to S3 so the next **wake** can start that same instance (or launch a new one if that instance was terminated elsewhere). Blue/Green should invoke the wake Lambda when an AI request fails so the instance comes back.
+
 ## Troubleshooting: Ollama instance not coming up despite requests from Blue/Green
 
 **Cause:** The Ollama ASG can scale to 0 after idle (1 hr by default). When Blue or Green makes an AI API call, the request goes to the NLB; if the ASG has 0 instances, the NLB has **no healthy targets**, so the connection fails (timeout or refused). The Lambda "wake" action scales the ASG to 1, but **nothing was invoking that Lambda** when the app tried to reach Ollama—so the instance never came up.
 
 **Fix:** (1) Set **`OLLAMA_WAKE_LAMBDA`** on Green and Blue to the Terraform output `lambda_ollama_controller_name`. The backend invokes this Lambda when an Ollama request fails, waits ~90s, then retries once. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`. (2) Or set `ollama_min_size = 1` and `ollama_desired_capacity = 1` in Terraform so one instance is always running.
+
+## Troubleshooting: Why doesn’t `terraform apply` create a new Ollama instance?
+
+**Cause:** The idle Lambda sets the ASG **desired_capacity** to 0 in AWS. Terraform **does not invoke the Lambda**; it only updates infrastructure from config. If Terraform **state** still shows desired_capacity=1 (from a previous apply), then on the next `apply` Terraform sees no change (state 1 vs config 1) and does **not** update the ASG—so the ASG stays at 0 in AWS (state drift).
+
+**Fix:** (1) **Preferred:** Invoke the wake Lambda so the **stopped** instance is started (or a new one is launched): run `./scripts/debug/run-install-ollama-on-instance.sh wake` from the repo root (uses Pass for AWS). (2) **Or** sync state with AWS then apply: `cd terraform && ./run-with-aws-pass.sh refresh && ./run-with-aws-pass.sh apply -auto-approve`. After refresh, state will show desired_capacity=0; apply will then set it to 1 and the ASG will launch an instance.
 
 ## Troubleshooting: Cannot reach Ollama NLB from Blue (or Green)
 

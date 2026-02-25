@@ -261,28 +261,6 @@ if [ -n "$RUNNING_CONTAINER" ]; then
   fi
 fi
 
-# Check 4: Migrate legacy files if they exist
-LEGACY_FILES=(
-  "${SCRIPT_DIR}/backend/auth/users.json"
-  "${SCRIPT_DIR}/backend/config.json"
-)
-
-for legacy_file in "${LEGACY_FILES[@]}"; do
-  if [ -f "$legacy_file" ]; then
-    filename=$(basename "$legacy_file")
-    new_location="${CONFIG_DIR}/${filename}"
-    
-    if [ ! -f "$new_location" ]; then
-      print_warning "Legacy config found: $filename"
-      print_info "Migrating to volume-mounted location..."
-      cp "$legacy_file" "$new_location"
-      chmod 600 "$new_location"
-      mv "$legacy_file" "${legacy_file}.migrated_$(date +%Y%m%d_%H%M%S)"
-      print_success "Migrated: $filename"
-    fi
-  fi
-done
-
 # Final persistence check
 echo ""
 if [ "$PERSISTENCE_FAILED" = true ]; then
