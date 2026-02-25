@@ -51,12 +51,6 @@ USERS_FILE="/opt/oscal/data/users.json"
 if [ -f "$USERS_FILE" ]; then
   echo "Using direct-run path: $USERS_FILE"
   sudo bash -c "USERS_PATH=$USERS_FILE node -e \"$NODE_SCRIPT\""
-ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${GREEN_IP}" bash -s << REMOTE
-set -e
-USERS_FILE="/opt/oscal/data/users.json"
-if [ -f "\$USERS_FILE" ]; then
-  echo "Using direct-run path: \$USERS_FILE"
-  sudo bash -c "USERS_PATH=\$USERS_FILE node -e '$ACTIVATE_SCRIPT'"
   echo "Restarting oscal-reporter..."
   sudo systemctl restart oscal-reporter.service 2>/dev/null || true
 elif command -v podman >/dev/null 2>&1 && podman ps --format '{{.Names}}' 2>/dev/null | grep -q oscal; then
@@ -69,14 +63,6 @@ elif command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev
   docker restart oscal 2>/dev/null || true
 else
   sudo bash -c "USERS_PATH=/opt/oscal/data/users.json node -e \"$NODE_SCRIPT\""
-  podman exec oscal node -e "$ACTIVATE_SCRIPT"
-  podman restart oscal 2>/dev/null || true
-elif command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q oscal; then
-  echo "Using docker container"
-  docker exec oscal node -e "$ACTIVATE_SCRIPT"
-  docker restart oscal 2>/dev/null || true
-else
-  sudo bash -c "USERS_PATH=/opt/oscal/data/users.json node -e '$ACTIVATE_SCRIPT'"
   sudo systemctl restart oscal-reporter.service 2>/dev/null || true
 fi
 echo "Done on Green instance."
