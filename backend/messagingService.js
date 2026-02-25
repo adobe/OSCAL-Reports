@@ -7,7 +7,7 @@
  */
 
 import axios from 'axios';
-import { loadConfig } from './configManager.js';
+import { getResolvedConfig } from './configManager.js';
 
 /**
  * Send user credentials via configured messaging channel
@@ -18,7 +18,7 @@ import { loadConfig } from './configManager.js';
  * @returns {Promise<Object>} - Result object with success status
  */
 export async function sendUserCredentials(email, username, password, fullName) {
-  const config = loadConfig();
+  const config = getResolvedConfig();
   const messagingConfig = config.messagingConfig || {};
   
   if (!messagingConfig.enabled) {

@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2155,SC2103
 
 ###############################################################################
 # OSCAL Report Generator - Comprehensive Test Suite
@@ -50,7 +51,7 @@ CRITICAL_COUNT=0
 # Get project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-cd "$PROJECT_ROOT"
+cd "$PROJECT_ROOT" || exit
 
 ###############################################################################
 # Helper Functions
@@ -189,7 +190,7 @@ check_prerequisites() {
 run_unit_tests() {
     print_section "Phase 2: Unit Tests"
     
-    cd backend
+    cd backend || exit
     
     # Authentication tests
     run_check "Authentication Tests" \
@@ -215,7 +216,7 @@ run_unit_tests() {
     run_check "Security Configuration Tests" \
         "npm test -- --testPathPattern='securityConfig.test.js' --silent"
     
-    cd ..
+    cd .. || exit
 }
 
 ###############################################################################
@@ -225,7 +226,7 @@ run_unit_tests() {
 run_integration_tests() {
     print_section "Phase 3: Integration Tests"
     
-    cd backend
+    cd backend || exit
     
     # General API tests
     run_check "General API Integration Tests" \
@@ -239,7 +240,7 @@ run_integration_tests() {
     run_check "CSRF & API Security Tests (v1.6.5)" \
         "npm test -- --testPathPattern='csrf-api.test.js' --silent"
     
-    cd ..
+    cd .. || exit
 }
 
 ###############################################################################
@@ -249,13 +250,13 @@ run_integration_tests() {
 run_e2e_tests() {
     print_section "Phase 4: End-to-End Tests"
     
-    cd backend
+    cd backend || exit
     
     # Complete security workflows
     run_check "Complete Security Workflow Tests" \
         "npm test -- --testPathPattern='security-flow.test.js' --silent"
     
-    cd ..
+    cd .. || exit
 }
 
 ###############################################################################
@@ -456,7 +457,7 @@ validate_v165_features() {
     
     # Security documentation
     run_check "Security Fixes Documentation" \
-        "test -f docs/SECURITY_FIXES.md"
+        "test -f docs/SECURITY.md"
     
     # CHANGELOG update
     run_check "CHANGELOG Updated for v1.6.5" \
@@ -470,7 +471,7 @@ validate_v165_features() {
 check_test_coverage() {
     print_section "Phase 9: Test Coverage"
     
-    cd backend
+    cd backend || exit
     
     echo "Generating test coverage report..."
     npm run test:coverage > /tmp/coverage-output.txt 2>&1 || true
@@ -497,7 +498,7 @@ check_test_coverage() {
         PASSED_CHECKS=$((PASSED_CHECKS + 1))
     fi
     
-    cd ..
+    cd .. || exit
 }
 
 ###############################################################################

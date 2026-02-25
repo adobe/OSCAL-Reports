@@ -66,11 +66,19 @@ GIT_BRANCH="main"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Force flag
+# Force flag and no-pull (use current checkout, e.g. for tag v1.6.7)
 FORCE_BUILD=false
-if [ "$1" = "--force" ] || [ "$1" = "-f" ]; then
-  FORCE_BUILD=true
-fi
+NO_PULL=false
+SKIP_PERSISTENCE_CHECK=false
+for arg in "$@"; do
+  if [ "$arg" = "--force" ] || [ "$arg" = "-f" ]; then
+    FORCE_BUILD=true
+  elif [ "$arg" = "--no-pull" ]; then
+    NO_PULL=true
+  elif [ "$arg" = "--skip-persistence-check" ]; then
+    SKIP_PERSISTENCE_CHECK=true
+  fi
+done
 
 # ============================================================================
 # PERSISTENT VOLUME CONFIGURATION (v1.6.5+)
@@ -154,6 +162,7 @@ echo "  Container Port: $CONTAINER_PORT"
 echo "  Git Repository: $GIT_REPO"
 echo "  Git Branch: $GIT_BRANCH"
 echo "  Force Build: $FORCE_BUILD"
+echo "  No Pull (use current checkout): $NO_PULL"
 echo ""
 
 # ============================================================================
@@ -252,34 +261,16 @@ if [ -n "$RUNNING_CONTAINER" ]; then
   fi
 fi
 
-# Check 4: Migrate legacy files if they exist
-LEGACY_FILES=(
-  "${SCRIPT_DIR}/backend/auth/users.json"
-  "${SCRIPT_DIR}/backend/config.json"
-)
-
-for legacy_file in "${LEGACY_FILES[@]}"; do
-  if [ -f "$legacy_file" ]; then
-    filename=$(basename "$legacy_file")
-    new_location="${CONFIG_DIR}/${filename}"
-    
-    if [ ! -f "$new_location" ]; then
-      print_warning "Legacy config found: $filename"
-      print_info "Migrating to volume-mounted location..."
-      cp "$legacy_file" "$new_location"
-      chmod 600 "$new_location"
-      mv "$legacy_file" "${legacy_file}.migrated_$(date +%Y%m%d_%H%M%S)"
-      print_success "Migrated: $filename"
-    fi
-  fi
-done
-
 # Final persistence check
 echo ""
 if [ "$PERSISTENCE_FAILED" = true ]; then
-  print_error "CRITICAL: Configuration persistence check FAILED"
-  print_error "Config will be lost on rebuild. Please fix volume mount."
-  exit 1
+  if [ "$SKIP_PERSISTENCE_CHECK" = true ]; then
+    print_warning "Skipping persistence check (--skip-persistence-check). Ensure backup/restore is used."
+  else
+    print_error "CRITICAL: Configuration persistence check FAILED"
+    print_error "Config will be lost on rebuild. Please fix volume mount."
+    exit 1
+  fi
 fi
 
 print_success "✓ Configuration persistence verified"
@@ -317,45 +308,58 @@ fi
 # GIT OPERATIONS (Works with existing cloned repository)
 # ============================================================================
 
-print_header "📥 Fetching Latest Code from GitHub"
-
-log "Working with existing repository in: $SCRIPT_DIR"
-
-# Stash any local changes (if any)
-if git diff --quiet && git diff --cached --quiet; then
-  print_info "No local changes to stash"
+if [ "$NO_PULL" = true ]; then
+  print_header "📌 Using Current Checkout (--no-pull)"
+  log "Skipping git fetch/reset - using current tree (e.g. tag v1.6.7)"
+  REMOTE_VERSION=""
+  if [ -f "package.json" ]; then
+    REMOTE_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/' | tr -d ' ')
+    print_info "Current checkout version: ${MAGENTA}$REMOTE_VERSION${NC}"
+  else
+    print_error "Could not read version from package.json"
+    exit 1
+  fi
 else
-  print_warning "Stashing local changes..."
-  git stash save "Auto-stash before pull at $(date)"
-fi
+  print_header "📥 Fetching Latest Code from GitHub"
 
-# Fetch latest from remote
-log "Fetching latest changes from $GIT_BRANCH branch..."
-if ! git fetch origin "$GIT_BRANCH" 2>&1; then
-  print_error "Failed to fetch from remote repository"
-  exit 1
-fi
-print_success "Fetched latest changes"
+  log "Working with existing repository in: $SCRIPT_DIR"
 
-# Get remote version (from GitHub)
-log "Checking remote version..."
-git checkout origin/$GIT_BRANCH -- package.json 2>/dev/null || true
-REMOTE_VERSION=""
-if [ -f "package.json" ]; then
-  REMOTE_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/' | tr -d ' ')
-  print_info "Remote GitHub version: ${MAGENTA}$REMOTE_VERSION${NC}"
-else
-  print_error "Could not read remote version"
-  exit 1
-fi
+  # Stash any local changes (if any)
+  if git diff --quiet && git diff --cached --quiet; then
+    print_info "No local changes to stash"
+  else
+    print_warning "Stashing local changes..."
+    git stash save "Auto-stash before pull at $(date)"
+  fi
 
-# Pull latest code (reset to match remote exactly)
-log "Pulling latest code..."
-if ! git reset --hard origin/$GIT_BRANCH 2>&1; then
-  print_error "Failed to pull latest code"
-  exit 1
+  # Fetch latest from remote
+  log "Fetching latest changes from $GIT_BRANCH branch..."
+  if ! git fetch origin "$GIT_BRANCH" 2>&1; then
+    print_error "Failed to fetch from remote repository"
+    exit 1
+  fi
+  print_success "Fetched latest changes"
+
+  # Get remote version (from GitHub)
+  log "Checking remote version..."
+  git checkout origin/$GIT_BRANCH -- package.json 2>/dev/null || true
+  REMOTE_VERSION=""
+  if [ -f "package.json" ]; then
+    REMOTE_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/' | tr -d ' ')
+    print_info "Remote GitHub version: ${MAGENTA}$REMOTE_VERSION${NC}"
+  else
+    print_error "Could not read remote version"
+    exit 1
+  fi
+
+  # Pull latest code (reset to match remote exactly)
+  log "Pulling latest code..."
+  if ! git reset --hard origin/$GIT_BRANCH 2>&1; then
+    print_error "Failed to pull latest code"
+    exit 1
+  fi
+  print_success "Code updated to latest version from GitHub"
 fi
-print_success "Code updated to latest version from GitHub"
 
 # ============================================================================
 # VERSION COMPARISON
@@ -535,7 +539,7 @@ fi
 log "Removing dangling images..."
 DANGLING_IMAGES=$(docker images -f "dangling=true" -q)
 if [ -n "$DANGLING_IMAGES" ]; then
-  docker rmi $DANGLING_IMAGES 2>&1 | while IFS= read -r line; do log "  [docker] $line"; done || true
+  docker rmi "$DANGLING_IMAGES" 2>&1 | while IFS= read -r line; do log "  [docker] $line"; done || true
   print_success "Removed dangling images"
 else
   print_info "No dangling images to remove"

@@ -856,6 +856,10 @@ After setup, test the integration:
    - Automatic migration from legacy locations
    - Script integration for secure deployment
 
+3. **Pass-backed sensitive config**
+   - Passwords, tokens, and keys (SMTP password, Slack webhook, AI API token, AWS Bedrock credentials, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager.
+   - `config.json` holds only pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. The backend resolves these at runtime via `getResolvedConfig()` and never persists plaintext secrets. GET APIs return raw config (pointers or masked values) so the client never receives resolved secrets.
+
 ### General Security
 
 1. **Input Validation**: URLs are validated before fetching
@@ -904,7 +908,7 @@ cd ../backend && NODE_ENV=production node server.js
 ### Environment Variables
 - `NODE_ENV`: Set to `production` for production deployments
 - `PORT`: Backend server port (default: 3020)
-- `OLLAMA_URL`: Ollama service URL (default: http://localhost:11434)
+- `OLLAMA_URL`: Ollama service URL (default: http://localhost:11434). On AWS with Terraform, use the internal NLB URL: `terraform -chdir=terraform output -raw ollama_url` so Lambda can start the ASG when scaled to 0; same URL works once instances are up.
 - `AWS_REGION`: AWS region for Bedrock (e.g., us-east-1)
 - `BUILD_TIMESTAMP`: Build timestamp for password generation
 - Frontend dev server port: 3021 (configured in `vite.config.js`)
@@ -1004,7 +1008,7 @@ OSCAL_Reports/
 ├── package.json                      # Root package (dev scripts)
 ├── setup.sh                          # Setup script
 ├── build_on_truenas.sh               # TrueNAS build script
-├── reactivate-admin.sh               # Admin reactivation utility
+├── scripts/reactivate-admin.sh       # Admin reactivation utility
 ├── docker-compose.yml                # Docker Compose (root, includes Ollama)
 ├── Dockerfile                        # Dockerfile (root)
 ├── truenas-app.yaml                  # TrueNAS SCALE app config (root)

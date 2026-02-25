@@ -713,6 +713,40 @@ textarea.form-control {
   font-size: 1rem;
 }
 
+/* Published SOA default selector and upload */
+.published-soa-default-select {
+  max-width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.published-soa-upload {
+  margin-top: 1rem;
+}
+
+.published-soa-upload label + small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.published-soa-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.published-soa-file-input {
+  font-size: 0.875rem;
+}
+
+.published-soa-upload-status {
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .btn-verify {

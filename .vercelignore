@@ -1,7 +1,0 @@
-# Disable Vercel deployments
-# This repository should NOT be deployed to Vercel
-# All deployments are handled via Docker to TrueNAS infrastructure
-
-# Ignore everything to prevent any deployment
-*
-**/*

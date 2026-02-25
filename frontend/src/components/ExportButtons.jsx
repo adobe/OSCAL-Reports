@@ -12,7 +12,7 @@ import { validateSSP, getValidatorStatus } from '../services/oscalValidator';
 import ValidationStatus from './ValidationStatus';
 import { useAuth } from '../contexts/AuthContext';
 
-function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, loading, systemInfo, controls }) {
+function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, onExportPDF, loading, systemInfo, controls }) {
   const { user } = useAuth();
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
@@ -241,6 +241,25 @@ function ExportButtons({ onExportSSP, onExportExcel, onExportCCM, onExportPDF, l
               <>
                 <span className="export-icon">📄</span>
                 Export SOA/SSP/CCM in OSCAL
+              </>
+            )}
+          </button>
+
+          <button
+            className="btn btn-info export-btn"
+            onClick={() => onExportSAR(validationOptions)}
+            disabled={loading}
+            title="OSCAL SAR: Security Assessment Results with assessment objectives and methods per NIST SP 800-53"
+          >
+            {loading ? (
+              <>
+                <span className="spinner"></span>
+                Generating...
+              </>
+            ) : (
+              <>
+                <span className="export-icon">✓</span>
+                Export SAR (Assessment Results)
               </>
             )}
           </button>
