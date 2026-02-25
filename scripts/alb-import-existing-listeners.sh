@@ -29,6 +29,10 @@ command -v aws >/dev/null 2>&1 || { echo "AWS CLI required"; exit 1; }
 
 alb_arn=$(cd "$TERRAFORM_DIR" && terraform state show -no-color aws_lb.main 2>/dev/null | grep -E '^\s*arn\s*=' | sed -E 's/.*=\s*"(.*)"/\1/' | tr -d ' ') || true
 if [ -z "$alb_arn" ]; then
+  dns=$(cd "$TERRAFORM_DIR" && terraform output -raw alb_dns_name 2>/dev/null)
+  if [ -n "$dns" ]; then
+    alb_arn=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='$dns'].LoadBalancerArn" --output text 2>/dev/null) || true
+  fi
   dns=$(cd "$TERRAFORM_DIR" && terraform output -raw alb_dns_name 2>/dev/null) && \
   alb_arn=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='$dns'].LoadBalancerArn" --output text 2>/dev/null) || true
 fi
