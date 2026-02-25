@@ -63,9 +63,7 @@ run_diag() {
 }
 
 resolve_ssh_key
-ips=($(get_ips))
-green_ip="${ips[0]}"
-blue_ip="${ips[1]}"
+read -r green_ip blue_ip < <(get_ips)
 
 run_diag "$green_ip" "GREEN"
 run_diag "$blue_ip" "BLUE"
