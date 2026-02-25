@@ -21,9 +21,9 @@ DATA_DIR="/data"
 APP_DIR="/app"
 CONFIG_APP_DIR="$APP_DIR/config/app"
 
-# Default source files (bundled in Docker image)
-DEFAULT_CONFIG="$APP_DIR/backend/config.json"
-DEFAULT_USERS="$APP_DIR/backend/auth/users.json"
+# Default source files (bundled in Docker image; canonical location config/app)
+DEFAULT_CONFIG="$APP_DIR/config/app/config.json"
+DEFAULT_USERS="$APP_DIR/config/app/users.json"
 
 # Target files in persistent volume
 VOLUME_CONFIG="$DATA_DIR/config.json"

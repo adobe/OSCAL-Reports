@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy OSCAL Report Generator to EC2 instances (direct run, no Docker).
-# Syncs code to /opt/oscal/app, runs npm install + frontend build, installs ec2_automation.sh and 10-min cron, restarts oscal-reporter.
+# Syncs code to /opt/oscal/app, runs npm install + frontend build, installs ec2_automation.sh and scripts (e.g. reactivate-admin.sh) to /opt/oscal/scripts, restarts oscal-reporter.
 # Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
 # Application and cron run as service account svc_ams-oscal (not root). Pass is installed and initialized for that user for secrets.
 #
@@ -105,6 +105,9 @@ deploy_one() {
   local results_file="${5:-}"
   local port
   [ "$role" = "green" ] && port="3019" || port="3020"
+  local lambda_name ollama_url
+  lambda_name=$(tf_output -raw lambda_ollama_controller_name 2>/dev/null) || lambda_name=""
+  ollama_url=$(tf_output -raw ollama_url 2>/dev/null) || ollama_url=""
 
   print_info "Deploying to $role at $ip (port $port)..."
 
@@ -165,7 +168,7 @@ REMOTEPASS
   fi
   print_success "Service account $SVC_USER and Pass vault ensured"
 
-  # Ensure /opt/oscal dirs; temporarily ec2-user-owned so rsync can write; later chown to svc_ams-oscal
+  # Directory layout: /opt/oscal/app = app code only; /opt/oscal/data = config.json + users.json (canonical on EC2); /opt/oscal/scripts = ec2_automation. Repo config/ is excluded from rsync so only /opt/oscal/data is used.
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo mkdir -p /opt/oscal/app /opt/oscal/scripts /opt/oscal/data && sudo chown -R ${SSH_USER}:${SVC_GROUP} /opt/oscal && sudo chmod -R g+rX,g+w /opt/oscal" || true
 
   # Prefer last backed-up config/users from S3; fall back to repo then leave as-is if both missing
@@ -184,23 +187,53 @@ REMOTEPASS
     print_success "Seeded /opt/oscal/data/config.json and users.json from repo (were missing after S3)"
   fi
 
-  # Deploy ec2_automation.sh and env; cron runs as svc_ams-oscal
+  # Deploy ec2_automation.sh and env; cron runs as svc_ams-oscal. Also copy helper scripts to same destination (/opt/oscal/scripts).
   if [ -f "$REPO_ROOT/scripts/ec2_automation.sh" ]; then
     scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/ec2_automation.sh" "${SSH_USER}@${ip}:${REMOTE_APP}/../scripts/ec2_automation.sh"
     ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/ec2_automation.sh"
+    # Copy optional helper scripts to /opt/oscal/scripts (same destination as ec2_automation.sh)
+    for _src in "scripts/update-pass-credential.sh" "scripts/sync-consolidation-script.sh"; do
+      if [ -f "$REPO_ROOT/$_src" ]; then
+        scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/$_src" "${SSH_USER}@${ip}:/opt/oscal/scripts/$(basename "$_src")"
+        ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/$(basename "$_src")"
+      fi
+    done
+    if [ -f "$REPO_ROOT/scripts/reactivate-admin.sh" ]; then
+      scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/reactivate-admin.sh" "${SSH_USER}@${ip}:/opt/oscal/scripts/reactivate-admin.sh"
+      ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/reactivate-admin.sh"
+    fi
     if [ -n "$s3_bucket" ]; then
+      # Blue: disable auto git pull/restart from cron so manual deploys are not overwritten (optional; set DEPLOY_BLUE_AUTO_UPDATE=1 to enable)
+      github_update="true"
+      if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-0}" != "1" ]; then
+        github_update="false"
+      fi
       ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "cat > /opt/oscal/scripts/ec2_automation.env << ENVEOF
 S3_BUCKET=$s3_bucket
 S3_CONFIG_PREFIX=config/$role
 S3_LOGS_PREFIX=logs/$role
 DEPLOYMENT_ROLE=$role
+ENABLE_GITHUB_UPDATE=$github_update
 ENVEOF"
-      ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
-        command -v crontab >/dev/null 2>&1 || { sudo dnf install -y cronie 2>/dev/null || sudo yum install -y cronie 2>/dev/null; sudo systemctl enable crond --now 2>/dev/null; }
-        CRONLINE='*/10 * * * * mkdir -p /opt/oscal/app/logs && /opt/oscal/scripts/ec2_automation.sh >> /opt/oscal/app/logs/ec2_automation.stdout 2>\&1'
-        (sudo crontab -u $SVC_USER -l 2>/dev/null | grep -v ec2_automation.sh || true; echo \"\$CRONLINE\") | sudo crontab -u $SVC_USER -
-      "
-      print_success "ec2_automation.sh installed; cron every 10 min as $SVC_USER (S3 bucket: $s3_bucket)"
+      if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-0}" != "1" ]; then
+        # Blue: remove existing ec2_automation cron so code is not updated from GitHub; ENABLE_GITHUB_UPDATE=false in env for consistency
+        ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
+          remaining=\$(sudo crontab -u $SVC_USER -l 2>/dev/null | grep -v ec2_automation.sh || true)
+          if [ -n \"\$remaining\" ]; then
+            echo \"\$remaining\" | sudo crontab -u $SVC_USER -
+          else
+            sudo crontab -u $SVC_USER -r 2>/dev/null || true
+          fi
+        "
+        print_success "ec2_automation.sh and env installed on Blue; cron job removed (no auto update from GitHub). Set DEPLOY_BLUE_AUTO_UPDATE=1 to install cron on Blue."
+      else
+        ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
+          command -v crontab >/dev/null 2>&1 || { sudo dnf install -y cronie 2>/dev/null || sudo yum install -y cronie 2>/dev/null; sudo systemctl enable crond --now 2>/dev/null; }
+          CRONLINE='*/10 * * * * mkdir -p /opt/oscal/app/logs && /opt/oscal/scripts/ec2_automation.sh >> /opt/oscal/app/logs/ec2_automation.stdout 2>\&1'
+          (sudo crontab -u $SVC_USER -l 2>/dev/null | grep -v ec2_automation.sh || true; echo \"\$CRONLINE\") | sudo crontab -u $SVC_USER -
+        "
+        print_success "ec2_automation.sh installed; cron every 10 min as $SVC_USER (S3 bucket: $s3_bucket)"
+      fi
     else
       print_warning "S3 bucket not set; ec2_automation.sh installed but backup/cron skipped (no S3_BUCKET)."
     fi
@@ -209,10 +242,11 @@ ENVEOF"
   # Ensure rsync on remote (Amazon Linux 2023 does not install it by default)
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "command -v rsync >/dev/null 2>&1 || { sudo dnf install -y rsync 2>/dev/null || sudo yum install -y rsync 2>/dev/null; }"
 
-  # Rsync repo (exclude node_modules, .git, etc.)
+  # Rsync app code only; exclude repo config/ so config/users live only in /opt/oscal/data (no duplicate under app)
   rsync -avz --delete \
     --exclude 'node_modules' \
     --exclude '.git' \
+    --exclude 'config' \
     --exclude 'backend/node_modules' \
     --exclude 'frontend/node_modules' \
     --exclude 'frontend/dist' \
@@ -221,6 +255,8 @@ ENVEOF"
     --exclude '*.log' \
     -e "ssh -i $key -o StrictHostKeyChecking=accept-new" \
     "$REPO_ROOT/" "${SSH_USER}@${ip}:${REMOTE_APP}/"
+  # Remove orphan config dir if present (from older deploys); app uses CONFIG_PATH/USERS_PATH=/opt/oscal/data only
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -rf ${REMOTE_APP}/config" 2>/dev/null || true
 
   # On instance: ensure Node/npm (Amazon Linux may not have it if user_data not run yet), then npm install, build, restart
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
@@ -280,6 +316,8 @@ SVCEOF
     grep -q 'Environment=PATH=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=PATH=/usr/local/bin:/usr/bin:/bin' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
     grep -q 'Environment=HOME=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=HOME=/var/lib/svc_ams-oscal' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
     grep -q 'Environment=PASSWORD_STORE_DIR=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=HOME=/a Environment=PASSWORD_STORE_DIR=/var/lib/svc_ams-oscal/.password-store' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    if [ -n \"$lambda_name\" ]; then grep -q 'Environment=OLLAMA_WAKE_LAMBDA=' /etc/systemd/system/oscal-reporter.service 2>/dev/null && sudo sed -i \"s/^Environment=OLLAMA_WAKE_LAMBDA=.*/Environment=OLLAMA_WAKE_LAMBDA=$lambda_name/\" /etc/systemd/system/oscal-reporter.service || sudo sed -i \"/Environment=USERS_PATH=/a Environment=OLLAMA_WAKE_LAMBDA=$lambda_name\" /etc/systemd/system/oscal-reporter.service; fi
+    if [ -n \"$ollama_url\" ]; then grep -q 'Environment=OLLAMA_URL=' /etc/systemd/system/oscal-reporter.service 2>/dev/null && sudo sed -i \"s|^Environment=OLLAMA_URL=.*|Environment=OLLAMA_URL=$ollama_url|\" /etc/systemd/system/oscal-reporter.service || sudo sed -i \"/Environment=USERS_PATH=/a Environment=OLLAMA_URL=$ollama_url\" /etc/systemd/system/oscal-reporter.service; fi
     sudo systemctl daemon-reload
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
     echo OK
@@ -420,8 +458,9 @@ else
 fi
 echo ""
 # Fail script if any instance failed health check (option 2)
-HEALTH_FAIL=$(grep -c ' fail$' "$DEPLOY_RESULTS_FILE" 2>/dev/null || echo 0)
-if [ "${HEALTH_FAIL:-0}" -gt 0 ]; then
+HEALTH_FAIL=$(grep -c ' fail$' "$DEPLOY_RESULTS_FILE" 2>/dev/null || echo 0 | tr -d '\n\r')
+HEALTH_FAIL=$(( ${HEALTH_FAIL:-0} + 0 ))
+if [ "$HEALTH_FAIL" -gt 0 ]; then
   print_error "One or more instances failed health check. Fix and re-run deploy or check: sudo systemctl status oscal-reporter.service"
   exit 1
 fi

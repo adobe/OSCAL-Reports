@@ -9,9 +9,12 @@ locals {
   # Fail at plan if no AMI could be resolved (e.g. unsupported region for Amazon Linux).
   ollama_ami_id_ok = local.ollama_ami_id != null && local.ollama_ami_id != ""
   s3_activity_key     = "ollama-activity/last.json"
+  # Single source of truth: scripts/install-ollama-and-models.sh (bootstrap + manual via run-install-ollama-on-instance.sh)
+  ollama_install_script_b64 = base64encode(file("${path.module}/../scripts/install-ollama-and-models.sh"))
   ollama_user_data   = templatefile("${path.module}/templates/ollama_user_data.sh", {
-    s3_bucket = local.s3_activity_bucket
-    s3_key    = local.s3_activity_key
+    s3_bucket           = local.s3_activity_bucket
+    s3_key              = local.s3_activity_key
+    install_script_b64  = local.ollama_install_script_b64
   })
 }
 
@@ -39,11 +42,11 @@ resource "aws_launch_template" "ollama" {
     name = aws_iam_instance_profile.ollama.name
   }
 
-  vpc_security_group_ids = [aws_security_group.ollama.id]
-
+  # Security groups must be on the network interface when network_interfaces is set (required for ASG attach).
   # Ensure public IP so EC2 Instance Connect (AWS console "Connect") and SSH from laptop work.
   network_interfaces {
     associate_public_ip_address = true
+    security_groups             = [aws_security_group.ollama.id]
   }
 
   # Root volume 150 GB: use AMI's root device name so this overrides the root (avoids 2 GB root when AMI uses /dev/xvda).

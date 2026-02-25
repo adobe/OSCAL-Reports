@@ -93,7 +93,7 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 
 1. In `terraform.tfvars`, set **`image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"`** with the Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1 (from [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/)). Leave `oscal_ami_id` and `ollama_ami_id` **null** so Green, Blue, and Ollama all use this AMI.
 2. Run **`terraform apply`** (e.g. `cd terraform && ./run-with-aws-pass.sh apply -auto-approve`) so the launch templates are updated.
-3. Replace the Ollama instance so the new one uses the new AMI: run **`./scripts/debug/replace-ollama-instance-ami.sh`** from the repo root. This scales the Ollama ASG to 0, runs terraform apply, scales to 1, and runs the Ollama install + fix on the new instance. Alternatively: set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/scale-up-ollama-and-fix.sh`.
+3. Replace the Ollama instance so the new one uses the new AMI: set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/run-install-ollama-on-instance.sh`.
 
 ## Summary
 
@@ -103,5 +103,5 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 | Where to find AMIs | [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) (filter by AWS, Amazon Linux 2023) |
 | Terraform variables | `use_image_factory_ami` (default **true** = Image Factory Amazon Linux 2023 when in map, else native AL2023); `oscal_ami_id`, `ollama_ami_id` (null = use preference order) |
 | Add Image Factory Amazon Linux | In `terraform.tfvars` set `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (from Image Factory UI), or add entries in `terraform/image_factory_ami.tf` in `image_factory_amazon_linux_by_region`. Both Green/Blue and Ollama use it. |
-| Replace Ollama instance for new AMI | Run `./scripts/debug/replace-ollama-instance-ami.sh` (scale 0 → apply → scale 1 → install Ollama on new instance). |
+| Replace Ollama instance for new AMI | Set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/run-install-ollama-on-instance.sh`. |
 | Bucket naming | Lowercase; AMS prefix `ams-oscal-<account-id>` (e.g. `ams-oscal-432417415905`). Terraform lowercases the value. |
