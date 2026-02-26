@@ -8,45 +8,21 @@
 #        ./scripts/debug/diagnose-okta-on-ec2.sh --blue-only
 
 set -e
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 OKTA_PASS_ENTRY="${OSCAL_PASS_OKTA_SECRET:-OSCAL/sso-oauth-okta-client-secret}"
 
-# Resolve SSH key from Pass
-SSH_KEY=$(mktemp)
-trap 'rm -f "$SSH_KEY"' EXIT
-if ! command -v pass >/dev/null 2>&1; then
-  echo "Error: pass not found. Install: brew install pass" >&2
-  exit 1
-fi
-if ! pass show "$PASS_ENTRY" > "$SSH_KEY" 2>/dev/null; then
-  echo "Error: Pass entry '$PASS_ENTRY' not found. Store your PEM key with: pass insert -m $PASS_ENTRY" >&2
-  exit 1
-fi
-chmod 600 "$SSH_KEY"
-
-# Terraform outputs via wrapper (required)
-if [ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ]; then
-  echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable. Use it for all Terraform commands." >&2
-  exit 1
-fi
-
-get_ip() {
-  local which=$1
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${which}_public_ip" 2>/dev/null || \
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${which}_private_ip" 2>/dev/null || true
-}
+resolve_ssh_key
+[ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ] && { echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable. Use it for all Terraform commands." >&2; exit 1; }
 
 GREEN_IP=""
 BLUE_IP=""
 case "${1:-}" in
-  --green-only) GREEN_IP=$(get_ip green) ;;
-  --blue-only)  BLUE_IP=$(get_ip blue) ;;
+  --green-only) GREEN_IP=$(get_terraform_oscal_ip green) ;;
+  --blue-only)  BLUE_IP=$(get_terraform_oscal_ip blue) ;;
   *)
-    GREEN_IP=$(get_ip green)
-    BLUE_IP=$(get_ip blue)
+    GREEN_IP=$(get_terraform_oscal_ip green)
+    BLUE_IP=$(get_terraform_oscal_ip blue)
     ;;
 esac
 

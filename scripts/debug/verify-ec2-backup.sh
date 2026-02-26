@@ -3,35 +3,13 @@
 # Uses same SSH key as deploy-to-ec2.sh (Pass or SSH_KEY_FILE). Run from repo root.
 
 set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
-
-resolve_ssh_key() {
-  if [ -n "$SSH_KEY_FILE" ] && [ -f "$SSH_KEY_FILE" ]; then
-    SSH_KEY="$SSH_KEY_FILE"
-    return
-  fi
-  if command -v pass >/dev/null 2>&1 && pass show "$PASS_ENTRY" >/dev/null 2>&1; then
-    SSH_KEY=$(mktemp)
-    trap 'rm -f "$SSH_KEY"' EXIT
-    pass show "$PASS_ENTRY" > "$SSH_KEY"
-    chmod 600 "$SSH_KEY"
-    return
-  fi
-  echo "ERROR: Set SSH_KEY_FILE or have Pass entry $PASS_ENTRY"
-  exit 1
-}
-
-get_ips() {
-  [ ! -f "$TERRAFORM_DIR/terraform.tfstate" ] && { echo "No terraform state"; exit 1; }
-  cd "$TERRAFORM_DIR"
-  green=$(terraform output -raw oscal_green_public_ip 2>/dev/null || terraform output -raw oscal_green_private_ip 2>/dev/null)
-  blue=$(terraform output -raw oscal_blue_public_ip 2>/dev/null || terraform output -raw oscal_blue_private_ip 2>/dev/null)
-  echo "$green $blue"
-}
+resolve_ssh_key
+green_ip=$(get_terraform_oscal_ip green)
+blue_ip=$(get_terraform_oscal_ip blue)
+[ -z "$green_ip" ] && [ -z "$blue_ip" ] && { echo "No terraform state or IPs"; exit 1; }
 
 run_diag() {
   local ip="$1"
@@ -61,9 +39,6 @@ run_diag() {
   "
   echo ""
 }
-
-resolve_ssh_key
-read -r green_ip blue_ip < <(get_ips)
 
 run_diag "$green_ip" "GREEN"
 run_diag "$blue_ip" "BLUE"

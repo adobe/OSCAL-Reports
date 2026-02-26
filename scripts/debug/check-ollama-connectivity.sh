@@ -14,28 +14,9 @@
 #   AWS_REGION or AWS_DEFAULT_REGION (for Ollama instance discovery); OLLAMA_URL; OLLAMA_INSTANCE_IP.
 
 set -e
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-SSH_USER="${SSH_USER:-ec2-user}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 PROMPT_QUESTION="Who is the prime minister of Australia?"
-
-# Resolve SSH key into variable SSH_KEY (must run in main shell so temp key is not removed)
-resolve_ssh() {
-  if [ -n "$SSH_KEY_FILE" ] && [ -f "$SSH_KEY_FILE" ]; then
-    SSH_KEY="$SSH_KEY_FILE"
-    return
-  fi
-  if command -v pass >/dev/null 2>&1 && pass show "${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}" >/dev/null 2>&1; then
-    SSH_KEY=$(mktemp)
-    trap 'rm -f "$SSH_KEY"' EXIT
-    pass show "${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}" > "$SSH_KEY"
-    chmod 600 "$SSH_KEY"
-    return
-  fi
-  echo "ERROR: Set SSH_KEY_FILE or have Pass entry AWS/OSCAL-AWS4379-SSH" >&2
-  return 1
-}
 
 # Get Ollama URL from Terraform (http://<nlb_dns>:11434)
 get_ollama_url() {
@@ -78,19 +59,16 @@ get_ollama_instance_ip() {
   echo "$ip"
 }
 
-# Get Green/Blue IPs from Terraform
+# Get Green/Blue IPs from Terraform (uses ec2-common get_terraform_oscal_ip)
 get_ips() {
   if [ -n "$GREEN_IP" ] && [ -n "$BLUE_IP" ]; then
     echo "$GREEN_IP $BLUE_IP"
     return
   fi
-  if [ -d "$TERRAFORM_DIR" ] && [ -f "$TERRAFORM_DIR/terraform.tfstate" ]; then
-    cd "$TERRAFORM_DIR"
-    green=$(terraform output -raw oscal_green_public_ip 2>/dev/null || terraform output -raw oscal_green_private_ip 2>/dev/null || true)
-    blue=$(terraform output -raw oscal_blue_public_ip 2>/dev/null || terraform output -raw oscal_blue_private_ip 2>/dev/null || true)
-    cd - >/dev/null
-    [ -n "$green" ] && [ -n "$blue" ] && echo "$green $blue"
-  fi
+  local green blue
+  green=$(get_terraform_oscal_ip green)
+  blue=$(get_terraform_oscal_ip blue)
+  [ -n "$green" ] && [ -n "$blue" ] && echo "$green $blue"
 }
 
 # Run on Ollama instance: check install, service, models, local prompts, then NLB from same box
@@ -192,7 +170,7 @@ if [ -z "$OLLAMA_URL" ]; then
   exit 1
 fi
 
-resolve_ssh || exit 1
+resolve_ssh_key
 
 # Optional: only Green or only Blue
 if [ "$1" = "--green-only" ] && [ -n "$2" ]; then
