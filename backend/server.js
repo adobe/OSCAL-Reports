@@ -5371,9 +5371,9 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
       
       // Test 2: Try a simple generate request (optional, more thorough test)
-      // Use recommended model if available, otherwise use first available model
+      // Use recommended model if available, otherwise first available, else mistral (Ollama default 7B tag)
       let generateTest = null;
-      const testModel = recommendedModel || modelNames[0] || 'mistral:7b';
+      const testModel = recommendedModel || modelNames[0] || 'mistral';
       try {
         const generateUrl = fullUrl.endsWith('/') ? `${fullUrl}api/generate` : `${fullUrl}/api/generate`;
         const testPrompt = "Say 'test'";
@@ -5396,10 +5396,14 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         };
         console.log(`✅ Generate test successful (${generateTest.responseLength} chars)`);
       } catch (genError) {
-        console.warn(`⚠️ Generate test failed (non-critical):`, genError.message);
+        const is404 = genError.response?.status === 404;
+        const msg = is404 && modelNames.length === 0
+          ? 'No models installed on Ollama instance. Run install-ollama-and-models.sh or ensure-models service (see /var/log/ollama-ensure-models.log on instance).'
+          : genError.message;
+        console.warn(`⚠️ Generate test failed (non-critical):`, msg);
         generateTest = {
           success: false,
-          error: genError.message
+          error: msg
         };
       }
       

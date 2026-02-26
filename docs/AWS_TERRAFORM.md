@@ -7,7 +7,7 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 - **VPC** and public subnets (2 AZs)
 - **Application Load Balancer** (ALB) with HTTP (and optional HTTPS) listeners
 - **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) EC2 instances (always on, t3.small, 20 GB each). By default they run the app **directly** (Node.js + systemd) with **config and users on EBS** at `/opt/oscal/data` (no S3 mount); **ec2_automation** backs up config, users, and logs to S3 every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead.
-- **Ollama** Auto Scaling Group (default min 3, max 3, desired 3 at init; each instance writes boot time to `ollama-activity/last.json`; 1 hr no activity → scale to 0; t3.2xlarge, 100 GB each)
+- **Ollama** Auto Scaling Group (default min 0, max 1, desired 1; each instance writes boot time to `ollama-activity/last.json`; 1 hr no activity → scale to 0 unless `ollama_always_on = true`; t3.2xlarge, 150 GB)
 - **Lambda** wake/sleep controller and **EventBridge** rule (every 30 min idle check)
 - **S3** bucket for logs, `ollama-activity/last.json` activity state, and **backup** targets (`config/green/`, `config/blue/`, `logs/green/`, `logs/blue/`) populated by ec2_automation so data is retained if instances are replaced (max 10 min loss). See [workflow diagram](diagrams/workflow-timeline.mmd).
 
@@ -241,10 +241,11 @@ If the app on Green or Blue shows "Cannot reach AI Engine at http://...-nlb-....
 | `alb_ssl_certificate_arn` | ACM cert for HTTPS | `null` (HTTP only) |
 | `alb_blue_hostname` | Hostname for Blue (e.g. blue.oscal.example.com); ALB routes by Host header | `null` |
 | `alb_green_hostname` | Hostname for Green (e.g. green.oscal.example.com); ALB routes by Host header | `null` |
-| `ollama_min_size` | Ollama ASG minimum size | `3` |
-| `ollama_max_size` | Ollama ASG maximum size | `3` |
-| `ollama_desired_capacity` | Ollama ASG desired capacity at init | `3` |
-| `ollama_idle_timeout_hours` | Idle hours before scale to 0 (no activity) | `1` |
+| `ollama_always_on` | Keep Ollama always running (sandbox); disables idle shutdown | `false` |
+| `ollama_min_size` | Ollama ASG minimum size (ignored when `ollama_always_on = true`) | `0` |
+| `ollama_max_size` | Ollama ASG maximum size | `1` |
+| `ollama_desired_capacity` | Ollama ASG desired capacity (ignored when `ollama_always_on = true`) | `1` |
+| `ollama_idle_timeout_hours` | Idle hours before scale to 0 (ignored when `ollama_always_on = true`) | `1` |
 
 See `terraform/variables.tf` and `terraform/terraform.tfvars.example` for the full list.
 
@@ -255,7 +256,7 @@ See `terraform/variables.tf` and `terraform/terraform.tfvars.example` for the fu
    - Get the value: `terraform -chdir=terraform output -raw ollama_url`
    - Any system in the same VPC (e.g. OSCAL Green/Blue) can use this URL.
 2. **Wake Lambda (so the Ollama instance comes up on first AI request):** Set **`OLLAMA_WAKE_LAMBDA`** on Green/Blue to the Terraform output **`lambda_ollama_controller_name`** (e.g. `AMS-OSCAL-ollama-controller`). Then when the app makes an AI request and Ollama is unreachable (ASG at 0), the backend invokes the Lambda to scale the ASG to 1, waits ~90s, and retries once. Without this, requests from Blue/Green reach the NLB but the NLB has no healthy targets when ASG is 0, so the instance never "comes up" from the user's perspective. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`.
-3. **Alternative:** Set `ollama_min_size = 1` (and `ollama_desired_capacity = 1`) in Terraform so one Ollama instance is always running; then wake-on-request is optional.
+3. **Alternative (sandbox):** Set `ollama_always_on = true` in `terraform.tfvars` so one Ollama instance is always running and idle shutdown is disabled; then wake-on-request is not needed.
 
 ## Ollama lifecycle: shutdown is STOP (never terminate)
 
@@ -265,7 +266,7 @@ The idle Lambda **stops** the instance and detaches it from the ASG; it does **n
 
 **Cause:** The Ollama ASG can scale to 0 after idle (1 hr by default). When Blue or Green makes an AI API call, the request goes to the NLB; if the ASG has 0 instances, the NLB has **no healthy targets**, so the connection fails (timeout or refused). The Lambda "wake" action scales the ASG to 1, but **nothing was invoking that Lambda** when the app tried to reach Ollama—so the instance never came up.
 
-**Fix:** (1) Set **`OLLAMA_WAKE_LAMBDA`** on Green and Blue to the Terraform output `lambda_ollama_controller_name`. The backend invokes this Lambda when an Ollama request fails, waits ~90s, then retries once. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`. (2) Or set `ollama_min_size = 1` and `ollama_desired_capacity = 1` in Terraform so one instance is always running.
+**Fix:** (1) Set **`OLLAMA_WAKE_LAMBDA`** on Green and Blue to the Terraform output `lambda_ollama_controller_name`. The backend invokes this Lambda when an Ollama request fails, waits ~90s, then retries once. Add to the oscal-reporter systemd unit: `Environment=OLLAMA_WAKE_LAMBDA=<lambda_ollama_controller_name>`. (2) Or set `ollama_always_on = true` in `terraform.tfvars` so one instance is always running (recommended for sandbox).
 
 ## Troubleshooting: Why doesn’t `terraform apply` create a new Ollama instance?
 
@@ -338,7 +339,7 @@ The ALB returns **503 Service Temporarily Unavailable** when the target group th
   From the repo root (with Terraform applied and AWS credentials as for Terraform):
 
   ```bash
-  ./scripts/check-alb-target-health.sh
+  ./scripts/debug/check-alb-target-health.sh
   ```
 
   Or in the AWS Console: **EC2 → Target Groups →** select the Green/Blue target groups and open the **Targets** tab to see Healthy/Unhealthy.

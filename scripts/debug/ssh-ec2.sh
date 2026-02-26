@@ -12,44 +12,17 @@
 # Env: SSH_USER=ec2-user (default), AWS_PASS_SSH_ENTRY=AWS/OSCAL-AWS4379-SSH, TERRAFORM_DIR
 
 set -e
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 
-# Resolve SSH key from Pass
-SSH_KEY=$(mktemp)
-trap 'rm -f "$SSH_KEY"' EXIT
-if ! command -v pass >/dev/null 2>&1; then
-  echo "Error: pass not found. Install: brew install pass" >&2
-  exit 1
-fi
-if ! pass show "$PASS_ENTRY" > "$SSH_KEY" 2>/dev/null; then
-  echo "Error: Pass entry '$PASS_ENTRY' not found. Store your PEM with: pass insert -m $PASS_ENTRY" >&2
-  exit 1
-fi
-chmod 600 "$SSH_KEY"
-
-if [ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ]; then
-  echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable. Run Terraform apply first." >&2
-  exit 1
-fi
-
-get_oscal_ip() {
-  local which=$1
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${which}_public_ip" 2>/dev/null || \
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${which}_private_ip" 2>/dev/null || true
-}
-
-get_ollama_ip() {
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "ollama_public_ip" 2>/dev/null || true
-}
+resolve_ssh_key
+[ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ] && { echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable. Run Terraform apply first." >&2; exit 1; }
 
 do_list() {
   local green blue ollama
-  green=$(get_oscal_ip green)
-  blue=$(get_oscal_ip blue)
-  ollama=$(get_ollama_ip)
+  green=$(get_terraform_oscal_ip green)
+  blue=$(get_terraform_oscal_ip blue)
+  ollama=$(get_terraform_ollama_ip)
   echo "EC2 instances (from Terraform):"
   echo "  Green (OSCAL, port 3019): ${green:-<not set>}"
   echo "  Blue  (OSCAL, port 3020): ${blue:-<not set>}"
@@ -79,13 +52,13 @@ do_ssh() {
 
 case "${1:-}" in
   green)
-    do_ssh "Green (OSCAL)" "$(get_oscal_ip green)" "${@:2}"
+    do_ssh "Green (OSCAL)" "$(get_terraform_oscal_ip green)" "${@:2}"
     ;;
   blue)
-    do_ssh "Blue (OSCAL)" "$(get_oscal_ip blue)" "${@:2}"
+    do_ssh "Blue (OSCAL)" "$(get_terraform_oscal_ip blue)" "${@:2}"
     ;;
   ollama)
-    ip=$(get_ollama_ip)
+    ip=$(get_terraform_ollama_ip)
     if [ -z "$ip" ]; then
       echo "Error: Ollama public IP is null. ASG may be scaled to 0; scale up or wait for Lambda to start an instance." >&2
       exit 1
