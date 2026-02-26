@@ -15,6 +15,7 @@ locals {
     s3_bucket           = local.s3_activity_bucket
     s3_key              = local.s3_activity_key
     install_script_b64  = local.ollama_install_script_b64
+    vpc_cidr            = var.vpc_cidr
   })
 }
 
@@ -77,9 +78,9 @@ resource "aws_launch_template" "ollama" {
 
 resource "aws_autoscaling_group" "ollama" {
   name                = "${var.project_name}-ollama-asg"
-  min_size            = var.ollama_min_size
+  min_size            = var.ollama_always_on ? 1 : var.ollama_min_size
   max_size            = var.ollama_max_size
-  desired_capacity    = var.ollama_desired_capacity
+  desired_capacity    = var.ollama_always_on ? 1 : var.ollama_desired_capacity
   vpc_zone_identifier = aws_subnet.public[*].id
   health_check_type   = "EC2"
   health_check_grace_period = 300

@@ -407,6 +407,21 @@ FORCE_BUILD=true ./build_on_truenas.sh
 ./build_on_truenas.sh --force  # (if implemented)
 ```
 
+### Removing Green (or Blue) to free resources
+
+To stop and remove the **Green** instance on TrueNAS and free Docker resources:
+
+```bash
+docker stop oscal-report-generator-green
+docker rm oscal-report-generator-green
+# Optional: remove image
+docker rmi oscal-report-generator:green 2>/dev/null || true
+```
+
+The **data-green** directory (config/users) is left in place unless you delete it manually. To bring Green back later, run `./build_on_truenas.sh` again from the Green directory.
+
+For **Blue**, use the same steps with container name `oscal-report-generator-blue` and port 3020.
+
 ---
 
 ## Configuration Management

@@ -6,35 +6,23 @@
 # Usage: ./scripts/debug/install-pass-svc-oscal.sh [--green-only | --blue-only]
 
 set -e
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
 SVC_HOME="/var/lib/svc_ams-oscal"
 # SVC_GROUP and SVC_HOME are used in REMOTE_SCRIPT (sent to server); echo for ShellCheck
 echo "Installing pass for $SVC_USER (group $SVC_GROUP, home $SVC_HOME) on target(s)."
 
-SSH_KEY=$(mktemp)
-trap 'rm -f "$SSH_KEY"' EXIT
-command -v pass >/dev/null 2>&1 || { echo "Error: pass required locally. Install: brew install pass" >&2; exit 1; }
-pass show "$PASS_ENTRY" > "$SSH_KEY" 2>/dev/null || { echo "Error: Pass entry $PASS_ENTRY not found." >&2; exit 1; }
-chmod 600 "$SSH_KEY"
-
-get_ip() {
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${1}_public_ip" 2>/dev/null || \
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${1}_private_ip" 2>/dev/null || true
-}
-
+resolve_ssh_key
 GREEN_IP=""
 BLUE_IP=""
 case "${1:-}" in
-  --green-only) GREEN_IP=$(get_ip green) ;;
-  --blue-only)  BLUE_IP=$(get_ip blue) ;;
+  --green-only) GREEN_IP=$(get_terraform_oscal_ip green) ;;
+  --blue-only)  BLUE_IP=$(get_terraform_oscal_ip blue) ;;
   *)
-    GREEN_IP=$(get_ip green)
-    BLUE_IP=$(get_ip blue)
+    GREEN_IP=$(get_terraform_oscal_ip green)
+    BLUE_IP=$(get_terraform_oscal_ip blue)
     ;;
 esac
 [ -n "$GREEN_IP" ] || [ -n "$BLUE_IP" ] || { echo "Error: Could not get Green or Blue IP from Terraform." >&2; exit 1; }

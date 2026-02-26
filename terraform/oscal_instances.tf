@@ -46,7 +46,7 @@ id $SVC_USER >/dev/null 2>&1 || useradd -r -s /bin/bash -g $SVC_GROUP -d $SVC_HO
 chmod 700 $SVC_HOME 2>/dev/null || true
 usermod -aG $SVC_GROUP ec2-user 2>/dev/null || true
 
-dnf install -y curl git cronie rsync
+dnf install -y --allowerasing curl git cronie rsync
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 dnf install -y nodejs
 
@@ -107,7 +107,7 @@ id $SVC_USER >/dev/null 2>&1 || useradd -r -s /bin/bash -g $SVC_GROUP -d $SVC_HO
 chmod 700 $SVC_HOME 2>/dev/null || true
 usermod -aG $SVC_GROUP ec2-user 2>/dev/null || true
 
-dnf install -y curl git cronie rsync
+dnf install -y --allowerasing curl git cronie rsync
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 dnf install -y nodejs
 dnf install -y epel-release || true
