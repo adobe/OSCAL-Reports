@@ -12,12 +12,15 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import './ControlSuggestions.css';
 
+const AI_NOT_AUTHORISED_MESSAGE = 'You are not authorised to access this feature. Enablement requires engagement with the Adobe Managed Services Sales team to integrate a dedicated instance with a customer‑provided AI Engine. This capability is offered on an as‑is basis for existing customers, with no warranty or support provided by Adobe Managed Services.';
+
 const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hideButton = false, autoFetch = false }) => {
   const { getAuthConfig, sessionToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
   const [error, setError] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const fetchSuggestions = async () => {
     if (!control || !control.id) {
@@ -95,6 +98,9 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hide
       // For all other errors, the backend should have returned fallback suggestions
       if (err.response?.status === 401) {
         setError('Authentication required. Please log in again.');
+      } else if (err.response?.status === 403 && err.response?.data?.code === 'AI_SUGGESTIONS_NOT_ALLOWED') {
+        setShowAuthModal(true);
+        setError(null);
       } else if (err.response?.status === 403) {
         setError('Permission denied. You may not have access to this feature.');
       } else {
@@ -121,12 +127,17 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hide
     if (!suggestions) return;
 
     if (field) {
-      // Apply specific field
-      onApplySuggestion(control.id, field, suggestions[field]);
+      // Form uses testingProcedure for "Testing Method"; backend returns testingMethod
+      const applyField = field === 'testingMethod' ? 'testingProcedure' : field;
+      const value = field === 'testingMethod' ? (suggestions.testingProcedure || suggestions.testingMethod) : suggestions[field];
+      onApplySuggestion(control.id, applyField, value);
     } else {
-      // Apply all suggestions
+      // Apply all suggestions; map testingMethod -> testingProcedure so form field is populated
       Object.keys(suggestions).forEach(key => {
-        if (key !== 'confidence' && key !== 'reasoning' && suggestions[key] !== null) {
+        if (key === 'confidence' || key === 'reasoning' || suggestions[key] === null) return;
+        if (key === 'testingMethod') {
+          onApplySuggestion(control.id, 'testingProcedure', suggestions.testingProcedure || suggestions.testingMethod);
+        } else {
           onApplySuggestion(control.id, key, suggestions[key]);
         }
       });
@@ -370,7 +381,7 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hide
               </div>
             )}
 
-            {suggestions.testingMethod && (
+            {(suggestions.testingProcedure || suggestions.testingMethod) && (
               <div className="suggestion-item">
                 <div className="suggestion-label">
                   <strong>Testing Method:</strong>
@@ -383,7 +394,25 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hide
                   </button>
                 </div>
                 <div className="suggestion-value">
-                  {suggestions.testingMethod}
+                  {suggestions.testingProcedure || suggestions.testingMethod}
+                </div>
+              </div>
+            )}
+
+            {suggestions.remarks !== undefined && suggestions.remarks !== null && (
+              <div className="suggestion-item">
+                <div className="suggestion-label">
+                  <strong>Additional Notes or Consumer Guidance:</strong>
+                  <button
+                    className="apply-field-btn"
+                    onClick={() => handleApplySuggestion('remarks')}
+                    title="Apply this suggestion"
+                  >
+                    Apply
+                  </button>
+                </div>
+                <div className="suggestion-value">
+                  {suggestions.remarks && suggestions.remarks.trim() ? suggestions.remarks : '— No additional notes suggested'}
                 </div>
               </div>
             )}
@@ -438,6 +467,24 @@ const ControlSuggestions = ({ control, existingControls, onApplySuggestion, hide
             >
               Dismiss
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Not authorised modal (same style as Platform Settings popout) */}
+      {showAuthModal && (
+        <div className="modal-overlay" onClick={() => setShowAuthModal(false)}>
+          <div className="modal-content settings-modal auth-message-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-modal-header">
+              <h2>Not authorised</h2>
+              <button type="button" className="modal-close" onClick={() => setShowAuthModal(false)} aria-label="Close">&times;</button>
+            </div>
+            <div className="auth-modal-body">
+              <p>{AI_NOT_AUTHORISED_MESSAGE}</p>
+            </div>
+            <div className="auth-modal-footer">
+              <button type="button" className="btn-primary" onClick={() => setShowAuthModal(false)}>OK</button>
+            </div>
           </div>
         </div>
       )}

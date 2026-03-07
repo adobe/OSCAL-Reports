@@ -1,6 +1,6 @@
 {
   "name": "oscal-ssp-backend",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "description": "Backend API for Keekar's OSCAL SOA/SSP/CCM Generator",
   "main": "server.js",
   "type": "module",
@@ -19,6 +19,7 @@
     "lint:fix": "npx eslint . --ext .js --fix"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.952.0",
     "@aws-sdk/client-bedrock-runtime": "^3.952.0",
     "@aws-sdk/client-lambda": "^3.995.0",
     "@oscal/oscal-deep-diff": "^1.0.0",
@@ -29,6 +30,7 @@
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "csurf": "^1.11.0",
+    "dotenv": "^17.3.1",
     "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "express-session": "^1.18.1",
