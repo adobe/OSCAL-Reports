@@ -21,18 +21,27 @@ import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
 import { loadConfig, getResolvedConfig, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir } from './configManager.js';
+import { isPassPointer, passShow } from './utils/passResolver.js';
+import { MASK } from './utils/sensitiveConfigKeys.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
 import { checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
 import { checkAIAvailability, detectModelFamily } from './aiModelRouter.js';
 import { addIntegrityHash, verifyIntegrityHash, getIntegrityInfo } from './integrityService.js';
 import { getLogStats, cleanupOldLogs } from './aiLogger.js';
+import { isUserAllowedForAISuggestions } from './utils/aiAllowedUsers.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load .env from repo root only in development (laptop). Docker and EC2 use their own USERS_PATH/CONFIG_PATH from entrypoint or systemd.
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.join(__dirname, '..', '.env') });
+}
 
 import { 
   initializeDefaultUsers, 
@@ -2354,14 +2363,31 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
 // Get current settings (all authenticated users can view)
 app.get('/api/settings', optionalAuth, (req, res) => {
   try {
-    const config = loadConfig();
+    const raw = loadConfig();
+    const config = JSON.parse(JSON.stringify(raw));
+    // Mask Bedrock credentials for client when stored in pass (so GUI shows placeholder and Test Connection can use resolved config)
+    if (config.aiConfig) {
+      for (const key of ['awsAccessKeyId', 'awsSecretAccessKey']) {
+        const v = config.aiConfig[key];
+        if (typeof v === 'string' && v.trim()) {
+          config.aiConfig[key] = MASK;
+        } else if (isPassPointer(v)) {
+          try {
+            const resolved = passShow(v._pass);
+            config.aiConfig[key] = (resolved && resolved.trim()) ? MASK : '';
+          } catch {
+            config.aiConfig[key] = '';
+          }
+        }
+      }
+    }
     console.log('📖 Settings loaded and sent to client');
     res.json(config);
   } catch (error) {
     console.error('❌ Error loading settings:', error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to load settings',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -4752,8 +4778,18 @@ app.get('/api/validator/status', async (req, res) => {
  *   "existingControls": [ ... ] (optional, for learning)
  * }
  */
+const AI_SUGGESTIONS_NOT_ALLOWED_MESSAGE = 'You are not authorised to access this feature. Enablement requires engagement with the Adobe Managed Services Sales team to integrate a dedicated instance with a customer‑provided AI Engine. This capability is offered on an as‑is basis for existing customers, with no warranty or support provided by Adobe Managed Services.';
+
 app.post('/api/suggest-control', authenticate, async (req, res) => {
   try {
+    const aiConfig = getResolvedConfig()?.aiConfig;
+    if (!isUserAllowedForAISuggestions(req.user, aiConfig)) {
+      return res.status(403).json({
+        success: false,
+        error: AI_SUGGESTIONS_NOT_ALLOWED_MESSAGE,
+        code: 'AI_SUGGESTIONS_NOT_ALLOWED'
+      });
+    }
     const { control, existingControls = [] } = req.body;
     
     if (process.env.NODE_ENV === 'development') {
@@ -4774,7 +4810,7 @@ app.post('/api/suggest-control', authenticate, async (req, res) => {
     
     // Let the suggestion engine handle timeouts and fallbacks internally
     // It will automatically fall back to templates if AI fails or times out
-    const suggestions = await suggestControlImplementation(control, existingControls);
+    const suggestions = await suggestControlImplementation(control, existingControls, req.user);
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`✅ Generated suggestions for ${control.id} with confidence: ${suggestions.confidence}`);
@@ -4949,8 +4985,8 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
       console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
       console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
-    
-    const status = await checkGemmaAvailability();
+    const modelFamily = await detectModelFamily();
+    const status = modelFamily === 'gemma' ? await checkAIAvailability() : await checkGemmaAvailability();
     
     console.log(`📊 Gemma status:`, {
       available: status.available,
@@ -5024,6 +5060,75 @@ app.post('/api/ai/logs/cleanup', authenticate, authorize([PERMISSIONS.MANAGE_AI_
 });
 
 /**
+ * List Bedrock foundation models (Mistral, Gemma, GPT only) for the configured region.
+ * Uses resolved AI config credentials (including pass vault). Region from query or config.
+ * GET /api/ai/bedrock-models?region=us-east-1
+ */
+app.get('/api/ai/bedrock-models', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
+  try {
+    let resolved;
+    try {
+      resolved = getResolvedConfig();
+    } catch (resolveErr) {
+      console.error('Failed to resolve config (pass vault):', resolveErr?.message);
+      return res.status(400).json({
+        error: `Could not load config: ${resolveErr?.message || resolveErr}. Ensure pass entries exist or save AI settings first.`
+      });
+    }
+    const region = (req.query.region && String(req.query.region).trim()) || resolved.aiConfig?.awsRegion || 'us-east-1';
+    const accessKeyId = (resolved.aiConfig?.awsAccessKeyId && String(resolved.aiConfig.awsAccessKeyId).trim()) || '';
+    const secretAccessKey = (resolved.aiConfig?.awsSecretAccessKey && typeof resolved.aiConfig.awsSecretAccessKey === 'string' && resolved.aiConfig.awsSecretAccessKey.trim()) || '';
+    if (!accessKeyId || !secretAccessKey || accessKeyId === MASK || secretAccessKey === MASK) {
+      return res.status(400).json({
+        error: 'AWS credentials required. Save Access Key ID and Secret Access Key in AI settings (or pass vault) first, then load models.'
+      });
+    }
+    const { BedrockClient, ListFoundationModelsCommand } = await import('@aws-sdk/client-bedrock');
+    const client = new BedrockClient({
+      region,
+      credentials: { accessKeyId, secretAccessKey }
+    });
+    const command = new ListFoundationModelsCommand({ byOutputModality: 'TEXT' });
+    const response = await client.send(command);
+    const summaries = response.modelSummaries || [];
+    const providerOrder = (p) => (p === 'Mistral AI' ? 0 : p === 'Google' ? 1 : p === 'OpenAI' ? 2 : 3);
+    const filtered = summaries
+      .filter((s) => {
+        if (s.modelLifecycle?.status && s.modelLifecycle.status !== 'ACTIVE') return false;
+        const provider = (s.providerName || '').trim();
+        const modelId = (s.modelId || '').toLowerCase();
+        if (provider === 'Mistral AI') return true;
+        if (provider === 'Google' && modelId.includes('gemma')) return true;
+        if (provider === 'OpenAI') return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const cmp = providerOrder((a.providerName || '').trim()) - providerOrder((b.providerName || '').trim());
+        return cmp !== 0 ? cmp : (a.modelName || a.modelId || '').localeCompare(b.modelName || b.modelId || '');
+      })
+      .map((s) => ({
+        modelId: s.modelId,
+        modelName: (s.modelName && s.modelName.trim()) || s.modelId || ''
+      }));
+    return res.json({ models: filtered });
+  } catch (error) {
+    console.error('List Bedrock models failed:', error?.message || error);
+    if (error.name === 'AccessDeniedException') {
+      return res.status(403).json({
+        error: 'AWS Access Denied. Check IAM permissions (bedrock:ListFoundationModels required).'
+      });
+    }
+    if (error.name === 'ThrottlingException') {
+      return res.status(429).json({ error: 'Too many requests. Try again in a moment.' });
+    }
+    return res.status(500).json({
+      error: error?.message || 'Failed to list Bedrock models',
+      details: error?.name
+    });
+  }
+});
+
+/**
  * Test AI Engine connection
  * Tests connectivity to configured AI Engine (e.g., Ollama)
  * 
@@ -5047,38 +5152,55 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // AWS Bedrock test connection
     if (provider === 'aws-bedrock') {
       try {
-        // Dynamically import AWS SDK and Node.js https
-        const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
-        const { Agent: HttpsAgent } = await import('https');
-        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-        
-        if (!awsAccessKeyId || !awsSecretAccessKey) {
+        // Use credentials from body if provided and not masked; otherwise use resolved config (pass vault)
+        let resolved;
+        try {
+          resolved = getResolvedConfig();
+        } catch (resolveErr) {
+          console.error('Failed to resolve config (pass vault):', resolveErr?.message);
           return res.status(400).json({
             success: false,
-            error: 'AWS credentials required (Access Key ID and Secret Access Key)'
+            error: `Could not load credentials from config/pass: ${resolveErr?.message || resolveErr}. Ensure pass entries OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key exist, or enter credentials in the form.`
           });
         }
-        
+        const useBodyCreds = typeof awsAccessKeyId === 'string' && typeof awsSecretAccessKey === 'string' &&
+          awsAccessKeyId.trim() && awsSecretAccessKey.trim() &&
+          awsAccessKeyId !== MASK && awsSecretAccessKey !== MASK;
+        const accessKeyId = useBodyCreds ? awsAccessKeyId : (resolved.aiConfig?.awsAccessKeyId || '');
+        const secretAccessKey = useBodyCreds ? awsSecretAccessKey : (resolved.aiConfig?.awsSecretAccessKey || '');
+
+        if (!accessKeyId || !secretAccessKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'AWS credentials required (Access Key ID and Secret Access Key). Enter them in the form or ensure they are stored in pass vault (OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key).'
+          });
+        }
+
         if (!awsRegion) {
           return res.status(400).json({
             success: false,
             error: 'AWS region required'
           });
         }
-        
+
+        // Dynamically import AWS SDK and Node.js https
+        const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
+        const { Agent: HttpsAgent } = await import('https');
+        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
+
         // Create custom HTTPS agent to handle SSL certificate issues
         // In production, you should use proper SSL certificates
         const httpsAgent = new HttpsAgent({
           rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
           keepAlive: true
         });
-        
+
         // Create Bedrock client with custom request handler
         const client = new BedrockRuntimeClient({
           region: awsRegion,
           credentials: {
-            accessKeyId: awsAccessKeyId,
-            secretAccessKey: awsSecretAccessKey
+            accessKeyId,
+            secretAccessKey
           },
           requestHandler: new NodeHttpHandler({
             httpsAgent: httpsAgent,
@@ -5130,11 +5252,13 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
           errorMessage = `Model not found: ${bedrockModelId}. Check model ID and region availability`;
         } else if (error.name === 'ValidationException') {
           errorMessage = 'Invalid request parameters';
+        } else if (error.name === 'InvalidSignatureException' || error.message?.includes('signature')) {
+          errorMessage = 'Invalid AWS credentials. Check Access Key ID and Secret Access Key (or pass vault entries OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key).';
         } else {
-          errorMessage = error.message;
+          errorMessage = error.message || String(error);
         }
         
-        return res.status(500).json({
+        return res.status(400).json({
           success: false,
           error: errorMessage,
           details: {
@@ -5462,10 +5586,11 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     }
   } catch (error) {
     console.error('❌ Error testing AI connection:', error);
+    const msg = error?.message || String(error);
     res.status(500).json({
       success: false,
-      error: 'Failed to test AI connection',
-      details: error.message
+      error: msg ? `Failed to test AI connection: ${msg}` : 'Failed to test AI connection',
+      details: msg
     });
   }
 });
@@ -5481,6 +5606,14 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
  */
 app.post('/api/suggest-multiple-controls', authenticate, async (req, res) => {
   try {
+    const aiConfig = getResolvedConfig()?.aiConfig;
+    if (!isUserAllowedForAISuggestions(req.user, aiConfig)) {
+      return res.status(403).json({
+        success: false,
+        error: AI_SUGGESTIONS_NOT_ALLOWED_MESSAGE,
+        code: 'AI_SUGGESTIONS_NOT_ALLOWED'
+      });
+    }
     const { controls, existingControls = [] } = req.body;
     
     if (!controls || !Array.isArray(controls)) {
@@ -5490,7 +5623,7 @@ app.post('/api/suggest-multiple-controls', authenticate, async (req, res) => {
     }
     
     console.log(`Generating suggestions for ${controls.length} controls`);
-    const suggestions = await suggestMultipleControls(controls, existingControls);
+    const suggestions = await suggestMultipleControls(controls, existingControls, req.user);
     
     res.json({
       success: true,

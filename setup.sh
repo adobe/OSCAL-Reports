@@ -620,6 +620,8 @@ do_fix() {
     fi
   fi
   
+  # SAFEGUARD: Only create users.json from example when it does NOT exist.
+  # We never overwrite an existing users.json (keeps your local users safe).
   if [ ! -f "config/app/users.json" ]; then
     if [ -f "config/app/users.json.example" ]; then
       cp config/app/users.json.example config/app/users.json
@@ -627,6 +629,8 @@ do_fix() {
     else
       print_warning "No users.json or example found"
     fi
+  else
+    print_success "users.json already exists (left unchanged)"
   fi
   echo ""
   

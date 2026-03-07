@@ -20,7 +20,7 @@ const LINUX_PASS_STORE = `${LINUX_SVC_HOME}/.password-store`;
  * @param {*} v
  * @returns {boolean}
  */
-function isPassPointer(v) {
+export function isPassPointer(v) {
   return v && typeof v === 'object' && typeof v._pass === 'string' && v._pass.trim() !== '';
 }
 
@@ -35,7 +35,7 @@ const OAUTH_CLIENT_SECRET_ENTRIES = ['OSCAL/sso-oauth-okta-client-secret', 'OSCA
  * @param {string} entry - Pass entry name (e.g. OSCAL/smtp-password)
  * @returns {string}
  */
-function passShow(entry) {
+export function passShow(entry) {
   if (PASS_DISABLED) {
     return '';
   }
