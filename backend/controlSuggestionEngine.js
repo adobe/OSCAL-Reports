@@ -473,7 +473,7 @@ export async function suggestControlImplementation(control, existingControls = [
     if (aiUsed) {
       // Only add this message if AI actually generated the text (not template/fallback)
       cleanedReasoning.push(`Implementation text generated using AI Engine maintained by ${organizationName}`);
-    } else if (aiAttempted && aiError) {
+    } else if (aiAttempted) {
       // Include actual error so user can fix (e.g. "AWS credentials not configured", "Model not found")
       const shortError = typeof aiError === 'string' && aiError.length > 100 ? aiError.substring(0, 97) + '...' : (aiError || 'unknown');
       if (templateImplementation) {
