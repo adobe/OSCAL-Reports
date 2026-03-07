@@ -12,7 +12,7 @@ import axios from 'axios';
 import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
-import { logAIInteraction, logAIError } from './aiLogger.js';
+import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
 import { invokeOllamaWake } from './utils/ollamaWake.js';
 
 // AWS SDK imports (lazy loaded when needed)
@@ -162,9 +162,10 @@ export async function loadMistralConfig() {
 
 /**
  * Generate implementation text using Ollama (local Mistral 7B)
+ * @param {string} [promptOverride] - Optional prompt; when provided (e.g. extended prompt), used instead of buildPrompt
  */
-async function generateWithOllama(control, config, existingControls = []) {
-  const prompt = buildPrompt(control, existingControls);
+async function generateWithOllama(control, config, existingControls = [], promptOverride = null, logContext = {}) {
+  const prompt = promptOverride || buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   console.log(`🔗 Attempting to connect to Ollama at: ${config.ollamaUrl}`);
@@ -256,7 +257,8 @@ async function generateWithOllama(control, config, existingControls = []) {
           totalTokens: Math.ceil((prompt.length + cleanedResponse.length) / 4)
         },
         latency: latency,
-        status: 'success'
+        status: 'success',
+        context: logContext
       });
       
       console.log(`✅ Successfully received response from Ollama (${response.data.response.length} chars)`);
@@ -267,8 +269,15 @@ async function generateWithOllama(control, config, existingControls = []) {
     throw new Error('Invalid response format from Ollama');
     } catch (error) {
       lastError = error;
-      if (attempt === 0 && isOllamaUnreachable(error)) {
+      const unreachable = attempt === 0 && isOllamaUnreachable(error);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'mistralService.js:generateWithOllama:catch',message:'Ollama request failed',data:{attempt,errorCode:error?.code,errorMessage:error?.message?.slice(0,100),isOllamaUnreachable:unreachable},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      if (unreachable) {
         const waked = await invokeOllamaWake();
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'mistralService.js:generateWithOllama:afterWake',message:'invokeOllamaWake result',data:{waked},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
         if (waked) {
           console.log('⏳ Waiting 90s for Ollama ASG to scale up and NLB target to become healthy...');
           await new Promise((r) => setTimeout(r, 90000));
@@ -293,7 +302,8 @@ async function generateWithOllama(control, config, existingControls = []) {
       controlFamily: control.id?.split('-')[0] || 'unknown',
       errorCode: error?.code,
       latency: latency
-    }
+    },
+    context: logContext
   });
 
   if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND') {
@@ -327,12 +337,12 @@ async function generateWithOllama(control, config, existingControls = []) {
 /**
  * Generate implementation text using Mistral AI API (cloud)
  */
-async function generateWithMistralAPI(control, config, existingControls = []) {
+async function generateWithMistralAPI(control, config, existingControls = [], promptOverride = null, logContext = {}) {
   if (!config.mistralApiKey) {
     throw new Error('Mistral API key not configured');
   }
 
-  const prompt = buildPrompt(control, existingControls);
+  const prompt = promptOverride || buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   try {
@@ -389,7 +399,8 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
           totalTokens: response.data.usage?.total_tokens || Math.ceil((prompt.length + cleanedResponse.length) / 4)
         },
         latency: latency,
-        status: 'success'
+        status: 'success',
+        context: logContext
       });
       
       return cleanedResponse;
@@ -412,7 +423,8 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
         controlFamily: control.id?.split('-')[0] || 'unknown',
         errorCode: error.response?.status,
         latency: latency
-      }
+      },
+      context: logContext
     });
     
     if (error.response?.status === 401) {
@@ -426,7 +438,7 @@ async function generateWithMistralAPI(control, config, existingControls = []) {
  * Generate implementation text using AWS Bedrock
  * Supports Mistral, Claude, and Llama models on Bedrock
  */
-async function generateWithAWSBedrock(control, config, existingControls = []) {
+async function generateWithAWSBedrock(control, config, existingControls = [], promptOverride = null, logContext = {}) {
   if (!BedrockRuntimeClient || !ConverseCommand) {
     throw new Error('AWS SDK not installed. Install with: npm install @aws-sdk/client-bedrock-runtime');
   }
@@ -439,7 +451,7 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
     throw new Error('AWS region not configured');
   }
 
-  const prompt = buildPrompt(control, existingControls);
+  const prompt = promptOverride || buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   try {
@@ -523,7 +535,8 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
             totalTokens: response.usage?.totalTokens || Math.ceil((prompt.length + cleanedResponse.length) / 4)
           },
           latency: latency,
-          status: 'success'
+          status: 'success',
+          context: logContext
         });
         
         console.log(`✅ Received response from AWS Bedrock (${responseText.length} chars)`);
@@ -549,7 +562,8 @@ async function generateWithAWSBedrock(control, config, existingControls = []) {
         awsRegion: config.awsRegion,
         errorName: error.name,
         latency: latency
-      }
+      },
+      context: logContext
     });
     
     if (error.name === 'AccessDeniedException') {
@@ -611,6 +625,18 @@ function analyzeWritingStyle(existingControls) {
     avgLength: Math.round(avgLength),
     commonPhrases: commonPhrases.slice(0, 3)
   };
+}
+
+/**
+ * Extract non-empty Additional Notes / Consumer Guidance (remarks) from existing controls
+ * so the AI can match style and suggest similar wording when relevant.
+ */
+function getRemarksExamples(existingControls) {
+  if (!existingControls || existingControls.length === 0) return [];
+  return existingControls
+    .map(c => (c.remarks != null ? String(c.remarks).trim() : ''))
+    .filter(r => r.length > 10)
+    .slice(0, 15);
 }
 
 /**
@@ -682,6 +708,74 @@ Requirements:
 ${styleAnalysis ? '' : 'Example format (exactly 250 characters): "Break Glass accounts are implemented by creating high-privileged, emergency-access accounts that are activated only when regular authentication processes fail or are compromised. These accounts have least privilege access and are monitored for usage."'}
 
 Implementation Description:`;
+}
+
+/**
+ * Build extended prompt requesting JSON with implementation, testingObjective, testingProcedure, remarks
+ * Includes existing implementation AND remarks examples so the AI can suggest Additional Notes in the same style.
+ */
+function buildExtendedPrompt(control, existingControls = []) {
+  const basePrompt = buildPrompt(control, existingControls);
+  const remarksExamples = getRemarksExamples(existingControls);
+  const remarksGuidance = remarksExamples.length > 0
+    ? `
+
+EXAMPLES of Additional Notes / Consumer Guidance from your existing controls (match this style when you suggest remarks):
+${remarksExamples.map((r, idx) => `${idx + 1}. "${r}"`).join('\n')}
+
+When relevant, suggest a brief additional note or consumer guidance in the same style as above; otherwise use empty string for "remarks".`
+    : '';
+
+  return `${basePrompt}
+
+Alternatively, respond with a JSON object containing all of the following (use this format so we can fill Implementation, Assessment/Testing Objective, Testing Method, and Additional Notes):${remarksGuidance}
+
+Respond with ONLY a valid JSON object, no other text. Use this exact structure:
+{
+  "implementation": "2-3 sentences, 250 chars or less, describing what has been implemented (past/present perfect tense).",
+  "testingObjective": "One sentence: the objective of assessing this control (e.g., Verify that...).",
+  "testingProcedure": "One sentence: how this control is tested (e.g., Manual review of...; Automated by tools).",
+  "remarks": "Optional brief additional notes or consumer guidance, or empty string if none."
+}
+
+Requirements for each field: implementation (250 chars or less); testingObjective and testingProcedure (one clear sentence each); remarks (short or empty; when you have example style above, prefer suggesting a brief note when it would help the assessor). Respond with ONLY the JSON object.`;
+}
+
+/**
+ * Parse structured JSON response into { implementation, testingObjective, testingProcedure, remarks }
+ * Handles responses with leading text (e.g. "Implementation Description: {...}") or markdown code blocks.
+ */
+function parseStructuredResponse(rawResponse) {
+  if (!rawResponse || typeof rawResponse !== 'string') return null;
+  let text = rawResponse.trim();
+  // Strip markdown code block if present
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) text = codeBlockMatch[1].trim();
+  // Strip leading label/text before the JSON (e.g. "Implementation Description: " or "Description: ")
+  text = text.replace(/^(Implementation Description|Description|Implementation):\s*/i, '').trim();
+  // Find the first { and parse from there in case there's any trailing text
+  const start = text.indexOf('{');
+  if (start !== -1) {
+    const end = text.lastIndexOf('}') + 1;
+    if (end > start) text = text.slice(start, end);
+  }
+  text = text.replace(/\.\s*$/, '').trim(); // strip trailing period that some models add
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const implementation = typeof parsed.implementation === 'string' ? cleanResponse(parsed.implementation) : null;
+    const testingObjective = typeof parsed.testingObjective === 'string' ? parsed.testingObjective.trim() : null;
+    const testingProcedure = typeof parsed.testingProcedure === 'string' ? parsed.testingProcedure.trim() : null;
+    const remarks = typeof parsed.remarks === 'string' ? parsed.remarks.trim() : '';
+    return {
+      implementation: implementation && implementation.length > 10 ? implementation : null,
+      testingObjective: testingObjective && testingObjective.length > 5 ? testingObjective : null,
+      testingProcedure: testingProcedure && testingProcedure.length > 5 ? testingProcedure : null,
+      remarks: remarks || ''
+    };
+  } catch (_) {
+    return null;
+  }
 }
 
 /**
@@ -757,86 +851,118 @@ function cleanResponse(response) {
  * @param {Object} control - Control object
  * @param {Object} config - Provider config
  * @param {Array} existingControls - Existing controls for context
- * @returns {Promise<string|null>} Implementation text or null
+ * @param {{ extended?: boolean }} [options] - When extended, use prompt that returns JSON and parse to { implementation, testingObjective, testingProcedure, remarks }
+ * @returns {Promise<string|Object|null>} Implementation text, or extended object, or null
  */
-async function tryGenerateWithProvider(provider, control, config, existingControls) {
+async function tryGenerateWithProvider(provider, control, config, existingControls, options = {}) {
   const maxRetries = config.maxRetries || 2;
+  const extended = !!options.extended;
+  const prompt = extended ? buildExtendedPrompt(control, existingControls) : null;
+  const logContext = buildLogContext(options.requestUser);
   let lastError = null;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      let implementation = null;
-      
+      let raw = null;
       if (provider === 'ollama') {
-        implementation = await generateWithOllama(control, config, existingControls);
+        raw = await generateWithOllama(control, config, existingControls, prompt, logContext);
       } else if (provider === 'mistral-api') {
-        implementation = await generateWithMistralAPI(control, config, existingControls);
+        raw = await generateWithMistralAPI(control, config, existingControls, prompt, logContext);
       } else if (provider === 'aws-bedrock') {
-        implementation = await generateWithAWSBedrock(control, config, existingControls);
+        raw = await generateWithAWSBedrock(control, config, existingControls, prompt, logContext);
       } else {
         throw new Error(`Unknown AI provider: ${provider}`);
       }
-      
-      if (implementation && implementation.length > 50) {
+
+      if (extended && raw && typeof raw === 'string') {
+        const parsed = parseStructuredResponse(raw);
+        if (parsed && parsed.implementation && parsed.implementation.length > 50) {
+          console.log(`✅ Successfully generated extended suggestions with ${provider} (attempt ${attempt + 1})`);
+          return parsed;
+        }
+        // Extended mode: never use raw response as implementation (it may be JSON); retry or throw
+        continue;
+      }
+      if (raw && typeof raw === 'string' && raw.length > 50) {
         console.log(`✅ Successfully generated implementation with ${provider} (attempt ${attempt + 1})`);
-        return implementation;
+        return raw;
       }
     } catch (error) {
       lastError = error;
       console.warn(`⚠️ ${provider} generation attempt ${attempt + 1} failed:`, error.message);
-      
+
       if (attempt < maxRetries) {
-        // Wait before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
       }
     }
   }
-  
+
   throw lastError || new Error(`${provider} generation failed after all retries`);
+}
+
+/**
+ * Normalize AI result to { text, testingObjective?, testingProcedure?, remarks?, aiGenerated, attempted, provider }
+ */
+function normalizeAIResult(result, provider, extra = {}) {
+  if (!result) return null;
+  if (typeof result === 'object' && result.implementation) {
+    return {
+      text: result.implementation,
+      testingObjective: result.testingObjective || undefined,
+      testingProcedure: result.testingProcedure || undefined,
+      remarks: result.remarks !== undefined ? result.remarks : undefined,
+      aiGenerated: true,
+      attempted: true,
+      provider,
+      ...extra
+    };
+  }
+  if (typeof result === 'string' && result.length > 50) {
+    return { text: result, aiGenerated: true, attempted: true, provider, ...extra };
+  }
+  return null;
 }
 
 /**
  * Generate implementation with dual-method fallback pattern
  * Tries primary provider first, falls back to secondary provider if available
- * 
+ *
  * @param {Object} control - Control object
  * @param {Function} fallbackGenerator - Fallback generator for pattern matching
  * @param {Array} existingControls - Existing controls for context
- * @returns {Promise<Object|null>} Result object with text, aiGenerated, attempted flags
+ * @param {{ extended?: boolean }} [options] - When extended, request implementation + testingObjective + testingProcedure + remarks
+ * @returns {Promise<Object|null>} Result object with text, aiGenerated, attempted flags; or extended fields when options.extended
  */
-export async function generateImplementationWithMistral(control, fallbackGenerator, existingControls = []) {
+export async function generateImplementationWithMistral(control, fallbackGenerator, existingControls = [], options = {}) {
   try {
     const config = await loadMistralConfig();
-    
+    const extended = !!options.extended;
+
     // Check if Mistral is enabled
     if (!config.enabled) {
       console.log('🤖 Mistral is disabled, using fallback');
-      // Return fallback with flag indicating Mistral was not attempted
       const fallback = fallbackGenerator ? fallbackGenerator(control) : null;
       return fallback ? { text: fallback, aiGenerated: false, attempted: false } : null;
     }
 
-    console.log(`🤖 Generating implementation with ${config.provider} for control: ${control.id}`);
+    console.log(`🤖 Generating implementation with ${config.provider} for control: ${control.id}${extended ? ' (extended fields)' : ''}`);
     
     let implementation = null;
     let primaryProvider = config.provider;
     let fallbackProvider = null;
     let primaryError = null;
-    
+    const providerOptions = { extended: !!extended, requestUser: options.requestUser };
+
     // Define provider fallback chain (Dual-Method Fallback Pattern)
-    // Priority: Configured Provider -> Local Ollama (if available) -> Pattern Matching
     if (config.provider === 'mistral-api' || config.provider === 'aws-bedrock') {
-      // If using cloud service, fallback to local Ollama
       fallbackProvider = 'ollama';
     }
     
     // Try primary provider
     try {
-      implementation = await tryGenerateWithProvider(primaryProvider, control, config, existingControls);
-      
-      if (implementation && implementation.length > 50) {
-        return { text: implementation, aiGenerated: true, attempted: true, provider: primaryProvider };
-      }
+      implementation = await tryGenerateWithProvider(primaryProvider, control, config, existingControls, providerOptions);
+      const normalized = normalizeAIResult(implementation, primaryProvider);
+      if (normalized) return normalized;
     } catch (error) {
       primaryError = error;
       console.warn(`⚠️ Primary provider (${primaryProvider}) failed:`, error.message);
@@ -845,33 +971,19 @@ export async function generateImplementationWithMistral(control, fallbackGenerat
     // Try fallback provider if available
     if (fallbackProvider && !implementation) {
       console.log(`🔄 Attempting fallback to ${fallbackProvider}...`);
-      
       try {
-        // Create fallback config (use default Ollama settings)
         const fallbackConfig = {
           ...config,
           provider: fallbackProvider,
           ollamaUrl: config.ollamaUrl || 'http://localhost:11434',
           model: 'mistral:7b',
-          maxRetries: 1 // Fewer retries for fallback
+          maxRetries: 1
         };
-        
-        implementation = await tryGenerateWithProvider(fallbackProvider, control, fallbackConfig, existingControls);
-        
-        if (implementation && implementation.length > 50) {
-          console.log(`✅ Successfully generated with fallback provider (${fallbackProvider})`);
-          return { 
-            text: implementation, 
-            aiGenerated: true, 
-            attempted: true, 
-            provider: fallbackProvider,
-            usedFallback: true,
-            primaryError: primaryError?.message
-          };
-        }
+        implementation = await tryGenerateWithProvider(fallbackProvider, control, fallbackConfig, existingControls, providerOptions);
+        const normalized = normalizeAIResult(implementation, fallbackProvider, { usedFallback: true, primaryError: primaryError?.message });
+        if (normalized) return normalized;
       } catch (fallbackError) {
         console.warn(`⚠️ Fallback provider (${fallbackProvider}) also failed:`, fallbackError.message);
-        // Continue to pattern matching fallback
       }
     }
     

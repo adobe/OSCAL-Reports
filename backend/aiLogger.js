@@ -22,7 +22,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
+import { getResolvedConfig } from './configManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,6 +67,22 @@ function getCurrentLogFile() {
     // File is full, try next index
     fileIndex++;
   } while (true);
+}
+
+/**
+ * Build context object for AI telemetry from the requesting user (req.user).
+ * Use when logging Get Suggestion requests so ai-telemetry shows who triggered the request.
+ * @param {Object|null} requestUser - Session user: { username, userId, email, role }
+ * @returns {Object} - context for logAIInteraction (username, userId, userEmail, userRoles)
+ */
+export function buildLogContext(requestUser) {
+  if (!requestUser) return {};
+  return {
+    username: requestUser.username ?? requestUser.userId ?? 'anonymous',
+    userId: requestUser.userId,
+    userEmail: requestUser.email,
+    userRoles: requestUser.role ? [requestUser.role] : []
+  };
 }
 
 /**
@@ -111,6 +129,13 @@ export function logAIInteraction({
   context = {}
 }) {
   try {
+    const extensiveLogging = getResolvedConfig()?.aiConfig?.extensiveLogging === true;
+    if (!extensiveLogging) {
+      const logPrefix = status === 'success' ? '✓' : (status === 'error' ? '❌' : '⚠️');
+      console.log(`${logPrefix} [AI-LOG] ${provider}:${model} | ${status} | ${latency || 0}ms (extensive logging disabled)`);
+      return { traceId: `trace-${Date.now()}`, spanId: `span-${Date.now()}`, logFile: null };
+    }
+
     const timestamp = new Date().toISOString();
     const traceId = generateTraceId();
     const spanId = generateSpanId();
@@ -141,8 +166,8 @@ export function logAIInteraction({
       'service.environment': process.env.NODE_ENV || 'production',
       
       // === ECS Host Fields ===
-      'host.hostname': process.env.HOSTNAME || require('os').hostname(),
-      'host.name': process.env.HOSTNAME || require('os').hostname(),
+      'host.hostname': process.env.HOSTNAME || os.hostname(),
+      'host.name': process.env.HOSTNAME || os.hostname(),
       
       // === ECS User Fields (from context) ===
       'user.name': context.username || metadata.userId || 'anonymous',
@@ -274,7 +299,8 @@ export function logAIError({
   operation,
   prompt,
   error,
-  metadata = {}
+  metadata = {},
+  context = {}
 }) {
   return logAIInteraction({
     provider,
@@ -289,7 +315,8 @@ export function logAIError({
     error: {
       type: error.name || 'AIError',
       message: error.message || 'Unknown error'
-    }
+    },
+    context
   });
 }
 
@@ -373,6 +400,7 @@ export function cleanupOldLogs(daysToKeep = 30) {
 export default {
   logAIInteraction,
   logAIError,
+  buildLogContext,
   getLogStats,
   cleanupOldLogs
 };

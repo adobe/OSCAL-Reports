@@ -24,6 +24,7 @@
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
 | [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
 | [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md) | AI models (Mistral, Gemma), config, and token limits |
+| [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md) | Step-by-step AWS setup for Bedrock AI integration (IAM, model access, config) |
 | [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
 
 ---
@@ -32,6 +33,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [KEEPING_LOCAL_USERS.md](KEEPING_LOCAL_USERS.md) | Keep your local users.json from being overwritten (USERS_PATH, .env) |
 | [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) | Version bumping, workflow, and release checklist |
 | [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
 | [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
