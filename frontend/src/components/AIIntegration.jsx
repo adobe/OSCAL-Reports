@@ -27,6 +27,8 @@ function AIIntegration({ embedded = false }) {
     model: 'mistral:7b',
     timeout: 120000,
     organizationName: '',
+    extensiveLogging: false, // When true, append AI telemetry to logs/ (e.g. ai-telemetry-*.jsonl)
+    allowedUsersForAI: '',  // Comma-separated, max 5; only for mistral-api/aws-bedrock, e.g. *@adobe.com, mkesharw
     // AWS Bedrock specific
     awsRegion: 'us-east-1',
     awsAccessKeyId: '',
@@ -35,6 +37,9 @@ function AIIntegration({ embedded = false }) {
   });
   const [availableModels, setAvailableModels] = useState([]);
   const [modelWarning, setModelWarning] = useState('');
+  const [bedrockModels, setBedrockModels] = useState([]);
+  const [bedrockModelsLoading, setBedrockModelsLoading] = useState(false);
+  const [bedrockModelsError, setBedrockModelsError] = useState('');
 
   const isReadOnly = !canEditSettings();
 
@@ -81,6 +86,16 @@ function AIIntegration({ embedded = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiConfig.model]);
 
+  useEffect(() => {
+    if (aiConfig.provider === 'aws-bedrock') {
+      fetchBedrockModels(aiConfig.awsRegion || 'us-east-1');
+    } else {
+      setBedrockModels([]);
+      setBedrockModelsError('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiConfig.provider, aiConfig.awsRegion]);
+
   const loadAIConfig = async () => {
     try {
       setLoading(true);
@@ -93,6 +108,8 @@ function AIIntegration({ embedded = false }) {
         model: 'mistral:7b',
         timeout: 120000,
         organizationName: '',
+        extensiveLogging: false,
+        allowedUsersForAI: '',
         awsRegion: 'us-east-1',
         awsAccessKeyId: '',
         awsSecretAccessKey: '',
@@ -111,6 +128,9 @@ function AIIntegration({ embedded = false }) {
       if (!config.provider) {
         config.provider = 'ollama';
       }
+      if (config.allowedUsersForAI == null) {
+        config.allowedUsersForAI = '';
+      }
       
       setAiConfig(config);
       setMessage('');
@@ -122,6 +142,22 @@ function AIIntegration({ embedded = false }) {
       setMessage('⚠️ Failed to load AI configuration');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBedrockModels = async (region) => {
+    if (!region || !region.trim()) return;
+    setBedrockModelsLoading(true);
+    setBedrockModelsError('');
+    try {
+      const response = await axios.get(`/api/ai/bedrock-models?region=${encodeURIComponent(region)}`, getAuthConfig());
+      setBedrockModels(response.data?.models || []);
+    } catch (error) {
+      const msg = error.response?.data?.error || error.message || 'Could not load Bedrock models.';
+      setBedrockModelsError(msg);
+      setBedrockModels([]);
+    } finally {
+      setBedrockModelsLoading(false);
     }
   };
 
@@ -139,20 +175,29 @@ function AIIntegration({ embedded = false }) {
       // Validate based on provider
       if (aiConfig.enabled) {
         if (aiConfig.provider === 'aws-bedrock') {
-          // AWS Bedrock validation
+          // AWS Bedrock validation (credentials may be in pass vault, so accept non-empty string or _pass)
           if (!aiConfig.awsRegion || !aiConfig.awsRegion.trim()) {
             throw new Error('AWS region is required for AWS Bedrock');
           }
-          if (!aiConfig.awsAccessKeyId || !aiConfig.awsAccessKeyId.trim()) {
+          const hasAccessKey = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) || aiConfig.awsAccessKeyId?._pass;
+          const hasSecretKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) || aiConfig.awsSecretAccessKey?._pass;
+          if (!hasAccessKey) {
             throw new Error('AWS Access Key ID is required for AWS Bedrock');
           }
-          if (!aiConfig.awsSecretAccessKey || !aiConfig.awsSecretAccessKey.trim()) {
+          if (!hasSecretKey) {
             throw new Error('AWS Secret Access Key is required for AWS Bedrock');
           }
           if (!aiConfig.bedrockModelId || !aiConfig.bedrockModelId.trim()) {
             throw new Error('Bedrock Model ID is required for AWS Bedrock');
           }
-        } else {
+        }
+        if ((aiConfig.provider === 'mistral-api' || aiConfig.provider === 'aws-bedrock') && aiConfig.allowedUsersForAI != null && String(aiConfig.allowedUsersForAI).trim() !== '') {
+          const entries = String(aiConfig.allowedUsersForAI).split(',').map(s => s.trim()).filter(Boolean);
+          if (entries.length > 5) {
+            throw new Error('Allowed users for Get Suggestions: maximum 5 comma-separated entries.');
+          }
+        }
+        if (aiConfig.provider !== 'aws-bedrock') {
           // Ollama or Mistral API validation
           if (!aiConfig.url || !aiConfig.url.trim()) {
             throw new Error('AI Engine URL is required when enabled');
@@ -203,10 +248,14 @@ function AIIntegration({ embedded = false }) {
 
     // Validate based on provider
     if (aiConfig.provider === 'aws-bedrock') {
-      if (!aiConfig.awsRegion || !aiConfig.awsAccessKeyId || !aiConfig.awsSecretAccessKey) {
+      const hasAccessKey = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
+        (aiConfig.awsAccessKeyId && typeof aiConfig.awsAccessKeyId === 'object' && aiConfig.awsAccessKeyId._pass);
+      const hasSecretKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
+        (aiConfig.awsSecretAccessKey && typeof aiConfig.awsSecretAccessKey === 'object' && aiConfig.awsSecretAccessKey._pass);
+      if (!aiConfig.awsRegion || !hasAccessKey || !hasSecretKey) {
         setTestResult({
           success: false,
-          message: 'Please configure AWS region and credentials before testing'
+          message: 'Please configure AWS region and credentials before testing (or ensure they are stored in pass vault)'
         });
         return;
       }
@@ -232,8 +281,14 @@ function AIIntegration({ embedded = false }) {
       // Add provider-specific parameters
       if (aiConfig.provider === 'aws-bedrock') {
         requestBody.awsRegion = aiConfig.awsRegion;
-        requestBody.awsAccessKeyId = aiConfig.awsAccessKeyId;
-        requestBody.awsSecretAccessKey = aiConfig.awsSecretAccessKey;
+        // Send credentials only if they are real values (not masked/stored); backend will use pass-resolved config when masked
+        const mask = '********';
+        requestBody.awsAccessKeyId = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId !== mask)
+          ? aiConfig.awsAccessKeyId
+          : (aiConfig.awsAccessKeyId?._pass ? mask : '');
+        requestBody.awsSecretAccessKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey !== mask)
+          ? aiConfig.awsSecretAccessKey
+          : (aiConfig.awsSecretAccessKey?._pass ? mask : '');
         requestBody.bedrockModelId = aiConfig.bedrockModelId;
       } else {
         requestBody.url = aiConfig.url;
@@ -305,6 +360,8 @@ function AIIntegration({ embedded = false }) {
         model: 'mistral:7b',
         timeout: 120000,
         organizationName: '',
+        extensiveLogging: false,
+        allowedUsersForAI: '',
         awsRegion: 'us-east-1',
         awsAccessKeyId: '',
         awsSecretAccessKey: '',
@@ -380,22 +437,57 @@ function AIIntegration({ embedded = false }) {
           </div>
 
           <div className="ai-form">
-            <div className="form-group">
-              <label>
-                AI Provider *
-                <small>Select your AI service provider</small>
-              </label>
-              <select
-                className="form-control"
-                value={aiConfig.provider}
-                onChange={(e) => setAiConfig({ ...aiConfig, provider: e.target.value })}
-                disabled={!aiConfig.enabled || isReadOnly}
-              >
-                <option value="ollama">Ollama (Local/Self-hosted)</option>
-                <option value="mistral-api">Mistral API (Cloud)</option>
-                <option value="aws-bedrock">AWS Bedrock</option>
-              </select>
+            <div className="form-row-two-cols">
+              <div className="form-group">
+                <label>
+                  AI Provider *
+                  <small>Select your AI service provider</small>
+                </label>
+                <select
+                  className="form-control"
+                  value={aiConfig.provider}
+                  onChange={(e) => setAiConfig({ ...aiConfig, provider: e.target.value })}
+                  disabled={!aiConfig.enabled || isReadOnly}
+                >
+                  <option value="ollama">Ollama (Local/Self-hosted)</option>
+                  <option value="mistral-api">Mistral API (Cloud)</option>
+                  <option value="aws-bedrock">AWS Bedrock</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>
+                  Extensive AI Debug logging
+                  <small>When on, appends AI telemetry to the logs directory (e.g. logs/ai-telemetry-*.jsonl). Turn off to reduce disk use.</small>
+                </label>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={!!aiConfig.extensiveLogging}
+                    onChange={(e) => setAiConfig({ ...aiConfig, extensiveLogging: e.target.checked })}
+                    disabled={isReadOnly}
+                  />
+                  <span className="toggle-slider"></span>
+                  <span className="toggle-label">{aiConfig.extensiveLogging ? 'On' : 'Off'}</span>
+                </label>
+              </div>
             </div>
+
+            {(aiConfig.provider === 'mistral-api' || aiConfig.provider === 'aws-bedrock') && (
+              <div className="form-group">
+                <label>
+                  Allowed users for Get Suggestions (chargeable providers)
+                  <small>e.g. *@adobe.com, mkesharw (max 5, comma-separated). If empty, all users are allowed.</small>
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={aiConfig.allowedUsersForAI || ''}
+                  onChange={(e) => setAiConfig({ ...aiConfig, allowedUsersForAI: e.target.value })}
+                  placeholder="*@adobe.com, mkesharw"
+                  disabled={!aiConfig.enabled || isReadOnly}
+                />
+              </div>
+            )}
 
             {/* Ollama Configuration */}
             {aiConfig.provider === 'ollama' && (
@@ -503,11 +595,14 @@ function AIIntegration({ embedded = false }) {
                   <input
                     type="text"
                     className="form-control"
-                    value={aiConfig.awsAccessKeyId || ''}
+                    value={typeof aiConfig.awsAccessKeyId === 'string' ? aiConfig.awsAccessKeyId : (aiConfig.awsAccessKeyId?._pass ? '********' : '')}
                     onChange={(e) => setAiConfig({ ...aiConfig, awsAccessKeyId: e.target.value })}
-                    placeholder="AKIAIOSFODNN7EXAMPLE"
+                    placeholder={aiConfig.awsAccessKeyId?._pass ? '' : 'AKIAIOSFODNN7EXAMPLE'}
                     disabled={!aiConfig.enabled || isReadOnly}
                   />
+                  {(typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId === '********') || aiConfig.awsAccessKeyId?._pass ? (
+                    <small className="form-text text-muted">Stored in pass vault</small>
+                  ) : null}
                 </div>
                 <div className="form-group">
                   <label>
@@ -517,30 +612,62 @@ function AIIntegration({ embedded = false }) {
                   <input
                     type="password"
                     className="form-control"
-                    value={aiConfig.awsSecretAccessKey || ''}
+                    value={typeof aiConfig.awsSecretAccessKey === 'string' ? aiConfig.awsSecretAccessKey : (aiConfig.awsSecretAccessKey?._pass ? '********' : '')}
                     onChange={(e) => setAiConfig({ ...aiConfig, awsSecretAccessKey: e.target.value })}
-                    placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                    placeholder={aiConfig.awsSecretAccessKey?._pass ? '' : 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'}
                     disabled={!aiConfig.enabled || isReadOnly}
                   />
+                  {(typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey === '********') || aiConfig.awsSecretAccessKey?._pass ? (
+                    <small className="form-text text-muted">Stored in pass vault</small>
+                  ) : null}
                 </div>
                 <div className="form-group">
                   <label>
                     Bedrock Model ID *
-                    <small>Model identifier from AWS Bedrock (see <a href="https://docs.aws.amazon.com/bedrock/" target="_blank" rel="noopener noreferrer">AWS Bedrock docs</a>)</small>
+                    <small>Mistral, Gemma, and GPT models in this region (see <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html" target="_blank" rel="noopener noreferrer">models by region</a>)</small>
                   </label>
                   <select
                     className="form-control"
                     value={aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0'}
                     onChange={(e) => setAiConfig({ ...aiConfig, bedrockModelId: e.target.value })}
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={!aiConfig.enabled || isReadOnly || bedrockModelsLoading}
                   >
-                    <option value="mistral.mistral-large-2402-v1:0">Mistral Large (mistral.mistral-large-2402-v1:0)</option>
-                    <option value="mistral.mistral-7b-instruct-v0:2">Mistral 7B Instruct (mistral.mistral-7b-instruct-v0:2)</option>
-                    <option value="mistral.mixtral-8x7b-instruct-v0:1">Mixtral 8x7B (mistral.mixtral-8x7b-instruct-v0:1)</option>
-                    <option value="anthropic.claude-3-sonnet-20240229-v1:0">Claude 3 Sonnet</option>
-                    <option value="anthropic.claude-3-haiku-20240307-v1:0">Claude 3 Haiku</option>
-                    <option value="meta.llama3-70b-instruct-v1:0">Llama 3 70B</option>
+                    {bedrockModelsLoading && (
+                      <option value={aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0'}>Loading models…</option>
+                    )}
+                    {!bedrockModelsLoading && bedrockModelsError && bedrockModels.length === 0 && (
+                      <option value={aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0'}>
+                        {aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0'}
+                      </option>
+                    )}
+                    {!bedrockModelsLoading && bedrockModels.map((m) => (
+                      <option key={m.modelId} value={m.modelId}>
+                        {m.modelName ? `${m.modelName} (${m.modelId})` : m.modelId}
+                      </option>
+                    ))}
+                    {!bedrockModelsLoading && bedrockModels.length > 0 && (() => {
+                      const current = aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+                      const inList = bedrockModels.some((m) => m.modelId === current);
+                      return !inList && current ? (
+                        <option key="_current" value={current}>
+                          {current} (current / not in list)
+                        </option>
+                      ) : null;
+                    })()}
                   </select>
+                  {bedrockModelsError && (
+                    <small className="form-text text-warning">{bedrockModelsError}</small>
+                  )}
+                  {!bedrockModelsLoading && !bedrockModelsError && bedrockModels.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary mt-1"
+                      onClick={() => fetchBedrockModels(aiConfig.awsRegion || 'us-east-1')}
+                      disabled={!aiConfig.enabled || isReadOnly}
+                    >
+                      Refresh models
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -635,11 +762,17 @@ function AIIntegration({ embedded = false }) {
                 className="btn-primary" 
                 onClick={handleTestConnection}
                 disabled={
-                  !aiConfig.enabled || 
-                  testing || 
+                  !aiConfig.enabled ||
+                  testing ||
                   isReadOnly ||
-                  (aiConfig.provider === 'aws-bedrock' 
-                    ? (!aiConfig.awsRegion || !aiConfig.awsAccessKeyId || !aiConfig.awsSecretAccessKey)
+                  (aiConfig.provider === 'aws-bedrock'
+                    ? (!aiConfig.awsRegion || !(
+                        (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
+                        (aiConfig.awsAccessKeyId?._pass)
+                      ) || !(
+                        (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
+                        (aiConfig.awsSecretAccessKey?._pass)
+                      ))
                     : !aiConfig.url)
                 }
               >
@@ -650,8 +783,14 @@ function AIIntegration({ embedded = false }) {
                 onClick={handleClear}
                 disabled={
                   isReadOnly ||
-                  (aiConfig.provider === 'aws-bedrock' 
-                    ? (!aiConfig.awsRegion && !aiConfig.awsAccessKeyId && !aiConfig.awsSecretAccessKey)
+                  (aiConfig.provider === 'aws-bedrock'
+                    ? (!aiConfig.awsRegion && !(
+                        (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
+                        aiConfig.awsAccessKeyId?._pass
+                      ) && !(
+                        (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
+                        aiConfig.awsSecretAccessKey?._pass
+                      ))
                     : !aiConfig.url)
                 }
               >

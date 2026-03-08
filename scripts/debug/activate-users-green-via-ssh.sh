@@ -2,34 +2,15 @@
 # Activate admin and mkesharw on the Green instance via SSH.
 # Uses: Pass for SSH key (AWS/OSCAL-AWS4379-SSH) and Terraform for Green IP.
 #
-# Usage: ./scripts/activate-users-green-via-ssh.sh
+# Usage: ./scripts/debug/activate-users-green-via-ssh.sh
 
 set -e
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 
-# Resolve SSH key from Pass
-SSH_KEY=$(mktemp)
-trap 'rm -f "$SSH_KEY"' EXIT
-if ! command -v pass >/dev/null 2>&1; then
-  echo "Error: pass not found. Install: brew install pass" >&2
-  exit 1
-fi
-if ! pass show "$PASS_ENTRY" > "$SSH_KEY" 2>/dev/null; then
-  echo "Error: Pass entry '$PASS_ENTRY' not found or failed. Store your PEM key with: pass insert -m $PASS_ENTRY" >&2
-  exit 1
-fi
-chmod 600 "$SSH_KEY"
-
-# Get Green IP from Terraform (loads AWS creds from Pass)
-if [ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ]; then
-  echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable" >&2
-  exit 1
-fi
-GREEN_IP=$("$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw oscal_green_public_ip 2>/dev/null) || \
-  GREEN_IP=$("$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw oscal_green_private_ip 2>/dev/null) || true
+resolve_ssh_key
+GREEN_IP=$(get_terraform_oscal_ip green)
 if [ -z "$GREEN_IP" ]; then
   echo "Error: Could not get Green IP from Terraform. Run: cd terraform && ./run-with-aws-pass.sh apply" >&2
   exit 1

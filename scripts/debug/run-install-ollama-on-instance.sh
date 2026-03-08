@@ -11,7 +11,7 @@
 #   1. Wake – Invoke wake Lambda (retry on rate limit). Wait for instance.
 #   2. If no instance – Scale ASG to 1 or create via run-instances + attach.
 #   3. Check volume – Report EBS sizes; warn if root < 150 GB.
-#   4. Install – Free disk if needed, run install-ollama-and-models.sh (Ollama + mistral:7b, gemma3:latest).
+#   4. Install – Free disk if needed, run install-ollama-and-models.sh (Ollama + mistral, gemma2:2b).
 #   5. Listener – 0.0.0.0:11434; firewalld allows 11434 only from VPC (not public).
 #
 # Usage (from repo root):
@@ -24,42 +24,18 @@
 #   Pass: AWS/AWS4379 Sandbox, AWS/OSCAL-AWS4379-SSH. Or set AWS_* and SSH_KEY_FILE.
 
 set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
 RUN_WITH_AWS="$REPO_ROOT/terraform/run-with-aws-pass.sh"
-SSH_USER="${SSH_USER:-ec2-user}"
 INSTALL_SCRIPT="$REPO_ROOT/scripts/install-ollama-and-models.sh"
 AWS_PASS_ENTRY="${AWS_PASS_ENTRY:-AWS/AWS4379 Sandbox}"
 OLLAMA_MIN_FREE_MB="${OLLAMA_MIN_FREE_MB:-2048}"
 WAIT_TIMEOUT="${OLLAMA_INSTANCE_WAIT:-300}"
 OLLAMA_EXPECTED_ROOT_GB="${OLLAMA_EXPECTED_ROOT_GB:-150}"
-OLLAMA_MODELS_MISTRAL="${OLLAMA_MODELS_MISTRAL:-mistral:7b}"
-OLLAMA_MODELS_GEMMA="${OLLAMA_MODELS_GEMMA:-gemma3:latest}"
-
-# ========== Setup ==========
-load_aws_if_needed() {
-  if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then return 0; fi
-  if ! command -v pass >/dev/null 2>&1; then return 0; fi
-  while IFS= read -r line; do
-    if [[ $line =~ ^aws_access_key_id=(.*)$ ]]; then export AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"; fi
-    if [[ $line =~ ^aws_secret_access_key=(.*)$ ]]; then export AWS_SECRET_ACCESS_KEY="${BASH_REMATCH[1]}"; fi
-    if [[ $line =~ ^aws_session_token=(.*)$ ]]; then export AWS_SESSION_TOKEN="${BASH_REMATCH[1]}"; fi
-  done < <(pass show "$AWS_PASS_ENTRY" 2>/dev/null)
-}
-
-resolve_ssh() {
-  if [ -n "$SSH_KEY_FILE" ] && [ -f "$SSH_KEY_FILE" ]; then SSH_KEY="$SSH_KEY_FILE"; return; fi
-  if command -v pass >/dev/null 2>&1 && pass show "${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}" >/dev/null 2>&1; then
-    SSH_KEY=$(mktemp)
-    trap 'rm -f "$SSH_KEY"' EXIT
-    pass show "${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}" > "$SSH_KEY"
-    chmod 600 "$SSH_KEY"
-    return
-  fi
-  echo "ERROR: Set SSH_KEY_FILE or have Pass entry AWS/OSCAL-AWS4379-SSH" >&2
-  return 1
-}
+OLLAMA_MODELS_MISTRAL="${OLLAMA_MODELS_MISTRAL:-mistral}"
+OLLAMA_MODELS_GEMMA="${OLLAMA_MODELS_GEMMA:-gemma2:2b}"
 
 get_terraform_output() {
   local name="$1"
@@ -288,7 +264,7 @@ cd "$REPO_ROOT"
 
 [ ! -f "$RUN_WITH_AWS" ] && { echo "ERROR: run-with-aws-pass.sh not found. Run from repo root." >&2; exit 1; }
 
-load_aws_if_needed
+load_aws_from_pass || true
 SUBCMD="${1:-}"
 
 region=$(get_terraform_output aws_region) || true
@@ -318,7 +294,7 @@ fi
 
 # Subcommand: listener
 if [ "$SUBCMD" = "listener" ]; then
-  resolve_ssh || exit 1
+  resolve_ssh_key
   OLLAMA_IP="${2:-${OLLAMA_INSTANCE_IP:-$(get_ollama_instance_ip)}}"
   [ -z "$OLLAMA_IP" ] && { echo "ERROR: Pass instance IP as second argument or set OLLAMA_INSTANCE_IP or ensure an Ollama instance is running." >&2; exit 1; }
   configure_listener_internal_only "$SSH_KEY" "$OLLAMA_IP"
@@ -327,7 +303,7 @@ if [ "$SUBCMD" = "listener" ]; then
 fi
 
 # Full flow (no subcommand or "full")
-resolve_ssh || exit 1
+resolve_ssh_key
 
 [ ! -f "$INSTALL_SCRIPT" ] && { echo "ERROR: Install script not found: $INSTALL_SCRIPT" >&2; exit 1; }
 
@@ -359,13 +335,18 @@ if [ -n "$instance_id" ]; then
   check_ollama_volume_size "$SSH_KEY" "$OLLAMA_IP" "$region" "$instance_id"
 fi
 
-# 4. Install Ollama and pull two models
+# 3b. Fix hostname (EC2 default can have chars that trigger "hostname contains invalid characters" with sudo)
+echo "Ensuring valid hostname on instance..."
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${SSH_USER}@${OLLAMA_IP}" \
+  "sudo hostname ollama-instance 2>/dev/null; echo 'ollama-instance' | sudo tee /etc/hostname >/dev/null; grep -q '127.0.0.1.*ollama-instance' /etc/hosts || echo '127.0.0.1 ollama-instance' | sudo tee -a /etc/hosts >/dev/null" 2>/dev/null || true
+
+# 4. Install Ollama and pull two models (install-ollama-and-models.sh now applies listener/firewalld when run on instance)
 echo "Checking disk space (cleanup if below ${OLLAMA_MIN_FREE_MB} MB free)..."
 check_and_free_ollama_disk_space "$SSH_KEY" "$OLLAMA_IP" || { echo "Warning: disk check failed (e.g. hostname/sudo on instance), continuing with install and listener." >&2; }
 echo "Running install-ollama-and-models.sh (Ollama + pull $OLLAMA_MODELS_MISTRAL and $OLLAMA_MODELS_GEMMA)..."
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${SSH_USER}@${OLLAMA_IP}" "sudo bash -s" < "$INSTALL_SCRIPT"
 
-# 5. Configure listener: internal only (11434 not exposed to public)
+# 5. Configure listener: internal only (11434 from VPC). Idempotent with install script; ensures fix on existing instances.
 configure_listener_internal_only "$SSH_KEY" "$OLLAMA_IP"
 
 echo ""

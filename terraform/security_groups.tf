@@ -96,28 +96,18 @@ resource "aws_security_group" "oscal" {
     description = "VPC to OSCAL (app ports 3019, 3020)"
   }
 
+  # SSH: from allowed CIDRs only (e.g. admin IPs, VPN subnets; avoid 0.0.0.0/0 in production)
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
+    cidr_blocks = var.allowed_ssh_cidr
+    description = "SSH from allowed CIDRs"
   }
 
-  # Direct access from internet (e.g. laptop): Green :3019, Blue :3020 (same CIDR as SSH)
-  ingress {
-    from_port   = 3019
-    to_port     = 3019
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
-    description = "Green app from internet (e.g. laptop)"
-  }
-  ingress {
-    from_port   = 3020
-    to_port     = 3020
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
-    description = "Blue app from internet (e.g. laptop)"
-  }
+  # App ports 3019 (Green) and 3020 (Blue) are NOT open to the internet.
+  # Access only via: ALB (security_groups above), VPC CIDR (above), or self (Green↔Blue).
+  # Use the ALB URL (e.g. https://oscal.amsgovcloud.com.au) for browser access.
 
   egress {
     from_port   = 443
@@ -227,11 +217,13 @@ resource "aws_security_group" "ollama" {
     description = "VPC to Ollama (app ports)"
   }
 
+  # SSH: from allowed CIDRs (same list as OSCAL)
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.allowed_ssh_cidr]
+    cidr_blocks = var.allowed_ssh_cidr
+    description = "SSH from allowed CIDRs"
   }
 
   egress {

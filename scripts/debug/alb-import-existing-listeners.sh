@@ -2,29 +2,17 @@
 # Resolve DuplicateListener / existing ALB listeners not in Terraform state.
 # Run from repo root. Prints import or delete commands; run them from terraform/ with AWS creds.
 #
-# Usage: ./scripts/alb-import-existing-listeners.sh [import|delete]
+# Usage: ./scripts/debug/alb-import-existing-listeners.sh [import|delete]
 #   import (default) - print terraform import commands for existing port 80 and 443 listeners
 #   delete           - print aws elbv2 delete-listener commands (then run terraform apply)
 
 set -e
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
-AWS_PASS_ENTRY="${AWS_PASS_ENTRY:-AWS/AWS4379 Sandbox}"
-
-# Load AWS from Pass if needed
-load_aws_if_needed() {
-  if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then return 0; fi
-  command -v pass >/dev/null 2>&1 || { echo "Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or install pass"; exit 1; }
-  while IFS= read -r line; do
-    [[ $line =~ ^[aA]ws_access_key_id=(.*)$ ]] && export AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"
-    [[ $line =~ ^[aA]ws_secret_access_key=(.*)$ ]] && export AWS_SECRET_ACCESS_KEY="${BASH_REMATCH[1]}"
-    [[ $line =~ ^[aA]ws_session_token=(.*)$ ]] && export AWS_SESSION_TOKEN="${BASH_REMATCH[1]}"
-  done < <(pass show "$AWS_PASS_ENTRY" 2>/dev/null)
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 
 [ ! -d "$TERRAFORM_DIR" ] && { echo "Terraform dir not found: $TERRAFORM_DIR"; exit 1; }
-load_aws_if_needed
+load_aws_from_pass || { echo "Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or install pass with entry $AWS_PASS_ENTRY"; exit 1; }
 command -v aws >/dev/null 2>&1 || { echo "AWS CLI required"; exit 1; }
 
 alb_arn=$(cd "$TERRAFORM_DIR" && terraform state show -no-color aws_lb.main 2>/dev/null | grep -E '^\s*arn\s*=' | sed -E 's/.*=\s*"(.*)"/\1/' | tr -d ' ') || true
