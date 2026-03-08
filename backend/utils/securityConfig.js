@@ -79,6 +79,13 @@ export const CSRF_EXEMPT_PATHS = [
   '/api/', // Exempt all API endpoints - see rationale above
 ];
 
+// Paths that MUST have CSRF protection (even though they are under /api/)
+// Snyk/CodeQL: UseCsurfForExpress - state-changing endpoints that accept cookie/session
+// must validate CSRF. Okta exchange-token is protected; frontend fetches token before POST.
+export const CSRF_PROTECTED_PATHS = [
+  '/api/auth/okta/exchange-token',
+];
+
 // Paths that should always validate URLs (SSRF protection)
 export const SSRF_PROTECTED_ENDPOINTS = [
   '/api/fetch-catalogue',

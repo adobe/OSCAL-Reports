@@ -9,7 +9,9 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
+SSH_USER="${SSH_USER:-ec2-user}"
 SVC_USER="svc_ams-oscal"
 
 resolve_ssh_key
