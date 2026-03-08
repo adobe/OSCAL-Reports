@@ -192,7 +192,7 @@ REMOTEPASS
     scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/ec2_automation.sh" "${SSH_USER}@${ip}:${REMOTE_APP}/../scripts/ec2_automation.sh"
     ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/ec2_automation.sh"
     # Copy optional helper scripts to /opt/oscal/scripts (same destination as ec2_automation.sh)
-    for _src in "scripts/update-pass-credential.sh" "scripts/sync-consolidation-script.sh"; do
+    for _src in "scripts/debug/update-pass-credential.sh" "scripts/sync-consolidation-script.sh" "scripts/consolidate-users.sh"; do
       if [ -f "$REPO_ROOT/$_src" ]; then
         scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/$_src" "${SSH_USER}@${ip}:/opt/oscal/scripts/$(basename "$_src")"
         ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/$(basename "$_src")"
@@ -451,10 +451,10 @@ fi
 echo ""
 # Post-deploy: pass vault check (option 1)
 print_info "Pass vault status (secrets in vault vs config):"
-if [ -x "$REPO_ROOT/scripts/check-pass-vault-on-ec2.sh" ]; then
-  "$REPO_ROOT/scripts/check-pass-vault-on-ec2.sh" 2>/dev/null || true
+if [ -x "$REPO_ROOT/scripts/debug/check-pass-vault-on-ec2.sh" ]; then
+  "$REPO_ROOT/scripts/debug/check-pass-vault-on-ec2.sh" 2>/dev/null || true
 else
-  echo "  (run ./scripts/check-pass-vault-on-ec2.sh for details)"
+  echo "  (run ./scripts/debug/check-pass-vault-on-ec2.sh for details)"
 fi
 echo ""
 # Fail script if any instance failed health check (option 2)

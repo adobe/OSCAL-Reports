@@ -3,7 +3,7 @@
 # Credentials are read from stdin (paste then Ctrl+D); they are not written to disk.
 #
 # Usage:
-#   ./scripts/update-pass-credential.sh
+#   ./scripts/debug/update-pass-credential.sh
 #
 # Required: pass, gpg
 # Supports: AWS-style (aws_access_key_id=..., aws_secret_access_key=..., aws_session_token=...)

@@ -36,22 +36,25 @@ resource "aws_cloudwatch_log_group" "ollama_controller" {
 }
 
 resource "aws_cloudwatch_event_rule" "ollama_idle_check" {
+  count               = var.ollama_always_on ? 0 : 1
   name                = "${var.project_name}-ollama-idle-check"
-  description         = "Check if Ollama instance should be shut down (every 30 min)"
+  description         = "Check if Ollama instance should be shut down (every 30 min); disabled when ollama_always_on = true"
   schedule_expression = "rate(30 minutes)"
 }
 
 resource "aws_cloudwatch_event_target" "ollama_idle_check" {
-  rule      = aws_cloudwatch_event_rule.ollama_idle_check.name
-  target_id = "OllamaControllerLambda"
-  arn       = aws_lambda_function.ollama_controller.arn
-  input     = "{\"action\": \"check_idle\"}"
+  count      = var.ollama_always_on ? 0 : 1
+  rule       = aws_cloudwatch_event_rule.ollama_idle_check[0].name
+  target_id  = "OllamaControllerLambda"
+  arn        = aws_lambda_function.ollama_controller.arn
+  input      = "{\"action\": \"check_idle\"}"
 }
 
 resource "aws_lambda_permission" "events" {
+  count         = var.ollama_always_on ? 0 : 1
   statement_id  = "AllowExecutionFromCloudWatch"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.ollama_controller.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.ollama_idle_check.arn
+  source_arn    = aws_cloudwatch_event_rule.ollama_idle_check[0].arn
 }

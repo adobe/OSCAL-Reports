@@ -69,16 +69,16 @@ Consolidate users between Blue and Green so the same credentials work on both.
 
 ### Method 1: Docker (immediate)
 
-**Script:** `scripts/consolidate-users-docker.sh`
+**Script:** `scripts/consolidate-users.sh --docker`
 
 Run on the host where both containers run:
 
 ```bash
 cd /path/to/OSCAL_Reports
-sudo ./scripts/consolidate-users-docker.sh
+sudo ./scripts/consolidate-users.sh --docker
 ```
 
-The script reads `users.json` from both containers, merges users (deduplicates), writes back, and restarts containers. Backups are created under `~/oscal-user-consolidation-TIMESTAMP/`.
+The script reads `users.json` from both containers via `docker exec`, merges users (deduplicates), writes back, and restarts containers. Backups are created under `~/oscal-user-consolidation-TIMESTAMP/`. Use `--docker` when the API-based flow is not available (e.g. older backend without export/import endpoints).
 
 ### Method 2: API-based (after backend fix)
 
@@ -102,6 +102,9 @@ BLUE_PASSWORD='...' GREEN_PASSWORD='...' ./scripts/consolidate-users.sh --auto
 
 # One-way: Green → Blue
 ./scripts/consolidate-users.sh --green-to-blue
+
+# Docker mode (direct docker exec, run ON server with containers)
+./scripts/consolidate-users.sh --docker
 ```
 
 **Sync script:** Use `scripts/sync-consolidation-script.sh` to copy `consolidate-users.sh` to Blue/Green script directories if they are separate clones.

@@ -8,7 +8,8 @@ project_name   = "oscal-ollama"
 
 # Networking
 vpc_cidr          = "10.0.0.0/16"
-allowed_ssh_cidr   = "0.0.0.0/0"  # Restrict to your IP in production, e.g. "1.2.3.4/32"
+# List of CIDRs allowed for SSH (OSCAL and Ollama). Use multiple entries for multiple subnets.
+allowed_ssh_cidr   = ["0.0.0.0/0"]  # Restrict in production: ["1.2.3.4/32"] or ["10.0.0.0/8", "192.168.1.0/24"]
 
 # EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
 # Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4379 --query 'KeyMaterial' --output text > oscal-aws4379.pem
@@ -54,11 +55,14 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # ollama_ami_id         = null
 # instance_architecture = "x86_64"  # or "arm64"
 
-# Ollama ASG: max 1 instance (if one present, no new instances); 1 hr no activity -> scale to 0
-ollama_min_size             = 0
-ollama_max_size             = 1
+# Ollama ASG
+# Sandbox / always-on: set ollama_always_on = true so Ollama stays running (no idle shutdown).
+# Cost-saving: set ollama_always_on = false; 1 hr no activity -> scale to 0.
+ollama_always_on             = true   # true = always running (sandbox); false = scale to 0 when idle
+ollama_min_size              = 0      # ignored when ollama_always_on = true
+ollama_max_size              = 1
 ollama_desired_capacity      = 1
-ollama_idle_timeout_hours    = 1
+ollama_idle_timeout_hours     = 1      # ignored when ollama_always_on = true
 
 # Optional tags
 common_tags = {

@@ -2,14 +2,13 @@
 # Verify ALB has HTTPS listener and oscal.amsgovcloud.com.au points to the ALB.
 # Run from repo root. Loads AWS credentials from Pass (same as terraform/run-with-aws-pass.sh) if not set.
 #
-# Usage: ./scripts/verify-alb-https.sh
+# Usage: ./scripts/debug/verify-alb-https.sh
 
 set -e
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 DOMAIN="${ALB_DOMAIN:-oscal.amsgovcloud.com.au}"
-AWS_PASS_ENTRY="${AWS_PASS_ENTRY:-AWS/AWS4379 Sandbox}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -21,29 +20,9 @@ print_fail() { echo -e "${RED}✗${NC} $1"; }
 print_warn() { echo -e "${YELLOW}⚠${NC}  $1"; }
 print_info() { echo -e "${CYAN}ℹ${NC}  $1"; }
 
-# Load AWS credentials from Pass if not already set (same entry as terraform/run-with-aws-pass.sh)
-load_aws_if_needed() {
-  if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
-    return 0
-  fi
-  if ! command -v pass >/dev/null 2>&1; then
-    print_fail "AWS credentials not set and 'pass' not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or run: ./terraform/run-with-aws-pass.sh run $REPO_ROOT/scripts/verify-alb-https.sh"
-    exit 1
-  fi
-  if ! pass show "$AWS_PASS_ENTRY" >/dev/null 2>&1; then
-    print_fail "Pass entry '$AWS_PASS_ENTRY' not found. Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or configure Pass."
-    exit 1
-  fi
-  while IFS= read -r line; do
-    if [[ $line =~ ^[aA]ws_access_key_id=(.*)$ ]]; then export AWS_ACCESS_KEY_ID="${BASH_REMATCH[1]}"; fi
-    if [[ $line =~ ^[aA]ws_secret_access_key=(.*)$ ]]; then export AWS_SECRET_ACCESS_KEY="${BASH_REMATCH[1]}"; fi
-    if [[ $line =~ ^[aA]ws_session_token=(.*)$ ]]; then export AWS_SESSION_TOKEN="${BASH_REMATCH[1]}"; fi
-  done < <(pass show "$AWS_PASS_ENTRY" 2>/dev/null)
-}
-
 [ ! -d "$TERRAFORM_DIR" ] || [ ! -f "$TERRAFORM_DIR/terraform.tfstate" ] && { print_fail "Terraform state not found at $TERRAFORM_DIR"; exit 1; }
 
-load_aws_if_needed
+load_aws_from_pass || { print_fail "AWS credentials not set and Pass entry '$AWS_PASS_ENTRY' not found. Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or configure Pass."; exit 1; }
 command -v aws >/dev/null 2>&1 || { print_fail "AWS CLI (aws) not found."; exit 1; }
 
 alb_dns=$(cd "$TERRAFORM_DIR" && terraform output -raw alb_dns_name 2>/dev/null) || { print_fail "Could not get alb_dns_name"; exit 1; }

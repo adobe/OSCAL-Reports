@@ -33,9 +33,9 @@ variable "vpc_cidr" {
 }
 
 variable "allowed_ssh_cidr" {
-  description = "CIDR allowed for SSH (e.g. your IP); use 0.0.0.0/0 only for testing"
-  type        = string
-  default     = "0.0.0.0/0"
+  description = "List of CIDRs allowed for SSH to OSCAL/Ollama instances. App ports 3019/3020 are not open to the internet; use ALB or VPC. Example: [\"1.2.3.4/32\", \"10.0.0.0/8\"] or [\"0.0.0.0/0\"] for testing only."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }
 
 # EC2
@@ -159,8 +159,14 @@ variable "alb_green_hostname" {
 }
 
 # Lambda / Ollama ASG
+variable "ollama_always_on" {
+  description = "When true, Ollama instance stays running (min_size=1, idle shutdown disabled). Use for sandbox/dev. When false, Ollama scales to 0 after idle timeout."
+  type        = bool
+  default     = false
+}
+
 variable "ollama_idle_timeout_hours" {
-  description = "Hours of idle time before scaling Ollama ASG to 0 (no activity); per diagram, 1 hr idle then shut down"
+  description = "Hours of idle time before scaling Ollama ASG to 0 (no activity); ignored when ollama_always_on = true"
   type        = number
   default     = 1
 }

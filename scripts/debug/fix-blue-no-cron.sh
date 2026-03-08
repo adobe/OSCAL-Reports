@@ -8,46 +8,14 @@
 #   ./scripts/debug/fix-blue-no-cron.sh 1.2.3.4
 
 set -e
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/lib/ec2-common.sh"
 SSH_USER="${SSH_USER:-ec2-user}"
 SVC_USER="svc_ams-oscal"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
-
-resolve_ssh_key() {
-  if [ -n "$SSH_KEY_FILE" ] && [ -f "$SSH_KEY_FILE" ]; then
-    SSH_KEY="$SSH_KEY_FILE"
-    return
-  fi
-  if command -v pass >/dev/null 2>&1 && pass show "$PASS_ENTRY" >/dev/null 2>&1; then
-    SSH_KEY=$(mktemp)
-    trap 'rm -f "$SSH_KEY"' EXIT
-    pass show "$PASS_ENTRY" > "$SSH_KEY"
-    chmod 600 "$SSH_KEY"
-    return
-  fi
-  echo "ERROR: Set SSH_KEY_FILE or have Pass entry $PASS_ENTRY"
-  exit 1
-}
-
-get_blue_ip() {
-  if [ -n "$1" ]; then
-    echo "$1"
-    return
-  fi
-  [ ! -f "$TERRAFORM_DIR/terraform.tfstate" ] && { echo "No terraform state. Pass Blue IP as first argument."; exit 1; }
-  if [ -x "$REPO_ROOT/terraform/run-with-aws-pass.sh" ]; then
-    "$REPO_ROOT/terraform/run-with-aws-pass.sh" output -raw oscal_blue_public_ip 2>/dev/null || \
-    "$REPO_ROOT/terraform/run-with-aws-pass.sh" output -raw oscal_blue_private_ip 2>/dev/null || true
-  else
-    (cd "$TERRAFORM_DIR" && terraform output -raw oscal_blue_public_ip 2>/dev/null) || \
-    (cd "$TERRAFORM_DIR" && terraform output -raw oscal_blue_private_ip 2>/dev/null) || true
-  fi
-}
 
 resolve_ssh_key
-BLUE_IP=$(get_blue_ip "$1")
+BLUE_IP="${1:-$(get_terraform_oscal_ip blue)}"
 [ -z "$BLUE_IP" ] && { echo "Could not get Blue IP. Run from repo root after terraform apply or pass IP: $0 <blue_ip>"; exit 1; }
 
 echo "Fixing Blue at $BLUE_IP: set ENABLE_GITHUB_UPDATE=false and remove ec2_automation cron..."
