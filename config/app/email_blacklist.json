@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "email": "kesharwani.2022@outlook.com.au",
+    "deletedAt": "2026-03-06T05:19:21.807Z",
+    "expiresAt": "2026-04-20T06:19:21.807Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "kesharwani.2021@outlook.com",
+    "deletedAt": "2026-03-06T05:19:21.810Z",
+    "expiresAt": "2026-04-20T06:19:21.810Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  }
+]
