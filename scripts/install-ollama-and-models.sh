@@ -49,7 +49,7 @@ if [ "$INSTALL_ONLY" = true ]; then
   elif command -v yum >/dev/null 2>&1; then
     yum install -y --allowerasing zstd curl 2>/dev/null || true
   elif command -v apt-get >/dev/null 2>&1; then
-    apt-get update 2>/dev/null && apt-get install -y zstd curl 2>/dev/null || true
+    (apt-get update 2>/dev/null && apt-get install -y zstd curl 2>/dev/null) || true
   fi
   if ! command -v ollama >/dev/null 2>&1; then
     echo "Installing Ollama..."
@@ -135,5 +135,5 @@ if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/de
   vpc_cidr="${VPC_CIDR:-10.0.0.0/16}"
   firewall-cmd --permanent --remove-port=11434/tcp 2>/dev/null || true
   firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$vpc_cidr port port=11434 protocol=tcp accept" 2>/dev/null || true
-  firewall-cmd --reload 2>/dev/null && echo "Port 11434 allowed only from $vpc_cidr (internal). Not exposed to public." || true
+  (firewall-cmd --reload 2>/dev/null && echo "Port 11434 allowed only from $vpc_cidr (internal). Not exposed to public.") || true
 fi

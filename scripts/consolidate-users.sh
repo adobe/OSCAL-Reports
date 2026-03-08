@@ -542,7 +542,7 @@ if [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "3" ]; then
   
   if [ "$BLUE_EXPORT_HTTP" != "200" ]; then
     print_error "Blue export failed (HTTP $BLUE_EXPORT_HTTP)"
-    echo "  Response: $(jq -c '.' "$BACKUP_DIR/blue-users.json" 2>/dev/null || echo "$(cat "$BACKUP_DIR/blue-users.json")")"
+    echo "  Response: $(jq -c '.' "$BACKUP_DIR/blue-users.json" 2>/dev/null || cat "$BACKUP_DIR/blue-users.json")"
     if [ "$BLUE_EXPORT_HTTP" = "401" ]; then
       echo ""
       echo "  💡 401 'Invalid or expired session' usually means:"
@@ -628,7 +628,7 @@ if [ "$DIRECTION" = "2" ] || [ "$DIRECTION" = "3" ]; then
   
   if [ "$GREEN_EXPORT_HTTP" != "200" ]; then
     print_error "Green export failed (HTTP $GREEN_EXPORT_HTTP)"
-    echo "  Response: $(jq -c '.' "$BACKUP_DIR/green-users.json" 2>/dev/null || echo "$(cat "$BACKUP_DIR/green-users.json")")"
+    echo "  Response: $(jq -c '.' "$BACKUP_DIR/green-users.json" 2>/dev/null || cat "$BACKUP_DIR/green-users.json")"
     if [ "$GREEN_EXPORT_HTTP" = "404" ]; then
       GREEN_ERR=$(jq -r '.error // empty' "$BACKUP_DIR/green-users.json" 2>/dev/null)
       if [ "$GREEN_ERR" = "User not found" ]; then

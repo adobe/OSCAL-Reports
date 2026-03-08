@@ -73,7 +73,6 @@ function Settings() {
       const url = config.publishedSoaUrl || '';
       setPublishedSoaUrl(url);
       if (url.startsWith('/api/published-soa/')) {
-        const filename = url.replace(/^\/api\/published-soa\//, '');
         setPublishedSoaSource('file');
         setCustomUrlInput('');
       } else {
@@ -280,12 +279,11 @@ function Settings() {
     setVerificationMessage('🔄 Verifying URL...');
 
     try {
-      let urlToTest;
       if (urlToVerify.startsWith('/api/published-soa/')) {
-        urlToTest = new URL(urlToVerify, window.location.origin);
+        new URL(urlToVerify, window.location.origin);
       } else {
         try {
-          urlToTest = new URL(urlToVerify);
+          new URL(urlToVerify);
         } catch (e) {
           throw new Error('Invalid URL format');
         }

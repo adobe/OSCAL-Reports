@@ -9,6 +9,7 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
 OKTA_PASS_ENTRY="${OSCAL_PASS_OKTA_SECRET:-OSCAL/sso-oauth-okta-client-secret}"
 
