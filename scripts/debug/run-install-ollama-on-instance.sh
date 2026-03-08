@@ -25,6 +25,7 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
 
 RUN_WITH_AWS="$REPO_ROOT/terraform/run-with-aws-pass.sh"
