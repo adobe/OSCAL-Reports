@@ -8,6 +8,7 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
 
 [ ! -d "$TERRAFORM_DIR" ] && { echo "Terraform dir not found: $TERRAFORM_DIR"; exit 1; }

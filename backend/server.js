@@ -91,7 +91,7 @@ import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import csrf from 'csurf';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
-import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS } from './utils/securityConfig.js';
+import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -172,19 +172,27 @@ const csrfProtection = csrf({
   cookie: SECURITY_CONFIG.csrf.cookieOptions 
 });
 
-// Conditional CSRF middleware - exempt certain paths
+// Conditional CSRF middleware - exempt certain paths, enforce on CSRF_PROTECTED_PATHS
 app.use((req, res, next) => {
-  // Skip CSRF for exempted paths
-  if (CSRF_EXEMPT_PATHS.some(path => req.path.startsWith(path))) {
-    return next();
-  }
-  
   // Skip CSRF for GET/HEAD/OPTIONS requests (safe methods)
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }
-  
-  // Apply CSRF protection for state-changing requests
+
+  // Always apply CSRF for explicitly protected paths (e.g. Okta exchange-token)
+  if (CSRF_PROTECTED_PATHS.some(p => req.path === p)) {
+    if (SECURITY_CONFIG.csrf.enabled) {
+      return csrfProtection(req, res, next);
+    }
+    return next();
+  }
+
+  // Skip CSRF for exempted paths
+  if (CSRF_EXEMPT_PATHS.some(path => req.path.startsWith(path))) {
+    return next();
+  }
+
+  // Apply CSRF protection for other state-changing requests
   if (SECURITY_CONFIG.csrf.enabled) {
     csrfProtection(req, res, next);
   } else {
