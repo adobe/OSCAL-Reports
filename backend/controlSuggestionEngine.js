@@ -473,7 +473,8 @@ export async function suggestControlImplementation(control, existingControls = [
     if (aiUsed) {
       // Only add this message if AI actually generated the text (not template/fallback)
       cleanedReasoning.push(`Implementation text generated using AI Engine maintained by ${organizationName}`);
-    } else if (aiAttempted) {
+    } else {
+      // Only reachable when AI was attempted but did not produce text (aiAttempted is true on this path)
       // Include actual error so user can fix (e.g. "AWS credentials not configured", "Model not found")
       const shortError = typeof aiError === 'string' && aiError.length > 100 ? aiError.substring(0, 97) + '...' : (aiError || 'unknown');
       if (templateImplementation) {
@@ -496,12 +497,10 @@ export async function suggestControlImplementation(control, existingControls = [
     if (aiUsed) {
       suggestions.source = 'ai'; // AI Engine generated the implementation text
       suggestions.sourceLabel = 'AI Generated';
-    } else if (aiAttempted && aiError) {
+    } else {
+      // Only reachable when AI was attempted but did not produce text (aiAttempted is true on this path)
       suggestions.source = 'fallback'; // AI was attempted but failed, using fallback
       suggestions.sourceLabel = 'Template/Pattern (AI Unavailable)';
-    } else {
-      suggestions.source = 'template'; // Template/pattern matching (AI not attempted)
-      suggestions.sourceLabel = 'Template/Pattern';
     }
 
     return suggestions;

@@ -33,8 +33,20 @@ function OktaCallback() {
     }
 
     exchangeStarted.current = true;
+    // CSRF: fetch token then POST so exchange-token is protected (Snyk UseCsurfForExpress)
     axios
-      .post('/api/auth/okta/exchange-token', { code, state })
+      .get('/api/csrf-token', { withCredentials: true })
+      .then((csrfRes) => {
+        const csrfToken = csrfRes.data?.csrfToken || '';
+        return axios.post(
+          '/api/auth/okta/exchange-token',
+          { code, state },
+          {
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+            withCredentials: true,
+          }
+        );
+      })
       .then((res) => {
         if (res.data?.success && res.data?.user && res.data?.sessionToken) {
           completeOidcLogin(res.data.user, res.data.sessionToken);
