@@ -213,7 +213,7 @@ cd /mnt/pool/OSCAL_Blue  # or OSCAL_Green
 
 ```bash
 cd /path/to/OSCAL_Blue
-./build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 ```
 
 ### Legacy: One-Time Upgrade to Volume Persistence

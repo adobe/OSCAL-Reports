@@ -174,7 +174,7 @@ const CONTROL_PATTERNS = {
  * @param {Array} existingControls - Array of existing controls for pattern learning
  * @returns {Object} - Suggested implementation details
  */
-export async function suggestControlImplementation(control, existingControls = []) {
+export async function suggestControlImplementation(control, existingControls = [], requestUser = null) {
   // Load organization name from config for AI-generated message
   let organizationName = 'Adobe'; // Default fallback
   try {
@@ -192,8 +192,10 @@ export async function suggestControlImplementation(control, existingControls = [
       responsibleParty: null,
       controlType: null,
       testingMethod: null,
+      testingProcedure: null,
       testingFrequency: null,
       riskRating: null,
+      remarks: null,
       confidence: 0,
       reasoning: []
     };
@@ -361,7 +363,9 @@ export async function suggestControlImplementation(control, existingControls = [
     suggestions.controlType = suggestions.controlType || 'Orchestrated';
     suggestions.testingObjective = suggestions.testingObjective || 'Verify that the control is implemented and operating effectively as intended.';
     suggestions.testingMethod = suggestions.testingMethod || 'Manual Testing';
+    suggestions.testingProcedure = suggestions.testingProcedure ?? suggestions.testingMethod;
     suggestions.testingFrequency = suggestions.testingFrequency || 'Quarterly';
+    suggestions.remarks = suggestions.remarks ?? '';
     suggestions.riskRating = suggestions.riskRating || 'Medium';
 
     // ALWAYS generate implementation text using AI (even if other fields came from templates)
@@ -381,8 +385,9 @@ export async function suggestControlImplementation(control, existingControls = [
       // Pass existing controls to learn writing style
       const aiResult = await generateImplementationWithAI(
         control,
-        templateImplementation ? () => templateImplementation : generateGenericImplementation, // Use template as fallback if available
-        existingControls // Pass existing controls for style learning
+        templateImplementation ? () => templateImplementation : generateGenericImplementation,
+        existingControls,
+        { extended: true, requestUser } // Request implementation + testingObjective + testingProcedure + remarks; requestUser for telemetry
       );
       
       // Handle both old format (string) and new format (object with aiGenerated flag)
@@ -407,12 +412,22 @@ export async function suggestControlImplementation(control, existingControls = [
       }
       
       if (aiImplementation && aiImplementation.length > 50 && aiGenerated) {
-        // Use AI output as-is (no truncation - prompt guides it to 250 chars)
-        // Just normalize whitespace to match existing text format
         suggestions.implementation = aiImplementation.replace(/\s+/g, ' ').trim();
-        suggestions.confidence = Math.max(suggestions.confidence, 0.7); // Boost confidence if AI-generated
-        // CRITICAL: aiUsed is ONLY true when AI actually generated the text
+        suggestions.confidence = Math.max(suggestions.confidence, 0.7);
         aiUsed = true;
+        // Apply extended fields when AI returned them (testingObjective, testingProcedure, remarks)
+        if (typeof aiResult === 'object') {
+          if (aiResult.testingObjective && aiResult.testingObjective.length > 5) {
+            suggestions.testingObjective = aiResult.testingObjective.trim();
+          }
+          if (aiResult.testingProcedure && aiResult.testingProcedure.length > 5) {
+            suggestions.testingProcedure = aiResult.testingProcedure.trim();
+            suggestions.testingMethod = suggestions.testingProcedure;
+          }
+          if (aiResult.remarks !== undefined && aiResult.remarks !== null) {
+            suggestions.remarks = typeof aiResult.remarks === 'string' ? aiResult.remarks.trim() : String(aiResult.remarks);
+          }
+        }
         console.log(`✅ Successfully generated implementation with AI for control: ${control.id} (${suggestions.implementation.length} chars)`);
       } else {
         // Fallback to template or generic implementation (truncate fallbacks since they're static)
@@ -458,14 +473,14 @@ export async function suggestControlImplementation(control, existingControls = [
     if (aiUsed) {
       // Only add this message if AI actually generated the text (not template/fallback)
       cleanedReasoning.push(`Implementation text generated using AI Engine maintained by ${organizationName}`);
-    } else if (aiAttempted && aiError) {
-      // Only add fallback message if we actually tried AI and it failed
-      // Don't add if AI was disabled or not configured
-      // This indicates we tried AI but it failed, so we're using template/generic
+    } else {
+      // Only reachable when AI was attempted but did not produce text (aiAttempted is true on this path)
+      // Include actual error so user can fix (e.g. "AWS credentials not configured", "Model not found")
+      const shortError = typeof aiError === 'string' && aiError.length > 100 ? aiError.substring(0, 97) + '...' : (aiError || 'unknown');
       if (templateImplementation) {
-        cleanedReasoning.push(`Using template implementation (AI Agents ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'})`);
+        cleanedReasoning.push(`Using template implementation (AI ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'}: ${shortError})`);
       } else {
-        cleanedReasoning.push(`Using generic implementation (AI Agents ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'})`);
+        cleanedReasoning.push(`Using generic implementation (AI ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'}: ${shortError})`);
       }
     }
     // If aiAttempted is false, AI was disabled - don't mention AI at all
@@ -482,12 +497,10 @@ export async function suggestControlImplementation(control, existingControls = [
     if (aiUsed) {
       suggestions.source = 'ai'; // AI Engine generated the implementation text
       suggestions.sourceLabel = 'AI Generated';
-    } else if (aiAttempted && aiError) {
+    } else {
+      // Only reachable when AI was attempted but did not produce text (aiAttempted is true on this path)
       suggestions.source = 'fallback'; // AI was attempted but failed, using fallback
       suggestions.sourceLabel = 'Template/Pattern (AI Unavailable)';
-    } else {
-      suggestions.source = 'template'; // Template/pattern matching (AI not attempted)
-      suggestions.sourceLabel = 'Template/Pattern';
     }
 
     return suggestions;
@@ -500,8 +513,10 @@ export async function suggestControlImplementation(control, existingControls = [
       controlType: 'Orchestrated',
       testingObjective: 'Verify that the control is implemented and operating effectively as intended.',
       testingMethod: 'Manual Testing',
+      testingProcedure: 'Manual Testing',
       testingFrequency: 'Quarterly',
       riskRating: 'Medium',
+      remarks: '',
       confidence: 0,
       reasoning: ['Error generating suggestions']
     };
@@ -725,14 +740,14 @@ function generateGenericImplementation(control) {
  * @param {Array} existingControls - Array of existing controls for learning
  * @returns {Object} - Map of control ID to suggestions
  */
-export async function suggestMultipleControls(controls, existingControls = []) {
+export async function suggestMultipleControls(controls, existingControls = [], requestUser = null) {
   const suggestions = {};
   
   // Process controls sequentially to avoid overwhelming Mistral service
   for (const control of controls) {
     if (control.id) {
       try {
-        suggestions[control.id] = await suggestControlImplementation(control, existingControls);
+        suggestions[control.id] = await suggestControlImplementation(control, existingControls, requestUser);
         // Small delay between requests to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {

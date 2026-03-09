@@ -522,10 +522,12 @@ Activity state is stored as a single JSON object in your existing logs bucket (e
 
 ### Lambda Function: Ollama Controller
 
+*(Lambda artifact `terraform/lambda/ollama_controller.zip` has been removed from this repo. The section below is for reference only.)*
+
 Uses **S3** (same bucket as your application logs) to store `last_activity`. Set Lambda environment variables: `S3_ACTIVITY_BUCKET`, `S3_ACTIVITY_KEY` (e.g. `ollama-activity/last.json`).
 
 ```python
-# lambda/ollama_controller.py
+# ollama_controller.py (reference; not in repo)
 import boto3
 import json
 from datetime import datetime, timedelta

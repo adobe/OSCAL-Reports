@@ -29,7 +29,7 @@ On TrueNAS (e.g. truenas.keekar.com) or any host running multiple OSCAL instance
 
 **Port 3021:** The codebase only defines Blue (3020) and Green (3019). If you have a third instance on **3021**, it was likely created separately (e.g. another TrueNAS Custom App or chart release). Its data lives in **whatever storage path that app was given** (e.g. a third host path or PVC for that release). To see which directory a 3021 instance uses, check that app’s **Storage** or **Volumes** in the TrueNAS Apps UI, or the deploy path for that clone.
 
-**TrueNAS volume paths (examples):** If you use `build_on_truenas.sh` or custom paths, Blue might be `/mnt/pool/oscal-data-blue` and Green `/mnt/pool/oscal-data-green`. The script uses `DATA_VOLUME_BASE-blue` and `DATA_VOLUME_BASE-green`; `DATA_VOLUME_BASE` is set in the script or derived from the deployment directory.
+**TrueNAS volume paths (examples):** If you use the TrueNAS build script (`retired/truenas-build/build_on_truenas.sh`) or custom paths, Blue might be `/mnt/pool/oscal-data-blue` and Green `/mnt/pool/oscal-data-green`. The script uses `DATA_VOLUME_BASE-blue` and `DATA_VOLUME_BASE-green`; `DATA_VOLUME_BASE` is set in the script or derived from the deployment directory.
 
 ---
 
@@ -69,16 +69,16 @@ Consolidate users between Blue and Green so the same credentials work on both.
 
 ### Method 1: Docker (immediate)
 
-**Script:** `scripts/consolidate-users-docker.sh`
+**Script:** `scripts/consolidate-users.sh --docker`
 
 Run on the host where both containers run:
 
 ```bash
 cd /path/to/OSCAL_Reports
-sudo ./scripts/consolidate-users-docker.sh
+sudo ./scripts/consolidate-users.sh --docker
 ```
 
-The script reads `users.json` from both containers, merges users (deduplicates), writes back, and restarts containers. Backups are created under `~/oscal-user-consolidation-TIMESTAMP/`.
+The script reads `users.json` from both containers via `docker exec`, merges users (deduplicates), writes back, and restarts containers. Backups are created under `~/oscal-user-consolidation-TIMESTAMP/`. Use `--docker` when the API-based flow is not available (e.g. older backend without export/import endpoints).
 
 ### Method 2: API-based (after backend fix)
 
@@ -102,6 +102,9 @@ BLUE_PASSWORD='...' GREEN_PASSWORD='...' ./scripts/consolidate-users.sh --auto
 
 # One-way: Green → Blue
 ./scripts/consolidate-users.sh --green-to-blue
+
+# Docker mode (direct docker exec, run ON server with containers)
+./scripts/consolidate-users.sh --docker
 ```
 
 **Sync script:** Use `scripts/sync-consolidation-script.sh` to copy `consolidate-users.sh` to Blue/Green script directories if they are separate clones.
@@ -168,7 +171,7 @@ If you have a backup tarball or files elsewhere:
 
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md)
-- [TRUENAS.md](TRUENAS.md)
+- [TrueNAS (retired)](../retired/truenas-build/TRUENAS.md)
 
 ---
 

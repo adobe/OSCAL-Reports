@@ -33,7 +33,6 @@ Keekar's OSCAL SOA/SSP/CCM Generator is a full-stack web application with a Reac
 
 - **Backend Server**: Port `3020` (default, configurable via `PORT` environment variable)
 - **Frontend Dev Server**: Port `3021` (configured in `vite.config.js`, proxies API to 3020)
-- **Ollama AI Service**: Port `11434` (local AI model server)
 - **Production**: Single backend server on port `3020` serves both API and static frontend files
 
 ### OSCAL Catalog Support
@@ -476,7 +475,7 @@ App State:
 - **Output**: `{ available: boolean, provider: string, model: string }`
 - **Processing**:
   1. Check Mistral configuration
-  2. Test connection to Ollama or Mistral API
+  2. Test connection to AWS Bedrock or Mistral API
   3. Return availability status
 
 #### Authentication Endpoints
@@ -550,10 +549,10 @@ controlSuggestionEngine.js
             ↓
     mistralService.js
         ├── Load Configuration (config/app/config.json)
-        ├── Check Provider (Ollama or Mistral API)
+        ├── Check Provider (AWS Bedrock or Mistral API)
         └── Generate Implementation Text
                 ↓
-        Ollama (Local) or Mistral API (Cloud)
+        AWS Bedrock or Mistral API (Cloud)
                 ↓
         Return Unique Implementation Text
                 ↓
@@ -564,52 +563,15 @@ controlSuggestionEngine.js
 
 ### Deployment Options
 
-#### Option 1: Ollama (Local/Self-hosted) - Recommended
+#### Option 1: AWS Bedrock (Recommended)
 
 **Benefits:**
-- ✅ Data privacy (no data leaves your infrastructure)
-- ✅ No API costs
-- ✅ Full control over model and data
-- ✅ Works offline
+- ✅ Managed AI service (Mistral, Claude, Gemma, etc.)
+- ✅ No self-hosted infrastructure
+- ✅ IAM-based access control
+- ✅ Pay per use
 
-**Setup:**
-
-**Using Docker:**
-```bash
-# Pull and run Ollama
-docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
-
-# Pull Mistral 7B model
-docker exec -it ollama ollama pull mistral:7b
-```
-
-**Using Ollama Binary:**
-```bash
-# Install Ollama
-# macOS: brew install ollama
-# Linux: curl -fsSL https://ollama.ai/install.sh | sh
-
-# Start Ollama service
-ollama serve
-
-# Pull Mistral 7B model
-ollama pull mistral:7b
-```
-
-**Configuration:**
-```json
-{
-  "mistralConfig": {
-    "enabled": true,
-    "provider": "ollama",
-    "ollamaUrl": "http://localhost:11434",
-    "model": "mistral:7b",
-    "timeout": 30000,
-    "maxRetries": 2,
-    "fallbackToPatternMatching": true
-  }
-}
-```
+**Setup:** Configure in Settings → AI Integration: choose AWS Bedrock, set region and credentials (or use IAM role on EC2). See [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md).
 
 #### Option 2: Mistral AI API (Cloud)
 
@@ -643,9 +605,8 @@ ollama pull mistral:7b
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable/disable Mistral integration |
-| `provider` | string | `"ollama"` | Provider: `"ollama"` or `"mistral-api"` |
-| `ollamaUrl` | string | `"http://localhost:11434"` | Ollama service URL |
-| `model` | string | `"mistral:7b"` | Model name (for Ollama) |
+| `provider` | string | `"aws-bedrock"` | Provider: `"aws-bedrock"` or `"mistral-api"` |
+| `model` | string | `"mistral:7b"` | Model name (for Mistral API) |
 | `mistralApiKey` | string | `""` | Mistral AI API key (for cloud) |
 | `mistralApiUrl` | string | `"https://api.mistral.ai/v1/chat/completions"` | Mistral API endpoint |
 | `timeout` | number | `30000` | Request timeout in milliseconds |
@@ -693,28 +654,18 @@ ollama pull mistral:7b
 - ✅ **Context-aware** text based on actual control content
 - ✅ **Professional** cybersecurity terminology
 - ✅ **Fallback support** ensures suggestions always work
-- ✅ **Privacy-focused** with local Ollama option
+- ✅ **AWS Bedrock** (recommended) or Mistral API for cloud AI
 
 ### Troubleshooting
 
-#### Ollama Connection Issues
+#### AWS Bedrock Access
 
-**Error:** `ECONNREFUSED` or `Ollama service not available`
+**Error:** Access denied or model not available
 
 **Solutions:**
-1. Verify Ollama is running: `curl http://localhost:11434/api/tags`
-2. Check if port 11434 is accessible
-3. Verify model is installed: `ollama list`
-4. Restart Ollama service
-
-#### Model Not Found
-
-**Error:** `Model mistral:7b not found`
-
-**Solution:**
-```bash
-ollama pull mistral:7b
-```
+1. Enable model access in AWS Console → Bedrock → Model access
+2. Verify IAM permissions include `bedrock:InvokeModel`
+3. Check region supports the selected model
 
 #### API Key Issues (Mistral API)
 
@@ -993,7 +944,7 @@ OSCAL_Reports/
 │   └── build/                        # Build/deployment configs
 │       ├── docker-compose.yml        # Docker Compose configuration
 │       ├── Dockerfile                # Docker build instructions
-│       └── truenas-app.yaml          # TrueNAS SCALE app config
+│       └── (TrueNAS assets in retired/truenas-build/)
 │
 ├── docs/                             # Documentation
 │   ├── ARCHITECTURE.md               # This file - Technical architecture
@@ -1007,11 +958,15 @@ OSCAL_Reports/
 │
 ├── package.json                      # Root package (dev scripts)
 ├── setup.sh                          # Setup script
-├── build_on_truenas.sh               # TrueNAS build script
+├── retired/
+│   └── truenas-build/                # TrueNAS build (retired; can remove after 6 mo.)
+│       ├── build_on_truenas.sh
+│       ├── truenas-app.yaml
+│       ├── TRUENAS.md
+│       └── create-truenas-catalog.sh
 ├── scripts/reactivate-admin.sh       # Admin reactivation utility
 ├── docker-compose.yml                # Docker Compose (root, includes Ollama)
 ├── Dockerfile                        # Dockerfile (root)
-├── truenas-app.yaml                  # TrueNAS SCALE app config (root)
 ├── LICENSE                           # MIT License
 └── README.md                         # Main documentation
 ```
@@ -1053,7 +1008,7 @@ Integrated Mistral 7B for generating intelligent, context-aware implementation d
 - `backend/server.js` - Added `/api/mistral/status` endpoint
 - `config/app/config.json` - Added Mistral configuration
 - `setup.sh` - Automated Ollama setup
-- `build_on_truenas.sh` - Automated Ollama setup for TrueNAS
+- `retired/truenas-build/build_on_truenas.sh` - TrueNAS build (retired)
 
 #### 2. **Automated Control Suggestions (Pattern Matching)**
 
@@ -1162,7 +1117,7 @@ config/
 │
 └── build/            # Build and deployment configs
     ├── docker-compose.yml   # Docker Compose configuration
-    ├── truenas-app.yaml     # TrueNAS Docker App configuration
+    (retired/truenas-build/truenas-app.yaml)  # TrueNAS Docker App config (retired)
     └── Dockerfile            # Docker build instructions
 ```
 
