@@ -94,6 +94,8 @@ const DEFAULT_CONFIG = {
     model: 'mistral:7b',
     timeout: 180000, // 180 seconds (3 minutes) to allow for model loading and processing
     organizationName: 'Adobe', // Default organization name
+    extensiveLogging: false,    // When true, append AI telemetry to logs/ (e.g. ai-telemetry-*.jsonl)
+    allowedUsersForAI: '',      // Comma-separated patterns for Get Suggestions (mistral-api/aws-bedrock only), max 5, e.g. *@adobe.com, mkesharw
     maxTokens: {
       connectionTest: 10,        // Minimal response for testing connectivity
       controlGeneration: 150,    // Short responses for control implementations (~250 chars)
@@ -126,8 +128,13 @@ function loadConfig() {
     }
 
     const data = fs.readFileSync(configPath, 'utf8');
-    const config = JSON.parse(data);
-    
+    const loaded = JSON.parse(data);
+    // Merge with defaults so new keys (e.g. aiConfig.allowedUsersForAI) exist when missing from file
+    const config = {
+      ...DEFAULT_CONFIG,
+      ...loaded,
+      aiConfig: { ...DEFAULT_CONFIG.aiConfig, ...(loaded.aiConfig || {}) }
+    };
     console.log(`✅ Configuration loaded successfully from ${configPath}`);
     return config;
   } catch (error) {

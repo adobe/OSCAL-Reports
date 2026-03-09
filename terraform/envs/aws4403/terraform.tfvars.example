@@ -1,0 +1,23 @@
+# Example for AWS4403 (Account ID 442277170733). Copy to terraform.tfvars and set key_name if needed.
+# Credentials: pass show "AWS/AMS_4403-STG"
+
+aws_region     = "us-east-1"
+aws_account_id = "442277170733"
+environment    = "prod"
+project_name   = "oscal-reports"
+
+vpc_cidr         = "10.0.0.0/16"
+allowed_ssh_cidr = ["0.0.0.0/0"]
+
+key_name = null  # Or "oscal-aws4403" after importing key: AWS_PASS_ENTRY=AWS/AMS_4403-STG ... run-with-aws-pass.sh import-key us-east-1
+
+s3_logs_bucket_name = "ams-oscal-442277170733"
+use_image_factory_ami = true
+# Optional: Image Factory AL2023 AMI for us-east-1 (get from platform team if required by account)
+# image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"
+
+common_tags = {
+  Team        = "Compliance"
+  Account     = "AWS4403"
+  Environment = "staging"
+}

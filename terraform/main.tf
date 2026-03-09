@@ -1,4 +1,4 @@
-# OSCAL + Ollama AWS Architecture - Terraform
+# OSCAL on AWS - Terraform (AI via AWS Bedrock)
 # See docs/diagrams/generate-diagram.html and docs/AWS_COST_ESTIMATE.md
 
 terraform {
@@ -22,7 +22,7 @@ terraform {
   # Optional: uncomment and set variables for remote state
   # backend "s3" {
   #   bucket         = "your-terraform-state-bucket"
-  #   key            = "oscal-ollama/terraform.tfstate"
+  #   key            = "oscal-reports/terraform.tfstate"
   #   region         = "us-east-1"
   #   dynamodb_table = "terraform-state-lock"
   #   encrypt        = true
@@ -37,6 +37,7 @@ provider "aws" {
       Project     = var.project_name
       Environment = var.environment
       ManagedBy   = "terraform"
+      Stack      = var.project_name # Single tag to filter all stack resources in any account
     })
   }
 }

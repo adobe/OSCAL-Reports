@@ -4,7 +4,7 @@
  * 
  * Added in v1.6.5 to support AI services running on private networks
  * 
- * Architecture Decision: AI services (Ollama) run on private networks
+ * Architecture Decision: AI services (e.g. local or private URL) run on private networks
  * The urlValidator supports options to allow private IPs for specific use cases
  * 
  * Location: test_cases/backend/unit/urlValidator-options.test.js
@@ -184,15 +184,15 @@ describe('URL Validator - Options for AI Integration (v1.6.5)', () => {
   });
 
   describe('AI Integration Use Case', () => {
-    test('should validate Ollama default URL with appropriate options', async () => {
-      const ollamaUrl = 'http://localhost:11434';
+    test('should validate local AI default URL with appropriate options', async () => {
+      const localAiUrl = 'http://localhost:11434';
       
       // Without options - blocked
-      const blockedResult = await validateUrl(ollamaUrl);
+      const blockedResult = await validateUrl(localAiUrl);
       expect(blockedResult.valid).toBe(false);
       
       // With AI service options - allowed
-      const allowedResult = await validateUrl(ollamaUrl, {
+      const allowedResult = await validateUrl(localAiUrl, {
         allowLocalhost: true,
         allowPrivateIPs: true,
       });
@@ -210,12 +210,12 @@ describe('URL Validator - Options for AI Integration (v1.6.5)', () => {
     test('should support various AI service deployment scenarios', async () => {
       const scenarios = [
         { 
-          name: 'Local development Ollama',
+          name: 'Local development AI',
           url: 'http://localhost:11434',
           options: { allowLocalhost: true }
         },
         { 
-          name: 'Private network Ollama',
+          name: 'Private network AI',
           url: 'http://192.168.1.100:11434',
           options: { allowPrivateIPs: true }
         },
@@ -286,7 +286,7 @@ describe('URL Validator - Options for AI Integration (v1.6.5)', () => {
       const architecture = {
         version: '1.6.5',
         decision: 'Allow private IPs and localhost for AI services',
-        rationale: 'AI services (Ollama) run on private networks by design',
+        rationale: 'AI services may run on private networks by design',
         implementation: 'validateUrl() accepts allowPrivateIPs and allowLocalhost options',
         securityControls: [
           'Cloud metadata endpoints remain blocked',

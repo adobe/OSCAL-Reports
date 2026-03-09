@@ -1,4 +1,4 @@
-# Terraform variables for OSCAL + Ollama AWS architecture
+# Terraform variables for OSCAL on AWS (AI via AWS Bedrock)
 # No credentials or secrets; use environment or terraform.tfvars (gitignored)
 
 variable "aws_region" {
@@ -22,7 +22,7 @@ variable "environment" {
 variable "project_name" {
   description = "Project name used in resource names"
   type        = string
-  default     = "oscal-ollama"
+  default     = "oscal-reports"
 }
 
 # Networking
@@ -33,9 +33,9 @@ variable "vpc_cidr" {
 }
 
 variable "allowed_ssh_cidr" {
-  description = "CIDR allowed for SSH (e.g. your IP); use 0.0.0.0/0 only for testing"
-  type        = string
-  default     = "0.0.0.0/0"
+  description = "List of CIDRs allowed for SSH to OSCAL instances. App ports 3019/3020 are not open to the internet; use ALB or VPC. Example: [\"1.2.3.4/32\", \"10.0.0.0/8\"] or [\"0.0.0.0/0\"] for testing only."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }
 
 # EC2
@@ -48,12 +48,6 @@ variable "key_name" {
 # Image Factory best practices: docs/IMAGE_FACTORY.md – prefer Image Factory, fallback to native Amazon Linux.
 variable "oscal_ami_id" {
   description = "AMI ID for OSCAL instances. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/IMAGE_FACTORY.md."
-  type        = string
-  default     = null
-}
-
-variable "ollama_ami_id" {
-  description = "AMI ID for Ollama instance. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/IMAGE_FACTORY.md."
   type        = string
   default     = null
 }
@@ -78,9 +72,8 @@ variable "image_factory_ami_name_pattern" {
 }
 
 # Optional: set Image Factory Amazon Linux 2023 AMI per region from tfvars (no need to edit image_factory_ami.tf).
-# When set, used for both OSCAL (Green/Blue) and Ollama. Get AMI IDs from Image Factory UI (Amazon Linux 2023).
 variable "image_factory_amazon_linux_ami_us_east_1" {
-  description = "Optional: Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1. When set, used for Green, Blue, and Ollama. Get from Image Factory UI. Leave null to use static map in image_factory_ami.tf or native AL2023."
+  description = "Optional: Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1. When set, used for Green and Blue. Get from Image Factory UI. Leave null to use static map in image_factory_ami.tf or native AL2023."
   type        = string
   default     = null
 }
@@ -106,7 +99,7 @@ variable "run_oscal_via_docker" {
 
 # S3 (best practice: docs/IMAGE_FACTORY.md – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
-  description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, ollama-activity, config, users."
+  description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, config, users."
   type        = string
 }
 
@@ -156,41 +149,6 @@ variable "alb_green_hostname" {
   description = "Hostname for Green deployment (e.g. green.oscal.example.com). When set, ALB routes requests with this Host header to Green (port 3019). Create a CNAME pointing to the ALB DNS."
   type        = string
   default     = null
-}
-
-# Lambda / Ollama ASG
-variable "ollama_idle_timeout_hours" {
-  description = "Hours of idle time before scaling Ollama ASG to 0 (no activity); per diagram, 1 hr idle then shut down"
-  type        = number
-  default     = 1
-}
-
-variable "ollama_min_size" {
-  description = "Ollama ASG minimum size; default 0 so ASG can scale to 0 when idle (1 hr no activity)"
-  type        = number
-  default     = 0
-}
-
-variable "ollama_max_size" {
-  description = "Ollama ASG maximum size; never exceed 2. Lambda terminates oldest if count exceeds this (default 1)"
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = var.ollama_max_size >= 0 && var.ollama_max_size <= 2
-    error_message = "ollama_max_size must be between 0 and 2 (inclusive). Count must never exceed 2."
-  }
-}
-
-variable "ollama_desired_capacity" {
-  description = "Ollama ASG desired capacity at startup and when Lambda wakes; default 1 (never exceeds ollama_max_size)"
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = var.ollama_desired_capacity >= 0 && var.ollama_desired_capacity <= var.ollama_max_size
-    error_message = "ollama_desired_capacity must be between 0 and ollama_max_size (inclusive)."
-  }
 }
 
 # Tags
