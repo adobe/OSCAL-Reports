@@ -142,7 +142,7 @@ describe('Security Configuration Tests', () => {
 
     test('should protect AI test endpoints', () => {
       expect(SSRF_PROTECTED_ENDPOINTS).toContain('/api/ai/test');
-      expect(SSRF_PROTECTED_ENDPOINTS).toContain('/api/ollama/test');
+      expect(SSRF_PROTECTED_ENDPOINTS).toContain('/api/ai/test');
     });
 
     test('should have at least 5 protected endpoints', () => {

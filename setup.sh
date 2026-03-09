@@ -325,7 +325,6 @@ do_debug() {
   print_info "Port Status:"
   echo "  Port 3020 (backend): $(lsof -Pi :3020 -sTCP:LISTEN -t >/dev/null 2>&1 && echo 'IN USE' || echo 'Available')"
   echo "  Port 3021 (frontend): $(lsof -Pi :3021 -sTCP:LISTEN -t >/dev/null 2>&1 && echo 'IN USE' || echo 'Available')"
-  echo "  Port 11434 (Ollama): $(lsof -Pi :11434 -sTCP:LISTEN -t >/dev/null 2>&1 && echo 'IN USE' || echo 'Available')"
   echo ""
   
   # Git status
@@ -458,28 +457,9 @@ EOF
   echo "  ${MAGENTA}Admin password: ${ADMIN_PASSWORD}${NC}"
   echo ""
   
-  # Mistral AI setup (optional)
+  # AI: use AWS Bedrock or Mistral API (configure in Settings after first login)
   if [ "${SKIP_MISTRAL_SETUP}" != "1" ]; then
-    print_info "Checking for Mistral AI / Ollama..."
-    if command -v ollama &> /dev/null; then
-      print_success "Ollama is installed"
-      
-      if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-        print_success "Ollama service is running"
-        
-        if ollama list | grep -q "mistral:7b\|mistral"; then
-          print_success "Mistral 7B model is installed"
-        else
-          print_info "Pulling Mistral 7B model..."
-          ollama pull mistral:7b || print_warning "Failed to pull Mistral model"
-        fi
-      else
-        print_warning "Ollama service is not running (start with: ollama serve)"
-      fi
-    else
-      print_info "Ollama not installed (optional for AI features)"
-      echo "  Install: https://ollama.ai/download"
-    fi
+    print_info "AI: Configure AWS Bedrock or Mistral API in Settings after first login."
     echo ""
   fi
   

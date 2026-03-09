@@ -200,8 +200,8 @@ else
   print_error "Cannot reach Docker Hub or internet"
   echo ""
   print_info "Docker Hub may be unreachable. Alternative:"
-  echo "  Use build_on_truenas.sh to build from source:"
-  echo "  ./build_on_truenas.sh"
+  echo "  Use retired TrueNAS build script to build from source:"
+  echo "  ./retired/truenas-build/build_on_truenas.sh"
   echo ""
   exit 1
 fi
@@ -553,7 +553,7 @@ else
   echo "  • Rate limit exceeded (wait 6 hours or use Docker Hub account)"
   echo ""
   print_info "Alternative: Build from source"
-  echo "  ./build_on_truenas.sh"
+  echo "  ./retired/truenas-build/build_on_truenas.sh"
   echo ""
   exit 1
 fi
@@ -787,7 +787,7 @@ if [ "$HEALTH_CHECK_PASSED" = false ]; then
   print_info "Troubleshooting:"
   echo "  • Check logs: docker logs $CONTAINER_NAME"
   echo "  • Check failed logs: cat $FAILED_LOGS"
-  echo "  • Try building from source: ./build_on_truenas.sh"
+  echo "  • Try building from source: ./retired/truenas-build/build_on_truenas.sh"
   echo ""
   
   exit 1

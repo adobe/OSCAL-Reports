@@ -1,0 +1,11 @@
+# Local state and secrets for this env (AWS4403)
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+*.zip
+crash.log
+crash.*.log
+tfplan
+*.tfplan
