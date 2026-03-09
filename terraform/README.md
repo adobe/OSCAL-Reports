@@ -1,6 +1,6 @@
-# Terraform: OSCAL + Ollama on AWS
+# Terraform: OSCAL on AWS
 
-This directory contains Terraform to provision the full AWS architecture for the OSCAL Report Generator with Ollama AI (ALB, Green/Blue OSCAL instances, Ollama auto-scaling, Lambda wake/sleep controller, S3 activity state, EventBridge).
+This directory contains Terraform to provision the AWS architecture for the OSCAL Report Generator (ALB, Green/Blue OSCAL instances, S3). AI is provided via AWS Bedrock (no self-hosted Ollama).
 
 **Usage and variables:** See [docs/AWS_TERRAFORM.md](../docs/AWS_TERRAFORM.md).
 
@@ -8,17 +8,13 @@ This directory contains Terraform to provision the full AWS architecture for the
 
 - `main.tf` – provider and Terraform block
 - `variables.tf` – input variables
-- `outputs.tf` – ALB URL, instance IDs, Lambda name, S3 bucket, **ollama_url** / **ollama_nlb_dns_name** (use as OLLAMA_URL), etc.
+- `outputs.tf` – ALB URL, instance IDs, S3 bucket, VPC, etc.
 - `vpc.tf` – VPC, subnets, internet gateway
-- `security_groups.tf` – ALB, OSCAL, Ollama security groups
+- `security_groups.tf` – ALB, OSCAL security groups
 - `alb.tf` – Application Load Balancer and target groups (Green 3019, Blue 3020)
 - `oscal_instances.tf` – Green and Blue EC2 instances (t3.small)
-- `ollama_asg.tf` – Ollama launch template and ASG (default min 0, max 1, desired 0 when idle; boot time → ollama-activity/last.json; 1 hr idle → scale to 0)
-- `ollama_nlb.tf` – Internal NLB for Ollama (port 11434). Use **`ollama_url`** output as **OLLAMA_URL** so any system in the VPC can reach Ollama; Lambda can start the ASG when scaled to 0.
-- `lambda.tf` – Ollama controller Lambda and EventBridge rule (30 min)
-- `s3.tf` – S3 bucket for logs and `ollama-activity/last.json`
-- `iam.tf` – Lambda execution role and OSCAL instance profile (Lambda invoke)
-- `lambda/ollama_controller.py` – Lambda handler (wake/check_idle)
+- `s3.tf` – S3 bucket for logs, config, users
+- `iam.tf` – OSCAL instance profile (S3, SSM)
 
 Copy `terraform.tfvars.example` to `terraform.tfvars`, set `key_name` and `s3_logs_bucket_name`, then run `terraform init` and `terraform apply`.
 
@@ -32,6 +28,16 @@ Copy `terraform.tfvars.example` to `terraform.tfvars`, set `key_name` and `s3_lo
 ```
 
 Override the entry with `AWS_PASS_ENTRY="Other/Entry" ./run-with-aws-pass.sh plan` if needed.
+
+**Multiple accounts (e.g. AWS4403):** Use a separate Terraform working directory and state so the existing AWS4379 Sandbox is not touched. See [envs/aws4403/README.md](envs/aws4403/README.md). Use `TERRAFORM_DIR` when calling `run-with-aws-pass.sh` and `deploy-to-ec2.sh`.
+
+**Tagging and stack lifecycle:** Every resource created by this Terraform stack is tagged via the provider `default_tags` with: `Project`, `Environment`, `ManagedBy`, `Stack`, plus any `common_tags` you set in `terraform.tfvars` (e.g. `Team`, `Account`). In any AWS account you can:
+
+- **Find all stack resources:** In the console, use Tag Editor or Resource Groups and filter by `Stack = <project_name>` (e.g. `oscal-reports`) or by `Project` and `Environment`.
+- **Add the stack:** From the correct env directory (e.g. `terraform/envs/aws4403`) run `terraform apply`; all created resources are tagged consistently.
+- **Remove the stack:** From the same directory run `terraform destroy`; Terraform removes all resources it created. (S3 bucket must be empty before destroy; see `s3.tf` comment.)
+
+Use a separate Terraform working directory (and state) per account so one `apply`/`destroy` only affects that account.
 
 **EC2 key from Pass:** If your SSH private key is in Pass under `AWS/OSCAL-AWS4379-SSH`, import it into AWS once:
 

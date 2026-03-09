@@ -86,7 +86,7 @@ For TrueNAS Blue-Green deployments you can use:
 | Method | Script | Speed | Use Case |
 |--------|--------|-------|----------|
 | **Pull-based** | `deploy_from_dockerhub.sh` | 1–3 min | Production, standard updates, automatic rollback |
-| **Build-based** | `build_on_truenas.sh` | 10–15 min | Development, custom builds, offline after clone |
+| **Build-based** | `retired/truenas-build/build_on_truenas.sh` | 10–15 min | Development, custom builds (retired; see retired/truenas-build/README.md) |
 
 **Pull-based** (recommended for production): Pulls pre-built image from Docker Hub, backs up data, runs health check, auto-rollback on failure. Requires Docker Hub access.
 
@@ -213,7 +213,7 @@ The script follows this workflow:
 
 ### Comparison with Build Script
 
-| Feature | `build_on_truenas.sh` | `deploy_from_dockerhub.sh` |
+| Feature | `retired/truenas-build/build_on_truenas.sh` | `deploy_from_dockerhub.sh` |
 |---------|---------------------|---------------------------|
 | **Speed** | 10-15 minutes | 1-3 minutes |
 | **Internet** | Git clone only | Docker Hub pull required |
@@ -233,7 +233,7 @@ The script follows this workflow:
 - ✅ Using scheduled cron deployments
 - ✅ Docker Hub is accessible
 
-**Use `build_on_truenas.sh` when:**
+**Use the TrueNAS build script (retired/truenas-build/build_on_truenas.sh) when:**
 - ✅ Developing or testing custom changes
 - ✅ Building from specific Git branch
 - ✅ Docker Hub is unavailable
@@ -310,7 +310,7 @@ ping -c 3 hub.docker.com
 curl -s https://status.docker.com/api/v2/status.json | jq
 
 # Alternative: Build from source
-./build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 ```
 
 **Issue: Lock file exists**
@@ -981,7 +981,7 @@ curl http://localhost:3020/health       # Check health
 
 ## Related Documentation
 
-- [TrueNAS](./TRUENAS.md)
+- [TrueNAS (retired)](../retired/truenas-build/TRUENAS.md)
 - [Cloud Deployment](./CLOUD_DEPLOYMENT.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Deployment Guide](./DEPLOYMENT.md)

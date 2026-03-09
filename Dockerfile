@@ -6,11 +6,11 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Copy frontend package files
-COPY frontend/package*.json ./
+# Copy frontend package files (frontend/package-lock.json is gitignored; use npm install)
+COPY frontend/package.json ./
 
 # Install frontend dependencies (including dev deps needed for build)
-RUN npm ci
+RUN npm install
 
 # Copy frontend source
 COPY frontend/ ./

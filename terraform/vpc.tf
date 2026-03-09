@@ -1,4 +1,4 @@
-# VPC and networking for OSCAL + Ollama
+# VPC and networking for OSCAL
 # Public subnets for ALB and EC2 (diagram does not require private subnets)
 
 resource "aws_vpc" "main" {

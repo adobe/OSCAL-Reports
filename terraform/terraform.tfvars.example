@@ -1,14 +1,14 @@
-# Example Terraform variables for OSCAL + Ollama AWS deployment
+# Example Terraform variables for OSCAL on AWS (AI via AWS Bedrock)
 # Copy to terraform.tfvars and set values (terraform.tfvars is gitignored)
 
 aws_region     = "us-east-1"
 aws_account_id = "432417415905"
 environment    = "prod"
-project_name   = "oscal-ollama"
+project_name   = "oscal-reports"
 
 # Networking
 vpc_cidr          = "10.0.0.0/16"
-# List of CIDRs allowed for SSH (OSCAL and Ollama). Use multiple entries for multiple subnets.
+# List of CIDRs allowed for SSH (OSCAL). Use multiple entries for multiple subnets.
 allowed_ssh_cidr   = ["0.0.0.0/0"]  # Restrict in production: ["1.2.3.4/32"] or ["10.0.0.0/8", "192.168.1.0/24"]
 
 # EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
@@ -16,7 +16,7 @@ allowed_ssh_cidr   = ["0.0.0.0/0"]  # Restrict in production: ["1.2.3.4/32"] or 
 key_name = null
 
 # S3 (best practice from docs/IMAGE_FACTORY.md): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
-# Subfolders: logs, ollama-activity, config, users. Terraform lowercases the value.
+# Subfolders: logs, config, users. Terraform lowercases the value.
 s3_logs_bucket_name = "ams-oscal-432417415905"
 
 # ------------------------------------------------------------------------------
@@ -46,23 +46,13 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # ------------------------------------------------------------------------------
 # - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if AMI set below or in image_factory_ami.tf; else native AL2023.
 # - use_image_factory_ami = false: use only native Amazon Linux 2023 (e.g. sandbox without Image Factory access).
-# - Set image_factory_amazon_linux_ami_us_east_1 to Adobe Image Factory Amazon Linux 2023 AMI (from Image Factory UI) so Green, Blue, and Ollama use it.
-# - Leave oscal_ami_id and ollama_ami_id null so both use the same chain (Image Factory AL2023 or native AL2023).
+# - Set image_factory_amazon_linux_ami_us_east_1 to Adobe Image Factory Amazon Linux 2023 AMI (from Image Factory UI) so Green and Blue use it.
+# - Leave oscal_ami_id null so both use the same chain (Image Factory AL2023 or native AL2023).
 # ------------------------------------------------------------------------------
 # use_image_factory_ami = true
 # image_factory_amazon_linux_ami_us_east_1 = null   # Set to "ami-xxxxxxxx" from Image Factory UI (Amazon Linux 2023) for us-east-1
 # oscal_ami_id          = null
-# ollama_ami_id         = null
 # instance_architecture = "x86_64"  # or "arm64"
-
-# Ollama ASG
-# Sandbox / always-on: set ollama_always_on = true so Ollama stays running (no idle shutdown).
-# Cost-saving: set ollama_always_on = false; 1 hr no activity -> scale to 0.
-ollama_always_on             = true   # true = always running (sandbox); false = scale to 0 when idle
-ollama_min_size              = 0      # ignored when ollama_always_on = true
-ollama_max_size              = 1
-ollama_desired_capacity      = 1
-ollama_idle_timeout_hours     = 1      # ignored when ollama_always_on = true
 
 # Optional tags
 common_tags = {

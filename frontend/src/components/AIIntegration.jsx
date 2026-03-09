@@ -1,6 +1,6 @@
 /**
  * AI Integration Component
- * Configure AI Engine (e.g., Ollama) for control suggestions
+ * Configure AI Engine (e.g., AWS Bedrock) for control suggestions
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
@@ -21,7 +21,7 @@ function AIIntegration({ embedded = false }) {
   const [testResult, setTestResult] = useState(null);
   const [aiConfig, setAiConfig] = useState({
     enabled: false,
-    provider: 'ollama', // 'ollama', 'mistral-api', or 'aws-bedrock'
+    provider: 'aws-bedrock', // 'aws-bedrock' or 'mistral-api'
     url: '',
     apiToken: '',
     model: 'mistral:7b',
@@ -102,7 +102,7 @@ function AIIntegration({ embedded = false }) {
       const response = await axios.get('/api/settings', getAuthConfig());
       const config = response.data.aiConfig || {
         enabled: false,
-        provider: 'ollama',
+        provider: 'aws-bedrock',
         url: '',
         apiToken: '',
         model: 'mistral:7b',
@@ -124,9 +124,9 @@ function AIIntegration({ embedded = false }) {
         delete config.port;
       }
       
-      // Default provider to ollama if not set
-      if (!config.provider) {
-        config.provider = 'ollama';
+      // Default provider to aws-bedrock if not set; migrate legacy ollama to aws-bedrock
+      if (!config.provider || config.provider === 'ollama') {
+        config.provider = 'aws-bedrock';
       }
       if (config.allowedUsersForAI == null) {
         config.allowedUsersForAI = '';
@@ -198,7 +198,7 @@ function AIIntegration({ embedded = false }) {
           }
         }
         if (aiConfig.provider !== 'aws-bedrock') {
-          // Ollama or Mistral API validation
+          // Mistral API validation
           if (!aiConfig.url || !aiConfig.url.trim()) {
             throw new Error('AI Engine URL is required when enabled');
           }
@@ -354,7 +354,7 @@ function AIIntegration({ embedded = false }) {
     if (confirm('Clear AI Engine configuration?')) {
       setAiConfig({
         enabled: false,
-        provider: 'ollama',
+        provider: 'aws-bedrock',
         url: '',
         apiToken: '',
         model: 'mistral:7b',
@@ -449,9 +449,8 @@ function AIIntegration({ embedded = false }) {
                   onChange={(e) => setAiConfig({ ...aiConfig, provider: e.target.value })}
                   disabled={!aiConfig.enabled || isReadOnly}
                 >
-                  <option value="ollama">Ollama (Local/Self-hosted)</option>
-                  <option value="mistral-api">Mistral API (Cloud)</option>
                   <option value="aws-bedrock">AWS Bedrock</option>
+                  <option value="mistral-api">Mistral API (Cloud)</option>
                 </select>
               </div>
               <div className="form-group">
@@ -487,40 +486,6 @@ function AIIntegration({ embedded = false }) {
                   disabled={!aiConfig.enabled || isReadOnly}
                 />
               </div>
-            )}
-
-            {/* Ollama Configuration */}
-            {aiConfig.provider === 'ollama' && (
-              <>
-                <div className="form-group">
-                  <label>
-                    AI Engine URL *
-                    <small>Full URL of your Ollama instance (e.g., http://192.168.1.200:11434)</small>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={aiConfig.url}
-                    onChange={(e) => setAiConfig({ ...aiConfig, url: e.target.value })}
-                    placeholder="http://192.168.1.200:11434"
-                    disabled={!aiConfig.enabled || isReadOnly}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>
-                    API Token (Optional)
-                    <small>API token for authentication (not needed for internal Ollama instances)</small>
-                  </label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    value={aiConfig.apiToken}
-                    onChange={(e) => setAiConfig({ ...aiConfig, apiToken: e.target.value })}
-                    placeholder="Leave empty for internal Ollama instances"
-                    disabled={!aiConfig.enabled || isReadOnly}
-                  />
-                </div>
-              </>
             )}
 
             {/* Mistral API Configuration */}
@@ -672,16 +637,12 @@ function AIIntegration({ embedded = false }) {
               </>
             )}
 
-            {/* Model Name - Only for Ollama and Mistral API */}
+            {/* Model Name - For Mistral API */}
             {aiConfig.provider !== 'aws-bedrock' && (
               <div className="form-group">
                 <label>
                   Model Name *
-                  <small>
-                    {aiConfig.provider === 'ollama' 
-                      ? 'Select a model from available models (test connection first to see available models)' 
-                      : 'Model name for Mistral API (e.g., mistral-7b-instruct)'}
-                  </small>
+                  <small>Model name for Mistral API (e.g., mistral-7b-instruct)</small>
                 </label>
                 {availableModels.length > 0 ? (
                   <select
@@ -705,7 +666,7 @@ function AIIntegration({ embedded = false }) {
                       setAiConfig({ ...aiConfig, model: e.target.value });
                       checkModelWarning(e.target.value);
                     }}
-                    placeholder={aiConfig.provider === 'ollama' ? 'mistral:7b (test connection to see available models)' : 'mistral-7b-instruct'}
+                    placeholder="mistral-7b-instruct"
                     disabled={!aiConfig.enabled || isReadOnly}
                   />
                 )}
@@ -776,7 +737,7 @@ function AIIntegration({ embedded = false }) {
                     : !aiConfig.url)
                 }
               >
-                {testing ? '⏳ Testing...' : (aiConfig.provider === 'ollama' ? '🔍 Test Connection & Fetch Models' : '🔍 Test Connection')}
+                {testing ? '⏳ Testing...' : '🔍 Test Connection'}
               </button>
               <button 
                 className="btn-danger" 
@@ -817,18 +778,6 @@ function AIIntegration({ embedded = false }) {
 
             <div className="info-box">
               <strong>ℹ️ How it works:</strong>
-              {aiConfig.provider === 'ollama' && (
-                <>
-                  <p>Configure your Ollama instance (local or self-hosted) to enable AI-powered control implementation suggestions.</p>
-                  <ul>
-                    <li>✅ Enter the full URL where your Ollama instance is running (include protocol and port)</li>
-                    <li>✅ API token is optional for internal Ollama instances</li>
-                    <li>✅ Click "Test Connection & Fetch Models" to see available models</li>
-                    <li>✅ Mistral model will be automatically selected if available</li>
-                    <li>✅ Ollama must be set up separately with <code>ollama pull mistral:7b</code></li>
-                  </ul>
-                </>
-              )}
               {aiConfig.provider === 'mistral-api' && (
                 <>
                   <p>Configure Mistral AI API (cloud) to enable AI-powered control implementation suggestions.</p>
