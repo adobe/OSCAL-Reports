@@ -1,4 +1,4 @@
-# Security groups: ALB, OSCAL instances, Ollama
+# Security groups: ALB, OSCAL instances
 
 resource "aws_security_group" "alb" {
   name_prefix = "${var.project_name}-alb-"
@@ -66,7 +66,7 @@ resource "aws_security_group" "oscal" {
     description = "Green/Blue inter-instance (private IP)"
   }
 
-  # Ollama / VPC → Blue/Green: allow instances in VPC (e.g. Ollama) to reach OSCAL on 80, 443, 11434, 3019, 3020
+  # VPC → Blue/Green: allow instances in VPC to reach OSCAL on 80, 443, 3019, 3020
   ingress {
     from_port   = 80
     to_port     = 80
@@ -80,13 +80,6 @@ resource "aws_security_group" "oscal" {
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
     description = "VPC to OSCAL (HTTPS)"
-  }
-  ingress {
-    from_port   = 11434
-    to_port     = 11434
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-    description = "VPC to OSCAL (Ollama port)"
   }
   ingress {
     from_port   = 3019
@@ -139,13 +132,7 @@ resource "aws_security_group" "oscal" {
     description = "SMTP submission / STARTTLS (e.g. smtp.gmail.com)"
   }
 
-  # Egress to VPC: Ollama (11434), app ports (3019, 3020), HTTP/HTTPS (80, 443) for cross-system talk
-  egress {
-    from_port   = 11434
-    to_port     = 11434
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-  }
+  # Egress to VPC: app ports (3019, 3020), HTTP/HTTPS (80, 443) for cross-system talk
   egress {
     from_port   = 3019
     to_port     = 3020
@@ -157,79 +144,6 @@ resource "aws_security_group" "oscal" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_security_group" "ollama" {
-  name_prefix = "${var.project_name}-ollama-"
-  description = "Ollama AI server (auto-scaling)"
-  vpc_id      = aws_vpc.main.id
-
-  # OSCAL (Blue/Green) on port 11434
-  ingress {
-    from_port       = 11434
-    to_port         = 11434
-    protocol        = "tcp"
-    security_groups = [aws_security_group.oscal.id]
-  }
-
-  # NLB health checks: NLB has no SG; health checks come from NLB node IPs (in VPC)
-  ingress {
-    from_port   = 11434
-    to_port     = 11434
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-    description = "NLB health checks and VPC access to Ollama"
-  }
-
-  # OSCAL / VPC → Ollama: allow Green/Blue and VPC to reach Ollama on 80, 443, 3019, 3020 (cross-system)
-  ingress {
-    from_port       = 80
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.oscal.id]
-    description = "OSCAL to Ollama (HTTP/HTTPS)"
-  }
-  ingress {
-    from_port       = 3019
-    to_port         = 3020
-    protocol        = "tcp"
-    security_groups = [aws_security_group.oscal.id]
-    description = "OSCAL to Ollama (app ports)"
-  }
-  ingress {
-    from_port   = 80
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-    description = "VPC to Ollama (HTTP/HTTPS)"
-  }
-  ingress {
-    from_port   = 3019
-    to_port     = 3020
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-    description = "VPC to Ollama (app ports)"
-  }
-
-  # SSH: from allowed CIDRs (same list as OSCAL)
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ssh_cidr
-    description = "SSH from allowed CIDRs"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 

@@ -184,14 +184,14 @@ sudo chown -R mkesharw:mkesharw /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Gene
 
 ### Automated Deployment via Cron
 
-The `build_on_truenas.sh` script automatically pulls from the personal repository:
+The TrueNAS build script (`retired/truenas-build/build_on_truenas.sh`) automatically pulls from the personal repository:
 
 ```bash
 # Green instance cron (1st, 3rd, 5th Sunday at 2 AM)
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./build_on_truenas.sh >> /var/log/oscal-deploy-green.log 2>&1
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./retired/truenas-build/build_on_truenas.sh >> /var/log/oscal-deploy-green.log 2>&1
 
 # Blue instance cron (2nd, 4th Sunday at 2 AM)
-0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./build_on_truenas.sh >> /var/log/oscal-deploy-blue.log 2>&1
+0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./retired/truenas-build/build_on_truenas.sh >> /var/log/oscal-deploy-blue.log 2>&1
 ```
 
 ---
@@ -206,7 +206,7 @@ fatal: Authentication failed for 'https://github.com/AdobeManagedServices/oscal.
 ```
 
 **Solution:**
-Update `build_on_truenas.sh` to use personal repo:
+Update `retired/truenas-build/build_on_truenas.sh` to use personal repo:
 ```bash
 GIT_REPO="https://github.com/keekar2022/OSCAL-Reports.git"
 ```

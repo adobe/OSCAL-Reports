@@ -4,17 +4,17 @@
 # - Default: Adobe Image Factory Amazon Linux 2023 (add AMI IDs below). When not in map, use native Amazon Linux 2023.
 # - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if in map; else native AL2023.
 # - use_image_factory_ami = false: native Amazon Linux 2023 only.
-# - Optional overrides: oscal_ami_id, ollama_ami_id in terraform.tfvars.
+# - Optional overrides: oscal_ami_id in terraform.tfvars.
 # - S3 bucket naming (AMS): lowercase, e.g. ams-oscal-<account-id> (see s3.tf).
 # - References: Image Factory Wiki, UI (imagefactory.corp.adobe.com).
 # ------------------------------------------------------------------------------
 
-# First choice: Adobe Image Factory Amazon Linux 2023 by region. Used by both OSCAL (Green/Blue) and Ollama.
+# First choice: Adobe Image Factory Amazon Linux 2023 by region. Used by OSCAL (Green/Blue).
 # Set image_factory_amazon_linux_ami_us_east_1 in terraform.tfvars, or add entries below; when an entry exists for aws_region, it is used; else native Amazon Linux 2023.
 locals {
   image_factory_amazon_linux_by_region = merge(
     {
-      # Add more regions here if needed (same AMI for Green, Blue, and Ollama).
+      # Add more regions here if needed (same AMI for Green and Blue).
       # Example: "eu-west-1" = "ami-xxxxxxxx"
     },
     var.image_factory_amazon_linux_ami_us_east_1 != null ? { "us-east-1" = var.image_factory_amazon_linux_ami_us_east_1 } : {}
