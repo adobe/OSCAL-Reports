@@ -1,73 +1,19 @@
 sequenceDiagram
     autonumber
-    participant User as 👥 User
-    participant ALB as 🔄 Load Balancer
-    participant OSCAL as 🖥️ OSCAL App
-    participant Lambda as 🔧 Lambda
-    participant ASG as ⚙️ Auto Scaling
-    participant NLB as 🔀 Ollama NLB
-    participant Ollama as 🤖 Ollama AI
-    participant CW as ⏰ CloudWatch
-    
-    Note over Ollama: 3 instances at init; boot time → last.json; idle 1 hr → scale to 0
-    
-    User->>ALB: 1. Access Application
-    ALB->>OSCAL: Route to Blue/Green
+    participant User as User
+    participant ALB as ALB
+    participant OSCAL as OSCAL App
+    participant Bedrock as AWS Bedrock
+
+    User->>ALB: Access Application
+    ALB->>OSCAL: Route to Green/Blue
     OSCAL->>User: Render UI
-    
-    Note over User,OSCAL: User views reports - no AI needed<br/>Ollama remains sleeping $0/hour
-    
-    User->>OSCAL: 2. Click "AI Suggest Controls"
-    OSCAL->>Lambda: Trigger: Wake Ollama
-    
-    Note over Lambda,ASG: Check current state
-    Lambda->>ASG: Set Desired Capacity = 3
 
-    Note over ASG,Ollama: Starting instances...<br/>This takes 2 to 3 minutes
-    ASG->>Ollama: Launch 3× t3.2xlarge (32 GB each)
-    Ollama->>Ollama: Each instance: boot time → ollama-activity/last.json
-    Ollama->>Ollama: Load Mistral 7B model
-    
-    Note over Ollama: Status: ACTIVE<br/>Cost: $0.3328/hour (t3.2xlarge)
-    
-    Ollama->>Lambda: Instance Ready
-    Lambda->>OSCAL: Ollama Available
-    
-    OSCAL->>NLB: Send AI Request (OLLAMA_URL)
-    NLB->>Ollama: Forward
-    Ollama->>OSCAL: AI Response
+    Note over User,OSCAL: Viewing reports - no AI call
+
+    User->>OSCAL: Click "AI Suggest"
+    OSCAL->>Bedrock: Invoke Model API
+    Bedrock->>OSCAL: AI Response
     OSCAL->>User: Display Suggestions
-    
-    Note over User,Ollama: User continues working<br/>Multiple AI requests for 2 hours
-    
-    User->>OSCAL: More AI Queries
-    OSCAL->>NLB: Process Requests (OLLAMA_URL)
-    NLB->>Ollama: Forward
-    Ollama->>OSCAL: Return Results
-    
-    Note over Ollama: Last Activity at 12:00 PM<br/>Idle Timer Started
-    
-    loop Every 30 minutes
-        CW->>Lambda: Check Idle Status
-        Lambda->>Lambda: Check Last Activity Time
-        alt Idle less than 1 hour
-            Note over Lambda: Still within timeout<br/>Keep running
-        end
-    end
-    
-    Note over CW,Ollama: 1 hour passes with no AI activity<br/>Last activity at 12:00 PM<br/>Current time 1:00 PM
-    
-    CW->>Lambda: Idle Check at 4:00 PM
-    Lambda->>Lambda: Idle Duration over 1 hour
-    Lambda->>ASG: Set Desired Capacity = 0
-    ASG->>Ollama: Terminate instances
 
-    Note over Ollama: Status: SLEEPING - Scaled to 0 (3 instances terminated)<br/>Cost: $0/hour
-    
-    Note over User,Ollama: User returns at 5:00 PM<br/>Needs AI again
-    
-    User->>OSCAL: New AI Request
-    OSCAL->>Lambda: Wake Ollama Again
-    Lambda->>ASG: Scale Up to 3
-
-    Note over Ollama: Waking up 2 to 3 min<br/>Then ACTIVE again (3 instances)
+    Note over OSCAL,Bedrock: Bedrock is pay-per-use<br/>No wake/sleep or scaling

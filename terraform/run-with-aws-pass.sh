@@ -7,11 +7,18 @@
 #   ./run-with-aws-pass.sh apply [options]       apply (removes orphan ALB listeners first if needed)
 #   ./run-with-aws-pass.sh [terraform args...]   e.g. ./run-with-aws-pass.sh plan
 #   ./run-with-aws-pass.sh import-key [region]   import EC2 key from Pass (region defaults to us-east-1)
+#
+# Optional: TERRAFORM_DIR – when set, run terraform from this directory (e.g. terraform/envs/aws4403).
+#   Enables multiple accounts: AWS_PASS_ENTRY=AWS/AMS_4403-STG TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./run-with-aws-pass.sh plan
 
 set -e
 ENTRY="${AWS_PASS_ENTRY:-AWS/AWS4379 Sandbox}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+if [ -n "${TERRAFORM_DIR:-}" ]; then
+  TF_WORK_DIR="$(cd "$TERRAFORM_DIR" && pwd)"
+  cd "$TF_WORK_DIR"
+fi
 
 load_aws_credentials() {
   while IFS= read -r line; do

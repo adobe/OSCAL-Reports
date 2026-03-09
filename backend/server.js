@@ -463,116 +463,6 @@ app.get('/api/auth/default-credentials', async (req, res) => {
 });
 
 /**
- * Diagnostic endpoint - Check Ollama connectivity (for debugging)
- */
-app.get('/api/ollama/diagnostics', authenticate, async (req, res) => {
-  try {
-    const https = require('https');
-    const axios = require('axios');
-    const config = await loadMistralConfig();
-    
-    const diagnostics = {
-      ollamaUrl: config.ollamaUrl,
-      environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set'
-      },
-      tests: {}
-    };
-    
-    // Test 1: Ping test (if ping is available)
-    try {
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-      
-      // Extract hostname from URL
-      const hostname = config.ollamaUrl.replace(/^https?:\/\//, '').split(':')[0];
-      
-      try {
-        await execAsync(`ping -c 1 ${hostname}`, { timeout: 5000 });
-        diagnostics.tests.ping = { success: true, message: `Host ${hostname} is reachable` };
-      } catch (error) {
-        diagnostics.tests.ping = { success: false, message: `Host ${hostname} not reachable: ${error.message}` };
-      }
-    } catch (error) {
-      diagnostics.tests.ping = { success: false, message: `Ping test unavailable: ${error.message}` };
-    }
-    
-    // Test 2: HTTP connection test
-    try {
-      const response = await axios.get(`${config.ollamaUrl}/api/tags`, {
-        timeout: 5000,
-        httpsAgent: config.ollamaUrl.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined
-      });
-      
-      diagnostics.tests.http = {
-        success: true,
-        message: 'HTTP connection successful',
-        models: response.data?.models || []
-      };
-    } catch (error) {
-      diagnostics.tests.http = {
-        success: false,
-        message: `HTTP connection failed: ${error.message}`,
-        code: error.code,
-        details: error.response ? {
-          status: error.response.status,
-          statusText: error.response.statusText
-        } : null
-      };
-    }
-    
-    // Test 3: DNS resolution test
-    try {
-      const dns = require('dns');
-      const { promisify } = require('util');
-      const lookup = promisify(dns.lookup);
-      
-      const hostname = config.ollamaUrl.replace(/^https?:\/\//, '').split(':')[0];
-      const result = await lookup(hostname);
-      
-      diagnostics.tests.dns = {
-        success: true,
-        message: `DNS resolution successful`,
-        address: result.address,
-        family: result.family
-      };
-    } catch (error) {
-      diagnostics.tests.dns = {
-        success: false,
-        message: `DNS resolution failed: ${error.message}`
-      };
-    }
-    
-    // Overall status
-    const allTestsPass = Object.values(diagnostics.tests).every(test => test.success === true);
-    diagnostics.overall = {
-      connected: allTestsPass,
-      message: allTestsPass ? 'All connectivity tests passed' : 'Some connectivity tests failed'
-    };
-    
-    res.json({
-      success: true,
-      diagnostics: diagnostics,
-      recommendations: allTestsPass ? [] : [
-        'Ensure both containers are on the same Docker network (oscal-network)',
-        'Verify Ollama container name is exactly "ollama"',
-        'Check OLLAMA_URL environment variable is set to http://ollama:11434',
-        'Run: docker network connect oscal-network ollama',
-        'Run: docker network connect oscal-network oscal-report-generator-green'
-      ]
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
-/**
  * Diagnostic endpoint - Check user status and config (for debugging)
  */
 app.get('/api/auth/diagnostics', (req, res) => {
@@ -4898,8 +4788,6 @@ app.get('/api/ai/status', authenticate, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Checking AI availability...');
-      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
-      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
     
     // Detect model family and check appropriate service
@@ -4918,8 +4806,6 @@ app.get('/api/ai/status', authenticate, async (req, res) => {
       modelFamily: modelFamily,
       ...status,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4931,8 +4817,6 @@ app.get('/api/ai/status', authenticate, async (req, res) => {
       error: 'Failed to check AI status',
       details: error.message,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4946,8 +4830,6 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Checking Mistral availability...');
-      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
-      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
     
     const status = await checkMistralAvailability();
@@ -4962,8 +4844,6 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
       success: true,
       ...status,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4975,8 +4855,6 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
       error: 'Failed to check Mistral status',
       details: error.message,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4990,8 +4868,6 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Checking Gemma availability...');
-      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
-      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
     const modelFamily = await detectModelFamily();
     const status = modelFamily === 'gemma' ? await checkAIAvailability() : await checkGemmaAvailability();
@@ -5006,8 +4882,6 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
       success: true,
       ...status,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -5019,8 +4893,6 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
       error: 'Failed to check Gemma status',
       details: error.message,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -5138,7 +5010,7 @@ app.get('/api/ai/bedrock-models', authenticate, authorize(PERMISSIONS.EDIT_SETTI
 
 /**
  * Test AI Engine connection
- * Tests connectivity to configured AI Engine (e.g., Ollama)
+ * Tests connectivity to configured AI Engine (e.g., AWS Bedrock or Mistral API)
  * 
  * Request body:
  * {
@@ -5149,7 +5021,7 @@ app.get('/api/ai/bedrock-models', authenticate, authorize(PERMISSIONS.EDIT_SETTI
  */
 app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
   try {
-    const { provider = 'ollama', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
+    const { provider = 'aws-bedrock', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
     
     // Load config for maxTokens and fallback credentials (resolved from pass when stored there)
     const config = getResolvedConfig();
@@ -5278,7 +5150,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
     }
     
-    // Mistral API test connection (different from Ollama)
+    // Mistral API test connection
     if (provider === 'mistral-api') {
       if (!apiToken || !apiToken.trim()) {
         return res.status(400).json({
@@ -5400,7 +5272,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
     }
     
-    // Ollama test connection (requires URL)
+    // URL-based AI test connection (requires URL)
     if (!url || !url.trim()) {
       return res.status(400).json({ 
         success: false,
@@ -5411,7 +5283,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // Parse and normalize the URL
     let fullUrl = url.trim();
     
-    // Add protocol if missing (default to http for ollama)
+    // Add protocol if missing (default to http for local URL)
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
       fullUrl = `http://${fullUrl}`;
     }
@@ -5472,10 +5344,10 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     }
     
     try {
-      // Test 1: Check if Ollama service is reachable and fetch available models
+      // Test 1: Check if AI service at URL is reachable and fetch available models
       // Handle URLs that may or may not end with /
       const tagsUrl = fullUrl.endsWith('/') ? `${fullUrl}api/tags` : `${fullUrl}/api/tags`;
-      console.log(`   Testing Ollama: ${tagsUrl}`);
+      console.log(`   Testing AI at URL: ${tagsUrl}`);
       
       const response = await axios.get(tagsUrl, {
         timeout: 30000,
@@ -5503,7 +5375,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
       
       // Test 2: Try a simple generate request (optional, more thorough test)
-      // Use recommended model if available, otherwise first available, else mistral (Ollama default 7B tag)
+      // Use recommended model if available, otherwise first available, else mistral
       let generateTest = null;
       const testModel = recommendedModel || modelNames[0] || 'mistral';
       try {
@@ -5530,7 +5402,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       } catch (genError) {
         const is404 = genError.response?.status === 404;
         const msg = is404 && modelNames.length === 0
-          ? 'No models installed on Ollama instance. Run install-ollama-and-models.sh or ensure-models service (see /var/log/ollama-ensure-models.log on instance).'
+          ? 'No models available at the configured AI URL. Use AWS Bedrock or configure a valid AI service URL with models.'
           : genError.message;
         console.warn(`⚠️ Generate test failed (non-critical):`, msg);
         generateTest = {
@@ -5541,9 +5413,9 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       
       res.json({
         success: true,
-        message: 'Ollama connection successful',
+        message: 'AI Engine connection successful',
         details: {
-          provider: 'ollama',
+          provider: provider,
           url: fullUrl,
           reachable: true,
           models: modelNames,
@@ -5567,7 +5439,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         errorDetails = {
           code: error.code,
           message: error.message,
-          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/debug/run-install-ollama-on-instance.sh (full flow) or scripts/debug/run-install-ollama-on-instance.sh listener if Ollama is already installed.'
+          suggestion: 'Use AWS Bedrock (recommended) or ensure the AI service URL is reachable and has models loaded.'
         };
       } else if (error.response) {
         errorMessage = `AI Engine returned error ${error.response.status}`;
