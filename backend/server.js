@@ -21,18 +21,27 @@ import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
 import { loadConfig, getResolvedConfig, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir } from './configManager.js';
+import { isPassPointer, passShow } from './utils/passResolver.js';
+import { MASK } from './utils/sensitiveConfigKeys.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
 import { checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
 import { checkAIAvailability, detectModelFamily } from './aiModelRouter.js';
 import { addIntegrityHash, verifyIntegrityHash, getIntegrityInfo } from './integrityService.js';
 import { getLogStats, cleanupOldLogs } from './aiLogger.js';
+import { isUserAllowedForAISuggestions } from './utils/aiAllowedUsers.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load .env from repo root only in development (laptop). Docker and EC2 use their own USERS_PATH/CONFIG_PATH from entrypoint or systemd.
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.join(__dirname, '..', '.env') });
+}
 
 import { 
   initializeDefaultUsers, 
@@ -82,7 +91,7 @@ import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import csrf from 'csurf';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
-import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS } from './utils/securityConfig.js';
+import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -163,19 +172,27 @@ const csrfProtection = csrf({
   cookie: SECURITY_CONFIG.csrf.cookieOptions 
 });
 
-// Conditional CSRF middleware - exempt certain paths
+// Conditional CSRF middleware - exempt certain paths, enforce on CSRF_PROTECTED_PATHS
 app.use((req, res, next) => {
-  // Skip CSRF for exempted paths
-  if (CSRF_EXEMPT_PATHS.some(path => req.path.startsWith(path))) {
-    return next();
-  }
-  
   // Skip CSRF for GET/HEAD/OPTIONS requests (safe methods)
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }
-  
-  // Apply CSRF protection for state-changing requests
+
+  // Always apply CSRF for explicitly protected paths (e.g. Okta exchange-token)
+  if (CSRF_PROTECTED_PATHS.some(p => req.path === p)) {
+    if (SECURITY_CONFIG.csrf.enabled) {
+      return csrfProtection(req, res, next);
+    }
+    return next();
+  }
+
+  // Skip CSRF for exempted paths
+  if (CSRF_EXEMPT_PATHS.some(path => req.path.startsWith(path))) {
+    return next();
+  }
+
+  // Apply CSRF protection for other state-changing requests
   if (SECURITY_CONFIG.csrf.enabled) {
     csrfProtection(req, res, next);
   } else {
@@ -441,116 +458,6 @@ app.get('/api/auth/default-credentials', async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to generate default credentials',
       details: error.message 
-    });
-  }
-});
-
-/**
- * Diagnostic endpoint - Check Ollama connectivity (for debugging)
- */
-app.get('/api/ollama/diagnostics', authenticate, async (req, res) => {
-  try {
-    const https = require('https');
-    const axios = require('axios');
-    const config = await loadMistralConfig();
-    
-    const diagnostics = {
-      ollamaUrl: config.ollamaUrl,
-      environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set'
-      },
-      tests: {}
-    };
-    
-    // Test 1: Ping test (if ping is available)
-    try {
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-      
-      // Extract hostname from URL
-      const hostname = config.ollamaUrl.replace(/^https?:\/\//, '').split(':')[0];
-      
-      try {
-        await execAsync(`ping -c 1 ${hostname}`, { timeout: 5000 });
-        diagnostics.tests.ping = { success: true, message: `Host ${hostname} is reachable` };
-      } catch (error) {
-        diagnostics.tests.ping = { success: false, message: `Host ${hostname} not reachable: ${error.message}` };
-      }
-    } catch (error) {
-      diagnostics.tests.ping = { success: false, message: `Ping test unavailable: ${error.message}` };
-    }
-    
-    // Test 2: HTTP connection test
-    try {
-      const response = await axios.get(`${config.ollamaUrl}/api/tags`, {
-        timeout: 5000,
-        httpsAgent: config.ollamaUrl.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined
-      });
-      
-      diagnostics.tests.http = {
-        success: true,
-        message: 'HTTP connection successful',
-        models: response.data?.models || []
-      };
-    } catch (error) {
-      diagnostics.tests.http = {
-        success: false,
-        message: `HTTP connection failed: ${error.message}`,
-        code: error.code,
-        details: error.response ? {
-          status: error.response.status,
-          statusText: error.response.statusText
-        } : null
-      };
-    }
-    
-    // Test 3: DNS resolution test
-    try {
-      const dns = require('dns');
-      const { promisify } = require('util');
-      const lookup = promisify(dns.lookup);
-      
-      const hostname = config.ollamaUrl.replace(/^https?:\/\//, '').split(':')[0];
-      const result = await lookup(hostname);
-      
-      diagnostics.tests.dns = {
-        success: true,
-        message: `DNS resolution successful`,
-        address: result.address,
-        family: result.family
-      };
-    } catch (error) {
-      diagnostics.tests.dns = {
-        success: false,
-        message: `DNS resolution failed: ${error.message}`
-      };
-    }
-    
-    // Overall status
-    const allTestsPass = Object.values(diagnostics.tests).every(test => test.success === true);
-    diagnostics.overall = {
-      connected: allTestsPass,
-      message: allTestsPass ? 'All connectivity tests passed' : 'Some connectivity tests failed'
-    };
-    
-    res.json({
-      success: true,
-      diagnostics: diagnostics,
-      recommendations: allTestsPass ? [] : [
-        'Ensure both containers are on the same Docker network (oscal-network)',
-        'Verify Ollama container name is exactly "ollama"',
-        'Check OLLAMA_URL environment variable is set to http://ollama:11434',
-        'Run: docker network connect oscal-network ollama',
-        'Run: docker network connect oscal-network oscal-report-generator-green'
-      ]
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -2354,14 +2261,31 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
 // Get current settings (all authenticated users can view)
 app.get('/api/settings', optionalAuth, (req, res) => {
   try {
-    const config = loadConfig();
+    const raw = loadConfig();
+    const config = JSON.parse(JSON.stringify(raw));
+    // Mask Bedrock credentials for client when stored in pass (so GUI shows placeholder and Test Connection can use resolved config)
+    if (config.aiConfig) {
+      for (const key of ['awsAccessKeyId', 'awsSecretAccessKey']) {
+        const v = config.aiConfig[key];
+        if (typeof v === 'string' && v.trim()) {
+          config.aiConfig[key] = MASK;
+        } else if (isPassPointer(v)) {
+          try {
+            const resolved = passShow(v._pass);
+            config.aiConfig[key] = (resolved && resolved.trim()) ? MASK : '';
+          } catch {
+            config.aiConfig[key] = '';
+          }
+        }
+      }
+    }
     console.log('📖 Settings loaded and sent to client');
     res.json(config);
   } catch (error) {
     console.error('❌ Error loading settings:', error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to load settings',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -4752,8 +4676,18 @@ app.get('/api/validator/status', async (req, res) => {
  *   "existingControls": [ ... ] (optional, for learning)
  * }
  */
+const AI_SUGGESTIONS_NOT_ALLOWED_MESSAGE = 'You are not authorised to access this feature. Enablement requires engagement with the Adobe Managed Services Sales team to integrate a dedicated instance with a customer‑provided AI Engine. This capability is offered on an as‑is basis for existing customers, with no warranty or support provided by Adobe Managed Services.';
+
 app.post('/api/suggest-control', authenticate, async (req, res) => {
   try {
+    const aiConfig = getResolvedConfig()?.aiConfig;
+    if (!isUserAllowedForAISuggestions(req.user, aiConfig)) {
+      return res.status(403).json({
+        success: false,
+        error: AI_SUGGESTIONS_NOT_ALLOWED_MESSAGE,
+        code: 'AI_SUGGESTIONS_NOT_ALLOWED'
+      });
+    }
     const { control, existingControls = [] } = req.body;
     
     if (process.env.NODE_ENV === 'development') {
@@ -4774,7 +4708,7 @@ app.post('/api/suggest-control', authenticate, async (req, res) => {
     
     // Let the suggestion engine handle timeouts and fallbacks internally
     // It will automatically fall back to templates if AI fails or times out
-    const suggestions = await suggestControlImplementation(control, existingControls);
+    const suggestions = await suggestControlImplementation(control, existingControls, req.user);
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`✅ Generated suggestions for ${control.id} with confidence: ${suggestions.confidence}`);
@@ -4854,8 +4788,6 @@ app.get('/api/ai/status', authenticate, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Checking AI availability...');
-      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
-      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
     
     // Detect model family and check appropriate service
@@ -4874,8 +4806,6 @@ app.get('/api/ai/status', authenticate, async (req, res) => {
       modelFamily: modelFamily,
       ...status,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4887,8 +4817,6 @@ app.get('/api/ai/status', authenticate, async (req, res) => {
       error: 'Failed to check AI status',
       details: error.message,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4902,8 +4830,6 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Checking Mistral availability...');
-      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
-      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
     
     const status = await checkMistralAvailability();
@@ -4918,8 +4844,6 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
       success: true,
       ...status,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4931,8 +4855,6 @@ app.get('/api/mistral/status', authenticate, async (req, res) => {
       error: 'Failed to check Mistral status',
       details: error.message,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4946,11 +4868,9 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Checking Gemma availability...');
-      console.log(`   OLLAMA_URL: ${process.env.OLLAMA_URL || 'not set'}`);
-      console.log(`   OLLAMA_HOST: ${process.env.OLLAMA_HOST || 'not set'}`);
     }
-    
-    const status = await checkGemmaAvailability();
+    const modelFamily = await detectModelFamily();
+    const status = modelFamily === 'gemma' ? await checkAIAvailability() : await checkGemmaAvailability();
     
     console.log(`📊 Gemma status:`, {
       available: status.available,
@@ -4962,8 +4882,6 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
       success: true,
       ...status,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -4975,8 +4893,6 @@ app.get('/api/gemma/status', authenticate, async (req, res) => {
       error: 'Failed to check Gemma status',
       details: error.message,
       environment: {
-        OLLAMA_URL: process.env.OLLAMA_URL || 'not set',
-        OLLAMA_HOST: process.env.OLLAMA_HOST || 'not set',
         NODE_ENV: process.env.NODE_ENV || 'not set'
       }
     });
@@ -5024,8 +4940,77 @@ app.post('/api/ai/logs/cleanup', authenticate, authorize([PERMISSIONS.MANAGE_AI_
 });
 
 /**
+ * List Bedrock foundation models (Mistral, Gemma, GPT only) for the configured region.
+ * Uses resolved AI config credentials (including pass vault). Region from query or config.
+ * GET /api/ai/bedrock-models?region=us-east-1
+ */
+app.get('/api/ai/bedrock-models', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
+  try {
+    let resolved;
+    try {
+      resolved = getResolvedConfig();
+    } catch (resolveErr) {
+      console.error('Failed to resolve config (pass vault):', resolveErr?.message);
+      return res.status(400).json({
+        error: `Could not load config: ${resolveErr?.message || resolveErr}. Ensure pass entries exist or save AI settings first.`
+      });
+    }
+    const region = (req.query.region && String(req.query.region).trim()) || resolved.aiConfig?.awsRegion || 'us-east-1';
+    const accessKeyId = (resolved.aiConfig?.awsAccessKeyId && String(resolved.aiConfig.awsAccessKeyId).trim()) || '';
+    const secretAccessKey = (resolved.aiConfig?.awsSecretAccessKey && typeof resolved.aiConfig.awsSecretAccessKey === 'string' && resolved.aiConfig.awsSecretAccessKey.trim()) || '';
+    if (!accessKeyId || !secretAccessKey || accessKeyId === MASK || secretAccessKey === MASK) {
+      return res.status(400).json({
+        error: 'AWS credentials required. Save Access Key ID and Secret Access Key in AI settings (or pass vault) first, then load models.'
+      });
+    }
+    const { BedrockClient, ListFoundationModelsCommand } = await import('@aws-sdk/client-bedrock');
+    const client = new BedrockClient({
+      region,
+      credentials: { accessKeyId, secretAccessKey }
+    });
+    const command = new ListFoundationModelsCommand({ byOutputModality: 'TEXT' });
+    const response = await client.send(command);
+    const summaries = response.modelSummaries || [];
+    const providerOrder = (p) => (p === 'Mistral AI' ? 0 : p === 'Google' ? 1 : p === 'OpenAI' ? 2 : 3);
+    const filtered = summaries
+      .filter((s) => {
+        if (s.modelLifecycle?.status && s.modelLifecycle.status !== 'ACTIVE') return false;
+        const provider = (s.providerName || '').trim();
+        const modelId = (s.modelId || '').toLowerCase();
+        if (provider === 'Mistral AI') return true;
+        if (provider === 'Google' && modelId.includes('gemma')) return true;
+        if (provider === 'OpenAI') return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const cmp = providerOrder((a.providerName || '').trim()) - providerOrder((b.providerName || '').trim());
+        return cmp !== 0 ? cmp : (a.modelName || a.modelId || '').localeCompare(b.modelName || b.modelId || '');
+      })
+      .map((s) => ({
+        modelId: s.modelId,
+        modelName: (s.modelName && s.modelName.trim()) || s.modelId || ''
+      }));
+    return res.json({ models: filtered });
+  } catch (error) {
+    console.error('List Bedrock models failed:', error?.message || error);
+    if (error.name === 'AccessDeniedException') {
+      return res.status(403).json({
+        error: 'AWS Access Denied. Check IAM permissions (bedrock:ListFoundationModels required).'
+      });
+    }
+    if (error.name === 'ThrottlingException') {
+      return res.status(429).json({ error: 'Too many requests. Try again in a moment.' });
+    }
+    return res.status(500).json({
+      error: error?.message || 'Failed to list Bedrock models',
+      details: error?.name
+    });
+  }
+});
+
+/**
  * Test AI Engine connection
- * Tests connectivity to configured AI Engine (e.g., Ollama)
+ * Tests connectivity to configured AI Engine (e.g., AWS Bedrock or Mistral API)
  * 
  * Request body:
  * {
@@ -5036,7 +5021,7 @@ app.post('/api/ai/logs/cleanup', authenticate, authorize([PERMISSIONS.MANAGE_AI_
  */
 app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
   try {
-    const { provider = 'ollama', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
+    const { provider = 'aws-bedrock', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
     
     // Load config for maxTokens and fallback credentials (resolved from pass when stored there)
     const config = getResolvedConfig();
@@ -5047,38 +5032,55 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // AWS Bedrock test connection
     if (provider === 'aws-bedrock') {
       try {
-        // Dynamically import AWS SDK and Node.js https
-        const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
-        const { Agent: HttpsAgent } = await import('https');
-        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-        
-        if (!awsAccessKeyId || !awsSecretAccessKey) {
+        // Use credentials from body if provided and not masked; otherwise use resolved config (pass vault)
+        let resolved;
+        try {
+          resolved = getResolvedConfig();
+        } catch (resolveErr) {
+          console.error('Failed to resolve config (pass vault):', resolveErr?.message);
           return res.status(400).json({
             success: false,
-            error: 'AWS credentials required (Access Key ID and Secret Access Key)'
+            error: `Could not load credentials from config/pass: ${resolveErr?.message || resolveErr}. Ensure pass entries OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key exist, or enter credentials in the form.`
           });
         }
-        
+        const useBodyCreds = typeof awsAccessKeyId === 'string' && typeof awsSecretAccessKey === 'string' &&
+          awsAccessKeyId.trim() && awsSecretAccessKey.trim() &&
+          awsAccessKeyId !== MASK && awsSecretAccessKey !== MASK;
+        const accessKeyId = useBodyCreds ? awsAccessKeyId : (resolved.aiConfig?.awsAccessKeyId || '');
+        const secretAccessKey = useBodyCreds ? awsSecretAccessKey : (resolved.aiConfig?.awsSecretAccessKey || '');
+
+        if (!accessKeyId || !secretAccessKey) {
+          return res.status(400).json({
+            success: false,
+            error: 'AWS credentials required (Access Key ID and Secret Access Key). Enter them in the form or ensure they are stored in pass vault (OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key).'
+          });
+        }
+
         if (!awsRegion) {
           return res.status(400).json({
             success: false,
             error: 'AWS region required'
           });
         }
-        
+
+        // Dynamically import AWS SDK and Node.js https
+        const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
+        const { Agent: HttpsAgent } = await import('https');
+        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
+
         // Create custom HTTPS agent to handle SSL certificate issues
         // In production, you should use proper SSL certificates
         const httpsAgent = new HttpsAgent({
           rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
           keepAlive: true
         });
-        
+
         // Create Bedrock client with custom request handler
         const client = new BedrockRuntimeClient({
           region: awsRegion,
           credentials: {
-            accessKeyId: awsAccessKeyId,
-            secretAccessKey: awsSecretAccessKey
+            accessKeyId,
+            secretAccessKey
           },
           requestHandler: new NodeHttpHandler({
             httpsAgent: httpsAgent,
@@ -5130,11 +5132,13 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
           errorMessage = `Model not found: ${bedrockModelId}. Check model ID and region availability`;
         } else if (error.name === 'ValidationException') {
           errorMessage = 'Invalid request parameters';
+        } else if (error.name === 'InvalidSignatureException' || error.message?.includes('signature')) {
+          errorMessage = 'Invalid AWS credentials. Check Access Key ID and Secret Access Key (or pass vault entries OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key).';
         } else {
-          errorMessage = error.message;
+          errorMessage = error.message || String(error);
         }
         
-        return res.status(500).json({
+        return res.status(400).json({
           success: false,
           error: errorMessage,
           details: {
@@ -5146,7 +5150,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
     }
     
-    // Mistral API test connection (different from Ollama)
+    // Mistral API test connection
     if (provider === 'mistral-api') {
       if (!apiToken || !apiToken.trim()) {
         return res.status(400).json({
@@ -5268,7 +5272,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
     }
     
-    // Ollama test connection (requires URL)
+    // URL-based AI test connection (requires URL)
     if (!url || !url.trim()) {
       return res.status(400).json({ 
         success: false,
@@ -5279,7 +5283,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     // Parse and normalize the URL
     let fullUrl = url.trim();
     
-    // Add protocol if missing (default to http for ollama)
+    // Add protocol if missing (default to http for local URL)
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
       fullUrl = `http://${fullUrl}`;
     }
@@ -5340,10 +5344,10 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     }
     
     try {
-      // Test 1: Check if Ollama service is reachable and fetch available models
+      // Test 1: Check if AI service at URL is reachable and fetch available models
       // Handle URLs that may or may not end with /
       const tagsUrl = fullUrl.endsWith('/') ? `${fullUrl}api/tags` : `${fullUrl}/api/tags`;
-      console.log(`   Testing Ollama: ${tagsUrl}`);
+      console.log(`   Testing AI at URL: ${tagsUrl}`);
       
       const response = await axios.get(tagsUrl, {
         timeout: 30000,
@@ -5371,9 +5375,9 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
       
       // Test 2: Try a simple generate request (optional, more thorough test)
-      // Use recommended model if available, otherwise use first available model
+      // Use recommended model if available, otherwise first available, else mistral
       let generateTest = null;
-      const testModel = recommendedModel || modelNames[0] || 'mistral:7b';
+      const testModel = recommendedModel || modelNames[0] || 'mistral';
       try {
         const generateUrl = fullUrl.endsWith('/') ? `${fullUrl}api/generate` : `${fullUrl}/api/generate`;
         const testPrompt = "Say 'test'";
@@ -5396,18 +5400,22 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         };
         console.log(`✅ Generate test successful (${generateTest.responseLength} chars)`);
       } catch (genError) {
-        console.warn(`⚠️ Generate test failed (non-critical):`, genError.message);
+        const is404 = genError.response?.status === 404;
+        const msg = is404 && modelNames.length === 0
+          ? 'No models available at the configured AI URL. Use AWS Bedrock or configure a valid AI service URL with models.'
+          : genError.message;
+        console.warn(`⚠️ Generate test failed (non-critical):`, msg);
         generateTest = {
           success: false,
-          error: genError.message
+          error: msg
         };
       }
       
       res.json({
         success: true,
-        message: 'Ollama connection successful',
+        message: 'AI Engine connection successful',
         details: {
-          provider: 'ollama',
+          provider: provider,
           url: fullUrl,
           reachable: true,
           models: modelNames,
@@ -5431,7 +5439,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         errorDetails = {
           code: error.code,
           message: error.message,
-          suggestion: 'Ensure Ollama ASG has a running instance, NLB target is Healthy (EC2 -> Target Groups -> *-ollama-11434), and Ollama listens on 0.0.0.0:11434. Run scripts/debug/run-install-ollama-on-instance.sh (full flow) or scripts/debug/run-install-ollama-on-instance.sh listener if Ollama is already installed.'
+          suggestion: 'Use AWS Bedrock (recommended) or ensure the AI service URL is reachable and has models loaded.'
         };
       } else if (error.response) {
         errorMessage = `AI Engine returned error ${error.response.status}`;
@@ -5458,10 +5466,11 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     }
   } catch (error) {
     console.error('❌ Error testing AI connection:', error);
+    const msg = error?.message || String(error);
     res.status(500).json({
       success: false,
-      error: 'Failed to test AI connection',
-      details: error.message
+      error: msg ? `Failed to test AI connection: ${msg}` : 'Failed to test AI connection',
+      details: msg
     });
   }
 });
@@ -5477,6 +5486,14 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
  */
 app.post('/api/suggest-multiple-controls', authenticate, async (req, res) => {
   try {
+    const aiConfig = getResolvedConfig()?.aiConfig;
+    if (!isUserAllowedForAISuggestions(req.user, aiConfig)) {
+      return res.status(403).json({
+        success: false,
+        error: AI_SUGGESTIONS_NOT_ALLOWED_MESSAGE,
+        code: 'AI_SUGGESTIONS_NOT_ALLOWED'
+      });
+    }
     const { controls, existingControls = [] } = req.body;
     
     if (!controls || !Array.isArray(controls)) {
@@ -5486,7 +5503,7 @@ app.post('/api/suggest-multiple-controls', authenticate, async (req, res) => {
     }
     
     console.log(`Generating suggestions for ${controls.length} controls`);
-    const suggestions = await suggestMultipleControls(controls, existingControls);
+    const suggestions = await suggestMultipleControls(controls, existingControls, req.user);
     
     res.json({
       success: true,

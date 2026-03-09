@@ -11,7 +11,6 @@
 | Document | Description | For |
 |----------|-------------|-----|
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, TrueNAS, Local) | **Start Here** |
-| [TRUENAS.md](TRUENAS.md) | TrueNAS installation and quick reference | Quick Setup |
 | [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub image documentation | Docker Users |
 
 ---
@@ -24,6 +23,7 @@
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
 | [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
 | [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md) | AI models (Mistral, Gemma), config, and token limits |
+| [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md) | Step-by-step AWS setup for Bedrock AI integration (IAM, model access, config) |
 | [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
 
 ---
@@ -32,6 +32,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [KEEPING_LOCAL_USERS.md](KEEPING_LOCAL_USERS.md) | Keep your local users.json from being overwritten (USERS_PATH, .env) |
 | [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) | Version bumping, workflow, and release checklist |
 | [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
 | [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
@@ -50,19 +51,17 @@
 | [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub public documentation |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platform deployment (Azure, AWS, GCP) |
 | [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Config migration and user consolidation (Blue/Green) |
-| [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) | AWS EC2 cost estimate and Ollama auto-scaling |
-| [AWS_TERRAFORM.md](AWS_TERRAFORM.md) | Terraform for OSCAL + Ollama on AWS (ALB, Green/Blue, Ollama NLB, Lambda, OLLAMA_URL) |
+| [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) | AWS EC2 cost estimate |
+| [AWS_TERRAFORM.md](AWS_TERRAFORM.md) | Terraform for OSCAL on AWS (ALB, Green/Blue; AI via AWS Bedrock) |
 | [EC2_WEB_HOSTING_BEST_PRACTICES.md](EC2_WEB_HOSTING_BEST_PRACTICES.md) | EC2 web hosting best practices: directory layout, deploy, cron, Blue/Green, troubleshooting, scripts |
 | [IMAGE_FACTORY.md](IMAGE_FACTORY.md) | Adobe Image Factory Amazon Linux 2023 AMIs for Terraform (AMS deployments) |
 | [AWS_SANDBOX_REQUEST.md](AWS_SANDBOX_REQUEST.md) | Jira ticket and URL for requesting designated AWS Sandbox account |
 
 ---
 
-### 🖥️ TrueNAS Deployment
+### 🖥️ TrueNAS (retired)
 
-| Document | Description |
-|----------|-------------|
-| [TRUENAS.md](TRUENAS.md) | TrueNAS installation, quick reference, and app catalog |
+TrueNAS build–specific scripts and docs have been moved to **[retired/truenas-build/](../retired/truenas-build/)** so they are not mixed with core solution files. They may be removed after 6 months once the project is stable. For TrueNAS deployment, see [DEPLOYMENT.md](DEPLOYMENT.md) (Docker Hub image + Custom App).
 
 ---
 
@@ -106,10 +105,10 @@
 Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md)
 
 ### 🚀 **DevOps/Deployment**
-Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [TRUENAS.md](TRUENAS.md)
+Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md)
 
 ### 👤 **End User**
-Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [TRUENAS.md](TRUENAS.md)
+Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md)
 
 ### 🔐 **Security Reviewer / Assessor**
 Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)

@@ -31,8 +31,13 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
           
-          # Extract the section for this version from CHANGELOG.md
-          if [ -f CHANGELOG.md ]; then
+          # Extract the section for this version from CHANGELOG.md (docs/ or root)
+          if [ -f docs/CHANGELOG.md ]; then
+            CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" docs/CHANGELOG.md | sed '$d')
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGELOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          elif [ -f CHANGELOG.md ]; then
             CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | sed '$d')
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
             echo "$CHANGELOG" >> $GITHUB_OUTPUT
@@ -67,7 +72,8 @@ jobs:
           tar -czf oscal-frontend-${{ steps.version.outputs.version }}.tar.gz \
             frontend/dist
           
-          # Create full release archive
+          # Create full release archive (include root .md and .sh only if they exist)
+          ROOT_EXTRAS=$(find . -maxdepth 1 \( -name '*.md' -o -name '*.sh' \) 2>/dev/null | tr '\n' ' ')
           tar --exclude=backend/node_modules \
               --exclude=backend/test_cases \
               --exclude=frontend/node_modules \
@@ -80,8 +86,7 @@ jobs:
               backend/package-lock.json \
               frontend/dist \
               docs \
-              *.md \
-              *.sh
+              $ROOT_EXTRAS
       
       - name: 🎉 Create GitHub Release
         uses: softprops/action-gh-release@v1

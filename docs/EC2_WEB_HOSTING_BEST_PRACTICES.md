@@ -28,7 +28,7 @@ Use a **strict layout** so config is never confused with app code:
 |------|--------|
 | `/opt/oscal/app` | **App code only** (repo sync via rsync). No `config/` or `config.json`/`users.json` here. |
 | `/opt/oscal/data` | **Canonical config and users** on EBS: `config.json`, `users.json`. Used by systemd via `CONFIG_PATH`/`USERS_PATH`. |
-| `/opt/oscal/scripts` | Automation and helpers: `ec2_automation.sh`, `ec2_automation.env`, `reactivate-admin.sh`, etc. |
+| `/opt/oscal/scripts` | Automation and helpers: `ec2_automation.sh`, `ec2_automation.env`, `reactivate-admin.sh`, `consolidate-users.sh`, etc. |
 | `/opt/oscal/app/logs` | Application and ec2_automation logs. |
 
 **Best practice:** The deploy script **excludes** the repo `config/` directory from rsync so `/opt/oscal/app/config` is never created. Config and users live **only** in `/opt/oscal/data`. Seeding comes from S3 (last backup) or from the repo `config/app/*.json` when local files are missing.
@@ -109,8 +109,8 @@ Use a **strict layout** so config is never confused with app code:
     `sudo systemctl status oscal-reporter.service`  
     `sudo journalctl -u oscal-reporter.service -n 50 --no-pager`  
   - From repo root you can run:  
-    `./scripts/debug/check-blue-instance.sh` or  
-    `./scripts/debug/check-blue-instance.sh <blue_ip>`  
+    `./scripts/debug/check-oscal-instance.sh --blue` or  
+    `./scripts/debug/check-oscal-instance.sh --blue <blue_ip>`  
   That script shows service status, journalctl, disk, cron for `svc_ams-oscal`, `ec2_automation.env`, recent ec2_automation logs, and local `/health` on 3020.
 - **Blue only – disable cron and fix env now (one-off):**  
   `./scripts/debug/fix-blue-no-cron.sh`  
@@ -119,7 +119,7 @@ Use a **strict layout** so config is never confused with app code:
   `./scripts/debug/verify-ec2-backup.sh`  
   Checks crontab (as ec2-user; actual cron is under `svc_ams-oscal`), S3 env, and runs ec2_automation once.
 - **Pass vault on instances:**  
-  `./scripts/check-pass-vault-on-ec2.sh`  
+  `./scripts/debug/check-pass-vault-on-ec2.sh`  
   Reports whether config references Pass entries and if those are present on instances.
 - **AI engine (Ollama) unreachable from Green/Blue:**  
   See [AWS_TERRAFORM.md – Troubleshooting: AI Engine unreachable](AWS_TERRAFORM.md#troubleshooting-ai-engine-unreachable-from-greenblue). Use `./scripts/debug/check-ollama-connectivity.sh` (optionally `--blue-only <ip>` or `--green-only <ip>`).
@@ -133,8 +133,8 @@ Use a **strict layout** so config is never confused with app code:
 | `scripts/deploy-to-ec2.sh` | Full deploy to Green/Blue: code, config seed, cron, systemd, health check. |
 | `scripts/ec2_automation.sh` | Backup to S3; optional git pull + build + restart. Runs from cron on Green by default. |
 | `scripts/reactivate-admin.sh` | Reactivate admin user in `users.json`. Use repo path or pass path; works with `/opt/oscal/data/users.json`. |
-| `scripts/check-pass-vault-on-ec2.sh` | Check Pass vault usage on instances. |
-| `scripts/debug/check-blue-instance.sh` | Diagnose Blue: service, logs, disk, cron, ec2_automation, /health. |
+| `scripts/debug/check-pass-vault-on-ec2.sh` | Check Pass vault usage on instances. |
+| `scripts/debug/check-oscal-instance.sh` | Diagnose Green/Blue: service, logs, disk, cron, ec2_automation, /health. Use `--green` or `--blue`. |
 | `scripts/debug/fix-blue-no-cron.sh` | One-off: set ENABLE_GITHUB_UPDATE=false and remove ec2_automation cron on Blue. |
 | `scripts/debug/verify-ec2-backup.sh` | Verify backup path and run ec2_automation once. |
 | `scripts/debug/install-pass-svc-oscal.sh` | Install and initialize Pass for `svc_ams-oscal` on instance(s). |
@@ -176,5 +176,5 @@ Use a **strict layout** so config is never confused with app code:
 - [ ] App and cron run as `svc_ams-oscal`; Pass vault used for secrets.
 - [ ] Deploy via `./scripts/deploy-to-ec2.sh`; Terraform via `run-with-aws-pass.sh`.
 - [ ] Green: cron every 10 min (backup + optional GitHub update). Blue: no cron by default (manual deploy only).
-- [ ] Health verified after deploy; troubleshoot with `check-blue-instance.sh`, `journalctl`, and backup/Pass scripts as needed.
+- [ ] Health verified after deploy; troubleshoot with `check-oscal-instance.sh`, `journalctl`, and backup/Pass scripts as needed.
 - [ ] ALB idle timeout ≥ 300 s; SSH key from Pass or `SSH_KEY_FILE`.

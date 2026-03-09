@@ -1,7 +1,7 @@
 /**
  * Gemma Service
  * Provides AI-powered implementation text generation using Gemma models (Gemma, Gemma2, Gemma3)
- * Supports both Ollama (local) and Google AI API (cloud)
+ * Supports AWS Bedrock and Google AI API (cloud)
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
@@ -12,18 +12,7 @@ import axios from 'axios';
 import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
-import { logAIInteraction, logAIError } from './aiLogger.js';
-import { invokeOllamaWake } from './utils/ollamaWake.js';
-
-// AWS SDK imports (lazy loaded when needed)
-let BedrockRuntimeClient, ConverseCommand;
-try {
-  const awsModule = await import('@aws-sdk/client-bedrock-runtime');
-  BedrockRuntimeClient = awsModule.BedrockRuntimeClient;
-  ConverseCommand = awsModule.ConverseCommand;
-} catch (error) {
-  console.log('ℹ️ AWS SDK not installed. AWS Bedrock support disabled. Run: npm install @aws-sdk/client-bedrock-runtime');
-}
+import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
 
 let gemmaConfig = null;
 
@@ -46,28 +35,14 @@ export async function loadGemmaConfig() {
     let aiModel = 'gemma2';
     let aiTimeout = 30000;
     let aiApiToken = '';
-    let aiProvider = 'ollama';
-    let awsRegion = 'us-east-1';
-    let awsAccessKeyId = '';
-    let awsSecretAccessKey = '';
-    let bedrockModelId = '';
+    let aiProvider = 'aws-bedrock';
     
     if (config.aiConfig && config.aiConfig.enabled) {
       aiEnabled = true;
-      aiProvider = config.aiConfig.provider || 'ollama';
+      aiProvider = config.aiConfig.provider || 'aws-bedrock';
       aiTimeout = config.aiConfig.timeout || 180000;
-      
-      // Provider-specific configuration
-      if (aiProvider === 'aws-bedrock') {
-        // AWS Bedrock configuration
-        awsRegion = config.aiConfig.awsRegion || 'us-east-1';
-        awsAccessKeyId = config.aiConfig.awsAccessKeyId || '';
-        awsSecretAccessKey = config.aiConfig.awsSecretAccessKey || '';
-        bedrockModelId = config.aiConfig.bedrockModelId || '';
-        console.log(`🔧 Using AWS Bedrock in region: ${awsRegion}`);
-        console.log(`   Model: ${bedrockModelId}`);
-        console.log(`   Timeout: ${aiTimeout}ms (${aiTimeout/1000}s)`);
-      } else if (config.aiConfig.url) {
+
+      if (config.aiConfig.url) {
         // Ollama or Google AI API - requires URL
         let baseUrl = config.aiConfig.url.trim();
         
@@ -110,17 +85,12 @@ export async function loadGemmaConfig() {
     
     gemmaConfig = {
       enabled: aiEnabled || config.gemmaConfig?.enabled || false,
-      provider: aiProvider || 'ollama', // 'ollama', 'google-ai', or 'aws-bedrock'
+      provider: aiProvider || 'ollama', // 'ollama' or 'google-ai' (Bedrock Gemma is in bedrockGemmaService)
       ollamaUrl: defaultOllamaUrl,
       model: aiModel || config.gemmaConfig?.model || 'gemma2',
       apiToken: aiApiToken || config.gemmaConfig?.apiToken || '',
       googleApiKey: config.gemmaConfig?.googleApiKey || '',
       googleApiUrl: config.gemmaConfig?.googleApiUrl || 'https://generativelanguage.googleapis.com/v1/models',
-      // AWS Bedrock configuration
-      awsRegion: awsRegion,
-      awsAccessKeyId: awsAccessKeyId,
-      awsSecretAccessKey: awsSecretAccessKey,
-      bedrockModelId: bedrockModelId,
       timeout: aiTimeout || config.gemmaConfig?.timeout || 180000, // 180 seconds default for model loading and processing
       maxRetries: config.gemmaConfig?.maxRetries || 2,
       fallbackToPatternMatching: config.gemmaConfig?.fallbackToPatternMatching !== false,
@@ -163,8 +133,8 @@ export async function loadGemmaConfig() {
 /**
  * Generate implementation text using Ollama (local Gemma)
  */
-async function generateWithOllama(control, config, existingControls = []) {
-  const prompt = buildPrompt(control, existingControls);
+async function generateWithOllama(control, config, existingControls = [], promptOverride = null, logContext = {}) {
+  const prompt = promptOverride || buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   console.log(`🔗 Attempting to connect to Ollama at: ${config.ollamaUrl}`);
@@ -256,7 +226,8 @@ async function generateWithOllama(control, config, existingControls = []) {
           totalTokens: Math.ceil((prompt.length + cleanedResponse.length) / 4)
         },
         latency: latency,
-        status: 'success'
+        status: 'success',
+        context: logContext
       });
       
       console.log(`✅ Successfully received response from Ollama (${response.data.response.length} chars)`);
@@ -267,15 +238,13 @@ async function generateWithOllama(control, config, existingControls = []) {
     throw new Error('Invalid response format from Ollama');
     } catch (error) {
       lastError = error;
-      if (attempt === 0 && isOllamaUnreachable(error)) {
-        const waked = await invokeOllamaWake();
-        if (waked) {
-          console.log('⏳ Waiting 90s for Ollama ASG to scale up and NLB target to become healthy...');
-          await new Promise((r) => setTimeout(r, 90000));
-          continue;
-        }
+      const unreachable = attempt === 0 && isOllamaUnreachable(error);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemmaService.js:generateWithOllama:catch',message:'Ollama request failed',data:{attempt,errorCode:error?.code,errorMessage:error?.message?.slice(0,100),isOllamaUnreachable:unreachable},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      if (unreachable) {
+        break;
       }
-      break;
     }
   }
 
@@ -293,7 +262,8 @@ async function generateWithOllama(control, config, existingControls = []) {
       controlFamily: control.id?.split('-')[0] || 'unknown',
       errorCode: error?.code,
       latency: latency
-    }
+    },
+    context: logContext
   });
 
   if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND') {
@@ -327,12 +297,12 @@ async function generateWithOllama(control, config, existingControls = []) {
 /**
  * Generate implementation text using Google AI API (cloud)
  */
-async function generateWithGoogleAI(control, config, existingControls = []) {
+async function generateWithGoogleAI(control, config, existingControls = [], promptOverride = null, logContext = {}) {
   if (!config.googleApiKey) {
     throw new Error('Google AI API key not configured');
   }
 
-  const prompt = buildPrompt(control, existingControls);
+  const prompt = promptOverride || buildPrompt(control, existingControls);
   const startTime = Date.now();
   
   try {
@@ -392,7 +362,8 @@ async function generateWithGoogleAI(control, config, existingControls = []) {
           totalTokens: response.data.usageMetadata?.totalTokenCount || Math.ceil((prompt.length + cleanedResponse.length) / 4)
         },
         latency: latency,
-        status: 'success'
+        status: 'success',
+        context: logContext
       });
       
       return cleanedResponse;
@@ -415,156 +386,13 @@ async function generateWithGoogleAI(control, config, existingControls = []) {
         controlFamily: control.id?.split('-')[0] || 'unknown',
         errorCode: error.response?.status,
         latency: latency
-      }
+      },
+      context: logContext
     });
     
     if (error.response?.status === 401 || error.response?.status === 403) {
       throw new Error('Invalid Google AI API key');
     }
-    throw error;
-  }
-}
-
-/**
- * Generate implementation text using AWS Bedrock
- * Supports various models including Gemma on Bedrock
- */
-async function generateWithAWSBedrock(control, config, existingControls = []) {
-  if (!BedrockRuntimeClient || !ConverseCommand) {
-    throw new Error('AWS SDK not installed. Install with: npm install @aws-sdk/client-bedrock-runtime');
-  }
-
-  if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
-    throw new Error('AWS credentials not configured');
-  }
-
-  if (!config.awsRegion) {
-    throw new Error('AWS region not configured');
-  }
-
-  const prompt = buildPrompt(control, existingControls);
-  const startTime = Date.now();
-  
-  try {
-    console.log(`🔄 Connecting to AWS Bedrock in ${config.awsRegion}...`);
-    
-    // Import Node.js https and AWS SDK handler
-    const { Agent: HttpsAgent } = await import('https');
-    const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-    
-    // Create custom HTTPS agent to handle SSL certificate issues
-    // In production, you should use proper SSL certificates
-    const httpsAgent = new HttpsAgent({
-      rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
-      keepAlive: true
-    });
-    
-    // Create Bedrock Runtime client with custom request handler
-    const client = new BedrockRuntimeClient({
-      region: config.awsRegion,
-      credentials: {
-        accessKeyId: config.awsAccessKeyId,
-        secretAccessKey: config.awsSecretAccessKey
-      },
-      requestHandler: new NodeHttpHandler({
-        httpsAgent: httpsAgent,
-        connectionTimeout: 30000,
-        socketTimeout: config.timeout || 180000
-      })
-    });
-
-    // Set model ID from configuration
-    const modelId = config.bedrockModelId;
-    console.log(`📝 Using Bedrock model: ${modelId}`);
-
-    // Create the command with Converse API
-    const command = new ConverseCommand({
-      modelId: modelId,
-      messages: [
-        {
-          role: 'user',
-          content: [{ text: prompt }]
-        }
-      ],
-      inferenceConfig: {
-        maxTokens: config.maxTokens?.general || 512,
-        temperature: 0.7,
-        topP: 0.9
-      }
-    });
-
-    // Send the command and get response
-    const response = await client.send(command);
-
-    // Extract response text
-    if (response.output && response.output.message && response.output.message.content) {
-      const responseText = response.output.message.content[0]?.text;
-      if (responseText) {
-        const latency = Date.now() - startTime;
-        const cleanedResponse = cleanResponse(responseText);
-        
-        // Log successful AI interaction (OTel GenAI Semantic Conventions)
-        logAIInteraction({
-          provider: 'aws-bedrock',
-          model: modelId,
-          operation: 'converse',
-          prompt: prompt,
-          response: cleanedResponse,
-          metadata: {
-            controlId: control.id,
-            controlTitle: control.title,
-            controlFamily: control.id?.split('-')[0] || 'unknown',
-            temperature: 0.7,
-            topP: 0.9,
-            maxTokens: config.maxTokens?.general || 512,
-            awsRegion: config.awsRegion,
-            finishReasons: response.stopReason ? [response.stopReason] : []
-          },
-          tokenUsage: {
-            inputTokens: response.usage?.inputTokens || Math.ceil(prompt.length / 4),
-            outputTokens: response.usage?.outputTokens || Math.ceil(cleanedResponse.length / 4),
-            totalTokens: response.usage?.totalTokens || Math.ceil((prompt.length + cleanedResponse.length) / 4)
-          },
-          latency: latency,
-          status: 'success'
-        });
-        
-        console.log(`✅ Received response from AWS Bedrock (${responseText.length} chars)`);
-        return cleanedResponse;
-      }
-    }
-    
-    throw new Error('Invalid response format from AWS Bedrock');
-  } catch (error) {
-    const latency = Date.now() - startTime;
-    
-    // Log AI error (OTel GenAI Semantic Conventions)
-    logAIError({
-      provider: 'aws-bedrock',
-      model: config.bedrockModelId,
-      operation: 'converse',
-      prompt: prompt,
-      error: error,
-      metadata: {
-        controlId: control.id,
-        controlTitle: control.title,
-        controlFamily: control.id?.split('-')[0] || 'unknown',
-        awsRegion: config.awsRegion,
-        errorName: error.name,
-        latency: latency
-      }
-    });
-    
-    if (error.name === 'AccessDeniedException') {
-      throw new Error('AWS Access Denied. Check your credentials and IAM permissions (bedrock:InvokeModel required)');
-    }
-    if (error.name === 'ResourceNotFoundException') {
-      throw new Error(`Model not found: ${config.bedrockModelId}. Check model ID and region availability`);
-    }
-    if (error.name === 'ThrottlingException') {
-      throw new Error('AWS Bedrock throttling limit reached. Please try again later');
-    }
-    console.error(`❌ AWS Bedrock error:`, error.message);
     throw error;
   }
 }
@@ -614,6 +442,18 @@ function analyzeWritingStyle(existingControls) {
     avgLength: Math.round(avgLength),
     commonPhrases: commonPhrases.slice(0, 3)
   };
+}
+
+/**
+ * Extract non-empty Additional Notes / Consumer Guidance (remarks) from existing controls
+ * so the AI can match style and suggest similar wording when relevant.
+ */
+function getRemarksExamples(existingControls) {
+  if (!existingControls || existingControls.length === 0) return [];
+  return existingControls
+    .map(c => (c.remarks != null ? String(c.remarks).trim() : ''))
+    .filter(r => r.length > 10)
+    .slice(0, 15);
 }
 
 /**
@@ -688,6 +528,71 @@ Implementation Description:`;
 }
 
 /**
+ * Build extended prompt requesting JSON with implementation, testingObjective, testingProcedure, remarks
+ * Includes existing implementation AND remarks examples so the AI can suggest Additional Notes in the same style.
+ */
+function buildExtendedPrompt(control, existingControls = []) {
+  const basePrompt = buildPrompt(control, existingControls);
+  const remarksExamples = getRemarksExamples(existingControls);
+  const remarksGuidance = remarksExamples.length > 0
+    ? `
+
+EXAMPLES of Additional Notes / Consumer Guidance from your existing controls (match this style when you suggest remarks):
+${remarksExamples.map((r, idx) => `${idx + 1}. "${r}"`).join('\n')}
+
+When relevant, suggest a brief additional note or consumer guidance in the same style as above; otherwise use empty string for "remarks".`
+    : '';
+
+  return `${basePrompt}
+
+Alternatively, respond with a JSON object containing all of the following (use this format so we can fill Implementation, Assessment/Testing Objective, Testing Method, and Additional Notes):${remarksGuidance}
+
+Respond with ONLY a valid JSON object, no other text. Use this exact structure:
+{
+  "implementation": "2-3 sentences, 250 chars or less, describing what has been implemented (past/present perfect tense).",
+  "testingObjective": "One sentence: the objective of assessing this control (e.g., Verify that...).",
+  "testingProcedure": "One sentence: how this control is tested (e.g., Manual review of...; Automated by tools).",
+  "remarks": "Optional brief additional notes or consumer guidance, or empty string if none."
+}
+
+Requirements for each field: implementation (250 chars or less); testingObjective and testingProcedure (one clear sentence each); remarks (short or empty; when you have example style above, prefer suggesting a brief note when it would help the assessor). Respond with ONLY the JSON object.`;
+}
+
+/**
+ * Parse structured JSON response into { implementation, testingObjective, testingProcedure, remarks }
+ * Handles responses with leading text (e.g. "Implementation Description: {...}") or markdown code blocks.
+ */
+function parseStructuredResponse(rawResponse) {
+  if (!rawResponse || typeof rawResponse !== 'string') return null;
+  let text = rawResponse.trim();
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) text = codeBlockMatch[1].trim();
+  text = text.replace(/^(Implementation Description|Description|Implementation):\s*/i, '').trim();
+  const start = text.indexOf('{');
+  if (start !== -1) {
+    const end = text.lastIndexOf('}') + 1;
+    if (end > start) text = text.slice(start, end);
+  }
+  text = text.replace(/\.\s*$/, '').trim(); // strip trailing period that some models add
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const implementation = typeof parsed.implementation === 'string' ? cleanResponse(parsed.implementation) : null;
+    const testingObjective = typeof parsed.testingObjective === 'string' ? parsed.testingObjective.trim() : null;
+    const testingProcedure = typeof parsed.testingProcedure === 'string' ? parsed.testingProcedure.trim() : null;
+    const remarks = typeof parsed.remarks === 'string' ? parsed.remarks.trim() : '';
+    return {
+      implementation: implementation && implementation.length > 10 ? implementation : null,
+      testingObjective: testingObjective && testingObjective.length > 5 ? testingObjective : null,
+      testingProcedure: testingProcedure && testingProcedure.length > 5 ? testingProcedure : null,
+      remarks: remarks || ''
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Clean and format the AI response
  */
 function cleanResponse(response) {
@@ -751,86 +656,105 @@ function cleanResponse(response) {
  * @param {Object} control - Control object
  * @param {Object} config - Provider config
  * @param {Array} existingControls - Existing controls for context
- * @returns {Promise<string|null>} Implementation text or null
+ * @param {{ extended?: boolean }} [options] - When extended, use prompt that returns JSON and parse to { implementation, testingObjective, testingProcedure, remarks }
+ * @returns {Promise<string|Object|null>} Implementation text, or extended object, or null
  */
-async function tryGenerateWithProvider(provider, control, config, existingControls) {
+async function tryGenerateWithProvider(provider, control, config, existingControls, options = {}) {
   const maxRetries = config.maxRetries || 2;
+  const extended = !!options.extended;
+  const prompt = extended ? buildExtendedPrompt(control, existingControls) : null;
+  const logContext = buildLogContext(options.requestUser);
   let lastError = null;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      let implementation = null;
-      
+      let raw = null;
       if (provider === 'ollama') {
-        implementation = await generateWithOllama(control, config, existingControls);
+        raw = await generateWithOllama(control, config, existingControls, prompt, logContext);
       } else if (provider === 'google-ai') {
-        implementation = await generateWithGoogleAI(control, config, existingControls);
-      } else if (provider === 'aws-bedrock') {
-        implementation = await generateWithAWSBedrock(control, config, existingControls);
+        raw = await generateWithGoogleAI(control, config, existingControls, prompt, logContext);
       } else {
         throw new Error(`Unknown AI provider: ${provider}`);
       }
-      
-      if (implementation && implementation.length > 50) {
+
+      if (extended && raw && typeof raw === 'string') {
+        const parsed = parseStructuredResponse(raw);
+        if (parsed && parsed.implementation && parsed.implementation.length > 50) {
+          console.log(`✅ Successfully generated extended suggestions with ${provider} (attempt ${attempt + 1})`);
+          return parsed;
+        }
+        // Extended mode: never use raw response as implementation (it may be JSON); retry or throw
+        continue;
+      }
+      if (raw && typeof raw === 'string' && raw.length > 50) {
         console.log(`✅ Successfully generated implementation with ${provider} (attempt ${attempt + 1})`);
-        return implementation;
+        return raw;
       }
     } catch (error) {
       lastError = error;
       console.warn(`⚠️ ${provider} generation attempt ${attempt + 1} failed:`, error.message);
-      
+
       if (attempt < maxRetries) {
-        // Wait before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
       }
     }
   }
-  
+
   throw lastError || new Error(`${provider} generation failed after all retries`);
+}
+
+function normalizeAIResult(result, provider, extra = {}) {
+  if (!result) return null;
+  if (typeof result === 'object' && result.implementation) {
+    return {
+      text: result.implementation,
+      testingObjective: result.testingObjective || undefined,
+      testingProcedure: result.testingProcedure || undefined,
+      remarks: result.remarks !== undefined ? result.remarks : undefined,
+      aiGenerated: true,
+      attempted: true,
+      provider,
+      ...extra
+    };
+  }
+  if (typeof result === 'string' && result.length > 50) {
+    return { text: result, aiGenerated: true, attempted: true, provider, ...extra };
+  }
+  return null;
 }
 
 /**
  * Generate implementation with dual-method fallback pattern
- * Tries primary provider first, falls back to secondary provider if available
- * 
- * @param {Object} control - Control object
- * @param {Function} fallbackGenerator - Fallback generator for pattern matching
- * @param {Array} existingControls - Existing controls for context
- * @returns {Promise<Object|null>} Result object with text, aiGenerated, attempted flags
+ * @param {{ extended?: boolean }} [options] - When extended, request implementation + testingObjective + testingProcedure + remarks
  */
-export async function generateImplementationWithGemma(control, fallbackGenerator, existingControls = []) {
+export async function generateImplementationWithGemma(control, fallbackGenerator, existingControls = [], options = {}) {
   try {
     const config = await loadGemmaConfig();
-    
-    // Check if Gemma is enabled
+    const extended = !!options.extended;
+
     if (!config.enabled) {
       console.log('🤖 Gemma is disabled, using fallback');
-      // Return fallback with flag indicating Gemma was not attempted
       const fallback = fallbackGenerator ? fallbackGenerator(control) : null;
       return fallback ? { text: fallback, aiGenerated: false, attempted: false } : null;
     }
 
-    console.log(`🤖 Generating implementation with ${config.provider} for control: ${control.id}`);
+    console.log(`🤖 Generating implementation with ${config.provider} for control: ${control.id}${extended ? ' (extended fields)' : ''}`);
     
     let implementation = null;
     let primaryProvider = config.provider;
     let fallbackProvider = null;
     let primaryError = null;
-    
-    // Define provider fallback chain (Dual-Method Fallback Pattern)
-    // Priority: Configured Provider -> Local Ollama (if available) -> Pattern Matching
-    if (config.provider === 'google-ai' || config.provider === 'aws-bedrock') {
-      // If using cloud service, fallback to local Ollama
+    const providerOptions = { extended: !!extended, requestUser: options.requestUser };
+
+    // Only fall back to Ollama for google-ai (aws-bedrock+gemma is handled by bedrockGemmaService)
+    if (config.provider === 'google-ai') {
       fallbackProvider = 'ollama';
     }
     
-    // Try primary provider
     try {
-      implementation = await tryGenerateWithProvider(primaryProvider, control, config, existingControls);
-      
-      if (implementation && implementation.length > 50) {
-        return { text: implementation, aiGenerated: true, attempted: true, provider: primaryProvider };
-      }
+      implementation = await tryGenerateWithProvider(primaryProvider, control, config, existingControls, providerOptions);
+      const normalized = normalizeAIResult(implementation, primaryProvider);
+      if (normalized) return normalized;
     } catch (error) {
       primaryError = error;
       console.warn(`⚠️ Primary provider (${primaryProvider}) failed:`, error.message);
@@ -850,22 +774,11 @@ export async function generateImplementationWithGemma(control, fallbackGenerator
           maxRetries: 1 // Fewer retries for fallback
         };
         
-        implementation = await tryGenerateWithProvider(fallbackProvider, control, fallbackConfig, existingControls);
-        
-        if (implementation && implementation.length > 50) {
-          console.log(`✅ Successfully generated with fallback provider (${fallbackProvider})`);
-          return { 
-            text: implementation, 
-            aiGenerated: true, 
-            attempted: true, 
-            provider: fallbackProvider,
-            usedFallback: true,
-            primaryError: primaryError?.message
-          };
-        }
+        implementation = await tryGenerateWithProvider(fallbackProvider, control, fallbackConfig, existingControls, providerOptions);
+        const normalized = normalizeAIResult(implementation, fallbackProvider, { usedFallback: true, primaryError: primaryError?.message });
+        if (normalized) return normalized;
       } catch (fallbackError) {
         console.warn(`⚠️ Fallback provider (${fallbackProvider}) also failed:`, fallbackError.message);
-        // Continue to pattern matching fallback
       }
     }
     
@@ -1006,39 +919,6 @@ export async function checkGemmaAvailability() {
         provider: 'google-ai',
         reason: 'Google AI API configured (availability not tested)'
       };
-    } else if (config.provider === 'aws-bedrock') {
-      // Check AWS Bedrock configuration
-      if (!BedrockRuntimeClient || !ConverseCommand) {
-        return {
-          available: false,
-          provider: 'aws-bedrock',
-          reason: 'AWS SDK not installed. Run: npm install @aws-sdk/client-bedrock-runtime'
-        };
-      }
-      
-      if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
-        return {
-          available: false,
-          provider: 'aws-bedrock',
-          reason: 'AWS credentials not configured'
-        };
-      }
-      
-      if (!config.awsRegion) {
-        return {
-          available: false,
-          provider: 'aws-bedrock',
-          reason: 'AWS region not configured'
-        };
-      }
-      
-      return {
-        available: true,
-        provider: 'aws-bedrock',
-        awsRegion: config.awsRegion,
-        bedrockModelId: config.bedrockModelId,
-        reason: 'AWS Bedrock configured (credentials not validated - will be tested on first API call)'
-      };
     }
     
     return {
@@ -1052,6 +932,8 @@ export async function checkGemmaAvailability() {
     };
   }
 }
+
+export { buildPrompt, buildExtendedPrompt, cleanResponse, parseStructuredResponse };
 
 export default {
   generateImplementationWithGemma,
