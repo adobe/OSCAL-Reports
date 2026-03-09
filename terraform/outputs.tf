@@ -1,7 +1,7 @@
-# Outputs for OSCAL + Ollama deployment
+# Outputs for OSCAL deployment (AI via AWS Bedrock)
 
 output "aws_region" {
-  description = "AWS region (for scripts that need region, e.g. scripts/debug/check-ollama-connectivity.sh)"
+  description = "AWS region (for scripts that need region)"
   value       = var.aws_region
 }
 
@@ -93,48 +93,8 @@ output "oscal_blue_public_ip" {
 }
 
 output "s3_logs_bucket_name" {
-  description = "S3 bucket for logs and ollama-activity state"
+  description = "S3 bucket for logs, config, and users"
   value       = aws_s3_bucket.logs.id
-}
-
-output "s3_activity_key" {
-  description = "S3 key for Ollama last activity (for Lambda env)"
-  value       = "ollama-activity/last.json"
-}
-
-output "lambda_ollama_controller_name" {
-  description = "Lambda function name for OSCAL backend config (wake Ollama)"
-  value       = aws_lambda_function.ollama_controller.function_name
-}
-
-output "ollama_asg_name" {
-  description = "Auto Scaling Group name for Ollama"
-  value       = aws_autoscaling_group.ollama.name
-}
-
-output "ollama_public_ip" {
-  description = "Public IP of the running Ollama instance (for SSH from laptop). Use this for ssh ec2-user@<this-ip>. Run terraform refresh if ASG just scaled up. If null, no instance is running (ASG may be 0)."
-  value       = length(data.aws_instances.ollama.public_ips) > 0 ? data.aws_instances.ollama.public_ips[0] : null
-}
-
-output "ollama_instance_id" {
-  description = "Instance ID of the running Ollama instance (for Session Manager or AWS CLI). Empty if ASG has 0 instances."
-  value       = length(data.aws_instances.ollama.ids) > 0 ? data.aws_instances.ollama.ids[0] : null
-}
-
-output "ollama_nlb_dns_name" {
-  description = "Internal DNS name of the Ollama Network Load Balancer (use with port 11434)"
-  value       = aws_lb.ollama.dns_name
-}
-
-output "ollama_url" {
-  description = "URL to use for OLLAMA_URL when system is in same VPC; Lambda can start ASG when scaled to 0"
-  value       = "http://${aws_lb.ollama.dns_name}:11434"
-}
-
-output "ollama_target_group_arn" {
-  description = "ARN of the Ollama NLB target group (for manual target registration if needed)"
-  value       = aws_lb_target_group.ollama.arn
 }
 
 output "vpc_id" {
@@ -143,11 +103,11 @@ output "vpc_id" {
 }
 
 output "vpc_cidr" {
-  description = "VPC CIDR (e.g. for firewalld allow 11434 from internal only)"
+  description = "VPC CIDR"
   value       = var.vpc_cidr
 }
 
-output "ollama_public_subnet_id" {
-  description = "First public subnet ID (for run-instances when launching Ollama outside ASG)"
+output "public_subnet_id" {
+  description = "First public subnet ID"
   value       = aws_subnet.public[0].id
 }

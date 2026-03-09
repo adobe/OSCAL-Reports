@@ -113,7 +113,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
 
     // AI Test Connection (Protected, CSRF Exempt)
     app.post('/api/ai/test-connection', mockAuthenticate, mockAuthorize('EDIT_SETTINGS'), async (req, res) => {
-      const { provider = 'ollama', url } = req.body;
+      const { provider = 'aws-bedrock', url } = req.body;
 
       res.json({
         success: true,
@@ -251,7 +251,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
     test('POST /api/ai/test-connection should require Bearer token', async () => {
       const response = await request(app)
         .post('/api/ai/test-connection')
-        .send({ provider: 'ollama', url: 'http://localhost:11434' })
+        .send({ provider: 'aws-bedrock', awsRegion: 'us-east-1' })
         .expect(401);
 
       expect(response.body).toHaveProperty('error', 'Authentication required');
@@ -261,7 +261,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       const response = await request(app)
         .post('/api/ai/test-connection')
         .set('Authorization', `Bearer ${adminBearerToken}`)
-        .send({ provider: 'ollama', url: 'http://localhost:11434' })
+        .send({ provider: 'aws-bedrock', awsRegion: 'us-east-1' })
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
@@ -272,7 +272,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       const response = await request(app)
         .post('/api/ai/test-connection')
         .set('Authorization', `Bearer ${adminBearerToken}`)
-        .send({ provider: 'ollama', url: 'http://localhost:11434' })
+        .send({ provider: 'aws-bedrock', awsRegion: 'us-east-1' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -345,7 +345,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       await request(app)
         .post('/api/ai/test-connection')
         .set('Authorization', 'InvalidFormat token123')
-        .send({ provider: 'ollama' })
+        .send({ provider: 'aws-bedrock' })
         .expect(401);
     });
 
@@ -353,7 +353,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       await request(app)
         .post('/api/ai/test-connection')
         .set('Authorization', 'Bearer invalid-token')
-        .send({ provider: 'ollama' })
+        .send({ provider: 'aws-bedrock' })
         .expect(401);
     });
 
@@ -361,7 +361,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       const response = await request(app)
         .post('/api/ai/test-connection')
         .set('Authorization', `Bearer ${adminBearerToken}`)
-        .send({ provider: 'ollama', url: 'http://localhost:11434' })
+        .send({ provider: 'aws-bedrock', awsRegion: 'us-east-1' })
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -415,7 +415,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
   describe('Security Controls Remain Active', () => {
     test('should enforce Bearer token authentication on protected endpoints', async () => {
       const protectedEndpoints = [
-        { method: 'post', path: '/api/ai/test-connection', body: { provider: 'ollama' } },
+        { method: 'post', path: '/api/ai/test-connection', body: { provider: 'aws-bedrock' } },
         { method: 'post', path: '/api/settings', body: { publishedSoaUrl: 'https://test.com' } },
         { method: 'get', path: '/api/users', body: null },
       ];

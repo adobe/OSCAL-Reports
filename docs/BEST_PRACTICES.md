@@ -3750,7 +3750,7 @@ All 10 recommendations from the KACI-Parental_Control best practices comparison 
 
 #### 2. Color-Coded Terminal Output ✅
 **Status:** COMPLETE  
-**Files:** `setup.sh`, `build_on_truenas.sh`
+**Files:** `setup.sh`, `retired/truenas-build/build_on_truenas.sh`
 
 **Functions Added:**
 ```bash
@@ -3965,7 +3965,7 @@ print_info()     # Blue ℹ
 
 **Files Modified:** 3
 - `setup.sh` (completely rewritten, ~950 lines)
-- `build_on_truenas.sh` (added color coding)
+- `retired/truenas-build/build_on_truenas.sh` (added color coding; retired)
 - `BEST_PRACTICES_OSCAL_REPORTS.md` (added 4 new sections, ~500 lines added)
 - `frontend/src/App.jsx` (integrated Footer component)
 
@@ -4307,7 +4307,7 @@ print_info() { echo "${BLUE}ℹ${NC}  $1"; }
 **Recommendation:**
 Add color coding to all shell scripts:
 - `setup.sh`
-- `build_on_truenas.sh`
+- `retired/truenas-build/build_on_truenas.sh`
 - `scripts/reactivate-admin.sh`
 
 **Benefits:**

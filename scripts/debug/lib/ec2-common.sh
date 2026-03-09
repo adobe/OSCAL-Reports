@@ -50,12 +50,6 @@ get_terraform_oscal_ip() {
   "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw "oscal_${which}_private_ip" 2>/dev/null || true
 }
 
-# Get Ollama instance IP from Terraform.
-get_terraform_ollama_ip() {
-  [ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ] && return 1
-  "$TERRAFORM_DIR/run-with-aws-pass.sh" output -raw ollama_public_ip 2>/dev/null || true
-}
-
 # Load AWS credentials from Pass (AWS_PASS_ENTRY). Exports AWS_ACCESS_KEY_ID, etc.
 # Returns 0 if already set or loaded; 1 if failed.
 load_aws_from_pass() {

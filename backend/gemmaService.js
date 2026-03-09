@@ -1,7 +1,7 @@
 /**
  * Gemma Service
  * Provides AI-powered implementation text generation using Gemma models (Gemma, Gemma2, Gemma3)
- * Supports both Ollama (local) and Google AI API (cloud)
+ * Supports AWS Bedrock and Google AI API (cloud)
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
@@ -13,7 +13,6 @@ import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
 import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
-import { invokeOllamaWake } from './utils/ollamaWake.js';
 
 let gemmaConfig = null;
 
@@ -36,11 +35,11 @@ export async function loadGemmaConfig() {
     let aiModel = 'gemma2';
     let aiTimeout = 30000;
     let aiApiToken = '';
-    let aiProvider = 'ollama';
+    let aiProvider = 'aws-bedrock';
     
     if (config.aiConfig && config.aiConfig.enabled) {
       aiEnabled = true;
-      aiProvider = config.aiConfig.provider || 'ollama';
+      aiProvider = config.aiConfig.provider || 'aws-bedrock';
       aiTimeout = config.aiConfig.timeout || 180000;
 
       if (config.aiConfig.url) {
@@ -244,17 +243,8 @@ async function generateWithOllama(control, config, existingControls = [], prompt
       fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemmaService.js:generateWithOllama:catch',message:'Ollama request failed',data:{attempt,errorCode:error?.code,errorMessage:error?.message?.slice(0,100),isOllamaUnreachable:unreachable},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
       // #endregion
       if (unreachable) {
-        const waked = await invokeOllamaWake();
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemmaService.js:generateWithOllama:afterWake',message:'invokeOllamaWake result',data:{waked},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-        // #endregion
-        if (waked) {
-          console.log('⏳ Waiting 90s for Ollama ASG to scale up and NLB target to become healthy...');
-          await new Promise((r) => setTimeout(r, 90000));
-          continue;
-        }
+        break;
       }
-      break;
     }
   }
 

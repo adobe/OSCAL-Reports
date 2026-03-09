@@ -2,6 +2,8 @@
 
 **Single guide for installing and running OSCAL Report Generator on TrueNAS SCALE.**
 
+*This doc is retired; kept in `retired/truenas-build/` for reference. See [README.md](README.md) in this folder.*
+
 ---
 
 ## Quick Reference (5-Minute Setup)
@@ -103,7 +105,7 @@ Use a `my-values.yaml` with `image.repository: keekar/oscal_reports`, `image.tag
 
 **Status:** PR submitted (https://github.com/truenas/apps/pull/4144). Until merged, use Method 1 or 2.
 
-After approval: Apps → Discover Apps → search “OSCAL Report Generator” → Install and configure.
+After approval: Apps → Discover Apps → search "OSCAL Report Generator" → Install and configure.
 
 ---
 
@@ -127,9 +129,9 @@ After approval: Apps → Discover Apps → search “OSCAL Report Generator” �
 
 ## Troubleshooting
 
-- **Pod won’t start:** `k3s kubectl describe pod -n ix-oscal-report-generator [pod-name]` and check logs.
+- **Pod won't start:** `k3s kubectl describe pod -n ix-oscal-report-generator [pod-name]` and check logs.
 - **Storage permissions:** `sudo chown -R 568:568 /mnt/pool1/apps/oscal/config` and `sudo chmod -R 755 ...`
-- **Can’t access:** Confirm pod running, service exists, and NodePort/firewall allow 30200.
+- **Can't access:** Confirm pod running, service exists, and NodePort/firewall allow 30200.
 
 ---
 
@@ -149,4 +151,4 @@ After approval: Apps → Discover Apps → search “OSCAL Report Generator” �
 
 ---
 
-*Last updated: February 2026*
+*Last updated: February 2026. Retired to retired/truenas-build/ March 2026.*

@@ -1,16 +1,16 @@
-# 📊 AWS Architecture Diagrams
+# AWS Architecture Diagrams
 
 This folder contains Mermaid diagram files for the AWS deployment architecture.
 
 ## Files
 
-1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram (ALB, Green/Blue, Ollama NLB, ASG, Lambda, S3). OSCAL uses **OLLAMA_URL** (internal NLB:11434) to reach Ollama; Lambda wakes ASG when scaled to 0.
-2. **workflow-timeline.mmd** - Sequence diagram showing wake/sleep workflow (includes NLB in AI request path)
-3. **generate-diagram.html** - Interactive HTML that renders both diagrams and supports PNG download
+1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram: ALB, Green/Blue OSCAL instances (t3.small), S3 (logs, config, users), and AWS Bedrock for AI. No self-hosted Ollama; AI is pay-per-use via Bedrock.
+2. **workflow-timeline.mmd** - Sequence diagram for user flow: access app via ALB, then AI suggest via Bedrock (no wake/sleep or scaling).
+3. **generate-diagram.html** - Interactive HTML that renders both diagrams and supports PNG download.
 
-## 🎨 Convert to PNG/GIF for Email
+## Convert to PNG/SVG for Email
 
-### Option 1: Online Converter (Easiest) ⭐
+### Option 1: Online converter (easiest)
 
 1. **Mermaid Live Editor**: https://mermaid.live/
    - Copy the contents of the `.mmd` file
@@ -22,13 +22,13 @@ This folder contains Mermaid diagram files for the AWS deployment architecture.
    - Use URL format: `https://mermaid.ink/img/[base64-encoded-diagram]`
    - Or use their online tool
 
-### Option 2: VS Code Extension
+### Option 2: VS Code extension
 
 1. Install "Markdown Preview Mermaid Support" extension
 2. Open the `.mmd` file
 3. Right-click and select "Export as PNG"
 
-### Option 3: Command Line (for automation)
+### Option 3: Command line (for automation)
 
 ```bash
 # Install mermaid-cli
@@ -41,20 +41,18 @@ mmdc -i aws-auto-scaling-architecture.mmd -o aws-architecture.png -w 1920 -H 108
 mmdc -i aws-auto-scaling-architecture.mmd -o aws-architecture.svg
 ```
 
-### Option 4: Python Script
+### Option 4: Convert all diagrams
 
 ```bash
-# Install playwright (required by mermaid-cli)
 npm install -g @mermaid-js/mermaid-cli
 npx playwright install chromium
 
-# Convert all diagrams
 for file in *.mmd; do
     mmdc -i "$file" -o "${file%.mmd}.png" -w 1920 -H 1080 -b white
 done
 ```
 
-## 🖼️ Recommended Settings for Email
+## Recommended settings for email
 
 - **Format**: PNG (best compatibility)
 - **Width**: 1920px (high quality)
@@ -62,15 +60,15 @@ done
 - **Background**: White
 - **Theme**: Default or Forest
 
-## 📧 Email-Ready Formats
+## Output files
 
-After conversion, you'll have:
-- `aws-auto-scaling-architecture.png` - Main architecture
-- `workflow-timeline.png` - Sequence diagram
+After conversion you get:
+- `aws-auto-scaling-architecture.png` - Main architecture (ALB, Green/Blue, S3, Bedrock)
+- `workflow-timeline.png` - User and AI workflow sequence
 
-Both are ready to insert directly into emails!
+Both are suitable for email or docs.
 
-## 🎨 Customization
+## Customization
 
 To modify the diagrams:
 1. Edit the `.mmd` files
@@ -78,7 +76,7 @@ To modify the diagrams:
 3. Change layout with `flowchart TB` (top-bottom) or `LR` (left-right)
 4. Reconvert to PNG
 
-## 💡 Tips
+## Tips
 
 - Use PNG for emails (better compatibility)
 - Use SVG for presentations (scalable)
