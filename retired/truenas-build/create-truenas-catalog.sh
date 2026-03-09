@@ -7,6 +7,9 @@
 #
 # Author: Mukesh Kesharwani
 # Date: January 2026
+#
+# NOTE: Retired; moved to retired/truenas-build/ (see README there).
+# When run from this folder, PROJECT_ROOT is retired/; truenas-chart may need to be at repo root.
 
 set -e
 
@@ -40,9 +43,9 @@ fi
 echo -e "${GREEN}✓ Helm is installed${NC}"
 echo ""
 
-# Get current directory
+# Get current directory (retired/truenas-build); project root = repo root for chart
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CHART_SOURCE="$PROJECT_ROOT/truenas-chart"
 
 echo -e "${BLUE}Configuration:${NC}"
@@ -234,6 +237,6 @@ echo "   $CATALOG_DIR/charts/$APP_NAME/$CHART_VERSION/icon.png"
 echo "   Then regenerate index: cd $CATALOG_DIR && helm repo index ."
 echo ""
 echo -e "${BLUE}Catalog Location:${NC} $CATALOG_DIR"
-echo -e "${BLUE}Documentation:${NC} $PROJECT_ROOT/docs/TRUENAS_CUSTOM_CATALOG_SETUP.md"
+echo -e "${BLUE}Documentation:${NC} $PROJECT_ROOT/docs (or TRUENAS_CUSTOM_CATALOG_SETUP.md if present)"
 echo ""
 echo -e "${GREEN}Happy publishing! 🚀${NC}"

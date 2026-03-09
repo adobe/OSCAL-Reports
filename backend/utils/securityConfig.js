@@ -92,7 +92,6 @@ export const SSRF_PROTECTED_ENDPOINTS = [
   '/api/proxy-fetch',
   '/api/saml/metadata-url',
   '/api/ai/test',
-  '/api/ollama/test',
 ];
 
 export default SECURITY_CONFIG;

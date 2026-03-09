@@ -29,7 +29,7 @@ On TrueNAS (e.g. truenas.keekar.com) or any host running multiple OSCAL instance
 
 **Port 3021:** The codebase only defines Blue (3020) and Green (3019). If you have a third instance on **3021**, it was likely created separately (e.g. another TrueNAS Custom App or chart release). Its data lives in **whatever storage path that app was given** (e.g. a third host path or PVC for that release). To see which directory a 3021 instance uses, check that app’s **Storage** or **Volumes** in the TrueNAS Apps UI, or the deploy path for that clone.
 
-**TrueNAS volume paths (examples):** If you use `build_on_truenas.sh` or custom paths, Blue might be `/mnt/pool/oscal-data-blue` and Green `/mnt/pool/oscal-data-green`. The script uses `DATA_VOLUME_BASE-blue` and `DATA_VOLUME_BASE-green`; `DATA_VOLUME_BASE` is set in the script or derived from the deployment directory.
+**TrueNAS volume paths (examples):** If you use the TrueNAS build script (`retired/truenas-build/build_on_truenas.sh`) or custom paths, Blue might be `/mnt/pool/oscal-data-blue` and Green `/mnt/pool/oscal-data-green`. The script uses `DATA_VOLUME_BASE-blue` and `DATA_VOLUME_BASE-green`; `DATA_VOLUME_BASE` is set in the script or derived from the deployment directory.
 
 ---
 
@@ -171,7 +171,7 @@ If you have a backup tarball or files elsewhere:
 
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md)
-- [TRUENAS.md](TRUENAS.md)
+- [TrueNAS (retired)](../retired/truenas-build/TRUENAS.md)
 
 ---
 

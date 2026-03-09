@@ -1,4 +1,4 @@
-# S3 bucket for logs and Ollama activity state (last.json)
+# S3 bucket for logs, config, and users
 # Best practice (docs/IMAGE_FACTORY.md): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
 # Terraform forces lowercase to satisfy S3 and avoid InvalidBucketName.
 
@@ -23,18 +23,10 @@ resource "aws_s3_bucket_public_access_block" "logs" {
   restrict_public_buckets = true
 }
 
-# Folder placeholders so the bucket has subfolders: logs, ollama-activity, config, users (S3 uses key prefixes; empty object with trailing / creates folder in console)
+# Folder placeholders so the bucket has subfolders: logs, config, users (S3 uses key prefixes; empty object with trailing / creates folder in console)
 resource "aws_s3_object" "folder_logs" {
   bucket       = aws_s3_bucket.logs.id
   key          = "logs/"
-  content_type = "application/x-directory"
-  content      = ""
-  etag         = md5("")
-}
-
-resource "aws_s3_object" "folder_ollama_activity" {
-  bucket       = aws_s3_bucket.logs.id
-  key          = "ollama-activity/"
   content_type = "application/x-directory"
   content      = ""
   etag         = md5("")
@@ -71,14 +63,6 @@ resource "aws_s3_object" "folder_config_blue" {
   content_type = "application/x-directory"
   content      = ""
   etag         = md5("")
-}
-
-# Initial activity object so Lambda does not fail on first read
-resource "aws_s3_object" "ollama_activity_initial" {
-  bucket  = aws_s3_bucket.logs.id
-  key     = "ollama-activity/last.json"
-  content = "{\"last_activity\": \"\"}"
-  etag    = md5("{\"last_activity\": \"\"}")
 }
 
 # On destroy: if the bucket is not empty, Terraform may fail with BucketNotEmpty. Empty the bucket in the AWS console (or use aws s3 rm) then run destroy again. Config/users/logs are backed up to S3 every 10 min by ec2_automation on the instances.

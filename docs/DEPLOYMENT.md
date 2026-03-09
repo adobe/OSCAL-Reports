@@ -261,15 +261,16 @@ cd /mnt/pool1/Documents/KACI-Apps
 # Clone Blue instance (Port 3020)
 git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
-chmod +x build_on_truenas.sh
-./build_on_truenas.sh
+# TrueNAS build script is in retired/truenas-build/ (can be removed after 6 months when stable)
+chmod +x retired/truenas-build/build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 
 # Clone Green instance (Port 3019)
 cd /mnt/pool1/Documents/KACI-Apps
 git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
-chmod +x build_on_truenas.sh
-./build_on_truenas.sh
+chmod +x retired/truenas-build/build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 ```
 
 ### Blue-Green Deployment Strategy
@@ -294,7 +295,9 @@ Month 1:
   Week 5 (5th Sun) → Deploy to Green (if exists)
 ```
 
-### What build_on_truenas.sh Does
+### What the TrueNAS build script does
+
+The script lives in **retired/truenas-build/build_on_truenas.sh** (retired from repo root; see [retired/truenas-build/README.md](../retired/truenas-build/README.md)).
 
 The automated build script:
 
@@ -308,7 +311,7 @@ The automated build script:
 ```bash
 # Manual deployment
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-./build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 
 # What happens:
 # ✓ Config persistence verified
@@ -340,7 +343,7 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 **Volume Mount**:
 ```bash
-# In build_on_truenas.sh:
+# In retired/truenas-build/build_on_truenas.sh:
 -v "${SCRIPT_DIR}/config:/app/config"
 ```
 
@@ -362,10 +365,10 @@ crontab -e
 
 # Add these lines for monthly staggered updates:
 # Green: 1st, 3rd, and 5th Sunday at 2 AM
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./build_on_truenas.sh >> /var/log/oscal-green-deploy.log 2>&1
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./retired/truenas-build/build_on_truenas.sh >> /var/log/oscal-green-deploy.log 2>&1
 
 # Blue: 2nd and 4th Sunday at 2 AM
-0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./build_on_truenas.sh >> /var/log/oscal-blue-deploy.log 2>&1
+0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./retired/truenas-build/build_on_truenas.sh >> /var/log/oscal-blue-deploy.log 2>&1
 ```
 
 ### Cron Syntax Explained
@@ -401,10 +404,10 @@ systemctl status cron  # or 'crond' on some systems
 ```bash
 # Force rebuild regardless of version
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-FORCE_BUILD=true ./build_on_truenas.sh
+FORCE_BUILD=true ./retired/truenas-build/build_on_truenas.sh
 
-# Or modify the script temporarily
-./build_on_truenas.sh --force  # (if implemented)
+# Or (if implemented)
+./retired/truenas-build/build_on_truenas.sh --force
 ```
 
 ### Removing Green (or Blue) to free resources
@@ -418,7 +421,7 @@ docker rm oscal-report-generator-green
 docker rmi oscal-report-generator:green 2>/dev/null || true
 ```
 
-The **data-green** directory (config/users) is left in place unless you delete it manually. To bring Green back later, run `./build_on_truenas.sh` again from the Green directory.
+The **data-green** directory (config/users) is left in place unless you delete it manually. To bring Green back later, run `./retired/truenas-build/build_on_truenas.sh` again from the Green directory.
 
 For **Blue**, use the same steps with container name `oscal-report-generator-blue` and port 3020.
 
@@ -539,7 +542,7 @@ lsof -i :3019
 docker stop oscal-report-generator-green
 docker rm oscal-report-generator-green
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-./build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 ```
 
 #### Issue: Config not persisting
@@ -582,10 +585,10 @@ grep CRON /var/log/syslog | grep oscal
 
 # Test script manually
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-./build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 
 # Ensure script is executable
-chmod +x build_on_truenas.sh
+chmod +x retired/truenas-build/build_on_truenas.sh
 ```
 
 #### Issue: Wrong version deployed
@@ -600,7 +603,7 @@ git remote -v
 # Force update from GitHub
 git fetch origin
 git reset --hard origin/main
-./build_on_truenas.sh
+./retired/truenas-build/build_on_truenas.sh
 ```
 
 ### Health Checks

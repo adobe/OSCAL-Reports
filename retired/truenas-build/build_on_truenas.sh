@@ -17,6 +17,8 @@
 # Cron Schedule Examples:
 #   Green (1st, 3rd, 5th Sunday): 0 2 1-7,15-21,29-31 * 0
 #   Blue (2nd, 4th Sunday):       0 2 8-14,22-28 * 0
+#
+# NOTE: This script is retired; moved to retired/truenas-build/ (see README there).
 
 set -e  # Exit on error
 

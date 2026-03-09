@@ -25,7 +25,7 @@ export async function detectModelFamily() {
       return 'unknown';
     }
     
-    const provider = (config.aiConfig.provider || 'ollama').toLowerCase();
+    const provider = (config.aiConfig.provider || 'aws-bedrock').toLowerCase();
     const model = (config.aiConfig.model || '').toLowerCase();
     const bedrockModelId = (config.aiConfig.bedrockModelId || '').toLowerCase();
     
@@ -36,7 +36,7 @@ export async function detectModelFamily() {
       if (bedrockModelId.includes('mistral') || bedrockModelId.includes('mixtral')) return 'mistral';
     }
     
-    // Ollama / Google AI: use model field
+    // Google AI / local: use model field
     if (model.includes('gemma')) return 'gemma';
     if (model.includes('mistral') || model.includes('mixtral')) return 'mistral';
     
@@ -65,7 +65,7 @@ export async function detectModelFamily() {
 export async function generateImplementationWithAI(control, fallbackGenerator, existingControls = [], options = {}) {
   const modelFamily = await detectModelFamily();
   const config = getResolvedConfig();
-  const provider = config.aiConfig?.provider || 'ollama';
+  const provider = config.aiConfig?.provider || 'aws-bedrock';
   const bedrockModelId = config.aiConfig?.bedrockModelId || '';
   const model = config.aiConfig?.model || '';
   console.log(`🎯 Model family detected: ${modelFamily} (provider: ${provider}, model: ${model}, bedrockModelId: ${bedrockModelId})`);
@@ -76,7 +76,7 @@ export async function generateImplementationWithAI(control, fallbackGenerator, e
         console.log(`📍 Routing to Bedrock Gemma service for control: ${control.id}`);
         return await generateImplementationWithBedrockGemma(control, fallbackGenerator, existingControls, options);
       }
-      console.log(`📍 Routing to Gemma service (Ollama/Google) for control: ${control.id}`);
+      console.log(`📍 Routing to Gemma service (Google AI) for control: ${control.id}`);
       return await generateImplementationWithGemma(control, fallbackGenerator, existingControls, options);
     
     case 'mistral':
@@ -101,7 +101,7 @@ export async function checkAIAvailability() {
   console.log(`🎯 Checking availability for model family: ${modelFamily}`);
   
   const config = getResolvedConfig();
-  const provider = config.aiConfig?.provider || 'ollama';
+  const provider = config.aiConfig?.provider || 'aws-bedrock';
   switch (modelFamily) {
     case 'gemma':
       if (provider === 'aws-bedrock') return await checkBedrockGemmaAvailability();
@@ -123,7 +123,7 @@ export async function checkAIAvailability() {
 export async function loadAIConfig() {
   const modelFamily = await detectModelFamily();
   const config = getResolvedConfig();
-  const provider = config.aiConfig?.provider || 'ollama';
+  const provider = config.aiConfig?.provider || 'aws-bedrock';
   switch (modelFamily) {
     case 'gemma':
       if (provider === 'aws-bedrock') return await loadBedrockGemmaConfig();
@@ -133,7 +133,6 @@ export async function loadAIConfig() {
       return await loadMistralConfig();
     
     default:
-      // Default to Mistral for backward compatibility
       return await loadMistralConfig();
   }
 }

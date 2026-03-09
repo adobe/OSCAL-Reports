@@ -19,10 +19,11 @@
 # Terraform: All terraform commands (output, apply) use terraform/run-with-aws-pass.sh.
 #
 # Environment:
+#   AWS_PASS_ENTRY       Pass entry for AWS credentials (default: AWS/AWS4379 Sandbox). Set for other accounts, e.g. AWS/AMS_4403-STG.
 #   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4379-SSH)
 #   SSH_KEY_FILE         If set, use this key file instead of Pass
 #   SSH_USER             SSH user: ec2-user (RHEL). Default: ec2-user
-#   TERRAFORM_DIR        Path to terraform dir (default: terraform)
+#   TERRAFORM_DIR        Path to terraform dir (default: terraform). Set to terraform/envs/aws4403 for AWS4403 deploy.
 
 set -e
 
@@ -45,6 +46,7 @@ print_info() { echo -e "${CYAN}ℹ${NC}  $1"; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
+export TERRAFORM_DIR
 SSH_USER="${SSH_USER:-ec2-user}"
 PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
 REMOTE_APP="/opt/oscal/app"
@@ -105,10 +107,6 @@ deploy_one() {
   local results_file="${5:-}"
   local port
   [ "$role" = "green" ] && port="3019" || port="3020"
-  local lambda_name ollama_url
-  lambda_name=$(tf_output -raw lambda_ollama_controller_name 2>/dev/null) || lambda_name=""
-  ollama_url=$(tf_output -raw ollama_url 2>/dev/null) || ollama_url=""
-
   print_info "Deploying to $role at $ip (port $port)..."
 
   # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass (same logic as scripts/debug/install-pass-svc-oscal.sh).
@@ -316,8 +314,6 @@ SVCEOF
     grep -q 'Environment=PATH=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=PATH=/usr/local/bin:/usr/bin:/bin' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
     grep -q 'Environment=HOME=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=HOME=/var/lib/svc_ams-oscal' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
     grep -q 'Environment=PASSWORD_STORE_DIR=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=HOME=/a Environment=PASSWORD_STORE_DIR=/var/lib/svc_ams-oscal/.password-store' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
-    if [ -n \"$lambda_name\" ]; then grep -q 'Environment=OLLAMA_WAKE_LAMBDA=' /etc/systemd/system/oscal-reporter.service 2>/dev/null && sudo sed -i \"s/^Environment=OLLAMA_WAKE_LAMBDA=.*/Environment=OLLAMA_WAKE_LAMBDA=$lambda_name/\" /etc/systemd/system/oscal-reporter.service || sudo sed -i \"/Environment=USERS_PATH=/a Environment=OLLAMA_WAKE_LAMBDA=$lambda_name\" /etc/systemd/system/oscal-reporter.service; fi
-    if [ -n \"$ollama_url\" ]; then grep -q 'Environment=OLLAMA_URL=' /etc/systemd/system/oscal-reporter.service 2>/dev/null && sudo sed -i \"s|^Environment=OLLAMA_URL=.*|Environment=OLLAMA_URL=$ollama_url|\" /etc/systemd/system/oscal-reporter.service || sudo sed -i \"/Environment=USERS_PATH=/a Environment=OLLAMA_URL=$ollama_url\" /etc/systemd/system/oscal-reporter.service; fi
     sudo systemctl daemon-reload
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
     echo OK
