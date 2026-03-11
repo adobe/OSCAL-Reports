@@ -4,7 +4,7 @@ This folder contains Mermaid diagram files for the AWS deployment architecture.
 
 ## Files
 
-1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram: ALB, Green/Blue OSCAL instances (t3.small), S3 (logs, config, users), and AWS Bedrock for AI. No self-hosted Ollama; AI is pay-per-use via Bedrock.
+1. **aws-auto-scaling-architecture.mmd** - Main architecture diagram: ALB, Green/Blue OSCAL instances (t4g.small Graviton preferred), S3 (logs, config, users), and AWS Bedrock for AI. No self-hosted Ollama; AI is pay-per-use via Bedrock.
 2. **workflow-timeline.mmd** - Sequence diagram for user flow: access app via ALB, then AI suggest via Bedrock (no wake/sleep or scaling).
 3. **generate-diagram.html** - Interactive HTML that renders both diagrams and supports PNG download.
 

@@ -10,6 +10,7 @@
 | `TRUENAS.md` | docs/ | TrueNAS SCALE installation and quick reference |
 | `create-truenas-catalog.sh` | scripts/ | TrueNAS SCALE app catalog creation |
 | `truenas-app.yaml` | repo root | TrueNAS Docker/Compose app configuration |
+| `config-build/` | was `config/build/` | Duplicate Dockerfile + compose + truenas-app (not used by CI) |
 
 **Lifecycle:** These files can be **deleted after 6 months** once the project is fully functional and stable. Until then they remain here for reference or one-off TrueNAS use.
 

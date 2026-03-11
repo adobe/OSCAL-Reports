@@ -34,7 +34,7 @@
 |----------|-------------|
 | [KEEPING_LOCAL_USERS.md](KEEPING_LOCAL_USERS.md) | Keep your local users.json from being overwritten (USERS_PATH, .env) |
 | [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) | Version bumping, workflow, and release checklist |
-| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
+| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching (Dev/QA/Pre_Prod → main; all three allowed to target main) |
 | [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
 | [GITHUB_ACCOUNT_GUIDE.md](GITHUB_ACCOUNT_GUIDE.md) | Switching between GitHub accounts |
 | [PR_SUBMISSION_CHECKLIST.md](PR_SUBMISSION_CHECKLIST.md) | Pull request submission guide |
@@ -95,7 +95,7 @@ TrueNAS build–specific scripts and docs have been moved to **[retired/truenas-
 
 - **Total Documents:** 27 (consolidated from 48+ in Feb 2026)
 - **Categories:** 8
-- **Last Update:** 2026-02-10
+- **Last Update:** 2026-03
 
 ---
 
@@ -161,4 +161,4 @@ Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEP
 
 ---
 
-*Last updated: 2026-02-10*
+*Last updated: 2026-03*

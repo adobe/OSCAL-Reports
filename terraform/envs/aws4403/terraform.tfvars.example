@@ -7,7 +7,9 @@ environment    = "prod"
 project_name   = "oscal-reports"
 
 vpc_cidr         = "10.0.0.0/16"
-allowed_ssh_cidr = ["0.0.0.0/0"]
+# Default CIDRs for ALB HTTP testing, SSH, and direct Green/Blue 3019/3020. PCL disallows 0.0.0.0/0.
+default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Replace with your IP(s), e.g. ["130.248.32.17/32", "203.191.182.150/32"]
+# alb_allow_http_for_testing = false  # Set true to open ALB port 80 from default_allowed_cidr_blocks only (for testing)
 
 key_name = null  # Or "oscal-aws4403" after importing key: AWS_PASS_ENTRY=AWS/AMS_4403-STG ... run-with-aws-pass.sh import-key us-east-1
 

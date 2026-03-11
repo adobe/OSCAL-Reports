@@ -293,7 +293,7 @@ function SSOIntegration({ onClose, embedded = false }) {
       if (providerKey === 'okta') {
         const hasDomain = !!safeStr(providerConfig?.domain);
         const hasClientId = !!safeStr(providerConfig?.clientId);
-        const hasClientSecret = !!safeStr(providerConfig?.clientSecret);
+        const hasClientSecret = hasOidcClientSecret(providerConfig?.clientSecret);
         if (!hasDomain || !hasClientId || !hasClientSecret) {
           setMessage('⚠️ Please enter Okta Domain, Client ID, and Client Secret to test the connection.');
           scrollMessageIntoView();
@@ -389,6 +389,12 @@ function SSOIntegration({ onClose, embedded = false }) {
 
   // Safe string trim (clientSecret etc. may be object e.g. Pass pointer from API)
   const safeStr = (v) => (typeof v === 'string' ? v.trim() : '');
+  // Client secret may be a Pass vault pointer { _pass: "entry/path" } — treat as configured for UI/test gating
+  const hasOidcClientSecret = (v) => {
+    if (safeStr(v)) return true;
+    if (v && typeof v === 'object' && !Array.isArray(v) && safeStr(v._pass)) return true;
+    return false;
+  };
 
   // Defensive: ensure Okta provider config exists so we never read .domain etc of undefined
   const oktaProvider = (oauthConfig?.providers?.okta != null && typeof oauthConfig.providers.okta === 'object')
@@ -1036,8 +1042,8 @@ function SSOIntegration({ onClose, embedded = false }) {
                   title={
                     !oauthConfig.enabled || !oktaProvider.enabled
                       ? 'Enable OAuth and Okta above first'
-                      : (!safeStr(oktaProvider.domain) || !safeStr(oktaProvider.clientId) || !safeStr(oktaProvider.clientSecret))
-                        ? 'Enter Okta Domain, Client ID, and Client Secret to test'
+                      : (!safeStr(oktaProvider.domain) || !safeStr(oktaProvider.clientId) || !hasOidcClientSecret(oktaProvider.clientSecret))
+                        ? 'Enter Okta Domain, Client ID, and Client Secret (or Pass vault entry) to test'
                         : 'Test connection to Okta (validates all fields and Okta discovery)'
                   }
                 >

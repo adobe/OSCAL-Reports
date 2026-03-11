@@ -239,9 +239,6 @@ async function generateWithOllama(control, config, existingControls = [], prompt
     } catch (error) {
       lastError = error;
       const unreachable = attempt === 0 && isOllamaUnreachable(error);
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d9aa6c43-16c6-410a-a033-1d844263f7e7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemmaService.js:generateWithOllama:catch',message:'Ollama request failed',data:{attempt,errorCode:error?.code,errorMessage:error?.message?.slice(0,100),isOllamaUnreachable:unreachable},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       if (unreachable) {
         break;
       }

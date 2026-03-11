@@ -3,8 +3,8 @@
 # Traffic by User-Agent: Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11).
 # Default (including curl probe): 50% green, 50% blue. Host-based rules (green/blue hostnames) use priority 100/101 when set.
 # idle_timeout 300s avoids 504 Gateway Timeout when backend takes >60s (e.g. AI/report generation).
-# HTTPS only when cert is ready: use alb_certificate_ready (true after DNS validation CNAMEs added and cert Issued) or existing alb_ssl_certificate_arn.
-# Keeps HTTP listener until then so ALB is not broken while cert is Pending validation.
+# PCL custom-elb-restricted-ports-check: ALB security group allows only 443 (no port 80). Enable HTTPS (create_alb_certificate + alb_certificate_ready or alb_ssl_certificate_arn) so the ALB is reachable.
+# When cert is not ready: HTTP listener on 80 exists for redirect but SG does not open 80; use HTTPS listener (443) once cert is Issued.
 
 locals {
   alb_use_https = (var.create_alb_certificate && var.alb_domain_name != null && var.alb_certificate_ready) || var.alb_ssl_certificate_arn != null

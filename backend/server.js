@@ -273,11 +273,16 @@ app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
       }
     }
     
-    // Check config file (CONFIG_PATH, Docker /data, then config/app)
+    // Check config file (align with configManager getConfigPath ordering)
+    const repoRoot = path.join(__dirname, '..');
+    const siblingData = path.join(repoRoot, '..', 'OSCAL_Reports_data');
     const configPaths = [
       process.env.CONFIG_PATH,
       '/data/config.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'config.json')
+      process.env.USERS_PATH ? path.join(path.dirname(process.env.USERS_PATH), 'config.json') : null,
+      process.env.OSCAL_DATA_DIR ? path.join(process.env.OSCAL_DATA_DIR, 'config.json') : null,
+      fs.existsSync(siblingData) ? path.join(siblingData, 'config.json') : null,
+      path.join(repoRoot, 'config', 'app', 'config.json')
     ].filter(Boolean);
     
     for (const configPath of configPaths) {
@@ -292,11 +297,14 @@ app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
       }
     }
     
-    // Check users file (USERS_PATH, Docker /data, then config/app)
+    // Check users file (align with userManager getUsersPath)
     const usersPaths = [
       process.env.USERS_PATH,
       '/data/users.json',
-      path.join(process.cwd(), '..', 'config', 'app', 'users.json')
+      process.env.CONFIG_PATH ? path.join(path.dirname(process.env.CONFIG_PATH), 'users.json') : null,
+      process.env.OSCAL_DATA_DIR ? path.join(process.env.OSCAL_DATA_DIR, 'users.json') : null,
+      fs.existsSync(siblingData) ? path.join(siblingData, 'users.json') : null,
+      path.join(repoRoot, 'config', 'app', 'users.json')
     ].filter(Boolean);
     
     for (const usersPath of usersPaths) {
@@ -963,11 +971,80 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
       const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
-    // Redirect URI: env override (for servers behind proxy) > Settings → SSO > request-derived.
+    // Redirect URI: platform setting (config.json / SSO) first — no hardcoded URLs; same config deploys everywhere.
+    // Then env override for ops; then request-derived fallback when redirect URI left blank in Settings.
     const envRedirect = (process.env.OSCAL_OKTA_REDIRECT_URI || '').trim().replace(/\/+$/, '');
-    const configuredRedirect = (okta.redirectUri || '').trim();
-    let redirectUri = envRedirect || configuredRedirect || `${req.protocol}://${req.get('host')}/auth/okta/callback`;
-    redirectUri = redirectUri.replace(/\/+$/, ''); // Okta requires exact match; no trailing slash
+    const configuredRedirect = (okta.redirectUri || '').trim().replace(/\/+$/, '');
+    const forwardedHost = String(req.get('X-Forwarded-Host') || '')
+      .split(',')[0]
+      .trim();
+    const forwardedProto = String(req.get('X-Forwarded-Proto') || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    const backendHost = (req.get('host') || '').toLowerCase();
+    // When /api is proxied from Vite (3021), backend sees Host localhost:3020 — use forwarded host so Okta gets e.g. keekar.3utilities.com:3021
+    const useForwarded =
+      forwardedHost &&
+      /^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9](:\d+)?$/.test(forwardedHost) &&
+      (backendHost.startsWith('localhost:') || backendHost.startsWith('127.0.0.1:'));
+    let proto = useForwarded && (forwardedProto === 'https' || forwardedProto === 'http') ? forwardedProto : req.protocol;
+    let hostForCallback = useForwarded ? forwardedHost : req.get('host');
+    // Proxy did not forward host — infer from Referer so redirect_uri is not localhost:3020 (Okta will reject)
+    if ((!hostForCallback || backendHost === 'localhost:3020' || backendHost.startsWith('127.0.0.1:')) && !useForwarded) {
+      const ref = (req.get('Referer') || '').trim();
+      if (ref) {
+        try {
+          const u = new URL(ref);
+          if (u.host && u.protocol) {
+            hostForCallback = u.host;
+            proto = u.protocol.replace(':', '') || proto;
+          }
+        } catch (_) { /* ignore */ }
+      }
+    }
+    // Public URL behind TLS terminator: Node often sees http (proxy→backend). Referer shows real browser scheme.
+    // Okta Sign-in redirect URIs are usually https://host/... without port — must match exactly.
+    if (hostForCallback && !hostForCallback.includes(':')) {
+      if (forwardedProto === 'https') {
+        proto = 'https';
+      } else {
+        const ref = (req.get('Referer') || '').trim();
+        if (ref.toLowerCase().startsWith('https://')) {
+          try {
+            const ru = new URL(ref);
+            if (ru.host === hostForCallback || hostForCallback.startsWith(ru.hostname)) {
+              proto = 'https';
+            }
+          } catch (_) { /* ignore */ }
+        }
+      }
+    }
+    const requestOrigin =
+      proto && hostForCallback ? `${proto}://${hostForCallback}/auth/okta/callback` : '';
+    // Prefer Settings → SSO → Okta Redirect URI (persisted in config) so Okta always gets the exact registered URI.
+    let redirectUri = '';
+    if (configuredRedirect) {
+      try {
+        const u = new URL(configuredRedirect);
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          redirectUri = configuredRedirect;
+        }
+      } catch (_) { /* invalid URL — fall through */ }
+    }
+    if (!redirectUri && envRedirect) {
+      try {
+        const u = new URL(envRedirect);
+        if (u.protocol === 'http:' || u.protocol === 'https:') redirectUri = envRedirect;
+      } catch (_) { /* ignore */ }
+    }
+    if (!redirectUri) redirectUri = requestOrigin;
+    if (!redirectUri) redirectUri = configuredRedirect; // last resort untrusted shape
+    redirectUri = (redirectUri || '').replace(/\/+$/, '');
+    if (!redirectUri) {
+      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      return res.redirect(302, `${back}/?error=okta_not_configured`);
+    }
     // PKCE: required when Okta has "Require PKCE" enabled; harmless when not required
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = computeCodeChallenge(codeVerifier);
@@ -1043,7 +1120,8 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
     if (!stateData) {
       return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
     }
-    const redirectUri = (okta.redirectUri || '').trim() || stateData.redirectUri;
+    // Must match redirect_uri sent to Okta at authorize (state carries the chosen URI)
+    const redirectUri = (stateData.redirectUri || (okta.redirectUri || '').trim()).replace(/\/+$/, '');
     const codeVerifier = stateData.codeVerifier || '';
     const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const authServerId = (okta.authServerId || '').trim();
@@ -1907,8 +1985,10 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       }
       const clientId = (prov.clientId && typeof prov.clientId === 'string') ? prov.clientId.trim() : '';
       if (!clientId) errors.push('Missing Client ID');
-      const clientSecret = (prov.clientSecret && typeof prov.clientSecret === 'string') ? prov.clientSecret.trim() : '';
-      if (!clientSecret) errors.push('Missing Client Secret');
+      // Secret may be literal string or Pass pointer { _pass: "entry" }; discovery test does not need the secret value
+      const clientSecretStr = (prov.clientSecret && typeof prov.clientSecret === 'string') ? prov.clientSecret.trim() : '';
+      const passPointer = prov.clientSecret && typeof prov.clientSecret === 'object' && prov.clientSecret._pass && typeof prov.clientSecret._pass === 'string' && prov.clientSecret._pass.trim();
+      if (!clientSecretStr && !passPointer) errors.push('Missing Client Secret (enter value or save with Pass vault entry)');
 
       if (errors.length > 0) {
         res.json({ success: false, error: errors.join('; ') });
