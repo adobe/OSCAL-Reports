@@ -122,7 +122,7 @@ AWS EC2 provides virtual machines with full control. Choose EC2 if you:
 2. Configure instance:
    - **Name**: oscal-report-generator
    - **AMI**: Ubuntu 22.04 LTS
-   - **Instance type**: t3.micro (or t3.small for better performance)
+   - **Instance type**: Preferred t4g.small (Graviton) or t3a.small (AMD); minimal t3.micro
    - **Key pair**: Create new or select existing
    - **Network**: Default VPC
    - **Security group**: 
@@ -387,7 +387,8 @@ aws ec2 describe-instances \
 
 **EC2 Instance:**
 - **t3.micro** (1 vCPU, 1GB RAM): ~$7.50/month
-- **t3.small** (2 vCPU, 2GB RAM): ~$15/month (recommended)
+- **t4g.small** (Graviton, 2 vCPU, 2GB RAM): ~$12/month (preferred)
+- **t3a.small** (AMD, 2 vCPU, 2GB RAM): ~$15/month (fallback)
 - **t3.medium** (2 vCPU, 4GB RAM): ~$30/month (high performance)
 
 **Storage:**
@@ -403,7 +404,7 @@ aws ec2 describe-instances \
 
 **Total Estimated Cost:**
 - **Minimal (t3.micro)**: ~$9-10/month
-- **Recommended (t3.small)**: ~$17-20/month
+- **Recommended (t4g.small Graviton)**: ~$14-17/month
 - **High Performance (t3.medium)**: ~$32-35/month
 
 ### Pros & Cons

@@ -1,0 +1,30 @@
+# Example for AWS4379 Sandbox (Account ID 432417415905). Copy to terraform.tfvars and set values.
+# Credentials: pass show "AWS/AWS4379 Sandbox"
+
+aws_region     = "us-east-1"
+aws_account_id = "432417415905"
+environment    = "prod"
+project_name   = "AMS-OSCAL"
+
+vpc_cidr         = "10.0.0.0/16"
+# Default CIDRs for ALB HTTP testing, SSH, and direct Green/Blue 3019/3020. Do not use 0.0.0.0/0.
+default_allowed_cidr_blocks = [
+  "203.191.182.138/32",
+  "130.248.32.17/32"
+]
+# alb_allow_http_for_testing = false  # Set true to open ALB port 80 from default_allowed_cidr_blocks only (for testing)
+
+key_name = "oscal-aws4379"  # Or null; import key: AWS_PASS_ENTRY=AWS/AWS4379\ Sandbox ... run-with-aws-pass.sh import-key us-east-1
+
+s3_logs_bucket_name = "ams-oscal-432417415905"
+use_image_factory_ami = false
+# image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"
+
+# ALB HTTPS (optional)
+create_alb_certificate = true
+alb_domain_name        = "oscal.amsgovcloud.com.au"
+alb_certificate_ready  = false  # Set true after ACM CNAMEs added in Route53
+
+common_tags = {
+  Team = "Compliance"
+}

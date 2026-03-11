@@ -85,11 +85,12 @@ if [ ! -d "$SVC_HOME/.password-store" ]; then
   # Start gpg-agent for service user (required for batch key generation on some systems)
   sudo -u "$SVC_USER" env HOME="$SVC_HOME" gpg-agent --daemon 2>/dev/null || true
   # Generate GPG key (batch, no passphrase)
+  # GPG Name-Real is the identity shown for the store (use OSCAL_password_store, not generic "Password Store")
   sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" gpg --batch --no-tty --yes --generate-key 2>/dev/null << GPGEOF
 Key-Type: RSA
 Key-Length: 2048
-Name-Real: svc_ams-oscal
-Name-Email: svc_ams-oscal@localhost
+Name-Real: OSCAL_password_store
+Name-Email: oscal-password-store@localhost
 Expire-Date: 0
 %no-protection
 %commit
