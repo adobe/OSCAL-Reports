@@ -8,12 +8,15 @@ project_name   = "oscal-reports"
 
 # Networking
 vpc_cidr          = "10.0.0.0/16"
-# List of CIDRs allowed for SSH (OSCAL). Use multiple entries for multiple subnets.
-allowed_ssh_cidr   = ["0.0.0.0/0"]  # Restrict in production: ["1.2.3.4/32"] or ["10.0.0.0/8", "192.168.1.0/24"]
+# Default CIDRs for ALB HTTPS and SSH ingress. PCL custom-config-ec2-sg-port-check disallows 0.0.0.0/0.
+default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Your IP(s) or VPN subnet, e.g. ["203.191.182.138/32", "130.248.32.17/32"]
 
 # EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
 # Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4379 --query 'KeyMaterial' --output text > oscal-aws4379.pem
 key_name = null
+# Instance type: preferred Graviton (t4g) then AMD (t3a). Default t4g.small (arm64). For AMD use t3a.small with instance_architecture = "x86_64".
+# instance_type          = "t4g.small"
+# instance_architecture  = "arm64"
 
 # S3 (best practice from docs/IMAGE_FACTORY.md): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
 # Subfolders: logs, config, users. Terraform lowercases the value.
@@ -41,6 +44,9 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # alb_blue_hostname  = "blue.oscal.example.com"
 # alb_green_hostname = "green.oscal.example.com"
 
+# ALB port 80 for testing: set alb_allow_http_for_testing = true to allow HTTP from default_allowed_cidr_blocks only; default false.
+# alb_allow_http_for_testing = false
+
 # ------------------------------------------------------------------------------
 # Image Factory / AMI (docs/IMAGE_FACTORY.md): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023
 # ------------------------------------------------------------------------------
@@ -52,7 +58,7 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # use_image_factory_ami = true
 # image_factory_amazon_linux_ami_us_east_1 = null   # Set to "ami-xxxxxxxx" from Image Factory UI (Amazon Linux 2023) for us-east-1
 # oscal_ami_id          = null
-# instance_architecture = "x86_64"  # or "arm64"
+# instance_architecture = "arm64"   # default for t4g (Graviton); use "x86_64" for t3a (AMD)
 
 # Optional tags
 common_tags = {

@@ -1,6 +1,7 @@
 # S3 bucket for logs, config, and users
 # Best practice (docs/IMAGE_FACTORY.md): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
 # Terraform forces lowercase to satisfy S3 and avoid InvalidBucketName.
+# Security: Every S3 bucket in this project MUST have aws_s3_bucket_public_access_block (PCL rule custom-s3-pab-check).
 
 resource "aws_s3_bucket" "logs" {
   bucket = lower(var.s3_logs_bucket_name)
@@ -14,6 +15,8 @@ resource "aws_s3_bucket_versioning" "logs" {
   }
 }
 
+# PCL compliance: custom-s3-pab-check requires Public Access Block on all S3 buckets.
+# Do not remove; PCL will auto-remediate if missing (NoSuchPublicAccessBlockConfiguration).
 resource "aws_s3_bucket_public_access_block" "logs" {
   bucket = aws_s3_bucket.logs.id
 

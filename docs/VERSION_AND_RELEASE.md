@@ -32,7 +32,7 @@ git config core.hooksPath   # Should output: .githooks
 Development → Quality_Test → Pre_Prod → main
 ```
 
-Only **Pre_Prod** can merge to **main**. Never merge feature branches directly to main.
+**main** accepts PRs from **Development**, **Quality_Test**, or **Pre_Prod**. Feature/custom branches cannot target main. Recommended: use Pre_Prod for staging validation first.
 
 ---
 

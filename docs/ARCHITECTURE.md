@@ -2,8 +2,8 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.0.0  
-**Last Updated**: December 2025
+**Version**: 2.1.0  
+**Last Updated**: March 2026
 
 ---
 
@@ -14,7 +14,7 @@
 3. [Data Flow](#data-flow)
 4. [Frontend Architecture](#frontend-architecture)
 5. [Backend Architecture](#backend-architecture)
-6. [AI Integration (Mistral 7B)](#ai-integration-mistral-7b)
+6. [AI Integration (Bedrock / Mistral)](#ai-integration-bedrock--mistral)
 7. [Technology Stack](#technology-stack)
 8. [Security Considerations](#security-considerations)
 9. [Performance](#performance)
@@ -529,7 +529,7 @@ The `sspComparisonV3.js` module:
 
 ---
 
-## AI Integration (Mistral 7B)
+## AI Integration (Bedrock / Mistral)
 
 ### Overview
 
@@ -683,11 +683,11 @@ controlSuggestionEngine.js
 **Solutions:**
 1. Increase `timeout` value in config (default: 30000ms)
 2. Check network connectivity
-3. For Ollama: Ensure system has enough resources (RAM/CPU)
+3. For AI: Use AWS Bedrock or Mistral API (see AWS_BEDROCK_SETUP.md and AI_MODELS_AND_CONFIG.md)
 
 ### Performance Considerations
 
-- **Ollama (Local)**: 
+- **AWS Bedrock / Mistral API (cloud)**: 
   - Requires ~4GB RAM for Mistral 7B
   - First request may be slower (model loading)
   - Subsequent requests are fast
@@ -701,7 +701,7 @@ controlSuggestionEngine.js
 
 ### Security Best Practices
 
-1. **Local Deployment (Ollama)**: 
+1. **Cloud AI (Bedrock / Mistral API)**: 
    - Data never leaves your infrastructure
    - No API keys required
    - Best for sensitive/confidential data
@@ -725,7 +725,7 @@ After setup, test the integration:
    # Check backend health
    curl http://localhost:3020/health
    
-   # Check Ollama (if using local AI)
+   # Check AI (Bedrock/Mistral API configured in Settings)
    curl http://localhost:11434/api/tags
    ```
 
@@ -759,7 +759,7 @@ After setup, test the integration:
 
 ### AI/ML
 - **Mistral 7B**: Large language model for text generation
-- **Ollama**: Local LLM runner
+- **AWS Bedrock / Mistral API**: Cloud AI (no self-hosted LLM)
 - **Mistral AI API**: Cloud-based Mistral service
 
 ---
@@ -799,7 +799,7 @@ After setup, test the integration:
 
 1. **Centralized Config Directory**
    - Runtime configs: `config/app/` (sensitive data)
-   - Build configs: `config/build/` (deployment files)
+   - Build: root `Dockerfile` + `docker-compose.yml` (former `config/build/` archived in `retired/truenas-build/config-build/`)
    - Ready for encryption and access control
 
 2. **File Security**
@@ -859,7 +859,7 @@ cd ../backend && NODE_ENV=production node server.js
 ### Environment Variables
 - `NODE_ENV`: Set to `production` for production deployments
 - `PORT`: Backend server port (default: 3020)
-- `OLLAMA_URL`: Ollama service URL (default: http://localhost:11434). On AWS with Terraform, use the internal NLB URL: `terraform -chdir=terraform output -raw ollama_url` so Lambda can start the ASG when scaled to 0; same URL works once instances are up.
+- **AI**: Configure via Settings → AI Integration or `config/app/config.json` (AWS Bedrock or Mistral API). See [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md) and [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md).
 - `AWS_REGION`: AWS region for Bedrock (e.g., us-east-1)
 - `BUILD_TIMESTAMP`: Build timestamp for password generation
 - Frontend dev server port: 3021 (configured in `vite.config.js`)
@@ -883,7 +883,8 @@ OSCAL_Reports/
 │   ├── pdfExport.js                  # PDF generation (PDFKit)
 │   ├── sspComparisonV3.js            # Catalog comparison logic
 │   ├── controlSuggestionEngine.js    # AI suggestion engine
-│   ├── mistralService.js             # Mistral AI integration (Ollama/API/Bedrock)
+│   ├── mistralService.js             # Mistral AI (AWS Bedrock or Mistral API)
+│   ├── gemmaService.js              # Gemma (Bedrock / Google AI)
 │   ├── integrityService.js           # SSP integrity verification
 │   ├── messagingService.js           # Email/notification service
 │   ├── oscalValidator.js             # OSCAL validation (Schema-based)
@@ -941,34 +942,35 @@ OSCAL_Reports/
 │   ├── app/                          # Application runtime configs (SENSITIVE)
 │   │   ├── config.json.example       # Config template (SSO, AI, messaging)
 │   │   └── users.json.example        # Users template (PBKDF2 hashes)
-│   └── build/                        # Build/deployment configs
-│       ├── docker-compose.yml        # Docker Compose configuration
-│       ├── Dockerfile                # Docker build instructions
-│       └── (TrueNAS assets in retired/truenas-build/)
+│   └── build/                        # README only; archived copies in retired/truenas-build/config-build/
 │
 ├── docs/                             # Documentation
-│   ├── ARCHITECTURE.md               # This file - Technical architecture
+│   ├── ARCHITECTURE.md               # This file
 │   ├── DEPLOYMENT.md                 # Deployment guide
-│   ├── CONFIGURATION.md              # Configuration documentation
-│   └── OSCAL_Compliance_Tool_Demo.pptx # Demo presentation
+│   ├── AWS_TERRAFORM.md              # Terraform (ALB, Green/Blue, S3)
+│   ├── BRANCHING_STRATEGY.md         # Git branching (Dev/QA/Pre_Prod → main)
+│   └── ...                           # See docs/README.md for full index
 │
+├── scripts/                          # Deployment and utilities
+│   ├── deploy-to-ec2.sh              # Deploy to AWS Green/Blue
+│   ├── ec2_automation.sh             # Backup config/users to S3
+│   └── debug/                        # SSH, EC2 helpers
+│
+├── terraform/                        # AWS infrastructure (Bedrock-only; no Ollama)
+│   ├── envs/                         # Per-account (e.g. aws4403)
+│   │   └── aws4403/                  # Symlinks + env-specific tfvars
+│   ├── main.tf, vpc.tf, alb.tf       # ALB, Green/Blue, S3
+│   └── README.md                     # Tagging, stack lifecycle
+│
+├── test_cases/                       # Backend tests (Jest)
 ├── sample_output/                    # Sample output files
-│   ├── AEMGovAu_ComplianceReport_Sample_2025-11-20.json
-│   └── test-ssp-integrity.json
-│
-├── package.json                      # Root package (dev scripts)
+├── package.json                      # Root (dev, install:all, lint)
 ├── setup.sh                          # Setup script
+├── docker-compose.yml                # Single service (AI via Bedrock/Mistral API)
+├── Dockerfile                        # Production image
 ├── retired/
-│   └── truenas-build/                # TrueNAS build (retired; can remove after 6 mo.)
-│       ├── build_on_truenas.sh
-│       ├── truenas-app.yaml
-│       ├── TRUENAS.md
-│       └── create-truenas-catalog.sh
-├── scripts/reactivate-admin.sh       # Admin reactivation utility
-├── docker-compose.yml                # Docker Compose (root, includes Ollama)
-├── Dockerfile                        # Dockerfile (root)
-├── LICENSE                           # MIT License
-└── README.md                         # Main documentation
+│   └── truenas-build/                # Retired TrueNAS assets
+└── README.md                         # Project overview and quick start
 ```
 
 ---
@@ -986,7 +988,7 @@ OSCAL_Reports/
 Integrated Mistral 7B for generating intelligent, context-aware implementation descriptions. The system now provides unique implementation text for each control using AI, while maintaining pattern matching for other fields.
 
 **Features:**
-- ✅ Mistral 7B integration (Ollama local or Mistral API cloud)
+- ✅ Mistral/Gemma via AWS Bedrock or Mistral API (cloud)
 - ✅ Unique AI-generated implementation text
 - ✅ Pattern matching for status, responsible party, etc.
 - ✅ Fallback to pattern matching if AI unavailable
@@ -1007,7 +1009,7 @@ Integrated Mistral 7B for generating intelligent, context-aware implementation d
 - `backend/controlSuggestionEngine.js` - Integrated Mistral for implementation text
 - `backend/server.js` - Added `/api/mistral/status` endpoint
 - `config/app/config.json` - Added Mistral configuration
-- `setup.sh` - Automated Ollama setup
+- `setup.sh` - Environment and dependency setup
 - `retired/truenas-build/build_on_truenas.sh` - TrueNAS build (retired)
 
 #### 2. **Automated Control Suggestions (Pattern Matching)**
@@ -1115,10 +1117,7 @@ config/
 │   ├── config.json   # Application settings (SSO, messaging, API gateways, Mistral)
 │   └── users.json    # User accounts and authentication data
 │
-└── build/            # Build and deployment configs
-    ├── docker-compose.yml   # Docker Compose configuration
-    (retired/truenas-build/truenas-app.yaml)  # TrueNAS Docker App config (retired)
-    └── Dockerfile            # Docker build instructions
+└── build/            # README only (retired copies in retired/truenas-build/config-build/)
 ```
 
 **Features:**
@@ -1277,7 +1276,7 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ### Version 2.0.0 (December 2025)
 - Mistral 7B AI integration for implementation text generation
 - Enhanced control suggestions with AI
-- Automated Ollama setup in deployment scripts
+- AI via Bedrock/Mistral API (no self-hosted LLM in deployment)
 - Comprehensive TrueNAS deployment guide
 - Consolidated documentation
 
@@ -1356,7 +1355,7 @@ All AI interactions are logged following **OpenTelemetry (OTel) Generative AI Se
 ### What's Logged
 
 Each log entry contains:
-- **Prompts**: All prompts sent to AI engines (Ollama, Mistral API, AWS Bedrock)
+- **Prompts**: All prompts sent to AI engines (AWS Bedrock, Mistral API)
 - **Responses**: AI-generated implementation text
 - **Performance**: Latency (ms), token usage (input/output/total)
 - **Context**: Control ID, family, user/session metadata
@@ -1375,7 +1374,7 @@ Each log entry contains:
     "deployment.environment": "production"
   },
   "attributes": {
-    "gen_ai.system": "ollama",
+    "gen_ai.system": "aws-bedrock",
     "gen_ai.request.model": "mistral:7b",
     "gen_ai.operation.name": "generate",
     "gen_ai.usage.input_tokens": 245,
@@ -1513,8 +1512,7 @@ cat logs/ai-telemetry-*.jsonl | \
    - **Future Fix**: Support multiple gateway formats
 
 4. **Mistral Model Loading**
-   - First request after Ollama restart may be slower (model loading)
-   - **Workaround**: Keep Ollama running continuously
+   - First request to Bedrock may have cold-start latency
    - **Future Fix**: Model pre-loading on startup
 
 ---
@@ -1531,7 +1529,7 @@ cat logs/ai-telemetry-*.jsonl | \
 - **PDF Generation**: PDFKit
 - **Excel**: ExcelJS
 - **OSCAL**: NIST SP 800-53
-- **AI**: Mistral 7B, Ollama
+- **AI**: AWS Bedrock, Mistral API
 
 ---
 

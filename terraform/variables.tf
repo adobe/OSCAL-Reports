@@ -10,7 +10,7 @@ variable "aws_region" {
 variable "aws_account_id" {
   description = "AWS account ID (e.g. for ARNs); set via variable, not hardcoded secrets"
   type        = string
-  default     = "432417415905"
+  default     = "442277170733"
 }
 
 variable "environment" {
@@ -22,7 +22,7 @@ variable "environment" {
 variable "project_name" {
   description = "Project name used in resource names"
   type        = string
-  default     = "oscal-reports"
+  default     = "AMS-oscal-reports"
 }
 
 # Networking
@@ -32,10 +32,21 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
-variable "allowed_ssh_cidr" {
-  description = "List of CIDRs allowed for SSH to OSCAL instances. App ports 3019/3020 are not open to the internet; use ALB or VPC. Example: [\"1.2.3.4/32\", \"10.0.0.0/8\"] or [\"0.0.0.0/0\"] for testing only."
+variable "default_allowed_cidr_blocks" {
+  description = "Default CIDR ranges allowed for ingress (ALB HTTP testing, SSH, direct Green/Blue 3019/3020). Set in tfvars; do not use 0.0.0.0/0 (PCL custom-config-ec2-sg-port-check)."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["130.248.32.17/32", "203.191.182.150/32"]
+
+  validation {
+    condition     = !contains(var.default_allowed_cidr_blocks, "0.0.0.0/0")
+    error_message = "default_allowed_cidr_blocks must not contain 0.0.0.0/0. PCL rule custom-config-ec2-sg-port-check auto-remediates. Use specific CIDRs (e.g. your IP/32 or VPN subnet) in terraform.tfvars."
+  }
+}
+
+variable "alb_allow_http_for_testing" {
+  description = "When true, ALB allows port 80 from default_allowed_cidr_blocks only (for testing service availability). When false, port 80 is closed. Port 443 is always open to all IPs."
+  type        = bool
+  default     = false
 }
 
 # EC2
@@ -85,9 +96,15 @@ variable "use_rhel9" {
 }
 
 variable "instance_architecture" {
-  description = "EC2 architecture for Image Factory and native Amazon Linux 2023 fallback: x86_64 (default) or arm64."
+  description = "EC2 architecture for Image Factory and native Amazon Linux 2023 fallback: arm64 (default for Graviton t4g) or x86_64 (for AMD t3a)."
   type        = string
-  default     = "x86_64"
+  default     = "arm64"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for OSCAL Green/Blue. Preferred: Graviton (t4g) then AMD (t3a). Default t4g.small (ARM); use instance_architecture = x86_64 for t3a.small."
+  type        = string
+  default     = "t4g.small"
 }
 
 # OSCAL run mode: false = direct run on EC2 with S3-mounted config/users; true = Docker/podman container (GHCR image)

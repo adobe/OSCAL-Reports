@@ -7,18 +7,22 @@
 #   ./run-with-aws-pass.sh apply [options]       apply (removes orphan ALB listeners first if needed)
 #   ./run-with-aws-pass.sh [terraform args...]   e.g. ./run-with-aws-pass.sh plan
 #   ./run-with-aws-pass.sh import-key [region]   import EC2 key from Pass (region defaults to us-east-1)
+#   ./run-with-aws-pass.sh remove-stale-ollama-state   remove Ollama-related entries from state (use same account as tfvars)
 #
-# Optional: TERRAFORM_DIR – when set, run terraform from this directory (e.g. terraform/envs/aws4403).
-#   Enables multiple accounts: AWS_PASS_ENTRY=AWS/AMS_4403-STG TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./run-with-aws-pass.sh plan
+# Default: AWS4403 (account 442277170733). Set AWS_PASS_ENTRY and TERRAFORM_DIR to use AWS4379 Sandbox.
+# Optional: AWS_PASS_ENTRY – Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403).
+#   For AWS4379 Sandbox (432417415905): AWS_PASS_ENTRY="AWS/AWS4379 Sandbox" and TERRAFORM_DIR=$PWD/terraform/envs/aws4379.
+# Optional: TERRAFORM_DIR – Terraform working dir (default: terraform/envs/aws4403). Set to terraform/envs/aws4379 for AWS4379.
 
 set -e
-ENTRY="${AWS_PASS_ENTRY:-AWS/AWS4379 Sandbox}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-if [ -n "${TERRAFORM_DIR:-}" ]; then
-  TF_WORK_DIR="$(cd "$TERRAFORM_DIR" && pwd)"
-  cd "$TF_WORK_DIR"
+# Default to aws4403 so we do not accidentally change AWS4379 Sandbox.
+if [ -z "${TERRAFORM_DIR:-}" ]; then
+  TERRAFORM_DIR="$(cd "$SCRIPT_DIR/envs/aws4403" && pwd)"
 fi
+export TERRAFORM_DIR
+ENTRY="${AWS_PASS_ENTRY:-AWS/AMS_4403-STG}"
+cd "$TERRAFORM_DIR"
 
 load_aws_credentials() {
   while IFS= read -r line; do
@@ -62,11 +66,12 @@ import_ec2_key() {
   echo "Imported EC2 key pair '$key_name' in $region. Set key_name = \"$key_name\" in terraform.tfvars and run: ./run-with-aws-pass.sh apply"
 }
 
-# Before apply: if Terraform will create ALB HTTPS listener but port 80/443 listeners already exist
-# (e.g. created manually), delete them so apply does not fail with DuplicateListener.
+# Before apply: only remove orphan ALB listeners when Terraform manages HTTPS (state has https[0]).
+# When using HTTP-only (no cert), state has http_forward[0] only — do NOT delete listeners or port 80 is removed and ALB becomes unreachable.
 remove_orphan_alb_listeners_if_needed() {
   command -v aws >/dev/null 2>&1 || return 0
-  if terraform state list 2>/dev/null | grep -q 'aws_lb_listener\.https\[0\]'; then
+  # Skip when Terraform does not manage HTTPS listener (HTTP-only mode); otherwise we would delete the port 80 listener.
+  if ! terraform state list 2>/dev/null | grep -q 'aws_lb_listener\.https\[0\]'; then
     return 0
   fi
   alb_arn=$(terraform state show -no-color aws_lb.main 2>/dev/null | grep -E '^\s*arn\s*=' | sed -E 's/.*=\s*"(.*)"/\1/' | tr -d ' ')
@@ -89,6 +94,10 @@ remove_orphan_alb_listeners_if_needed() {
 case "${1:-}" in
   import-key)
     import_ec2_key "${2:-us-east-1}"
+    ;;
+  remove-stale-ollama-state)
+    load_aws_credentials
+    exec "$SCRIPT_DIR/remove-stale-ollama-state.sh"
     ;;
   apply)
     load_aws_credentials

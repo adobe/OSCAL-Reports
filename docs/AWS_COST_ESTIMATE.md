@@ -62,7 +62,7 @@ Continue reading for:
 │  │   EC2 Instance   │      │   EC2 Instance   │            │
 │  │  OSCAL - Green   │      │  OSCAL - Blue    │            │
 │  │  Port: 3019      │      │  Port: 3020      │            │
-│  │  t3.small        │      │  t3.small        │            │
+│  │  t4g.small       │      │  t4g.small       │            │
 │  │  2 vCPU, 2GB RAM │      │  2 vCPU, 2GB RAM │            │
 │  └──────────────────┘      └──────────────────┘            │
 │           │                          │                       │
@@ -93,17 +93,17 @@ Continue reading for:
 
 #### 🟢 OSCAL Generator Instances (x2)
 
-**Instance Type:** `t3.small` (2 vCPU, 2 GB RAM)
+**Instance Type:** Preferred **t4g.small** (Graviton, 2 vCPU, 2 GB RAM); fallback **t3a.small** (AMD). Default in Terraform is t4g.small.
 
 | Component | Specification | Unit Cost | Monthly Cost |
 |-----------|--------------|-----------|--------------|
-| **Instance 1 (Green)** | t3.small | $0.0208/hour | **$15.18** |
-| **Instance 2 (Blue)** | t3.small | $0.0208/hour | **$15.18** |
+| **Instance 1 (Green)** | t4g.small (Graviton) | ~$0.0164/hour | **~$11.97** |
+| **Instance 2 (Blue)** | t4g.small (Graviton) | ~$0.0164/hour | **~$11.97** |
 | EBS Storage (20 GB each) | gp3 | $0.08/GB-month | $3.20 |
 | Data Transfer (within VPC) | First 100 GB | FREE | $0.00 |
 | Elastic IP (x2) | While attached | FREE | $0.00 |
 
-**Subtotal for OSCAL Instances:** **$33.56/month**
+**Subtotal for OSCAL Instances:** **~$27.14/month** (t4g.small Graviton; use t3a.small for x86_64 if needed)
 
 ---
 
@@ -130,8 +130,8 @@ Continue reading for:
 
 | Component | Monthly Cost |
 |-----------|-------------|
-| OSCAL Green Instance (t3.small) | $15.18 |
-| OSCAL Blue Instance (t3.small) | $15.18 |
+| OSCAL Green Instance (t4g.small Graviton) | ~$11.97 |
+| OSCAL Blue Instance (t4g.small Graviton) | ~$11.97 |
 | OSCAL Storage (40 GB total) | $3.20 |
 | Ollama Instance (g4dn.xlarge with GPU) | $383.96 |
 | Ollama Storage (100 GB) | $8.00 |
@@ -159,8 +159,8 @@ If GPU acceleration is not required, you can run Ollama on CPU:
 
 | Component | Monthly Cost |
 |-----------|-------------|
-| OSCAL Green Instance (t3.small) | $15.18 |
-| OSCAL Blue Instance (t3.small) | $15.18 |
+| OSCAL Green Instance (t4g.small Graviton) | ~$11.97 |
+| OSCAL Blue Instance (t4g.small Graviton) | ~$11.97 |
 | OSCAL Storage (40 GB total) | $3.20 |
 | Ollama Instance (t3.2xlarge CPU-only, 32 GB) | $242.94 (always-on) |
 | Ollama Storage (100 GB) | $8.00 |
@@ -179,7 +179,7 @@ If you don't need Blue/Green deployment:
 
 | Component | Monthly Cost |
 |-----------|-------------|
-| OSCAL Single Instance (t3.small) | $15.18 |
+| OSCAL Single Instance (t4g.small) | ~$11.97 |
 | OSCAL Storage (20 GB) | $1.60 |
 | Ollama Instance (t3.2xlarge CPU-only, 32 GB) | $242.94 (always-on) |
 | Ollama Storage (100 GB) | $8.00 |
@@ -195,7 +195,7 @@ Save up to 40% with reserved instances:
 
 | Instance Type | On-Demand | 1-Year Reserved | Savings |
 |--------------|-----------|-----------------|---------|
-| t3.small (x2) | $30.36/mo | $19.44/mo | **36%** |
+| t4g.small (x2) | ~$23.94/mo | ~$15.34/mo | **36%** |
 | g4dn.xlarge | $383.96/mo | $254.00/mo | **34%** |
 | **Total Savings** | **$414.32/mo** | **$273.44/mo** | **$141/mo** |
 
@@ -206,7 +206,7 @@ For non-critical workloads:
 
 | Instance Type | On-Demand | Spot Price | Savings |
 |--------------|-----------|------------|---------|
-| t3.small | $15.18/mo | $4.50/mo | **70%** |
+| t4g.small | ~$11.97/mo | ~$4.50/mo | **62%** |
 | g4dn.xlarge | $383.96/mo | $115.00/mo | **70%** |
 
 **⚠️ Warning:** Spot instances can be terminated with 2-minute notice when AWS needs capacity.
@@ -274,7 +274,7 @@ For non-critical workloads:
 │    │ EC2 Instance │                        │ EC2 Instance│      │
 │    │ OSCAL-Green  │◄──Health Check────────►│ OSCAL-Blue  │      │
 │    │ Port: 3019   │                        │ Port: 3020  │      │
-│    │ t3.small     │                        │ t3.small    │      │
+│    │ t4g.small    │                        │ t4g.small   │      │
 │    └──────┬───────┘                        └──────┬──────┘      │
 │           │                                        │              │
 │           └────────────────┬───────────────────────┘              │
@@ -314,14 +314,14 @@ For non-critical workloads:
 |-----------|--------------|-------------|
 | **Application Load Balancer** | Base cost | $16.20 |
 | **ALB LCU Hours** | ~10 LCU-hours/month (light traffic) | $5.76 |
-| **OSCAL Green** | t3.small (24/7) | $15.18 |
-| **OSCAL Blue** | t3.small (24/7) | $15.18 |
+| **OSCAL Green** | t4g.small (24/7) | ~$11.97 |
+| **OSCAL Blue** | t4g.small (24/7) | ~$11.97 |
 | **Route 53** | Hosted zone + DNS queries | $1.00 |
 | **CloudWatch Logs** | 10 GB/month ingested | $5.00 |
 | **Lambda Executions** | 10,000 invocations/month | $0.20 |
 | **EBS Storage** | 40 GB (OSCAL) + 100 GB (Ollama) | $11.20 |
 
-**Subtotal (Always-On Infrastructure):** **$69.72/month**
+**Subtotal (Always-On Infrastructure):** **~$66.06/month** (OSCAL on t4g.small)
 
 ---
 
@@ -886,7 +886,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 ✅ Best performance
 
 **Instances:**
-- 2x t3.small (OSCAL Blue/Green)
+- 2x t4g.small (OSCAL Blue/Green, Graviton)
 - 1x g4dn.xlarge (Ollama with GPU)
 
 ---
@@ -899,7 +899,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 ✅ Cost-effective
 
 **Instances:**
-- 2x t3.small (OSCAL Blue/Green)
+- 2x t4g.small (OSCAL Blue/Green, Graviton)
 - 1x t3.2xlarge (Ollama CPU-only, 32 GB)
 
 ---
@@ -912,7 +912,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 ✅ Lowest cost
 
 **Instances:**
-- 1x t3.small (OSCAL)
+- 1x t4g.small (OSCAL)
 - 1x t3.2xlarge (Ollama CPU-only, 32 GB)
 
 ---
@@ -932,7 +932,7 @@ Prices shown are for **US East (N. Virginia) - us-east-1**
 
 ## 🔧 Performance Expectations
 
-### OSCAL Generator (t3.small)
+### OSCAL Generator (t4g.small)
 - **Report Generation:** 2-5 seconds
 - **AI Control Suggestions:** 5-15 seconds (depends on Ollama)
 - **PDF Export:** 3-8 seconds
@@ -1240,13 +1240,13 @@ aws ec2 monitor-instances \
 ├──────────────────────────────────────────────────────────────┤
 │                                                                │
 │  Load Balancer (ALB)        │████████│ $21.96    23.2%       │
-│  OSCAL Green (t3.small)     │██████│   $15.18    16.0%       │
-│  OSCAL Blue (t3.small)      │██████│   $15.18    16.0%       │
+│  OSCAL Green (t4g.small)    │█████│   ~$11.97    12.8%       │
+│  OSCAL Blue (t4g.small)     │█████│   ~$11.97    12.8%       │
 │  Ollama (t3.2xlarge @ ~10%) │██████│   $29.95    30.0%       │
 │  Storage (EBS)              │████│     $11.20    11.8%       │
 │  Monitoring & Lambda        │██│       $6.20      6.6%       │
 │                                                                │
-│  TOTAL: ~$99.67/month                                         │
+│  TOTAL: ~$93.25/month (OSCAL on t4g.small)                    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
