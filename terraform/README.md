@@ -96,3 +96,7 @@ If `terraform apply` fails with `DuplicateListener: A listener already exists on
 ```
 
 From the env directory (e.g. `terraform/envs/aws4403`), run `terraform apply` again. AWS credentials must be set (Pass entry `AWS/AMS_4403-STG` or env).
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026

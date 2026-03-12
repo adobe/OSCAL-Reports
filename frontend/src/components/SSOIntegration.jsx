@@ -442,10 +442,6 @@ function SSOIntegration({ onClose, embedded = false }) {
           ? 'Configure SAML 2.0 and OAuth 2.0 / OpenID Connect providers for enterprise single sign-on'
           : 'View SAML 2.0 and OAuth 2.0 / OpenID Connect configuration (Read-Only Mode)'}
       </div>
-      <div style={{ padding: '0 2rem', fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
-        Client ID and secrets are stored in <strong>config/app/config.json</strong> (or CONFIG_PATH / Docker <strong>/data/config.json</strong>) under <code>ssoConfig.oauth.providers</code>.
-      </div>
-      
       {!canEdit && (
         <div style={{ 
           padding: '1rem 2rem', 

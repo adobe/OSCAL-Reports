@@ -17,8 +17,9 @@
 5. [Usage Guide](#usage-guide)
 6. [Language Considerations](#language-considerations)
 7. [AI Integration](#ai-integration)
-8. [Troubleshooting](#troubleshooting)
-9. [References](#references)
+8. [Testing](#testing)
+9. [Troubleshooting](#troubleshooting)
+10. [References](#references)
 
 ---
 
@@ -266,6 +267,12 @@ Generate professional implementation text for this German IT security control.
 1. **Review AI Suggestions**: German controls may benefit from manual review
 2. **Language Consistency**: Decide on German or English for implementations
 3. **Technical Terms**: Keep technical terms in original language when appropriate
+
+---
+
+## Testing
+
+Testing procedures for BSI Grundschutz++ integration (catalogue load, OSCAL validation, German character rendering, exports, AI suggestions, cross-catalogue compatibility) are in **[QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md)** — see **Part 3: BSI Catalogue Integration Testing**. Use that section for pre-test checklist, test scenarios, expected results, troubleshooting, and the BSI test report template.
 
 ---
 

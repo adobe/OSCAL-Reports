@@ -56,3 +56,7 @@ export AWS_PASS_SSH_ENTRY=AWS/OSCAL-AWS4379-SSH   # if using Pass for SSH key
 ## Migrating from root terraform/
 
 If you previously used `terraform/` (root) for AWS4379, copy your existing `terraform/terraform.tfvars` to `terraform/envs/aws4379/terraform.tfvars` and copy or move `terraform/terraform.tfstate` (and `.backup`) to `terraform/envs/aws4379/` so state is preserved. Then use `TERRAFORM_DIR=$PWD/terraform/envs/aws4379` for all Terraform and deploy commands.
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026

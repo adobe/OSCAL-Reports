@@ -8,7 +8,7 @@ project_name   = "oscal-reports"
 
 # Networking
 vpc_cidr          = "10.0.0.0/16"
-# Default CIDRs for ALB HTTPS and SSH ingress. PCL custom-config-ec2-sg-port-check disallows 0.0.0.0/0.
+# Default CIDRs for ALB HTTPS and SSH ingress. PCL custom-config-ec2-sg-port-check disallows 0.0.0.0/0. For stage accounts, prefer /32 to avoid PCL "broad CIDR" quarantine (e.g. VPN egress IPs as /32).
 default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Your IP(s) or VPN subnet, e.g. ["203.191.182.138/32", "130.248.32.17/32"]
 
 # EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
@@ -46,6 +46,9 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 
 # ALB port 80 for testing: set alb_allow_http_for_testing = true to allow HTTP from default_allowed_cidr_blocks only; default false.
 # alb_allow_http_for_testing = false
+
+# AMS PCL: ALB is tagged Adobe:PublicPorts and Adobe:PortJustification automatically. Override justification if needed:
+# alb_port_justification = "OSCAL Report Generator production access for AMS Gov Cloud"
 
 # ------------------------------------------------------------------------------
 # Image Factory / AMI (docs/IMAGE_FACTORY.md): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023

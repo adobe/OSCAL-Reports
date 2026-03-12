@@ -1,6 +1,6 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-generator",
-  "version": "1.7.8",
+  "version": "1.7.10",
   "description": "Keekar's OSCAL SOA/SSP/CCM Generator - Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix",
   "scripts": {
     "probe-bedrock-gemma": "node backend/scripts/probe-bedrock-gemma.mjs",

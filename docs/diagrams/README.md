@@ -82,3 +82,7 @@ To modify the diagrams:
 - Use SVG for presentations (scalable)
 - Use PDF for print documents
 - Keep width at 1920px for HD displays
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026

@@ -100,4 +100,4 @@ To add a new hook:
 
 ---
 
-**Last Updated:** 2025-01-28
+**Last Updated:** March 2026
