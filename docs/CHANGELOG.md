@@ -8,9 +8,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [1.7.10] - 2026-03-12
 
 ### Changed
-- Version bump
+- Version bump (current wins for PR to main)
 
-## [1.7.9] - 2026-03-12
+## [1.7.9] - 2026-03-13
 
 ### Changed
-- Update version to 1.7.9
+- Release: merge adobe/main into main (version bump for pre-push)
+
+## [1.7.8] - 2026-03-09
+
+### Fixed
+- Docker build: use npm install in frontend stage (frontend package-lock is gitignored)
+
+## [1.7.6] - 2026-03-06
+
+### Changed
+- Fix AI telemetry logging (ESM require fix)
