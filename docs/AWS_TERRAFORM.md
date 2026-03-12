@@ -189,6 +189,32 @@ To serve the app over HTTPS with an AWS-issued certificate and redirect all HTTP
 
 **Direct instance URLs (IP:3019, IP:3020):** AWS ACM certificates cannot be installed on EC2 instances; ACM works only with AWS services (ALB, CloudFront, API Gateway). To access Green or Blue over HTTPS, use **ALB hostnames** (`alb_green_hostname`, `alb_blue_hostname`) with a CNAME to the ALB and the same ACM cert—traffic is then HTTPS via the ALB. The raw IP:port URLs (e.g. `http://3.234.177.204:3019`, `http://54.145.135.149:3020`) remain HTTP and are suitable for debug or internal use only.
 
+### PCL auto-remediation: ALB security group (recovery)
+
+Stage-account PCL (Policy Compliance Layer) may flag the ALB for **port 443** and **automatically replace** its security group with a different one (e.g. `sg-01b7bbf8677bf26b9`). The replacement SG often has no usable 443 ingress, so the ALB stops accepting traffic and appears broken.
+
+**PCL-friendly ALB SG pattern (per AMS PCL / FluffyJaws):**
+
+- The Terraform ALB security group uses **explicit TCP 443 and 80 only** (no "All traffic" / ANY protocol).
+- Ingress does **not** use `0.0.0.0/0`; it uses `default_allowed_cidr_blocks` only.
+- For **stage accounts**, PCL may treat CIDRs **broader than /32 as "broad"** and revert the SG. **Prefer /32 or the smallest range needed** in `default_allowed_cidr_blocks` to avoid quarantine. Keep `alb_restrict_to_australia = false` per org restrictions.
+- **Resource tagging:** The ALB is tagged with **Adobe:PublicPorts** (space-separated ports, e.g. `80 443`) and **Adobe:PortJustification** (set via `alb_port_justification` in tfvars). These tags are required for open ports to be compliant; for STG you may also need a formal exception. Override `alb_port_justification` with a short description of the public service (e.g. "OSCAL Report Generator production access for AMS Gov Cloud").
+
+**Recovery (restore Terraform-managed ALB SG):**
+
+1. From repo root, run apply for the affected env so Terraform re-attaches the correct ALB security group:
+
+   ```bash
+   cd /path/to/OSCAL_Reports
+   TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./terraform/run-with-aws-pass.sh apply
+   ```
+
+   Terraform will see the drift (ALB currently has the PCL-applied SG) and update the ALB back to `aws_security_group.alb.id`. No other resources need to change.
+
+2. If you use a different env, set `TERRAFORM_DIR` to that env (e.g. `terraform/envs/aws4379`) and use the matching Pass entry (e.g. `AWS_PASS_ENTRY="AWS/AWS4379 Sandbox"`).
+
+**Reducing recurrence:** Prefer **/32** entries in `default_allowed_cidr_blocks` (e.g. known VPN egress IPs) to avoid "broad CIDR" quarantine. Replace any /24 or larger ranges with /32 or the smallest range you actually need, then run `terraform apply`.
+
 
 ## Key variables
 
@@ -207,12 +233,40 @@ To serve the app over HTTPS with an AWS-issued certificate and redirect all HTTP
 | `alb_ssl_certificate_arn` | ACM cert for HTTPS | `null` (HTTP only) |
 | `alb_blue_hostname` | Hostname for Blue (e.g. blue.oscal.example.com); ALB routes by Host header | `null` |
 | `alb_green_hostname` | Hostname for Green (e.g. green.oscal.example.com); ALB routes by Host header | `null` |
+| `alb_port_justification` | Free-form text for Adobe:PortJustification tag on ALB (AMS PCL requirement); only letters, numbers, spaces, _.:/=+-@ | `"OSCAL Report Generator web access HTTPS and HTTP"` |
 | `use_image_factory_ami` | Use Image Factory Amazon Linux 2023 when available | `true` |
 | `run_oscal_via_docker` | If true, EC2 runs Docker/podman + GHCR image | `false` |
 | `common_tags` | Tags applied to all resources (e.g. Team, Account) | `{}` |
 
 See `terraform/variables.tf` and `terraform/terraform.tfvars.example` (or `terraform/envs/<env>/`) for the full list. **AI** is via AWS Bedrock or Mistral API; configure in the app (Settings or config.json). See [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md).
 
+
+## Troubleshooting: Access broken (direct instances and ALB)
+
+When **all** of the following are unreachable — `http://<green-ip>:3019/`, `http://<blue-ip>:3020/`, and `https://<alb-dns-name>/`:
+
+**1. Your IP is not in the allow list**  
+Access is restricted to `default_allowed_cidr_blocks`. If you changed networks (e.g. home vs office, different VPN), your public IP may no longer be allowed.
+
+- **Check your current IP:** `curl -s ifconfig.me` (or open https://ifconfig.me).
+- **Add it:** In your env's `terraform.tfvars` (e.g. `terraform/envs/aws4403/terraform.tfvars`), add `"YOUR_IP/32"` to `default_allowed_cidr_blocks`, then run `terraform apply`. When you use `./terraform/run-with-aws-pass.sh plan` or `apply`, the script automatically adds your current IP to `default_allowed_cidr_blocks` in `terraform.tfvars` if it is missing (so lockout is avoided on a new network). To disable this (e.g. in CI), set `SKIP_CURRENT_IP_ADD=1`.
+
+**2. ALB security group was replaced by PCL**  
+PCL may have swapped the ALB's security group again, so the ALB no longer allows 443 (and the ALB URL fails). Direct instance access can still work if your IP is allowed; if direct is also broken, see (1).
+
+- **Fix:** Run `terraform apply` so Terraform re-attaches the correct ALB security group and applies tags (e.g. `TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./terraform/run-with-aws-pass.sh apply`). Ensure `alb_port_justification` uses only characters allowed by AWS for ELB tags (no parentheses).
+
+**3. Instances stopped or app not running**  
+- In AWS Console: **EC2 → Instances** — confirm Green and Blue are **running**.
+- **EC2 → Target Groups → Targets** — confirm targets are **Healthy**. If Unhealthy, fix the app or health check on the instance.
+
+**4. ALB works but direct instance URLs (http://&lt;green-ip&gt;:3019, http://&lt;blue-ip&gt;:3020) are broken**  
+The ALB and the instances use the same `default_allowed_cidr_blocks`; if the ALB is reachable, your IP is in the list. Direct access is allowed by the **OSCAL** security group (ports 3019, 3020). If that SG is out of sync (e.g. a previous apply failed after updating the ALB SG, or rules were changed in the console), the OSCAL SG may be missing your CIDR.
+
+- **Fix:** Run `terraform apply` again so the OSCAL security group is updated to match `default_allowed_cidr_blocks` (e.g. `TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./terraform/run-with-aws-pass.sh apply`).
+- **Verify:** In AWS Console, **EC2 → Security Groups** → find the OSCAL SG (name like `ams-oscal-reports-oscal-*`) → **Inbound rules** → confirm there are rules for ports **3019** and **3020** from your IP or CIDR (e.g. `203.191.182.150/32`). If those rules are missing, apply again or fix drift.
+
+---
 
 ## Troubleshooting: 503 Service Unavailable
 

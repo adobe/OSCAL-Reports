@@ -7,9 +7,11 @@
 # Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; AWS CLI (for ec2_automation env).
 #
 # Usage:
-#   ./scripts/deploy-to-ec2.sh
-#   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4
-#   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8
+#   ./scripts/deploy-to-ec2.sh              # Default: deploy to green only (IPs from Terraform)
+#   ./scripts/deploy-to-ec2.sh --both       # Deploy to both green and blue
+#   ./scripts/deploy-to-ec2.sh --blue       # Deploy to blue only
+#   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4   # Deploy to green at given IP
+#   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8    # Deploy to blue at given IP
 #   SSH_KEY_FILE=/path/to/key.pem ./scripts/deploy-to-ec2.sh
 #
 # Blue vs Green: Only PORT differs (Blue=3020, Green=3019). Same unit file, S3 prefix (config/blue vs config/green),
@@ -405,26 +407,39 @@ DEPLOYLOGLOCAL
 }
 
 # --- main ---
-GREEN_ONLY=""
-BLUE_ONLY=""
+# Deploy target: green (default), blue, or both. With --green-only/--blue-only IP we also set the IP.
+DEPLOY_TARGET="green"
+GREEN_ONLY_IP=""
+BLUE_ONLY_IP=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --both)
+      DEPLOY_TARGET="both"
+      shift
+      ;;
+    --blue)
+      DEPLOY_TARGET="blue"
+      shift
+      ;;
     --green-only)
       shift
-      GREEN_IP="${1:?Give IP after --green-only}"
-      GREEN_ONLY="1"
+      GREEN_ONLY_IP="${1:?Give IP after --green-only}"
+      DEPLOY_TARGET="green"
       shift
       ;;
     --blue-only)
       shift
-      BLUE_IP="${1:?Give IP after --blue-only}"
-      BLUE_ONLY="1"
+      BLUE_ONLY_IP="${1:?Give IP after --blue-only}"
+      DEPLOY_TARGET="blue"
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--green-only IP] [--blue-only IP]"
-      echo "  With no IPs, reads from terraform output (run from repo root)."
-      echo "  With --green-only IP or --blue-only IP, deploys to that host only."
+      echo "Usage: $0 [--both | --blue | [--green-only IP] | [--blue-only IP]]"
+      echo "  No option: deploy to green only (IPs from Terraform)."
+      echo "  --both:    deploy to both green and blue."
+      echo "  --blue:    deploy to blue only."
+      echo "  --green-only IP: deploy to green at given IP."
+      echo "  --blue-only IP:  deploy to blue at given IP."
       echo "  SSH key: Pass entry $PASS_ENTRY or SSH_KEY_FILE=/path/to/key.pem"
       exit 0
       ;;
@@ -434,12 +449,18 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# If IPs not set by --green-only/--blue-only, get from Terraform
-if [ -z "$GREEN_ONLY" ] && [ -z "$BLUE_ONLY" ]; then
+# Resolve IPs: from --green-only/--blue-only or from Terraform
+if [ -n "$GREEN_ONLY_IP" ]; then
+  GREEN_IP="$GREEN_ONLY_IP"
+fi
+if [ -n "$BLUE_ONLY_IP" ]; then
+  BLUE_IP="$BLUE_ONLY_IP"
+fi
+if [ -z "$GREEN_IP" ] || [ -z "$BLUE_IP" ]; then
   IPS=$(get_terraform_ips "$TERRAFORM_DIR" || true)
   if [ -n "$IPS" ]; then
-    GREEN_IP=$(echo "$IPS" | awk '{print $1}')
-    BLUE_IP=$(echo "$IPS" | awk '{print $2}')
+    [ -z "$GREEN_IP" ] && GREEN_IP=$(echo "$IPS" | awk '{print $1}')
+    [ -z "$BLUE_IP" ] && BLUE_IP=$(echo "$IPS" | awk '{print $2}')
     print_info "Using Terraform dir: $TERRAFORM_DIR"
     print_info "Green: $GREEN_IP  Blue: $BLUE_IP"
   else
@@ -448,6 +469,17 @@ if [ -z "$GREEN_ONLY" ] && [ -z "$BLUE_ONLY" ]; then
     exit 1
   fi
 fi
+
+# Default: deploy green only. --both deploys both, --blue deploys blue only.
+case "$DEPLOY_TARGET" in
+  both)  DEPLOY_GREEN=1; DEPLOY_BLUE=1 ;;
+  blue)  DEPLOY_GREEN=0; DEPLOY_BLUE=1 ;;
+  green) DEPLOY_GREEN=1; DEPLOY_BLUE=0 ;;
+  *)     DEPLOY_GREEN=1; DEPLOY_BLUE=0 ;;
+esac
+[ "$DEPLOY_TARGET" = "green" ] && print_info "Deploy target: green only (default). Use --both or --blue to change."
+[ "$DEPLOY_TARGET" = "both" ] && print_info "Deploy target: both green and blue."
+[ "$DEPLOY_TARGET" = "blue" ] && print_info "Deploy target: blue only."
 
 [ -z "$GREEN_IP" ] && [ -z "$BLUE_IP" ] && { print_error "No instance IPs"; exit 1; }
 
@@ -473,10 +505,10 @@ DEPLOY_RESULTS_FILE=$(mktemp)
 trap 'rm -f "$DEPLOY_RESULTS_FILE"' EXIT
 
 PASS_MISSING_ANY=0
-if [ -n "$GREEN_IP" ]; then
+if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
   deploy_one "$GREEN_IP" "green" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
 fi
-if [ -n "$BLUE_IP" ]; then
+if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   deploy_one "$BLUE_IP" "blue" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
 fi
 
@@ -546,14 +578,14 @@ fi
 
 # Copy deployment.log from each deployed host to repo logs/ for local analysis
 mkdir -p "$REPO_ROOT/logs"
-if [ -n "$GREEN_IP" ]; then
+if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
   if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "${SSH_USER}@${GREEN_IP}:${DEPLOY_LOG_REMOTE}" "$REPO_ROOT/logs/deployment-green.log" 2>/dev/null; then
     print_success "Fetched deployment.log from green -> logs/deployment-green.log"
   else
     print_warning "Could not scp deployment.log from green (check path/permissions)."
   fi
 fi
-if [ -n "$BLUE_IP" ]; then
+if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "${SSH_USER}@${BLUE_IP}:${DEPLOY_LOG_REMOTE}" "$REPO_ROOT/logs/deployment-blue.log" 2>/dev/null; then
     print_success "Fetched deployment.log from blue -> logs/deployment-blue.log"
   else

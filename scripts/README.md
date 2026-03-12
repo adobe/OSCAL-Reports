@@ -452,5 +452,5 @@ If you encounter issues:
 ---
 
 **Author:** Mukesh Kesharwani  
-**Version:** 1.0.0  
-**Last Updated:** January 24, 2026
+**Version:** 1.7.10  
+**Last Updated:** March 2026

@@ -21,7 +21,7 @@ Open **http://localhost:3021**. Backend API: **http://localhost:3020**.
 ## Design and configuration
 
 - **AI:** AWS Bedrock (default) or Mistral API. No self-hosted Ollama. Configure in **Settings → AI Integration** or via `config/app/config.json` (see [docs/AI_MODELS_AND_CONFIG.md](docs/AI_MODELS_AND_CONFIG.md)).
-- **Auth:** Session-based; users in `config/app/users.json` (PBKDF2). Optional Okta OIDC (see [docs/OKTA_OIDC_INTEGRATION.md](docs/OKTA_OIDC_INTEGRATION.md)).
+- **Auth:** Session-based; users in `config/app/users.json` (PBKDF2). Optional OIDC/SSO e.g. Okta (see [docs/OIDC_SSO_INTEGRATION.md](docs/OIDC_SSO_INTEGRATION.md)).
 - **Branching:** Development / Quality_Test / Pre_Prod → main. PRs to **main** allowed from any of these three branches (see [docs/BRANCHING_STRATEGY.md](docs/BRANCHING_STRATEGY.md)).
 - **AWS (Terraform):** ALB, Green/Blue EC2 instances, S3 (logs, config, users). All resources tagged (Project, Environment, Stack) for easy add/remove per account. See [terraform/README.md](terraform/README.md) and [docs/AWS_TERRAFORM.md](docs/AWS_TERRAFORM.md).
 
@@ -93,3 +93,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_BEDROCK_SETUP.md]
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026

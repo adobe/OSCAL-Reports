@@ -13,6 +13,8 @@ default_allowed_cidr_blocks = [
   "130.248.32.17/32"
 ]
 # alb_allow_http_for_testing = false  # Set true to open ALB port 80 from default_allowed_cidr_blocks only (for testing)
+# AMS PCL: ALB is tagged Adobe:PublicPorts and Adobe:PortJustification automatically. Override if needed:
+# alb_port_justification = "OSCAL Report Generator production access for AMS Gov Cloud"
 
 key_name = "oscal-aws4379"  # Or null; import key: AWS_PASS_ENTRY=AWS/AWS4379\ Sandbox ... run-with-aws-pass.sh import-key us-east-1
 

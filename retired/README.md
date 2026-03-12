@@ -7,3 +7,7 @@ This folder holds code, scripts, and documentation that have been **retired** fr
 | [truenas-build/](truenas-build/) | TrueNAS build script, TRUENAS.md, create-truenas-catalog.sh, truenas-app.yaml | 6 months when stable |
 
 See each subfolder’s README for details.
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026
