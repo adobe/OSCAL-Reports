@@ -3,7 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.7.10] - 2026-03-12
+
+### Changed
+- Version bump (current wins for PR to main)
+
+## [1.7.9] - 2026-03-13
+
+### Changed
+- Release: merge adobe/main into main (version bump for pre-push)
+
+## [1.7.8] - 2026-03-09
+
+### Fixed
+- Docker build: use npm install in frontend stage (frontend package-lock is gitignored)
 
 ## [1.7.6] - 2026-03-06
 

@@ -2,6 +2,15 @@
 
 EC2 instances use **Adobe Image Factory Amazon Linux 2023** when AMI IDs are provided; otherwise **native Amazon Linux 2023** is used.
 
+## EC2 instance preference (Graviton then AMD)
+
+Preferred instance families for OSCAL Green/Blue:
+
+1. **Graviton (t4g)** – preferred: set `instance_type = "t4g.small"` and `instance_architecture = "arm64"` (Terraform defaults). Use an ARM64 AMI (Image Factory or native Amazon Linux 2023 for arm64).
+2. **AMD (t3a)** – fallback: set `instance_type = "t3a.small"` and `instance_architecture = "x86_64"`. Use an x86_64 AMI.
+
+Ensure the AMI you use matches `instance_architecture` (arm64 for t4g, x86_64 for t3a). Image Factory and native Amazon Linux 2023 are available for both architectures.
+
 ## References
 
 - **Wiki:** [Adobe Image Factory](https://wiki.corp.adobe.com/pages/viewpage.action?spaceKey=imagefactory&title=Adobe+Image+Factory) – overview, process, and how to find approved AMIs.

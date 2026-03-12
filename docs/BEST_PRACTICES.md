@@ -443,6 +443,17 @@ logAIInteraction({
 - [KACI_BEST_PRACTICES_ANALYSIS.md](../KACI_BEST_PRACTICES_ANALYSIS.md) - Full analysis
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [DEPLOYMENT.md](./DEPLOYMENT.md) - Deployment guide
+- [AWS_TERRAFORM.md](./AWS_TERRAFORM.md) - Terraform for OSCAL on AWS
+- [IMAGE_FACTORY.md](./IMAGE_FACTORY.md) - Image Factory AMI usage
+
+### **EC2 instance preference (AWS Terraform)**
+
+Preferred order for OSCAL Green/Blue EC2 instances:
+
+1. **Graviton (t4g)** – preferred: better price/performance, ARM64. Set `instance_type = "t4g.small"` and `instance_architecture = "arm64"` (defaults in `terraform/variables.tf`).
+2. **AMD (t3a)** – fallback: x86_64. Set `instance_type = "t3a.small"` and `instance_architecture = "x86_64"`.
+
+Use Graviton (t4g) unless your AMI or workload requires x86_64; then use t3a. See [IMAGE_FACTORY.md](IMAGE_FACTORY.md) and [AWS_TERRAFORM.md](AWS_TERRAFORM.md).
 
 ### **External Standards**
 - [Semantic Versioning](https://semver.org/)
@@ -2478,7 +2489,7 @@ These best practices from KACI are already successfully implemented in OSCAL Rep
 ### 11. **Docker Multi-Stage Builds** ✅
 - **KACI Practice:** Optimized container images
 - **OSCAL Status:** ✅ **FULLY IMPLEMENTED**
-- **Location:** `Dockerfile`, `config/build/Dockerfile`
+- **Location:** root `Dockerfile` (canonical). Former `config/build/Dockerfile` archived in `retired/truenas-build/config-build/`.
 - **Evidence:** Multi-stage builds for production optimization
 
 ### 12. **Environment-Based Configuration** ✅

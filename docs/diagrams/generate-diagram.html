@@ -79,7 +79,7 @@
         <div class="cost-box">
             <h2>Typical Setup Cost</h2>
             <div class="cost-amount">~$35–50/month base</div>
-            <p style="font-size: 18px; margin: 10px 0;">Green + Blue t3.small (always on) | S3 (logs, config, users) | Bedrock pay-per-use for AI</p>
+            <p style="font-size: 18px; margin: 10px 0;">Green + Blue t4g.small (Graviton, always on) | S3 (logs, config, users) | Bedrock pay-per-use for AI</p>
             <p style="font-size: 14px; margin: 8px 0; color: #155724;"><strong>Design:</strong> ALB routes to Green (3019) and Blue (3020). Config and users live in S3; instances sync/mount from S3. AI suggestions use AWS Bedrock (no self-hosted Ollama). All resources tagged (Project, Environment, Stack) for easy add/remove per account.</p>
         </div>
 
@@ -112,8 +112,8 @@ flowchart TB
         end
 
         subgraph OSCAL["OSCAL Instances Always On"]
-            Green["Green Instance<br/>t3.small 2vCPU 2GB<br/>Port: 3019"]
-            Blue["Blue Instance<br/>t3.small 2vCPU 2GB<br/>Port: 3020"]
+            Green["Green Instance<br/>t4g.small (Graviton) 2vCPU 2GB<br/>Port: 3019"]
+            Blue["Blue Instance<br/>t4g.small (Graviton) 2vCPU 2GB<br/>Port: 3020"]
         end
 
         subgraph Storage["Storage"]

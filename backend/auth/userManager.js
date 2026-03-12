@@ -14,35 +14,74 @@ import { atomicWriteJSON } from '../utils/atomicWrite.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Users file path priority:
-// 1. Environment variable USERS_PATH (for custom locations, e.g. EC2 /opt/oscal/data/users.json)
-// 2. /data/users.json (Docker volume mount - PREFERRED)
-// 3. config/app/users.json (canonical repo location for local dev)
+// Users file path priority (keep in sync with configManager getConfigPath):
+// 1. USERS_PATH env (always when set)
+// 2. /data/users.json (Docker)
+// 3. Same directory as CONFIG_PATH (pair with config.json in one folder)
+// 4. OSCAL_DATA_DIR/users.json
+// 5. Repo sibling OSCAL_Reports_data/users.json
+// 6. config/app/users.json
+// 7. Default /data/users.json
 const VOLUME_USERS_FILE = '/data/users.json';
 const CONFIG_DIR = path.join(__dirname, '..', '..', 'config', 'app');
 const USERS_FILE = path.join(CONFIG_DIR, 'users.json');
+const REPO_ROOT = path.join(__dirname, '..', '..');
+const SIBLING_DATA_DIR = path.join(REPO_ROOT, '..', 'OSCAL_Reports_data');
+
+function resolveExistingDir(p) {
+  try {
+    if (p && fs.existsSync(p) && fs.statSync(p).isDirectory()) return path.resolve(p);
+  } catch (_) {}
+  return null;
+}
 
 /**
  * Get the users file path based on priority
  * @returns {string} - Path to users file
  */
 function getUsersPath() {
-  // 1. Check environment variable
-  if (process.env.USERS_PATH && fs.existsSync(process.env.USERS_PATH)) {
-    return process.env.USERS_PATH;
+  // 1. USERS_PATH — use whenever set
+  const envUsers = (process.env.USERS_PATH || '').trim();
+  if (envUsers) {
+    return path.resolve(envUsers);
   }
-  
-  // 2. Check volume mount (preferred for Docker)
+
+  // 2. Docker volume
   if (fs.existsSync(VOLUME_USERS_FILE)) {
     return VOLUME_USERS_FILE;
   }
-  
-  // 3. Check config/app directory (canonical repo location)
+
+  // 3. Same folder as CONFIG_PATH — only if users.json exists there (avoid empty list when config lives in repo without users)
+  const envConfig = (process.env.CONFIG_PATH || '').trim();
+  if (envConfig) {
+    const configDir = path.dirname(path.resolve(envConfig));
+    const pairedUsers = path.join(configDir, 'users.json');
+    if (resolveExistingDir(configDir) && fs.existsSync(pairedUsers)) {
+      return pairedUsers;
+    }
+  }
+
+  // 4. OSCAL_DATA_DIR
+  const envDataDir = (process.env.OSCAL_DATA_DIR || '').trim();
+  if (envDataDir) {
+    const dir = resolveExistingDir(envDataDir) || envDataDir;
+    return path.join(path.resolve(dir), 'users.json');
+  }
+
+  // 5. Sibling OSCAL_Reports_data — only return if users.json exists (else loadUsers would return [])
+  if (resolveExistingDir(SIBLING_DATA_DIR)) {
+    const usr = path.join(SIBLING_DATA_DIR, 'users.json');
+    if (fs.existsSync(usr)) {
+      return usr;
+    }
+  }
+
+  // 6. Repo config/app
   if (fs.existsSync(USERS_FILE)) {
     return USERS_FILE;
   }
-  
-  // Default: Use volume location for new installations
+
+  // 7. Default
   return VOLUME_USERS_FILE;
 }
 
@@ -334,7 +373,7 @@ export async function initializeDefaultUsers() {
   try {
     console.log('🔐 Initializing default users...');
     console.log(`   Config directory: ${CONFIG_DIR}`);
-    console.log(`   Users file: ${USERS_FILE}`);
+    console.log(`   Users file: ${getUsersPath()}`);
     
     const users = await loadUsers();
     console.log(`   Found ${users.length} existing users`);
@@ -403,7 +442,7 @@ export async function initializeDefaultUsers() {
     console.error('❌ Critical error initializing default users:', error);
     console.error('   Stack:', error.stack);
     console.error(`   Config directory: ${CONFIG_DIR}`);
-    console.error(`   Users file: ${USERS_FILE}`);
+    console.error(`   Users file: ${getUsersPath()}`);
     // Don't throw - allow server to start even if user init fails
     // Users can be created manually via API if needed
   }
@@ -423,8 +462,9 @@ export async function authenticateUser(username, password) {
     console.log(`   Total users loaded: ${users.length}`);
   }
   
-  // Find user by username first
-  const userByUsername = users.find(u => u.username === username);
+  // Find user by username or by email (same identifier users often type either)
+  const userByUsername = users.find(u => u.username === username)
+    || users.find(u => (u.email && u.email.toLowerCase() === String(username).toLowerCase()));
   
   if (!userByUsername) {
     console.log(`❌ User not found: ${username}`);

@@ -26,8 +26,7 @@ Quality_Test ─────┘
 
 **Lifecycle**:
 - Created from: `Pre_Prod` or `main`
-- Merges to: `Pre_Prod` ONLY
-- Never merges directly to: `main`
+- Merges to: `Pre_Prod` (recommended) or `main` (allowed)
 
 **Usage**:
 ```bash
@@ -60,8 +59,7 @@ gh pr create --base Pre_Prod --title "Merge features to Pre_Prod"
 
 **Lifecycle**:
 - Created from: `Pre_Prod` or `main`
-- Merges to: `Pre_Prod` ONLY
-- Never merges directly to: `main`
+- Merges to: `Pre_Prod` (recommended) or `main` (allowed)
 
 **Usage**:
 ```bash
@@ -133,7 +131,7 @@ gh pr create --base main --title "Release v1.6.3 to Production" --body "
 **Who merges here**: Release Manager, Admin
 
 **Lifecycle**:
-- Accepts merges from: `Pre_Prod` ONLY
+- Accepts merges from: `Development`, `Quality_Test`, or `Pre_Prod`
 - Protected branch with strict controls
 - Every merge triggers production deployment
 - Automatically tagged with version numbers
@@ -143,7 +141,7 @@ gh pr create --base main --title "Release v1.6.3 to Production" --body "
 - ✅ Dismisses stale reviews
 - ✅ No force pushes allowed
 - ✅ No deletions allowed
-- ⚠️ Only accepts PRs from `Pre_Prod`
+- ✅ PRs to main allowed from Development, Quality_Test, or Pre_Prod (recommended: Pre_Prod for staging first)
 
 ---
 
@@ -158,7 +156,7 @@ gh pr create --base main --title "Release v1.6.3 to Production" --body "
 | Dismiss stale reviews | ✅ Enabled | Re-approval after changes |
 | Allow force push | ❌ Disabled | Prevents history rewriting |
 | Allow deletion | ❌ Disabled | Cannot delete production branch |
-| **Source restriction** | ⚠️ Manual | Only merge from `Pre_Prod` |
+| **Source restriction** | ✅ Flexible | Merge from `Development`, `Quality_Test`, or `Pre_Prod` |
 
 ### Pre_Prod (Staging)
 
@@ -290,59 +288,45 @@ gh pr create --base Pre_Prod --title "Merge QA improvements"
 
 ## ⚠️ Important Rules
 
-### 🔒 CRITICAL RULE - STRICTLY ENFORCED:
+### 🔒 Merging to main
 
-**⛔ Only Pre_Prod can merge to main**
+**Allowed:** PRs to `main` may come from **Development**, **Quality_Test**, or **Pre_Prod**. This is enforced by GitHub Actions.
 
-This is the ONE hard rule that is strictly enforced by GitHub Actions:
-- ❌ Development → main (BLOCKED)
-- ❌ Quality_Test → main (BLOCKED)
-- ❌ Feature branches → main (BLOCKED)
-- ❌ Custom branches → main (BLOCKED)
-- ✅ Pre_Prod → main (ALLOWED)
+- ✅ Development → main (allowed)
+- ✅ Quality_Test → main (allowed)
+- ✅ Pre_Prod → main (allowed, recommended for staging validation first)
+- ❌ Feature/custom branches → main (blocked)
 
-**All PRs to `main` must come from the `Pre_Prod` branch - no exceptions.**
+**Recommended:** Merge via Pre_Prod so changes are validated in staging before production.
 
-### 📝 How to Create a PR to main (Correct Way)
+### 📝 How to Create a PR to main
 
-**✅ CORRECT - From Pre_Prod branch:**
+**✅ Option 1 – From Pre_Prod (recommended):**
 ```bash
-# Step 1: Ensure you're on Pre_Prod branch
 git checkout Pre_Prod
 git pull origin Pre_Prod
-
-# Step 2: Create PR from Pre_Prod to main
 gh pr create --base main --head Pre_Prod --title "Release v1.6.7"
 ```
 
-**❌ WRONG - From feature/custom branch:**
+**✅ Option 2 – From Development or Quality_Test:**
 ```bash
-# This will be REJECTED by branch protection workflow
-git checkout -b sync-preprod-to-main-v1.6.7  # ❌ Creating custom branch
-gh pr create --base main --head sync-preprod-to-main-v1.6.7  # ❌ WILL FAIL
+git checkout Development   # or Quality_Test
+git pull origin Development
+gh pr create --base main --head Development --title "Release to Production"
 ```
 
-**Common Mistake: Creating Custom Branches for Syncing**
-
-If you need to sync changes to main:
-1. ❌ **DON'T** create a custom branch like `sync-preprod-to-main-v1.6.7`
-2. ❌ **DON'T** create PR from that custom branch to main
-3. ✅ **DO** merge your changes into Pre_Prod first
-4. ✅ **DO** create PR directly from Pre_Prod to main
-
-**Why This Rule Exists:**
-- Ensures all production releases go through staging (Pre_Prod) first
-- Maintains deployment consistency
-- Prevents untested code from reaching production
-- Provides clear audit trail of what was deployed
+**❌ Not allowed – From feature/custom branch:**
+```bash
+# Blocked by branch protection: only Development, Quality_Test, or Pre_Prod can target main
+gh pr create --base main --head feature/my-branch  # ❌ WILL FAIL
+```
 
 ---
 
 ### ❌ NEVER Do These:
 
-1. **Never merge ANY branch → main directly**
-   - ONLY Pre_Prod can merge to main
-   - This rule is strictly enforced by automated checks
+1. **Never merge feature/custom branches → main directly**
+   - Only Development, Quality_Test, or Pre_Prod can target main (enforced by automated checks)
 
 2. **Never push directly to main**
    - Always use Pull Requests
@@ -366,8 +350,8 @@ If you need to sync changes to main:
    - Validate in staging environment
 
 4. **Always follow the recommended hierarchy**
-   - Recommended: Development/Quality_Test → Pre_Prod → main
-   - Critical: ONLY Pre_Prod → main (strictly enforced)
+   - Recommended: Development/Quality_Test → Pre_Prod → main (validate in staging first)
+   - Allowed: Development, Quality_Test, or Pre_Prod → main
 
 5. **Always add meaningful commit messages**
    - Describe what and why, not how
@@ -382,10 +366,11 @@ While we recommend the standard flow (Development/Quality_Test → Pre_Prod → 
 - ✅ Development ↔ Quality_Test (if intentional)
 - ✅ Feature branches → Development/Quality_Test/Pre_Prod
 - ✅ Any branch → Pre_Prod (recommended for hotfixes)
+- ✅ Development, Quality_Test, or Pre_Prod → main
 - ✅ Sync merges (main → Pre_Prod → Development/Quality_Test)
 
 **BLOCKED:**
-- ❌ ANY branch (except Pre_Prod) → main
+- ❌ Feature/custom branches → main (only long-lived branches allowed)
 
 **Best Practice:**
 Follow the recommended flow for better tracking and organization, but cross-branch merges are not blocked if you have a valid reason.
@@ -550,7 +535,7 @@ Workflows are configured in `.github/workflows/`:
 | **Development** | Active development | feature/fix branches | Pre_Prod | None |
 | **Quality_Test** | QA testing | test branches | Pre_Prod | None |
 | **Pre_Prod** | Staging/validation | Development, Quality_Test | main | Staging server |
-| **main** | Production | Pre_Prod only | N/A | Production |
+| **main** | Production | Development, Quality_Test, Pre_Prod | N/A | Production |
 
 ---
 
@@ -558,6 +543,6 @@ Workflows are configured in `.github/workflows/`:
 
 ---
 
-**Last Updated**: January 22, 2026  
-**Version**: 1.0  
+**Last Updated**: March 2026  
+**Version**: 1.1  
 **Status**: Active
