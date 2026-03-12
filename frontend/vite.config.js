@@ -9,12 +9,23 @@ export default defineConfig({
   },
   server: {
     port: 3021,
+    allowedHosts: ['keekar.3utilities.com'],
     proxy: {
       '/api': {
         target: 'http://localhost:3020',
-        changeOrigin: true
-      }
-    }
+        // Keep changeOrigin so the upstream connection works; backend uses X-Forwarded-* to build Okta redirect_uri
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const host = req.headers.host;
+            if (host) {
+              proxyReq.setHeader('X-Forwarded-Host', host);
+              proxyReq.setHeader('X-Forwarded-Proto', req.socket?.encrypted ? 'https' : 'http');
+            }
+          });
+        },
+      },
+    },
   }
 })
 

@@ -16,6 +16,7 @@ This guide consolidates all quality assurance processes, checklists, and verific
 
 1. [Development Checklists](#part-1-development-checklists)
 2. [Verification Report Template](#part-2-verification-report-template)
+3. [BSI Catalogue Integration Testing](#part-3-bsi-catalogue-integration-testing)
 
 ---
 
@@ -754,6 +755,97 @@ This document consolidates the following QA files (as of December 29, 2025):
 | VERIFICATION_REPORT_TEMPLATE.md | 397 | Comprehensive verification template |
 
 **Consolidated Into:** QUALITY_ASSURANCE.md
+
+---
+
+---
+
+# ═══════════════════════════════════════════════════════════════════════
+# PART 3: BSI CATALOGUE INTEGRATION TESTING
+# ═══════════════════════════════════════════════════════════════════════
+
+> **Purpose:** Testing procedures for BSI Grundschutz++ catalogue integration (German IT security standards).  
+> **Reference:** Integration details in [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md).
+
+---
+
+## BSI Testing Objectives
+
+- Verify BSI catalogue fetching and parsing
+- Validate OSCAL format compatibility
+- Test control display and German character (UTF-8) rendering
+- Validate SSP generation with BSI controls
+- Test all export formats (OSCAL JSON, Excel, PDF, CCM)
+- Verify AI suggestions work with German controls
+- Ensure backward compatibility with existing catalogues (NIST, ISM, CCCS, IM8)
+
+---
+
+## BSI Pre-Testing Checklist
+
+- [ ] `frontend/src/components/CatalogueInput.jsx` – BSI catalogue in `SAMPLE_CATALOGUES`
+- [ ] BSI catalogue URL correct: `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json`
+- [ ] Node.js v20+, npm, browser (Chrome/Firefox/Safari), internet for fetch
+- [ ] Optional: Ollama + Mistral 7B for AI suggestion testing
+
+---
+
+## BSI Test Scenarios Summary
+
+| # | Test | Key checks |
+|---|------|------------|
+| 1 | Catalogue selection and loading | "BSI Grundschutz++ (Kompendium) 🇩🇪" in dropdown; loads without errors; controls displayed; German titles visible |
+| 2 | OSCAL format validation | `POST /api/fetch-catalogue` returns 200; `catalogue`, `controls`, `metadata`; control IDs like `APP.1.1.A1`, `SYS.2.1.A5` |
+| 3 | German character rendering | ä, ö, ü, ß, Ä, Ö, Ü display correctly; no; search/filter with German keywords |
+| 4 | Control implementation | System info + control details accept German/English; umlauts save; data persists |
+| 5 | AI suggestions (Mistral 7B) | Suggestions relevant; German context understood; fallback if AI unavailable |
+| 6 | Export OSCAL JSON | Valid structure; German text preserved (UTF-8); BSI control IDs |
+| 7 | Export Excel (CCM) | German umlauts in cells; control IDs and titles correct; no encoding issues |
+| 8 | Export PDF | German characters in PDF; UTF-8 fonts; no boxes or ? |
+| 9 | Load existing SSP with BSI | Upload BSI SSP; update catalogue; implementations preserved |
+| 10 | Cross-catalogue compatibility | NIST, Australian ISM, Canadian CCCS, Singapore IM8 still load and export |
+
+---
+
+## BSI Expected Results
+
+- BSI catalogue in dropdown with 🇩🇪; fetch/parse no errors
+- German characters correct in UI, JSON, Excel, PDF
+- All export formats support BSI controls; no regression on other catalogues
+- **Performance (guidance):** Catalogue load &lt; 5s; OSCAL export &lt; 2s (50 controls); Excel &lt; 3s; PDF &lt; 5s; AI suggestion &lt; 10s per control (Ollama)
+
+---
+
+## BSI Troubleshooting
+
+| Issue | What to check |
+|-------|----------------|
+| Catalogue won't load | URL in `CatalogueInput.jsx`; `curl` the BSI URL (expect 200); backend logs; URL validator allows GitHub |
+| German characters show as or boxes | Browser UTF-8; `Content-Type: application/json; charset=utf-8`; `<meta charset="UTF-8">` in index.html |
+| AI suggestions not working | Ollama running (`curl localhost:11434/api/tags`); Mistral 7B pulled; config `mistralConfig.enabled`; `/api/mistral/status` |
+| Export failures | File size/timeout; UTF-8 in export modules; try different browser |
+
+---
+
+## BSI Test Report Template
+
+**Date:** YYYY-MM-DD | **Tester:** [Name] | **Version:** e.g. 1.7.0-rc1 | **Environment:** Dev / Staging / Prod
+
+| Test | Status | Notes |
+|------|--------|-------|
+| 1. Catalogue selection | ✅ / ❌ | |
+| 2. OSCAL validation | ✅ / ❌ | |
+| 3. German character rendering | ✅ / ❌ | |
+| 4. Control implementation | ✅ / ❌ | |
+| 5. AI suggestions | ✅ / ❌ | |
+| 6. OSCAL JSON export | ✅ / ❌ | |
+| 7. Excel export | ✅ / ❌ | |
+| 8. PDF export | ✅ / ❌ | |
+| 9. Load existing SSP | ✅ / ❌ | |
+| 10. Cross-catalogue compatibility | ✅ / ❌ | |
+
+**Overall:** ✅ All pass / ⚠️ Partial / ❌ Failed  
+**Recommendation:** Ready for release / Minor fixes / Major issues
 
 ---
 

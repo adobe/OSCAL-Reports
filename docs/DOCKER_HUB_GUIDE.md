@@ -1,10 +1,13 @@
-# 🐳 Docker Hub - Complete Guide
+# Docker Hub – Complete Guide
 
-**Comprehensive guide for Docker Hub publishing, setup, and usage for OSCAL Report Generator**
+**OSCAL Report Generator: a web application for generating compliance documentation from OSCAL catalogs. This guide covers Docker Hub publishing, setup, and usage.**
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/keekar/oscal_reports)](https://hub.docker.com/r/keekar/oscal_reports)
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
@@ -13,6 +16,7 @@
   - [GitHub Secrets Configuration](#github-secrets-configuration)
   - [Setup Checklist](#setup-checklist)
 - [Using Published Images](#using-published-images)
+- [Updating](#updating)
 - [Default Credentials](#default-credentials)
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Verification & Testing](#verification--testing)
@@ -58,6 +62,17 @@ Images are built for multiple architectures:
 - ✅ Version tracking
 - ✅ CI/CD integrated
 - ✅ Multi-registry redundancy
+
+### Application Features
+
+- **Automated Control Suggestions**: AI-powered recommendations for control implementations
+- **AI Telemetry Logging**: OpenTelemetry-compliant logging of all AI interactions
+- **Multiple Frameworks**: NIST SP 800-53, Australian ISM, Singapore IM8
+- **Multiple Export Formats**: OSCAL JSON, Excel, PDF, and CCM
+- **Smart Catalog Updates**: Automatically detect new/changed controls
+- **Data Persistence**: Browser-based local storage and optional volume mount for config
+- **Auto-save**: Automatic progress saving
+- **Modern UI**: Intuitive, responsive interface
 
 ---
 
@@ -109,6 +124,8 @@ docker pull keekar/oscal_reports:v1.6.3
 
 ### With Persistent Configuration
 
+Mount `/app/config` to persist user data and configuration:
+
 ```bash
 # Create config directory
 mkdir -p ./config
@@ -120,6 +137,8 @@ docker run -d \
   -v $(pwd)/config:/app/config \
   keekar/oscal_reports:latest
 ```
+
+**What gets persisted:** User credentials and authentication data, application settings, user preferences, and session data.
 
 ### Using Docker Compose
 
@@ -531,6 +550,35 @@ docker pull --platform linux/amd64 keekar/oscal_reports:latest
 
 # For Apple Silicon / ARM
 docker pull --platform linux/arm64 keekar/oscal_reports:latest
+```
+
+---
+
+## Updating
+
+### Update to latest version
+
+```bash
+# Pull the latest image
+docker pull keekar/oscal_reports:latest
+
+# Stop and remove old container
+docker stop oscal-app
+docker rm oscal-app
+
+# Start new container with same configuration
+docker run -d \
+  --name oscal-app \
+  -p 3020:3020 \
+  -v $(pwd)/config:/app/config \
+  keekar/oscal_reports:latest
+```
+
+### Using Docker Compose
+
+```bash
+docker-compose pull
+docker-compose up -d
 ```
 
 ---
@@ -988,6 +1036,34 @@ curl http://localhost:3020/health       # Check health
 
 ---
 
+## Contributing
+
+Contributions are welcome. Visit the [GitHub repository](https://github.com/keekar2022/OSCAL-Reports) to report bugs, submit feature requests, contribute code via pull requests, or improve documentation.
+
+---
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE) for details.
+
+---
+
+## Author
+
+**Mukesh Kesharwani** – mukesh.kesharwani@adobe.com · [@keekar2022](https://github.com/keekar2022)
+
+---
+
+## Image build information
+
+- **Base image**: node:20-alpine
+- **Build process**: Multi-stage build for optimized size
+- **Platforms**: linux/amd64, linux/arm64
+- **CI/CD**: Automated builds via GitHub Actions
+- **Registry**: Docker Hub (public)
+
+---
+
 **Last Updated**: January 2026  
 **Maintained By**: Mukesh Kesharwani  
-**Version**: 1.6.3
+**Version**: 1.7.10

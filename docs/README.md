@@ -11,7 +11,7 @@
 | Document | Description | For |
 |----------|-------------|-----|
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, TrueNAS, Local) | **Start Here** |
-| [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub image documentation | Docker Users |
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image documentation (pull, run, TrueNAS, CI/CD) | Docker Users |
 
 ---
 
@@ -32,9 +32,8 @@
 
 | Document | Description |
 |----------|-------------|
-| [KEEPING_LOCAL_USERS.md](KEEPING_LOCAL_USERS.md) | Keep your local users.json from being overwritten (USERS_PATH, .env) |
 | [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) | Version bumping, workflow, and release checklist |
-| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching workflow (Dev → QA → Pre-Prod → Main) |
+| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching (Dev/QA/Pre_Prod → main; all three allowed to target main) |
 | [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
 | [GITHUB_ACCOUNT_GUIDE.md](GITHUB_ACCOUNT_GUIDE.md) | Switching between GitHub accounts |
 | [PR_SUBMISSION_CHECKLIST.md](PR_SUBMISSION_CHECKLIST.md) | Pull request submission guide |
@@ -47,15 +46,13 @@
 
 | Document | Description |
 |----------|-------------|
-| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub guide (includes build vs pull comparison) |
-| [DOCKER_HUB_README.md](DOCKER_HUB_README.md) | Docker Hub public documentation |
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub guide (pull, run, TrueNAS, CI/CD, credentials, troubleshooting) |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platform deployment (Azure, AWS, GCP) |
-| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Config migration and user consolidation (Blue/Green) |
+| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Local dev (USERS_PATH, .env) and deployment: config migration, user consolidation (Blue/Green) |
 | [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) | AWS EC2 cost estimate |
 | [AWS_TERRAFORM.md](AWS_TERRAFORM.md) | Terraform for OSCAL on AWS (ALB, Green/Blue; AI via AWS Bedrock) |
 | [EC2_WEB_HOSTING_BEST_PRACTICES.md](EC2_WEB_HOSTING_BEST_PRACTICES.md) | EC2 web hosting best practices: directory layout, deploy, cron, Blue/Green, troubleshooting, scripts |
 | [IMAGE_FACTORY.md](IMAGE_FACTORY.md) | Adobe Image Factory Amazon Linux 2023 AMIs for Terraform (AMS deployments) |
-| [AWS_SANDBOX_REQUEST.md](AWS_SANDBOX_REQUEST.md) | Jira ticket and URL for requesting designated AWS Sandbox account |
 
 ---
 
@@ -78,7 +75,7 @@ TrueNAS build–specific scripts and docs have been moved to **[retired/truenas-
 
 | Document | Description |
 |----------|-------------|
-| [OKTA_OIDC_INTEGRATION.md](OKTA_OIDC_INTEGRATION.md) | Okta OIDC sign-in and groups/role mapping (production: https://keekar.3utilities.com/) |
+| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO (Okta): amsgovcloud.com.au, keekar.3utilities.com, local; groups/role mapping |
 
 ---
 
@@ -93,9 +90,9 @@ TrueNAS build–specific scripts and docs have been moved to **[retired/truenas-
 
 ## 📊 Documentation Statistics
 
-- **Total Documents:** 27 (consolidated from 48+ in Feb 2026)
+- **Total Documents:** 23 (consolidated from 48+ in Feb 2026)
 - **Categories:** 8
-- **Last Update:** 2026-02-10
+- **Last Update:** 2026-03
 
 ---
 
@@ -161,4 +158,4 @@ Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEP
 
 ---
 
-*Last updated: 2026-02-10*
+**Version:** 1.7.10 · **Last updated:** March 2026

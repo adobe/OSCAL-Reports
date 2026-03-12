@@ -4,6 +4,26 @@ This directory contains upgrade and consolidation scripts for Blue-Green deploym
 
 ## 📋 Available Scripts
 
+### 0. `push-and-merge-adobe-main.sh`
+Pushes the current `Development` branch to the Adobe remote and merges it into `main` on the Adobe repo.
+
+**What it does:**
+- Sets Git user to Adobe credentials
+- Pushes `Development` to `adobe`
+- Updates local `main` from `adobe/main`, merges `Development` into `main`
+- Pushes `main` to `adobe`, then switches back to `Development`
+
+**Usage:** Run from your machine where the Adobe SSH key is configured (e.g. `github.com-adobe`):
+```bash
+./scripts/push-and-merge-adobe-main.sh
+```
+
+**Requirements:**
+- SSH key for Adobe repo configured and authorized for AdobeManagedServices (SSO)
+- No uncommitted changes if you want a clean merge; commit first
+
+---
+
 ### 1. `upgrade-blue-deployment.sh`
 Upgrades Blue deployment from v1.5.0 to v1.6.5+ with volume persistence.
 
@@ -452,5 +472,5 @@ If you encounter issues:
 ---
 
 **Author:** Mukesh Kesharwani  
-**Version:** 1.0.0  
-**Last Updated:** January 24, 2026
+**Version:** 1.7.10  
+**Last Updated:** March 2026

@@ -1,16 +1,75 @@
 # Config and User Migration
 
-**Guide for migrating configuration/user data between deployments and consolidating users across Blue/Green.**
+**Covers (1) local development: keeping your local users.json and config from being overwritten, and (2) deployment: migrating config/users between instances and consolidating users across Blue/Green.**
 
 ---
 
 ## Table of Contents
 
+- [Local Development: Keeping Users and Config (Laptop Only)](#local-development-keeping-users-and-config-laptop-only)
 - [Instance → Port → Directory Mapping](#instance--port--directory-mapping)
 - [Config Migration](#config-migration)
 - [User Consolidation](#user-consolidation)
 - [Recovery After Accidental Rollback](#recovery-after-accidental-rollback)
 - [Security](#security)
+
+---
+
+## Local Development: Keeping Users and Config (Laptop Only)
+
+**Applies to:** Local development on a laptop only. Docker, AWS EC2 Blue/Green, and other deployments use their own `USERS_PATH` (e.g. Docker volume, EC2 `/opt/oscal/data/users.json`) and do not use `.env` for this.
+
+If `config/app/users.json` gets reset to a default (e.g. after pulling code or running setup), you can keep your laptop’s user list intact by storing users **outside the repo** and pointing the app at that file.
+
+### Why it can happen
+
+- **setup.sh** only creates `config/app/users.json` from `users.json.example` when the file is **missing**. It never overwrites an existing file.
+- **Git** does not touch `config/app/users.json` (it’s in `.gitignore`).
+- If the file is ever deleted or reverted (e.g. by another script or by mistake), the next run may recreate it from the example.
+
+### Recommended: use a users file outside the repo
+
+1. **Create a directory and copy your users**
+   ```bash
+   mkdir -p ~/Documents/OSCAL_Reports_data
+   cp config/app/users.json.backup ~/Documents/OSCAL_Reports_data/users.json
+   ```
+   (If you don’t have a backup, use your current `config/app/users.json` once you’ve restored it.)
+
+2. **Point the app at that file with `.env`** (from repo root):
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` and set an **absolute** path:
+   ```env
+   USERS_PATH=/Users/yourusername/Documents/OSCAL_Reports_data/users.json
+   ```
+   Replace `yourusername` with your macOS username (use an absolute path; `.env` does not expand `$HOME`).
+
+3. **Run the app as usual:** `npm run dev`. The backend loads `.env` from the repo root and uses `USERS_PATH`. All user load/save use your external file; `config/app/users.json` is not used when `USERS_PATH` is set.
+
+### Optional: config.json outside the repo
+
+You can do the same for `config.json` so it isn’t overwritten:
+```env
+CONFIG_PATH=/Users/yourusername/Documents/OSCAL_Reports_data/config.json
+```
+Copy your current `config/app/config.json` to that path and use it as the single source of truth.
+
+### Safeguards (local)
+
+- **setup.sh:** Only creates `users.json` from `users.json.example` when `config/app/users.json` does not exist. If the file exists, setup leaves it unchanged.
+- **Backend:** Uses `USERS_PATH` from the environment. On the **laptop only** (when `NODE_ENV` is not `production`), the backend also loads `.env` from the repo root. Docker and EC2 do not load `.env` for this; they use `USERS_PATH` set by the container entrypoint or systemd.
+
+### Summary (local)
+
+| Goal | Action |
+|------|--------|
+| Keep users across code changes (laptop only) | Set `USERS_PATH` in `.env` to a path outside the repo and copy your users there once. |
+| Keep config outside repo | Set `CONFIG_PATH` in `.env` to a path outside the repo. |
+| Never overwrite by mistake | Use `USERS_PATH` so the app doesn’t rely on `config/app/users.json`. |
+
+**Deployments:** Docker and EC2 Blue/Green are unchanged. They set `USERS_PATH` (and optionally `CONFIG_PATH`) via their own mechanisms (Docker entrypoint, systemd, or shell) and do not use `.env` for users or config.
 
 ---
 
@@ -175,4 +234,4 @@ If you have a backup tarball or files elsewhere:
 
 ---
 
-*Last updated: February 2026*
+*Consolidates former KEEPING_LOCAL_USERS.md (local dev) and deployment migration/consolidation. Last updated: February 2026*

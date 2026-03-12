@@ -1,0 +1,1 @@
+../../image_factory_ami.tf

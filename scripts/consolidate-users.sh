@@ -26,7 +26,7 @@
 #   - Automatic duplicate detection and merging
 #   - Preserves existing passwords and user data
 #   - Creates backup before consolidation
-#   - Optional: admin password from pass (OSCAL/admin) so no prompt in --auto mode
+#   - Pass vault first: tries login with pass (OSCAL/admin) without prompting; prompts only if missing or login fails
 
 set -e
 
@@ -39,7 +39,7 @@ set -e
 # GREEN_URL="${GREEN_URL:-http://44.203.33.18:3019}"
 # BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
 # GREEN_URL="${GREEN_URL:-http://nas.keekar.com:3019/}"
-BLUE_URL="${BLUE_URL:-https://keekar.ddns.net}"
+BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
 GREEN_URL="${GREEN_URL:-https://keekar.3utilities.com}"
 
 
@@ -122,8 +122,8 @@ while [[ $# -gt 0 ]]; do
   echo "  GREEN_PASS_ENTRY          Pass entry for Green admin password (default: OSCAL/admin)"
   echo "  CONSOLIDATE_IMPORT_MODE   merge | replace-by-username (default)"
   echo ""
-  echo "  If BLUE_PASSWORD/GREEN_PASSWORD are not set, the script tries pass (e.g. pass show OSCAL/admin);"
-  echo "  the first line of the entry is used as the password. No prompt if pass has the entry."
+  echo "  If BLUE_PASSWORD/GREEN_PASSWORD are not set, the script tries pass first and attempts login;"
+  echo "  you are prompted only if the entry is missing or the login attempt fails."
   echo ""
   echo "  ⚠️  IMPORTANT: TLS Certificate Compatibility"
       echo "  When defining instance URLs, use INTERNAL IP ADDRESSES instead of hostnames"
@@ -170,6 +170,41 @@ get_password_from_pass() {
     pass show "$entry" 2>/dev/null | head -1
   else
     echo ""
+  fi
+}
+
+# POST /api/auth/login. Sets API_LOGIN_HTTP_CODE and API_LOGIN_BODY. Returns 0 if sessionToken present.
+api_login_attempt() {
+  local base_url="$1" user="$2" pass="$3" cookie_jar="$4"
+  local json response token
+  json=$(jq -n --arg user "$user" --arg pass "$pass" '{username: $user, password: $pass}')
+  response=$(curl -s -w "\n%{http_code}" -c "$cookie_jar" -b "$cookie_jar" \
+    -X POST "$base_url/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "$json")
+  API_LOGIN_HTTP_CODE=$(echo "$response" | tail -n1)
+  API_LOGIN_BODY=$(echo "$response" | sed '$d')
+  token=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty' 2>/dev/null)
+  if [ -n "$token" ]; then
+    return 0
+  fi
+  return 1
+}
+
+# Print login failure details (uses API_LOGIN_HTTP_CODE, API_LOGIN_BODY, base_url).
+print_login_failure() {
+  local base_url="$1"
+  if [ "$API_LOGIN_HTTP_CODE" = "000" ]; then
+    echo "  → Could not reach $base_url (connection refused, DNS, or network issue)."
+  else
+    echo "  → HTTP $API_LOGIN_HTTP_CODE"
+    local err_msg
+    err_msg=$(echo "$API_LOGIN_BODY" | jq -r 'if type == "object" then (.message // .error // .) else . end' 2>/dev/null)
+    if [ -n "$err_msg" ] && [ "$err_msg" != "null" ]; then
+      echo "  → Response: $err_msg"
+    elif [ -n "$API_LOGIN_BODY" ]; then
+      echo "  → Response (first 200 chars): ${API_LOGIN_BODY:0:200}"
+    fi
   fi
 }
 
@@ -407,53 +442,62 @@ if [ "$BLUE_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
     print_info "Using username from environment: $BLUE_USER"
   fi
   
-  BLUE_FROM_PASS=""
-  if [ -z "$BLUE_PASSWORD" ]; then
-    BLUE_PASS_ENTRY="${BLUE_PASS_ENTRY:-OSCAL/admin}"
-    BLUE_PASSWORD=$(get_password_from_pass "$BLUE_PASS_ENTRY")
-    [ -n "$BLUE_PASSWORD" ] && BLUE_FROM_PASS=1
-  fi
-  if [ -z "$BLUE_PASSWORD" ]; then
-    read -rsp "Blue password: " BLUE_PASSWORD
-    echo ""
-  else
-    if [ -n "$BLUE_FROM_PASS" ]; then
-      print_info "Using Blue password from pass ($BLUE_PASS_ENTRY)"
+  BLUE_PASS_ENTRY="${BLUE_PASS_ENTRY:-OSCAL/admin}"
+  BLUE_LOGGED_IN=false
+
+  # 1) Password already set (env / --blue-password): try login once
+  if [ -n "$BLUE_PASSWORD" ]; then
+    print_info "Using Blue password from environment/cli"
+    if api_login_attempt "$BLUE_URL" "$BLUE_USER" "$BLUE_PASSWORD" "$COOKIE_JAR_BLUE"; then
+      BLUE_LOGGED_IN=true
     else
-      print_info "Using Blue password from environment"
-    fi
-  fi
-  
-  if [ -z "$BLUE_PASSWORD" ]; then
-    print_error "Blue password cannot be empty."
-    exit 1
-  fi
-  
-  BLUE_JSON=$(jq -n --arg user "$BLUE_USER" --arg pass "$BLUE_PASSWORD" '{username: $user, password: $pass}')
-  BLUE_RESPONSE=$(curl -s -w "\n%{http_code}" -c "$COOKIE_JAR_BLUE" -b "$COOKIE_JAR_BLUE" -X POST "$BLUE_URL/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d "$BLUE_JSON")
-  BLUE_HTTP_CODE=$(echo "$BLUE_RESPONSE" | tail -n1)
-  BLUE_BODY=$(echo "$BLUE_RESPONSE" | sed '$d')
-  BLUE_TOKEN=$(echo "$BLUE_BODY" | jq -r '.sessionToken // empty' 2>/dev/null)
-  
-  if [ "$BLUE_TOKEN" = "" ] || [ -z "$BLUE_TOKEN" ]; then
-    print_error "Blue authentication failed!"
-    if [ "$BLUE_HTTP_CODE" = "000" ]; then
-      echo "  → Could not reach $BLUE_URL (connection refused, DNS, or network issue)."
+      print_error "Blue authentication failed (password from environment/cli)!"
+      print_login_failure "$BLUE_URL"
       echo "  → If running on Blue server, script will try http://127.0.0.1:3020 automatically."
-    else
-      echo "  → HTTP $BLUE_HTTP_CODE"
-      ERR_MSG=$(echo "$BLUE_BODY" | jq -r 'if type == "object" then (.message // .error // .) else . end' 2>/dev/null)
-      if [ -n "$ERR_MSG" ] && [ "$ERR_MSG" != "null" ]; then
-        echo "  → Response: $ERR_MSG"
-      elif [ -n "$BLUE_BODY" ]; then
-        echo "  → Response (first 200 chars): ${BLUE_BODY:0:200}"
+      exit 1
+    fi
+  else
+    # 2) Try pass vault first (no prompt until we know pass is missing or login fails)
+    BLUE_PASSWORD=$(get_password_from_pass "$BLUE_PASS_ENTRY")
+    if [ -n "$BLUE_PASSWORD" ]; then
+      if api_login_attempt "$BLUE_URL" "$BLUE_USER" "$BLUE_PASSWORD" "$COOKIE_JAR_BLUE"; then
+        print_info "Blue authenticated using pass ($BLUE_PASS_ENTRY)"
+        BLUE_LOGGED_IN=true
+      else
+        print_warning "Pass vault login failed for Blue ($BLUE_PASS_ENTRY); will prompt for password."
+        BLUE_PASSWORD=""
       fi
     fi
-    exit 1
+    # 3) No pass entry or pass login failed: prompt then try
+    if [ "$BLUE_LOGGED_IN" != true ]; then
+      if [ -z "$BLUE_PASSWORD" ]; then
+        print_info "Enter Blue admin password (pass entry missing or not used)."
+      fi
+      while [ "$BLUE_LOGGED_IN" != true ]; do
+        if [ -z "$BLUE_PASSWORD" ]; then
+          read -rsp "Blue password: " BLUE_PASSWORD
+          echo ""
+        fi
+        if [ -z "$BLUE_PASSWORD" ]; then
+          print_error "Blue password cannot be empty."
+          exit 1
+        fi
+        if api_login_attempt "$BLUE_URL" "$BLUE_USER" "$BLUE_PASSWORD" "$COOKIE_JAR_BLUE"; then
+          BLUE_LOGGED_IN=true
+        else
+          print_error "Blue authentication failed!"
+          print_login_failure "$BLUE_URL"
+          BLUE_PASSWORD=""
+          read -rp "Try again? [y/N]: " _retry
+          case "$_retry" in
+            y|Y|yes|YES) ;;
+            *) exit 1 ;;
+          esac
+        fi
+      done
+    fi
   fi
-  
+
   print_success "Blue authentication successful"
 fi
 
@@ -478,53 +522,62 @@ if [ "$GREEN_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
     print_info "Using username from environment: $GREEN_USER"
   fi
   
-  GREEN_FROM_PASS=""
-  if [ -z "$GREEN_PASSWORD" ]; then
-    GREEN_PASS_ENTRY="${GREEN_PASS_ENTRY:-OSCAL/admin}"
-    GREEN_PASSWORD=$(get_password_from_pass "$GREEN_PASS_ENTRY")
-    [ -n "$GREEN_PASSWORD" ] && GREEN_FROM_PASS=1
-  fi
-  if [ -z "$GREEN_PASSWORD" ]; then
-    read -rsp "Green password: " GREEN_PASSWORD
-    echo ""
-  else
-    if [ -n "$GREEN_FROM_PASS" ]; then
-      print_info "Using Green password from pass ($GREEN_PASS_ENTRY)"
+  GREEN_PASS_ENTRY="${GREEN_PASS_ENTRY:-OSCAL/admin}"
+  GREEN_LOGGED_IN=false
+
+  # 1) Password already set (env / --green-password): try login once
+  if [ -n "$GREEN_PASSWORD" ]; then
+    print_info "Using Green password from environment/cli"
+    if api_login_attempt "$GREEN_URL" "$GREEN_USER" "$GREEN_PASSWORD" "$COOKIE_JAR_GREEN"; then
+      GREEN_LOGGED_IN=true
     else
-      print_info "Using Green password from environment"
-    fi
-  fi
-  
-  if [ -z "$GREEN_PASSWORD" ]; then
-    print_error "Green password cannot be empty."
-    exit 1
-  fi
-  
-  GREEN_JSON=$(jq -n --arg user "$GREEN_USER" --arg pass "$GREEN_PASSWORD" '{username: $user, password: $pass}')
-  GREEN_RESPONSE=$(curl -s -w "\n%{http_code}" -c "$COOKIE_JAR_GREEN" -b "$COOKIE_JAR_GREEN" -X POST "$GREEN_URL/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d "$GREEN_JSON")
-  GREEN_HTTP_CODE=$(echo "$GREEN_RESPONSE" | tail -n1)
-  GREEN_BODY=$(echo "$GREEN_RESPONSE" | sed '$d')
-  GREEN_TOKEN=$(echo "$GREEN_BODY" | jq -r '.sessionToken // empty' 2>/dev/null)
-  
-  if [ "$GREEN_TOKEN" = "" ] || [ -z "$GREEN_TOKEN" ]; then
-    print_error "Green authentication failed!"
-    if [ "$GREEN_HTTP_CODE" = "000" ]; then
-      echo "  → Could not reach $GREEN_URL (connection refused, DNS, or network issue)."
+      print_error "Green authentication failed (password from environment/cli)!"
+      print_login_failure "$GREEN_URL"
       echo "  → If running on Green server, script will try http://127.0.0.1:3019 automatically."
-    else
-      echo "  → HTTP $GREEN_HTTP_CODE"
-      ERR_MSG=$(echo "$GREEN_BODY" | jq -r 'if type == "object" then (.message // .error // .) else . end' 2>/dev/null)
-      if [ -n "$ERR_MSG" ] && [ "$ERR_MSG" != "null" ]; then
-        echo "  → Response: $ERR_MSG"
-      elif [ -n "$GREEN_BODY" ]; then
-        echo "  → Response (first 200 chars): ${GREEN_BODY:0:200}"
+      exit 1
+    fi
+  else
+    # 2) Try pass vault first (no prompt until pass missing or login fails)
+    GREEN_PASSWORD=$(get_password_from_pass "$GREEN_PASS_ENTRY")
+    if [ -n "$GREEN_PASSWORD" ]; then
+      if api_login_attempt "$GREEN_URL" "$GREEN_USER" "$GREEN_PASSWORD" "$COOKIE_JAR_GREEN"; then
+        print_info "Green authenticated using pass ($GREEN_PASS_ENTRY)"
+        GREEN_LOGGED_IN=true
+      else
+        print_warning "Pass vault login failed for Green ($GREEN_PASS_ENTRY); will prompt for password."
+        GREEN_PASSWORD=""
       fi
     fi
-    exit 1
+    # 3) No pass entry or pass login failed: prompt then try
+    if [ "$GREEN_LOGGED_IN" != true ]; then
+      if [ -z "$GREEN_PASSWORD" ]; then
+        print_info "Enter Green admin password (pass entry missing or not used)."
+      fi
+      while [ "$GREEN_LOGGED_IN" != true ]; do
+        if [ -z "$GREEN_PASSWORD" ]; then
+          read -rsp "Green password: " GREEN_PASSWORD
+          echo ""
+        fi
+        if [ -z "$GREEN_PASSWORD" ]; then
+          print_error "Green password cannot be empty."
+          exit 1
+        fi
+        if api_login_attempt "$GREEN_URL" "$GREEN_USER" "$GREEN_PASSWORD" "$COOKIE_JAR_GREEN"; then
+          GREEN_LOGGED_IN=true
+        else
+          print_error "Green authentication failed!"
+          print_login_failure "$GREEN_URL"
+          GREEN_PASSWORD=""
+          read -rp "Try again? [y/N]: " _retry
+          case "$_retry" in
+            y|Y|yes|YES) ;;
+            *) exit 1 ;;
+          esac
+        fi
+      done
+    fi
   fi
-  
+
   print_success "Green authentication successful"
 fi
 

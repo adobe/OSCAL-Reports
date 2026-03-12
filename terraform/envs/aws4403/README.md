@@ -1,6 +1,6 @@
-# AWS4403 Greenfield Deployment
+# AWS4403 (default)
 
-Terraform working directory for **AWS4403** (Account ID `442277170733`). State and variables are isolated from the default `terraform/` directory (AWS4379 Sandbox). Do not use this directory for AWS4379.
+Terraform working directory for **AWS4403** (Account ID `442277170733`). **This is the default.** Scripts (`run-with-aws-pass.sh`, `deploy-to-ec2.sh`) use this env when `TERRAFORM_DIR` is not set, so you do not accidentally change AWS4379 Sandbox. For AWS4379 use `terraform/envs/aws4379` and set `TERRAFORM_DIR` and `AWS_PASS_ENTRY` explicitly.
 
 ## Prerequisites
 
@@ -79,3 +79,7 @@ Include in your request: account ID `442277170733`, that you need **ec2:RunInsta
 ### "You are not authorized to use launch template"
 
 If apply fails with **AccessDenied: You are not authorized to use launch template**, set an approved Image Factory AMI in `terraform.tfvars`: `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (get from platform team).
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026

@@ -1,7 +1,7 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.6.2+  
-**Last Updated**: January 2026  
+**Version**: 1.7+  
+**Last Updated**: March 2026  
 **Author**: Mukesh Kesharwani
 
 ---

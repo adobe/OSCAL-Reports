@@ -159,7 +159,7 @@ resource "aws_instance" "oscal_green" {
     create_before_destroy = true
   }
   ami                    = local.oscal_ami_id
-  instance_type          = "t3.small"
+  instance_type          = var.instance_type
   key_name               = var.key_name
   subnet_id              = aws_subnet.public[0].id
   vpc_security_group_ids = [aws_security_group.oscal.id]
@@ -194,7 +194,7 @@ resource "aws_instance" "oscal_blue" {
     create_before_destroy = true
   }
   ami                    = local.oscal_ami_id
-  instance_type          = "t3.small"
+  instance_type          = var.instance_type
   key_name               = var.key_name
   subnet_id              = aws_subnet.public[1].id
   vpc_security_group_ids = [aws_security_group.oscal.id]
