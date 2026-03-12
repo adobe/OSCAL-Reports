@@ -149,6 +149,7 @@ Use a **strict layout** so config is never confused with app code:
 - **Terraform:** Run via `terraform/run-with-aws-pass.sh` so AWS credentials are loaded from Pass (no credentials in repo). Example:  
   `./terraform/run-with-aws-pass.sh output`  
   `./terraform/run-with-aws-pass.sh apply -auto-approve`
+- **Instance type:** Prefer **Graviton (t4g.small)**, then **AMD (t3a.small)**. Defaults in `terraform/variables.tf` are t4g.small and arm64; see [AWS_TERRAFORM.md](AWS_TERRAFORM.md).
 - **SSH key:** Stored in Pass entry `AWS/OSCAL-AWS4379-SSH` or provided as `SSH_KEY_FILE`. Same key is used for Green, Blue, and (if used) Ollama instances.
 - **SSH user:** `ec2-user` (Amazon Linux 2023 / RHEL). Set `SSH_USER` if different.
 - **Deploy** uses this key to rsync and run remote commands; it does not use Session Manager.

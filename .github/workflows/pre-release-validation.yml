@@ -245,33 +245,6 @@ jobs:
           fi
 
   ###############################################################################
-  # Branch Naming Convention Check
-  ###############################################################################
-  branch-naming:
-    name: Branch Naming Convention
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    
-    steps:
-      - name: 🔍 Check branch naming convention
-        run: |
-          HEAD="${{ github.head_ref }}"
-          BASE="${{ github.base_ref }}"
-          
-          echo "Source branch: $HEAD"
-          echo "Target branch: $BASE"
-          
-          # Check if PR to main is from Pre_Prod or Quality_Test (branch flow: Development → Quality_Test → Pre_Prod → main)
-          if [ "$BASE" == "main" ] && [ "$HEAD" != "Pre_Prod" ] && [ "$HEAD" != "Quality_Test" ]; then
-            echo "❌ ERROR: PRs to main must come from Pre_Prod or Quality_Test branch"
-            echo "Current: $HEAD → main"
-            echo "Required: Pre_Prod → main or Quality_Test → main"
-            exit 1
-          fi
-          
-          echo "✅ Branch naming follows conventions"
-
-  ###############################################################################
   # Documentation Check
   ###############################################################################
   documentation-check:

@@ -141,28 +141,23 @@ EOF
     print_info "Created docs/CHANGELOG.md"
   fi
   
-  # Create temporary file with new entry
-  local temp_file
+  # Create temporary file with new entry (avoid passing newlines to awk)
+  local temp_file entry_file
   temp_file=$(mktemp)
-  
+  entry_file=$(mktemp)
+  printf '## [%s] - %s\n\n### Changed\n- %s\n' "$new_version" "$date" "$message" > "$entry_file"
+
   # Read existing changelog
   cat docs/CHANGELOG.md > "$temp_file"
-  
-  # Insert new entry after the header (after first empty line following headers)
-  local new_entry="
-## [$new_version] - $date
 
-### Changed
-- $message
-"
-  
-  # Find the insertion point (after the header section)
-  awk -v entry="$new_entry" '
+  # Insert new entry after the header (after first empty line following headers)
+  awk -v entryfile="$entry_file" '
     BEGIN { found_header = 0; inserted = 0 }
     {
       print
       if (!inserted && found_header && /^$/) {
-        print entry
+        while ((getline line < entryfile) > 0) print line
+        close(entryfile)
         inserted = 1
       }
       if (/^# Changelog/ || /^All notable changes/) {
@@ -170,11 +165,14 @@ EOF
       }
     }
     END {
-      if (!inserted) print entry
+      if (!inserted) {
+        while ((getline line < entryfile) > 0) print line
+        close(entryfile)
+      }
     }
   ' "$temp_file" > docs/CHANGELOG.md
-  
-  rm "$temp_file"
+
+  rm -f "$temp_file" "$entry_file"
   print_success "Updated: docs/CHANGELOG.md"
 }
 

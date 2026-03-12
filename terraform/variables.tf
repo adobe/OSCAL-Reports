@@ -10,7 +10,7 @@ variable "aws_region" {
 variable "aws_account_id" {
   description = "AWS account ID (e.g. for ARNs); set via variable, not hardcoded secrets"
   type        = string
-  default     = "432417415905"
+  default     = "442277170733"
 }
 
 variable "environment" {
@@ -22,7 +22,7 @@ variable "environment" {
 variable "project_name" {
   description = "Project name used in resource names"
   type        = string
-  default     = "oscal-reports"
+  default     = "AMS-oscal-reports"
 }
 
 # Networking
@@ -32,10 +32,39 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
-variable "allowed_ssh_cidr" {
-  description = "List of CIDRs allowed for SSH to OSCAL instances. App ports 3019/3020 are not open to the internet; use ALB or VPC. Example: [\"1.2.3.4/32\", \"10.0.0.0/8\"] or [\"0.0.0.0/0\"] for testing only."
+variable "default_allowed_cidr_blocks" {
+  description = "Default CIDR ranges allowed for ingress (ALB HTTP testing, SSH, direct Green/Blue 3019/3020). Set in tfvars; do not use 0.0.0.0/0 (PCL custom-config-ec2-sg-port-check). In stage accounts, PCL may treat blocks larger than /32 as \"broad\" and revert the ALB SG; prefer /32 or smallest necessary."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["130.248.32.17/32", "203.191.182.150/32"]
+
+  validation {
+    condition     = !contains(var.default_allowed_cidr_blocks, "0.0.0.0/0")
+    error_message = "default_allowed_cidr_blocks must not contain 0.0.0.0/0. PCL rule custom-config-ec2-sg-port-check auto-remediates. Use specific CIDRs (e.g. your IP/32 or VPN subnet) in terraform.tfvars."
+  }
+}
+
+variable "alb_allow_http_for_testing" {
+  description = "When true, ALB allows port 80 from default_allowed_cidr_blocks only (for testing service availability). When false, port 80 is closed. Port 443 is always open to all IPs."
+  type        = bool
+  default     = false
+}
+
+variable "alb_restrict_to_australia" {
+  description = "When true, ALB HTTPS (443) is restricted to Australian IP ranges only (via prefix lists from IPdeny). When false, ALB 443 uses default_allowed_cidr_blocks unless alb_allow_443_from_all is true."
+  type        = bool
+  default     = true
+}
+
+variable "alb_allow_443_from_all" {
+  description = "When true, ALB HTTPS (443) allows default_allowed_cidr_blocks (PCL-compliant; no 0.0.0.0/0). Set to false to use Australia-only or default_allowed_cidr_blocks per alb_restrict_to_australia."
+  type        = bool
+  default     = false
+}
+
+variable "instance_allow_app_ports_from_all" {
+  description = "Deprecated: ingress for 3019/3020 always uses default_allowed_cidr_blocks (no 0.0.0.0/0 per PCL). Kept for backward compatibility; has no effect."
+  type        = bool
+  default     = false
 }
 
 # EC2
@@ -85,9 +114,15 @@ variable "use_rhel9" {
 }
 
 variable "instance_architecture" {
-  description = "EC2 architecture for Image Factory and native Amazon Linux 2023 fallback: x86_64 (default) or arm64."
+  description = "EC2 architecture for Image Factory and native Amazon Linux 2023 fallback: arm64 (default for Graviton t4g) or x86_64 (for AMD t3a)."
   type        = string
-  default     = "x86_64"
+  default     = "arm64"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for OSCAL Green/Blue. Preferred: Graviton (t4g) then AMD (t3a). Default t4g.small (ARM); use instance_architecture = x86_64 for t3a.small."
+  type        = string
+  default     = "t4g.small"
 }
 
 # OSCAL run mode: false = direct run on EC2 with S3-mounted config/users; true = Docker/podman container (GHCR image)
@@ -149,6 +184,12 @@ variable "alb_green_hostname" {
   description = "Hostname for Green deployment (e.g. green.oscal.example.com). When set, ALB routes requests with this Host header to Green (port 3019). Create a CNAME pointing to the ALB DNS."
   type        = string
   default     = null
+}
+
+variable "alb_port_justification" {
+  description = "Free-form description for Adobe:PortJustification tag on the ALB. Required for AMS PCL: resources with port exposure must have Adobe:PublicPorts and Adobe:PortJustification. ELB tag values allow only letters, numbers, spaces, and _.:/=+-@ (no parentheses). Example: \"OSCAL Report Generator production access for AMS Gov Cloud\"."
+  type        = string
+  default     = "OSCAL Report Generator web access HTTPS and HTTP"
 }
 
 # Tags

@@ -22,34 +22,73 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Config file path priority:
-// 1. Environment variable CONFIG_PATH (for custom locations, e.g. EC2 /opt/oscal/data/config.json)
-// 2. /data/config.json (Docker volume mount - PREFERRED)
-// 3. config/app/config.json (canonical repo location for local dev)
+// 1. CONFIG_PATH env (always wins when set — saves go here even if file missing yet)
+// 2. /data/config.json (Docker volume)
+// 3. Same directory as USERS_PATH (pair config + users in one folder, e.g. OSCAL_Reports_data)
+// 4. OSCAL_DATA_DIR/config.json
+// 5. Repo sibling OSCAL_Reports_data/config.json (local dev convention next to OSCAL_Reports)
+// 6. config/app/config.json (repo canonical)
+// 7. Default /data/config.json
 const VOLUME_CONFIG_FILE = '/data/config.json';
 const CONFIG_DIR = path.join(__dirname, '..', 'config', 'app');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const REPO_ROOT = path.join(__dirname, '..');
+const SIBLING_DATA_DIR = path.join(REPO_ROOT, '..', 'OSCAL_Reports_data');
+
+function resolveExistingDir(p) {
+  try {
+    if (p && fs.existsSync(p) && fs.statSync(p).isDirectory()) return path.resolve(p);
+  } catch (_) {}
+  return null;
+}
 
 /**
  * Get the config file path based on priority
  * @returns {string} - Path to config file
  */
 function getConfigPath() {
-  // 1. Check environment variable
-  if (process.env.CONFIG_PATH && fs.existsSync(process.env.CONFIG_PATH)) {
-    return process.env.CONFIG_PATH;
+  // 1. CONFIG_PATH — use whenever set so reads/writes stay in one place
+  const envConfig = (process.env.CONFIG_PATH || '').trim();
+  if (envConfig) {
+    return path.resolve(envConfig);
   }
-  
-  // 2. Check volume mount (preferred for Docker)
+
+  // 2. Docker volume
   if (fs.existsSync(VOLUME_CONFIG_FILE)) {
     return VOLUME_CONFIG_FILE;
   }
-  
-  // 3. Check config/app directory (canonical repo location)
+
+  // 3. Same folder as USERS_PATH (e.g. .../OSCAL_Reports_data/users.json -> .../config.json)
+  const envUsers = (process.env.USERS_PATH || '').trim();
+  if (envUsers) {
+    const usersDir = path.dirname(path.resolve(envUsers));
+    if (resolveExistingDir(usersDir)) {
+      return path.join(usersDir, 'config.json');
+    }
+  }
+
+  // 4. OSCAL_DATA_DIR
+  const envDataDir = (process.env.OSCAL_DATA_DIR || '').trim();
+  if (envDataDir) {
+    const dir = resolveExistingDir(envDataDir) || envDataDir;
+    return path.join(path.resolve(dir), 'config.json');
+  }
+
+  // 5. Sibling OSCAL_Reports_data (config.json or users.json present => use that dir for both)
+  if (resolveExistingDir(SIBLING_DATA_DIR)) {
+    const cfg = path.join(SIBLING_DATA_DIR, 'config.json');
+    const usr = path.join(SIBLING_DATA_DIR, 'users.json');
+    if (fs.existsSync(cfg) || fs.existsSync(usr)) {
+      return cfg; // saveConfig/loadConfig will create cfg if missing
+    }
+  }
+
+  // 6. Repo config/app
   if (fs.existsSync(CONFIG_FILE)) {
     return CONFIG_FILE;
   }
-  
-  // Default: Use volume location for new installations
+
+  // 7. Default volume path
   return VOLUME_CONFIG_FILE;
 }
 

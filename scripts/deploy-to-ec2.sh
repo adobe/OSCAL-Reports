@@ -7,9 +7,11 @@
 # Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; AWS CLI (for ec2_automation env).
 #
 # Usage:
-#   ./scripts/deploy-to-ec2.sh
-#   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4
-#   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8
+#   ./scripts/deploy-to-ec2.sh              # Default: deploy to green only (IPs from Terraform)
+#   ./scripts/deploy-to-ec2.sh --both       # Deploy to both green and blue
+#   ./scripts/deploy-to-ec2.sh --blue       # Deploy to blue only
+#   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4   # Deploy to green at given IP
+#   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8    # Deploy to blue at given IP
 #   SSH_KEY_FILE=/path/to/key.pem ./scripts/deploy-to-ec2.sh
 #
 # Blue vs Green: Only PORT differs (Blue=3020, Green=3019). Same unit file, S3 prefix (config/blue vs config/green),
@@ -19,11 +21,12 @@
 # Terraform: All terraform commands (output, apply) use terraform/run-with-aws-pass.sh.
 #
 # Environment:
-#   AWS_PASS_ENTRY       Pass entry for AWS credentials (default: AWS/AWS4379 Sandbox). Set for other accounts, e.g. AWS/AMS_4403-STG.
-#   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4379-SSH)
+#   AWS_PASS_ENTRY       Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403). For AWS4379: AWS/AWS4379 Sandbox.
+#   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4403-SSH). For AWS4379: AWS/OSCAL-AWS4379-SSH.
 #   SSH_KEY_FILE         If set, use this key file instead of Pass
 #   SSH_USER             SSH user: ec2-user (RHEL). Default: ec2-user
-#   TERRAFORM_DIR        Path to terraform dir (default: terraform). Set to terraform/envs/aws4403 for AWS4403 deploy.
+#   TERRAFORM_DIR        Terraform env dir (default: terraform/envs/aws4403). For AWS4379 Sandbox set
+#                        TERRAFORM_DIR=$PWD/terraform/envs/aws4379 and AWS_PASS_ENTRY="AWS/AWS4379 Sandbox".
 
 set -e
 
@@ -45,10 +48,11 @@ print_warning() { echo -e "${YELLOW}⚠${NC}  $1"; }
 print_info() { echo -e "${CYAN}ℹ${NC}  $1"; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform}"
+# Default to aws4403 so we do not accidentally deploy to or change AWS4379 Sandbox.
+TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
 export TERRAFORM_DIR
 SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
+PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4403-SSH}"
 REMOTE_APP="/opt/oscal/app"
 
 # Resolve SSH key into SSH_KEY (from file or from Pass). Call from main; do not use in subshell.
@@ -68,10 +72,10 @@ resolve_ssh_key() {
   exit 1
 }
 
-# Run Terraform via wrapper (loads AWS creds from Pass). Do not run terraform directly.
+# Run Terraform via wrapper (loads AWS creds from Pass). Uses TERRAFORM_DIR so correct state is read.
 tf_output() {
   [ -x "$REPO_ROOT/terraform/run-with-aws-pass.sh" ] || return 1
-  "$REPO_ROOT/terraform/run-with-aws-pass.sh" output "$@" 2>/dev/null
+  TERRAFORM_DIR="$TERRAFORM_DIR" "$REPO_ROOT/terraform/run-with-aws-pass.sh" output "$@" 2>/dev/null
 }
 
 # Get S3 bucket name from Terraform output (for ec2_automation.env on instances)
@@ -146,11 +150,12 @@ command -v pass >/dev/null 2>&1 || { echo "Failed to install pass"; exit 1; }
 
 if [ ! -d "$SVC_HOME/.password-store" ]; then
   sudo -u "$SVC_USER" env HOME="$SVC_HOME" gpg-agent --daemon 2>/dev/null || true
+  # GPG Name-Real is the identity shown for the store (avoid generic "Password Store" label)
   sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" gpg --batch --no-tty --yes --generate-key 2>/dev/null << 'GPGEOF'
 Key-Type: RSA
 Key-Length: 2048
-Name-Real: svc_ams-oscal
-Name-Email: svc_ams-oscal@localhost
+Name-Real: OSCAL_password_store
+Name-Email: oscal-password-store@localhost
 Expire-Date: 0
 %no-protection
 %commit
@@ -240,16 +245,33 @@ ENVEOF"
   # Ensure rsync on remote (Amazon Linux 2023 does not install it by default)
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "command -v rsync >/dev/null 2>&1 || { sudo dnf install -y rsync 2>/dev/null || sudo yum install -y rsync 2>/dev/null; }"
 
-  # Rsync app code only; exclude repo config/ so config/users live only in /opt/oscal/data (no duplicate under app)
+  # Rsync app code only; exclude repo config/ so config/users live only in /opt/oscal/data (no duplicate under app).
+  # Exclude dev/infra-only paths not needed on EC2 (terraform, tests, Docker, hooks, retired, local data).
   rsync -avz --delete \
     --exclude 'node_modules' \
     --exclude '.git' \
+    --exclude '.cursor' \
+    --exclude '.githooks' \
+    --exclude '.validation' \
+    --exclude '.github' \
     --exclude 'config' \
+    --exclude 'retired' \
+    --exclude 'terraform' \
+    --exclude 'test_cases' \
+    --exclude 'retired' \
+    --exclude 'logs' \
+    --exclude 'data/debug-state' \
+    --exclude 'data/jobs' \
+    --exclude 'bump_version.sh' \
+    --exclude 'docker-compose.yml' \
+    --exclude 'docker-entrypoint.sh' \
+    --exclude 'Dockerfile' \
+    --exclude 'setup-git-hooks.sh' \
+    --exclude 'switch-github-account.sh' \
     --exclude 'backend/node_modules' \
     --exclude 'frontend/node_modules' \
     --exclude 'frontend/dist' \
     --exclude 'backend/public' \
-    --exclude 'logs' \
     --exclude '*.log' \
     -e "ssh -i $key -o StrictHostKeyChecking=accept-new" \
     "$REPO_ROOT/" "${SSH_USER}@${ip}:${REMOTE_APP}/"
@@ -323,10 +345,11 @@ SVCEOF
   # Restart so new code and env (HOME/PASSWORD_STORE_DIR) are active
   print_info "Restarting oscal-reporter.service..."
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo systemctl restart oscal-reporter.service" 2>/dev/null || true
-  # Verify app responds (ALB needs healthy targets; avoid 502/504)
+  # Verify app responds. Public curl often fails: SG allows only ALB/VPC/self on 3019/3020, not the internet.
   print_info "Waiting 20s then checking /health (retry up to 5 times)..."
   sleep 20
   health_ok=""
+  health_via_ssh=""
   for attempt in 1 2 3 4 5; do
     if curl -sf --connect-timeout 5 "http://${ip}:${port}/health" >/dev/null 2>&1; then
       health_ok=1
@@ -334,39 +357,89 @@ SVCEOF
     fi
     [ "$attempt" -lt 5 ] && sleep 5
   done
+  if [ -z "$health_ok" ]; then
+    # Fallback: check from inside instance (SG does not affect localhost).
+    if ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SSH_USER}@${ip}" \
+      "curl -sf --connect-timeout 5 http://127.0.0.1:${port}/health >/dev/null" 2>/dev/null; then
+      health_ok=1
+      health_via_ssh=1
+    fi
+  fi
   if [ -n "$health_ok" ]; then
-    print_success "App is up at http://${ip}:${port}/health"
-    [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok" >> "$results_file"
+    if [ -n "$health_via_ssh" ]; then
+      print_success "App /health OK on instance (localhost only). Direct http://${ip}:${port}/ is blocked by SG -- use ALB URL to reach the app."
+      [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok_ssh" >> "$results_file"
+    else
+      print_success "App is up at http://${ip}:${port}/health"
+      [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok" >> "$results_file"
+    fi
   else
     print_warning "App /health not yet responding at http://${ip}:${port}/health (check: sudo systemctl status oscal-reporter.service; config/users on EBS at /opt/oscal/data)"
     [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip fail" >> "$results_file"
     print_info "Recent oscal-reporter.service logs (for debugging):"
     ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo journalctl -u oscal-reporter.service -n 30 --no-pager 2>/dev/null" 2>/dev/null || true
   fi
+  # EC2-local deployment.log: binding (ss) + curl localhost + curl private IP on same host
+  local priv_ip=""
+  [ "$role" = "green" ] && priv_ip="${GREEN_PRIVATE:-}" || priv_ip="${BLUE_PRIVATE:-}"
+  print_info "Appending local health/binding checks to ${DEPLOY_LOG_REMOTE} on $role..."
+  ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${ip}" bash -s "$port" "$role" "$priv_ip" << 'DEPLOYLOGLOCAL'
+set +e
+LOG=/opt/oscal/app/logs/deployment.log
+sudo mkdir -p /opt/oscal/app/logs
+sudo touch "$LOG"
+sudo chown "$(whoami)":oscal "$LOG" 2>/dev/null || sudo chmod 666 "$LOG"
+{
+  echo "=== $(date -Iseconds) deploy_one local binding port=$1 role=$2 ==="
+  echo "--- ss listening (3019/3020 or node) ---"
+  ss -tlnp 2>/dev/null | grep -E ':3019|:3020' || ss -tlnp 2>/dev/null | grep node || echo "ss: no matching listener"
+  echo "--- curl http://127.0.0.1:$1/health ---"
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://127.0.0.1:$1/health" || echo "curl_127_fail"
+  if [ -n "$3" ]; then
+    echo "--- curl http://$3:$1/health (same host private IP) ---"
+    curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://$3:$1/health" || echo "curl_private_fail"
+  else
+    echo "--- skip private-IP curl (no private IP in tf output) ---"
+  fi
+} 2>&1 | sudo tee -a "$LOG" >/dev/null
+DEPLOYLOGLOCAL
   print_info "ALB idle_timeout should be 300s (see terraform/alb.tf) to avoid 504 on long requests."
 }
 
 # --- main ---
-GREEN_ONLY=""
-BLUE_ONLY=""
+# Deploy target: green (default), blue, or both. With --green-only/--blue-only IP we also set the IP.
+DEPLOY_TARGET="green"
+GREEN_ONLY_IP=""
+BLUE_ONLY_IP=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --both)
+      DEPLOY_TARGET="both"
+      shift
+      ;;
+    --blue)
+      DEPLOY_TARGET="blue"
+      shift
+      ;;
     --green-only)
       shift
-      GREEN_IP="${1:?Give IP after --green-only}"
-      GREEN_ONLY="1"
+      GREEN_ONLY_IP="${1:?Give IP after --green-only}"
+      DEPLOY_TARGET="green"
       shift
       ;;
     --blue-only)
       shift
-      BLUE_IP="${1:?Give IP after --blue-only}"
-      BLUE_ONLY="1"
+      BLUE_ONLY_IP="${1:?Give IP after --blue-only}"
+      DEPLOY_TARGET="blue"
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--green-only IP] [--blue-only IP]"
-      echo "  With no IPs, reads from terraform output (run from repo root)."
-      echo "  With --green-only IP or --blue-only IP, deploys to that host only."
+      echo "Usage: $0 [--both | --blue | [--green-only IP] | [--blue-only IP]]"
+      echo "  No option: deploy to green only (IPs from Terraform)."
+      echo "  --both:    deploy to both green and blue."
+      echo "  --blue:    deploy to blue only."
+      echo "  --green-only IP: deploy to green at given IP."
+      echo "  --blue-only IP:  deploy to blue at given IP."
       echo "  SSH key: Pass entry $PASS_ENTRY or SSH_KEY_FILE=/path/to/key.pem"
       exit 0
       ;;
@@ -376,17 +449,37 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# If IPs not set by --green-only/--blue-only, get from Terraform
-if [ -z "$GREEN_ONLY" ] && [ -z "$BLUE_ONLY" ]; then
+# Resolve IPs: from --green-only/--blue-only or from Terraform
+if [ -n "$GREEN_ONLY_IP" ]; then
+  GREEN_IP="$GREEN_ONLY_IP"
+fi
+if [ -n "$BLUE_ONLY_IP" ]; then
+  BLUE_IP="$BLUE_ONLY_IP"
+fi
+if [ -z "$GREEN_IP" ] || [ -z "$BLUE_IP" ]; then
   IPS=$(get_terraform_ips "$TERRAFORM_DIR" || true)
   if [ -n "$IPS" ]; then
-    GREEN_IP=$(echo "$IPS" | awk '{print $1}')
-    BLUE_IP=$(echo "$IPS" | awk '{print $2}')
+    [ -z "$GREEN_IP" ] && GREEN_IP=$(echo "$IPS" | awk '{print $1}')
+    [ -z "$BLUE_IP" ] && BLUE_IP=$(echo "$IPS" | awk '{print $2}')
+    print_info "Using Terraform dir: $TERRAFORM_DIR"
+    print_info "Green: $GREEN_IP  Blue: $BLUE_IP"
   else
     print_error "Run from repo root after './terraform/run-with-aws-pass.sh apply' or use --green-only IP / --blue-only IP"
+    echo "  For AWS4379 Sandbox: set TERRAFORM_DIR=\$PWD/terraform/envs/aws4379 and AWS_PASS_ENTRY=\"AWS/AWS4379 Sandbox\"."
     exit 1
   fi
 fi
+
+# Default: deploy green only. --both deploys both, --blue deploys blue only.
+case "$DEPLOY_TARGET" in
+  both)  DEPLOY_GREEN=1; DEPLOY_BLUE=1 ;;
+  blue)  DEPLOY_GREEN=0; DEPLOY_BLUE=1 ;;
+  green) DEPLOY_GREEN=1; DEPLOY_BLUE=0 ;;
+  *)     DEPLOY_GREEN=1; DEPLOY_BLUE=0 ;;
+esac
+[ "$DEPLOY_TARGET" = "green" ] && print_info "Deploy target: green only (default). Use --both or --blue to change."
+[ "$DEPLOY_TARGET" = "both" ] && print_info "Deploy target: both green and blue."
+[ "$DEPLOY_TARGET" = "blue" ] && print_info "Deploy target: blue only."
 
 [ -z "$GREEN_IP" ] && [ -z "$BLUE_IP" ] && { print_error "No instance IPs"; exit 1; }
 
@@ -395,16 +488,109 @@ resolve_ssh_key
 # S3 bucket for ec2_automation.env on instances (backup target; config/users live on EBS)
 S3_BUCKET=$(get_s3_bucket "$TERRAFORM_DIR" || true)
 
+# IPs and ALB for EC2-local deployment.log, cross-instance curls, and ALB checks (Terraform outputs)
+DEPLOY_LOG_REMOTE="/opt/oscal/app/logs/deployment.log"
+GREEN_PRIVATE=$(tf_output -raw oscal_green_private_ip 2>/dev/null || true)
+BLUE_PRIVATE=$(tf_output -raw oscal_blue_private_ip 2>/dev/null || true)
+GREEN_PUBLIC_TF=$(tf_output -raw oscal_green_public_ip 2>/dev/null || true)
+BLUE_PUBLIC_TF=$(tf_output -raw oscal_blue_public_ip 2>/dev/null || true)
+[ -n "${GREEN_PUBLIC_TF:-}" ] && GREEN_PUBLIC="$GREEN_PUBLIC_TF" || GREEN_PUBLIC="${GREEN_IP:-}"
+[ -n "${BLUE_PUBLIC_TF:-}" ] && BLUE_PUBLIC="$BLUE_PUBLIC_TF" || BLUE_PUBLIC="${BLUE_IP:-}"
+ALB_DNS=$(tf_output -raw alb_dns_name 2>/dev/null || true)
+# ALB SG allows 443 only; use HTTPS when ALB exists
+ALB_USE_HTTPS=$(tf_output -raw alb_use_https 2>/dev/null || echo "true")
+
 # Results file for post-deploy summary and health status (option 2, 4)
 DEPLOY_RESULTS_FILE=$(mktemp)
 trap 'rm -f "$DEPLOY_RESULTS_FILE"' EXIT
 
 PASS_MISSING_ANY=0
-if [ -n "$GREEN_IP" ]; then
+if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
   deploy_one "$GREEN_IP" "green" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
 fi
-if [ -n "$BLUE_IP" ]; then
+if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   deploy_one "$BLUE_IP" "blue" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
+fi
+
+# Cross-instance curls (private + public) logged on originating host; SG may block public-IP paths
+# shellcheck disable=SC2087 # here-doc must expand GREEN_/BLUE_ IPs on client before ssh
+if [ -n "$GREEN_IP" ] && [ -n "$BLUE_IP" ]; then
+  print_info "Cross-instance curl tests (append to deployment.log on each host)..."
+  # From Blue toward Green :3019 (heredoc unquoted so GREEN_* expand locally into remote script)
+  if [ -n "$GREEN_PRIVATE" ]; then
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash << EOF
+LOG=/opt/oscal/app/logs/deployment.log
+sudo mkdir -p /opt/oscal/app/logs
+{
+  echo "=== \$(date -Iseconds) from-blue curl green-private:3019 ==="
+  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${GREEN_PRIVATE}:3019/health" || echo curl_fail
+} 2>&1 | sudo tee -a "\$LOG" >/dev/null
+EOF
+  fi
+  if [ -n "$GREEN_PUBLIC" ]; then
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash << EOF
+LOG=/opt/oscal/app/logs/deployment.log
+{
+  echo "=== \$(date -Iseconds) from-blue curl green-public:3019 ==="
+  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${GREEN_PUBLIC}:3019/health" || echo curl_fail
+} 2>&1 | sudo tee -a "\$LOG" >/dev/null
+EOF
+  fi
+  # From Green toward Blue :3020
+  if [ -n "$BLUE_PRIVATE" ]; then
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash << EOF
+LOG=/opt/oscal/app/logs/deployment.log
+{
+  echo "=== \$(date -Iseconds) from-green curl blue-private:3020 ==="
+  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${BLUE_PRIVATE}:3020/health" || echo curl_fail
+} 2>&1 | sudo tee -a "\$LOG" >/dev/null
+EOF
+  fi
+  if [ -n "$BLUE_PUBLIC" ]; then
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash << EOF
+LOG=/opt/oscal/app/logs/deployment.log
+{
+  echo "=== \$(date -Iseconds) from-green curl blue-public:3020 ==="
+  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${BLUE_PUBLIC}:3020/health" || echo curl_fail
+} 2>&1 | sudo tee -a "\$LOG" >/dev/null
+EOF
+  fi
+elif [ -n "$GREEN_IP" ] && [ -n "$BLUE_IP" ]; then
+  print_warning "Cross-instance curls skipped (missing private/public IPs from terraform output)."
+fi
+
+# ALB /health from both hosts (HTTPS if ALB_USE_HTTPS true; ALB SG allows 443 only)
+if [ -n "$ALB_DNS" ]; then
+  print_info "ALB curl from Green and Blue to https://${ALB_DNS}/health ..."
+  for _alb_role in green blue; do
+    _alb_ip=""
+    [ "$_alb_role" = "green" ] && _alb_ip="$GREEN_IP" || _alb_ip="$BLUE_IP"
+    [ -z "$_alb_ip" ] && continue
+    if [ "$ALB_USE_HTTPS" = "true" ]; then
+      ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${_alb_ip}" \
+        "LOG=/opt/oscal/app/logs/deployment.log; { echo \"=== \$(date -Iseconds) ${_alb_role} curl ALB https://${ALB_DNS}/health ===\"; curl -sk --connect-timeout 10 -w \"\\nhttp_code:%{http_code}\\n\" \"https://${ALB_DNS}/health\"; } 2>&1 | sudo tee -a \"\$LOG\" >/dev/null" || true
+    else
+      ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${_alb_ip}" \
+        "LOG=/opt/oscal/app/logs/deployment.log; { echo \"=== \$(date -Iseconds) ${_alb_role} curl ALB http://${ALB_DNS}/health ===\"; curl -sS --connect-timeout 10 -w \"\\nhttp_code:%{http_code}\\n\" \"http://${ALB_DNS}/health\"; } 2>&1 | sudo tee -a \"\$LOG\" >/dev/null" || true
+    fi
+  done
+fi
+
+# Copy deployment.log from each deployed host to repo logs/ for local analysis
+mkdir -p "$REPO_ROOT/logs"
+if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
+  if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "${SSH_USER}@${GREEN_IP}:${DEPLOY_LOG_REMOTE}" "$REPO_ROOT/logs/deployment-green.log" 2>/dev/null; then
+    print_success "Fetched deployment.log from green -> logs/deployment-green.log"
+  else
+    print_warning "Could not scp deployment.log from green (check path/permissions)."
+  fi
+fi
+if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
+  if scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "${SSH_USER}@${BLUE_IP}:${DEPLOY_LOG_REMOTE}" "$REPO_ROOT/logs/deployment-blue.log" 2>/dev/null; then
+    print_success "Fetched deployment.log from blue -> logs/deployment-blue.log"
+  else
+    print_warning "Could not scp deployment.log from blue (check path/permissions)."
+  fi
 fi
 
 # If Pass is not installed/initialized on any instance, warn and prompt
@@ -439,6 +625,8 @@ if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
     [ -z "$role" ] && continue
     if [ "$status" = "ok" ]; then
       echo -e "  ${GREEN}✓${NC} $role ($ip): healthy"
+    elif [ "$status" = "ok_ssh" ]; then
+      echo -e "  ${GREEN}✓${NC} $role ($ip): healthy (localhost; use ALB -- SG blocks direct :3019/:3020)"
     else
       echo -e "  ${RED}✗${NC} $role ($ip): /health not responding"
     fi
@@ -453,10 +641,17 @@ else
   echo "  (run ./scripts/debug/check-pass-vault-on-ec2.sh for details)"
 fi
 echo ""
-# Fail script if any instance failed health check (option 2)
-HEALTH_FAIL=$(grep -c ' fail$' "$DEPLOY_RESULTS_FILE" 2>/dev/null || echo 0 | tr -d '\n\r')
-HEALTH_FAIL=$(( ${HEALTH_FAIL:-0} + 0 ))
-if [ "$HEALTH_FAIL" -gt 0 ]; then
+# Fail script if any instance failed health check (ok_ssh counts as success -- SG blocks public app ports by design)
+# Use wc -l so HEALTH_FAIL is always a single integer (grep -c in a subshell can yield newlines on some systems)
+HEALTH_FAIL=0
+if [ -f "$DEPLOY_RESULTS_FILE" ]; then
+  # grep -c in subshell can yield newlines on some systems; wc -l gives a single integer (SC2126 disabled)
+  # shellcheck disable=SC2126
+  HEALTH_FAIL=$(grep ' fail$' "$DEPLOY_RESULTS_FILE" 2>/dev/null | wc -l | tr -d ' \n\r')
+fi
+HEALTH_FAIL=${HEALTH_FAIL:-0}
+case "$HEALTH_FAIL" in (*[!0-9]*) HEALTH_FAIL=0 ;; esac
+if [ "$HEALTH_FAIL" -gt 0 ] 2>/dev/null; then
   print_error "One or more instances failed health check. Fix and re-run deploy or check: sudo systemctl status oscal-reporter.service"
   exit 1
 fi
