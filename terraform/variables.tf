@@ -33,7 +33,7 @@ variable "vpc_cidr" {
 }
 
 variable "default_allowed_cidr_blocks" {
-  description = "Default CIDR ranges allowed for ingress (ALB HTTP testing, SSH, direct Green/Blue 3019/3020). Set in tfvars; do not use 0.0.0.0/0 (PCL custom-config-ec2-sg-port-check)."
+  description = "Default CIDR ranges allowed for ingress (ALB HTTP testing, SSH, direct Green/Blue 3019/3020). Set in tfvars; do not use 0.0.0.0/0 (PCL custom-config-ec2-sg-port-check). In stage accounts, PCL may treat blocks larger than /32 as \"broad\" and revert the ALB SG; prefer /32 or smallest necessary."
   type        = list(string)
   default     = ["130.248.32.17/32", "203.191.182.150/32"]
 
@@ -45,6 +45,24 @@ variable "default_allowed_cidr_blocks" {
 
 variable "alb_allow_http_for_testing" {
   description = "When true, ALB allows port 80 from default_allowed_cidr_blocks only (for testing service availability). When false, port 80 is closed. Port 443 is always open to all IPs."
+  type        = bool
+  default     = false
+}
+
+variable "alb_restrict_to_australia" {
+  description = "When true, ALB HTTPS (443) is restricted to Australian IP ranges only (via prefix lists from IPdeny). When false, ALB 443 uses default_allowed_cidr_blocks unless alb_allow_443_from_all is true."
+  type        = bool
+  default     = true
+}
+
+variable "alb_allow_443_from_all" {
+  description = "When true, ALB HTTPS (443) allows default_allowed_cidr_blocks (PCL-compliant; no 0.0.0.0/0). Set to false to use Australia-only or default_allowed_cidr_blocks per alb_restrict_to_australia."
+  type        = bool
+  default     = false
+}
+
+variable "instance_allow_app_ports_from_all" {
+  description = "Deprecated: ingress for 3019/3020 always uses default_allowed_cidr_blocks (no 0.0.0.0/0 per PCL). Kept for backward compatibility; has no effect."
   type        = bool
   default     = false
 }
@@ -166,6 +184,12 @@ variable "alb_green_hostname" {
   description = "Hostname for Green deployment (e.g. green.oscal.example.com). When set, ALB routes requests with this Host header to Green (port 3019). Create a CNAME pointing to the ALB DNS."
   type        = string
   default     = null
+}
+
+variable "alb_port_justification" {
+  description = "Free-form description for Adobe:PortJustification tag on the ALB. Required for AMS PCL: resources with port exposure must have Adobe:PublicPorts and Adobe:PortJustification. ELB tag values allow only letters, numbers, spaces, and _.:/=+-@ (no parentheses). Example: \"OSCAL Report Generator production access for AMS Gov Cloud\"."
+  type        = string
+  default     = "OSCAL Report Generator web access HTTPS and HTTP"
 }
 
 # Tags

@@ -79,3 +79,7 @@ Include in your request: account ID `442277170733`, that you need **ec2:RunInsta
 ### "You are not authorized to use launch template"
 
 If apply fails with **AccessDenied: You are not authorized to use launch template**, set an approved Image Factory AMI in `terraform.tfvars`: `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (get from platform team).
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026

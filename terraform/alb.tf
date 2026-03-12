@@ -11,6 +11,8 @@ locals {
   alb_cert_arn = var.create_alb_certificate && var.alb_domain_name != null ? aws_acm_certificate.alb[0].arn : var.alb_ssl_certificate_arn
 }
 
+# AMS PCL: ALB with port exposure must be tagged Adobe:PublicPorts (space-separated ports) and Adobe:PortJustification.
+# If tooling cannot use colon in tag key, use Adobe-PublicPorts or Adobe.PublicPorts.
 resource "aws_lb" "main" {
   name               = "${var.project_name}-alb"
   internal           = false
@@ -18,6 +20,11 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
   idle_timeout       = 300
+
+  tags = {
+    "Adobe:PublicPorts"     = local.alb_use_https ? "80 443" : "80"
+    "Adobe:PortJustification" = var.alb_port_justification
+  }
 }
 
 # Green target group: ALB health check = http://<green-instance-ip>:3019/health (IP is each registered target)

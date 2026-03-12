@@ -13,6 +13,7 @@
 # Optional: AWS_PASS_ENTRY – Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403).
 #   For AWS4379 Sandbox (432417415905): AWS_PASS_ENTRY="AWS/AWS4379 Sandbox" and TERRAFORM_DIR=$PWD/terraform/envs/aws4379.
 # Optional: TERRAFORM_DIR – Terraform working dir (default: terraform/envs/aws4403). Set to terraform/envs/aws4379 for AWS4379.
+# Optional: SKIP_CURRENT_IP_ADD=1 – skip auto-adding current IP to default_allowed_cidr_blocks (e.g. in CI).
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,6 +92,33 @@ remove_orphan_alb_listeners_if_needed() {
   done <<< "$list"
 }
 
+# Ensure current public IP is in default_allowed_cidr_blocks so plan/apply do not lock out the operator.
+# Skips if SKIP_CURRENT_IP_ADD=1, terraform.tfvars missing, curl fails, or IP already in list.
+ensure_current_ip_in_tfvars() {
+  [[ -n "${SKIP_CURRENT_IP_ADD:-}" ]] && return 0
+  local tfvars="$TERRAFORM_DIR/terraform.tfvars"
+  [[ -f "$tfvars" ]] || return 0
+  local cur_ip
+  cur_ip=$(curl -s --connect-timeout 5 --max-time 10 ifconfig.me 2>/dev/null | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  [[ -n "$cur_ip" && "$cur_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+  grep -q "\"$cur_ip/32\"" "$tfvars" 2>/dev/null && return 0
+  local tmp
+  tmp=$(mktemp)
+  awk -v ip="$cur_ip" '
+    /\]  # Add more/ && !added {
+      if (prev != "" && prev !~ /,\s*$/) { print prev ","; } else if (prev != "") { print prev; }
+      print "  \"" ip "/32\",   # Added by run-with-aws-pass.sh (current IP)";
+      print;
+      added=1;
+      prev="";
+      next;
+    }
+    { if (prev != "") print prev; prev=$0; }
+    END { if (prev != "") print prev; }
+  ' "$tfvars" > "$tmp" && mv "$tmp" "$tfvars"
+  echo "Added $cur_ip/32 to default_allowed_cidr_blocks in terraform.tfvars (current IP)." >&2
+}
+
 case "${1:-}" in
   import-key)
     import_ec2_key "${2:-us-east-1}"
@@ -101,11 +129,13 @@ case "${1:-}" in
     ;;
   apply)
     load_aws_credentials
+    ensure_current_ip_in_tfvars
     remove_orphan_alb_listeners_if_needed
     exec terraform "$@"
     ;;
   *)
     load_aws_credentials
+    ensure_current_ip_in_tfvars
     exec terraform "$@"
     ;;
 esac

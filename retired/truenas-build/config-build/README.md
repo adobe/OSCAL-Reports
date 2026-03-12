@@ -11,3 +11,7 @@ These files were copied from **`config/build/`** before that folder was removed.
 **Canonical today:** root **`Dockerfile`**, root **`docker-compose.yml`**, `.github/workflows/docker-publish.yml` → `file: ./Dockerfile`.
 
 You can delete this folder with the rest of `retired/truenas-build/` after ~6 months if stable.
+
+---
+
+**Version:** 1.7.10 · **Last updated:** March 2026
