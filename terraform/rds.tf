@@ -2,7 +2,7 @@
 # RDS lives in private subnets only (no route to IGW), publicly_accessible = false, private DNS → private IP.
 # Ingress: OSCAL EC2 security group only, plus optional rds_additional_ingress_ipv4_cidr_blocks (VPC-internal use).
 # IAM database authentication for the app user; master password in Secrets Manager (RDS-managed).
-# Set create_rds_postgres = true in tfvars. EC2 user_data bootstraps the IAM DB user and injects OSCAL_DATABASE_* env vars.
+# Default create_rds_postgres = true; set false in tfvars to omit RDS. EC2 user_data bootstraps the IAM DB user and injects OSCAL_DATABASE_* env vars when RDS is enabled.
 
 resource "aws_db_subnet_group" "oscal" {
   count = var.create_rds_postgres ? 1 : 0

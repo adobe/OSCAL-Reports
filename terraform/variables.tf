@@ -132,6 +132,37 @@ variable "run_oscal_via_docker" {
   default     = false
 }
 
+# Persistent EBS + ASG (see docs/AWS_TERRAFORM.md): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
+variable "oscal_persistent_ebs_enabled" {
+  description = "When true and run_oscal_via_docker is false, provision dedicated gp3 volumes and mount at /opt/oscal on boot (Auto Scaling launch template user_data). Ignored for Docker mode."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_data_volume_size_gb" {
+  description = "Size (GiB) of each OSCAL persistent data volume (Green and Blue)."
+  type        = number
+  default     = 50
+}
+
+variable "oscal_asg_health_check_grace_period" {
+  description = "Seconds after instance launch before ELB health checks count for ASG (allow volume mount, Node install, service start)."
+  type        = number
+  default     = 420
+}
+
+variable "oscal_ssm_post_boot_association_enabled" {
+  description = "When true, create an SSM State Manager association (periodic) to run a lightweight post-boot script on instances tagged OSCAL_SSM_TARGET=true."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_ssm_release_s3_prefix" {
+  description = "Optional object prefix inside s3_logs_bucket_name for SSM post-boot sync (e.g. releases/current). When set, instance role gains s3:GetObject on that prefix and the SSM document runs aws s3 sync into /opt/oscal/app (no --delete). Leave null to skip."
+  type        = string
+  default     = null
+}
+
 # S3 (best practice: docs/IMAGE_FACTORY.md – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
   description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, config, users."
@@ -196,7 +227,7 @@ variable "alb_port_justification" {
 variable "create_rds_postgres" {
   description = "When true, provisions Amazon RDS PostgreSQL in the VPC, enables IAM DB auth, and EC2 user_data bootstraps the app IAM user and OSCAL_DATABASE_* systemd environment variables."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "rds_engine_version" {

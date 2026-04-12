@@ -37,6 +37,13 @@
   color: #666;
 }
 
+.database-integration-container .auth-user-iam-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #c62828;
+}
+
 .database-integration-container .read-only-banner {
   background: #fff3cd;
   border: 1px solid #ffc107;

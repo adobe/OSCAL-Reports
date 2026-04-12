@@ -100,6 +100,8 @@ volumes/
 
 # SSL certificates (if any)
 *.pem
+# Public AWS RDS CA bundle (not a secret; used by backend for RDS TLS verification)
+!backend/database/rds-global-bundle.pem
 *.key
 *.crt
 *.p12

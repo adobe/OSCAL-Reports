@@ -4,6 +4,10 @@
 # Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
 # Application and cron run as service account svc_ams-oscal (not root). Pass is installed and initialized for that user for secrets.
 #
+# Green/Blue are Auto Scaling Group members: Terraform outputs oscal_*_public_ip / oscal_*_private_ip point at the current instance.
+# After an ASG replacement, re-run this script (or use --green-only / --blue-only with the new IP from terraform output). Optional SSM
+# (oscal_ssm_release_s3_prefix) can sync prebuilt artifacts from S3 on a schedule; it does not replace this script for full builds.
+#
 # Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; AWS CLI (for ec2_automation env).
 #
 # Usage:
