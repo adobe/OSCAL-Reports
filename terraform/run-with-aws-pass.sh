@@ -14,6 +14,7 @@
 #   For AWS4379 Sandbox (432417415905): AWS_PASS_ENTRY="AWS/AWS4379 Sandbox" and TERRAFORM_DIR=$PWD/terraform/envs/aws4379.
 # Optional: TERRAFORM_DIR – Terraform working dir (default: terraform/envs/aws4403). Set to terraform/envs/aws4379 for AWS4379.
 # Optional: SKIP_CURRENT_IP_ADD=1 – skip auto-adding current IP to default_allowed_cidr_blocks (e.g. in CI).
+# If plan/apply fails with ExpiredToken, refresh aws_session_token (and keys if needed) in the Pass entry, then retry.
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,12 +40,27 @@ load_aws_credentials() {
   done < <(pass show "$ENTRY")
 }
 
+# Fail fast before mutating terraform.tfvars (e.g. ensure_current_ip_in_tfvars) when Pass holds expired STS creds.
+verify_aws_credentials() {
+  command -v aws >/dev/null 2>&1 || {
+    echo "Error: AWS CLI (aws) is required. Install: brew install awscli" >&2
+    exit 1
+  }
+  local out
+  out=$(aws sts get-caller-identity 2>&1) || {
+    echo "$out" >&2
+    echo "Error: AWS credentials from Pass entry '$ENTRY' failed STS validation (see above). For ExpiredToken, update that Pass entry with a fresh session token, then retry." >&2
+    exit 1
+  }
+}
+
 import_ec2_key() {
   local region="${1:-us-east-1}"
   local ssh_entry="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
   local key_name="${EC2_KEY_NAME:-oscal-aws4379}"
   command -v aws >/dev/null 2>&1 || { echo "Error: AWS CLI (aws) is required. Install: brew install awscli" >&2; exit 1; }
   load_aws_credentials
+  verify_aws_credentials
   local tmpkey
   tmpkey=$(mktemp)
   trap 'rm -f "$tmpkey"' EXIT
@@ -125,16 +141,19 @@ case "${1:-}" in
     ;;
   remove-stale-ollama-state)
     load_aws_credentials
+    verify_aws_credentials
     exec "$SCRIPT_DIR/remove-stale-ollama-state.sh"
     ;;
   apply)
     load_aws_credentials
+    verify_aws_credentials
     ensure_current_ip_in_tfvars
     remove_orphan_alb_listeners_if_needed
     exec terraform "$@"
     ;;
   *)
     load_aws_credentials
+    verify_aws_credentials
     ensure_current_ip_in_tfvars
     exec terraform "$@"
     ;;

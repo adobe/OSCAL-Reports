@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import ControlItemCCM from './ControlItemCCM';
 import './ControlsList.css';
 
-function ControlsList({ controls, onControlUpdate, organizationName = 'Organization' }) {
+function ControlsList({ controls, onControlUpdate, organizationName = 'Organization', databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGroup, setFilterGroup] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -308,6 +308,8 @@ function ControlsList({ controls, onControlUpdate, organizationName = 'Organizat
               onToggle={() => toggleControl(control.id)}
               onUpdate={onControlUpdate}
               allControls={controls}
+              databaseIntegrationEnabled={databaseIntegrationEnabled}
+              adobeTeamOptions={adobeTeamOptions}
             />
           ))
         )}

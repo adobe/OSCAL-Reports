@@ -131,7 +131,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
   return (
     <div className="usecases-container">
       <div className="usecases-header">
-        <h1>🛡️ OSCAL Report Generator</h1>
+        <h1>🛡️ OSCAL Report Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
         <h2>Four Powerful Use Cases for Compliance Management</h2>
         <p className="subtitle">
           Choose your scenario and let us guide you through the process

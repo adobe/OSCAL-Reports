@@ -4,27 +4,28 @@ This directory contains upgrade and consolidation scripts for Blue-Green deploym
 
 ## 📋 Available Scripts
 
-### 0. `push-and-merge-adobe-main.sh`
-Pushes the current `Development` branch to the Adobe remote and merges it into `main` on the Adobe repo.
+### 1. `build-and-push-dockerhub.sh`
+Build the OSCAL Report Generator Docker image locally and push it to Docker Hub (e.g. for use when GitHub Actions is unavailable or you prefer to publish from your machine).
 
 **What it does:**
-- Sets Git user to Adobe credentials
-- Pushes `Development` to `adobe`
-- Updates local `main` from `adobe/main`, merges `Development` into `main`
-- Pushes `main` to `adobe`, then switches back to `Development`
+- Builds the image from the repo root using the project Dockerfile
+- Tags the image using version from `package.json` (e.g. `v1.7.10`) or an optional tag argument
+- Pushes the image to Docker Hub; when the tag is a version, also tags and pushes `latest`
 
-**Usage:** Run from your machine where the Adobe SSH key is configured (e.g. `github.com-adobe`):
+**Usage:** From the repository root (after `docker login`):
 ```bash
-./scripts/push-and-merge-adobe-main.sh
+DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
+# Or with an explicit tag:
+./scripts/build-and-push-dockerhub.sh v1.7.10
 ```
 
-**Requirements:**
-- SSH key for Adobe repo configured and authorized for AdobeManagedServices (SSO)
-- No uncommitted changes if you want a clean merge; commit first
+**Environment:** `DOCKERHUB_USERNAME` (default: `keekar`) – your Docker Hub username.
+
+**Requirements:** Docker installed and running; run `docker login` before first use.
 
 ---
 
-### 1. `upgrade-blue-deployment.sh`
+### 2. `upgrade-blue-deployment.sh`
 Upgrades Blue deployment from v1.5.0 to v1.6.5+ with volume persistence.
 
 **What it does:**
@@ -46,7 +47,7 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 
 ---
 
-### 2. `upgrade-green-deployment.sh`
+### 3. `upgrade-green-deployment.sh`
 Upgrades Green deployment from v1.6.2 to v1.6.5+ with volume persistence.
 
 **What it does:**
@@ -68,7 +69,7 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 
 ---
 
-### 3. `upgrade-both-deployments.sh`
+### 4. `upgrade-both-deployments.sh`
 Upgrades BOTH Blue and Green deployments together.
 
 **What it does:**
@@ -95,7 +96,7 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 
 ---
 
-### 4. `consolidate-users.sh`
+### 5. `consolidate-users.sh`
 Merges users between Blue and Green deployments after upgrade.
 
 **What it does:**
@@ -124,7 +125,7 @@ cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
 
 ---
 
-### 5. `sync-consolidation-script.sh`
+### 6. `sync-consolidation-script.sh`
 Copies `consolidate-users.sh` to Blue and Green script folders so Local, Blue, and Green all have the same script for check-in.
 
 **Usage (from repo root):**
@@ -141,7 +142,7 @@ BLUE_SCRIPTS_DIR=/path/to/Blue/scripts GREEN_SCRIPTS_DIR=/path/to/Green/scripts 
 
 ---
 
-### 6. `deploy_from_dockerhub.sh` ⭐ NEW
+### 7. `deploy_from_dockerhub.sh` ⭐ NEW
 Fast deployment script that pulls pre-built images from Docker Hub.
 
 **What it does:**

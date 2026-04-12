@@ -25,10 +25,14 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `security_groups.tf` – ALB, OSCAL security groups
 - `alb.tf` – Application Load Balancer and target groups (Green 3019, Blue 3020)
 - `oscal_instances.tf` – Green and Blue EC2 instances
+- `rds.tf` – Optional Amazon RDS PostgreSQL (Database Integration; IAM DB auth when `create_rds_postgres = true`)
 - `s3.tf` – S3 bucket for logs, config, users (Public Access Block for PCL rule `custom-s3-pab-check`)
-- `iam.tf` – OSCAL instance profile (S3, SSM)
+- `iam.tf` – OSCAL instance profile (S3, SSM, optional RDS Secrets Manager + `rds-db:connect`)
+- `templates/oscal-rds-bootstrap.sh.tftpl` – EC2 user_data fragment: IAM DB user + systemd `OSCAL_DATABASE_*` env vars
 
 Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.example`) and state under `envs/<env>/`.
+
+**Image Factory EMR (InfraSec):** To list candidate **Amazon Linux 2023 EMR** AMIs launchable in your account, run [scripts/list-emr-candidate-amis.sh](scripts/list-emr-candidate-amis.sh) with AWS credentials (see [docs/IMAGE_FACTORY.md](../docs/IMAGE_FACTORY.md) and [envs/aws4403/README.md](envs/aws4403/README.md) § SSAAU-169).
 
 **Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js and mounts config/users from S3 (destroy/rebuild instances without data loss). After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` in that env’s `terraform.tfvars`.
 

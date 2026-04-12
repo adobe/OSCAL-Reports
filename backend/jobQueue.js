@@ -16,6 +16,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { generatePDFReport } from './pdfExport.js';
 import { generateCCMExport } from './ccmExport.js';
+import { syncExportToDatabase } from './database/exportSync.js';
 import ExcelJS from 'exceljs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -217,10 +218,11 @@ async function processJob(jobId) {
   } catch (error) {
     console.error(`[JobQueue] Job ${jobId} failed:`, error);
     
-    // Update job with error
+    // Update job with error (preserve code for DATABASE_UNAVAILABLE so frontend can show prompt)
     job.status = JOB_STATUS.FAILED;
     job.completedAt = new Date().toISOString();
     job.error = error.message;
+    if (error.code) job.errorCode = error.code;
     saveJobToFile(job);
   }
 }
@@ -232,10 +234,15 @@ async function processJob(jobId) {
  */
 async function processPDFExport(job) {
   const { controls, systemInfo, metadata } = job.data;
-  
+
+  const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+  if (!syncResult.skipped) {
+    console.log(`[JobQueue] Database sync on PDF export: ${syncResult.controlsCount} controls`);
+  }
+
   job.progress = 30;
   saveJobToFile(job);
-  
+
   const pdfBuffer = await generatePDFReport(controls, systemInfo, metadata);
   
   job.progress = 90;
@@ -251,10 +258,15 @@ async function processPDFExport(job) {
  */
 async function processExcelExport(job) {
   const { controls, systemInfo } = job.data;
-  
+
+  const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+  if (!syncResult.skipped) {
+    console.log(`[JobQueue] Database sync on Excel export: ${syncResult.controlsCount} controls`);
+  }
+
   job.progress = 30;
   saveJobToFile(job);
-  
+
   const workbook = new ExcelJS.Workbook();
   
   // System Information sheet
@@ -339,10 +351,15 @@ async function processExcelExport(job) {
  */
 async function processCCMExport(job) {
   const { controls, systemInfo } = job.data;
-  
+
+  const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+  if (!syncResult.skipped) {
+    console.log(`[JobQueue] Database sync on CCM export: ${syncResult.controlsCount} controls`);
+  }
+
   job.progress = 30;
   saveJobToFile(job);
-  
+
   const workbook = await generateCCMExport(controls, systemInfo);
   
   job.progress = 80;

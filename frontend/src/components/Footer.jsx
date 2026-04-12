@@ -27,7 +27,7 @@ export const Footer = () => {
     <footer className="app-footer">
       <div className="footer-content">
         <div className="footer-main">
-          <strong>OSCAL Report Generator V2</strong>
+          <strong>OSCAL Report Generator V2</strong> <span className="beta-badge" title="Beta Release">Beta</span>
           <span className="divider">|</span>
           <span className="version">Version {version}</span>
           <span className="divider">|</span>
