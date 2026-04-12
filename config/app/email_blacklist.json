@@ -10,5 +10,41 @@
     "deletedAt": "2026-03-06T05:19:21.810Z",
     "expiresAt": "2026-04-20T06:19:21.810Z",
     "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "dmiglani@adobe.com",
+    "deletedAt": "2026-04-12T20:54:27.453Z",
+    "expiresAt": "2026-05-27T20:54:27.453Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "jessica.freeth@defence.gov.au",
+    "deletedAt": "2026-04-12T20:54:27.441Z",
+    "expiresAt": "2026-05-27T20:54:27.441Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "chander.vohra@gmail.com",
+    "deletedAt": "2026-04-12T20:54:27.458Z",
+    "expiresAt": "2026-05-27T20:54:27.458Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "satyamish@yahoo.com",
+    "deletedAt": "2026-04-12T20:54:27.461Z",
+    "expiresAt": "2026-05-27T20:54:27.461Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "chetan_joshi@trendmicro.com",
+    "deletedAt": "2026-04-12T20:54:27.465Z",
+    "expiresAt": "2026-05-27T20:54:27.465Z",
+    "reason": "User deactivated due to 45-day inactivity"
+  },
+  {
+    "email": "jhanirupam4@gmail.com",
+    "deletedAt": "2026-04-12T20:54:27.477Z",
+    "expiresAt": "2026-05-27T20:54:27.477Z",
+    "reason": "User deactivated due to 45-day inactivity"
   }
 ]

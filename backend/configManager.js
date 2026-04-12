@@ -141,6 +141,17 @@ const DEFAULT_CONFIG = {
       general: 512               // Standard responses for general operations
     }
   },
+  databaseConfig: {
+    enabled: false,
+    host: '',
+    port: 5432,
+    database: '',
+    user: '',
+    password: '',
+    authMode: 'password', // 'password' | 'iam' (RDS IAM DB authentication; token from instance/task role)
+    sslMode: 'disable', // 'disable' | 'prefer' | 'require'
+    connectionTimeout: 10000     // 10 seconds
+  },
   lastModified: new Date().toISOString(),
   version: '1.0.0'
 };
@@ -172,7 +183,8 @@ function loadConfig() {
     const config = {
       ...DEFAULT_CONFIG,
       ...loaded,
-      aiConfig: { ...DEFAULT_CONFIG.aiConfig, ...(loaded.aiConfig || {}) }
+      aiConfig: { ...DEFAULT_CONFIG.aiConfig, ...(loaded.aiConfig || {}) },
+      databaseConfig: { ...DEFAULT_CONFIG.databaseConfig, ...(loaded.databaseConfig || {}) }
     };
     console.log(`✅ Configuration loaded successfully from ${configPath}`);
     return config;
@@ -184,6 +196,39 @@ function loadConfig() {
 }
 
 /**
+ * Merge process env OSCAL_DATABASE_* over databaseConfig (Terraform EC2 / container injection).
+ * IAM mode clears static password so connections use RDS Signer only.
+ * @param {Object} config - Mutable config object (e.g. clone of loaded config)
+ */
+export function applyDatabaseEnvOverrides(config) {
+  if (!config?.databaseConfig) return;
+  const db = config.databaseConfig;
+  if (process.env.OSCAL_DATABASE_AUTH === 'iam' || process.env.OSCAL_DATABASE_IAM === '1') {
+    db.authMode = 'iam';
+    db.password = '';
+  }
+  if (process.env.OSCAL_DATABASE_HOST && String(process.env.OSCAL_DATABASE_HOST).trim()) {
+    db.host = String(process.env.OSCAL_DATABASE_HOST).trim();
+  }
+  if (process.env.OSCAL_DATABASE_PORT && String(process.env.OSCAL_DATABASE_PORT).trim()) {
+    const p = parseInt(String(process.env.OSCAL_DATABASE_PORT).trim(), 10);
+    if (!Number.isNaN(p)) db.port = p;
+  }
+  if (process.env.OSCAL_DATABASE_NAME && String(process.env.OSCAL_DATABASE_NAME).trim()) {
+    db.database = String(process.env.OSCAL_DATABASE_NAME).trim();
+  }
+  if (process.env.OSCAL_DATABASE_USER && String(process.env.OSCAL_DATABASE_USER).trim()) {
+    db.user = String(process.env.OSCAL_DATABASE_USER).trim();
+  }
+  if (process.env.OSCAL_DATABASE_SSL === 'require') {
+    db.sslMode = 'require';
+  }
+  if (process.env.OSCAL_DATABASE_ENABLED === '1') {
+    db.enabled = true;
+  }
+}
+
+/**
  * Load config and resolve all _pass pointers (for server-side use only).
  * Returns a deep clone with secrets resolved from pass; do not send to client.
  */
@@ -191,6 +236,7 @@ function getResolvedConfig() {
   const raw = loadConfig();
   const clone = JSON.parse(JSON.stringify(raw));
   resolvePassPointers(clone);
+  applyDatabaseEnvOverrides(clone);
   return clone;
 }
 
@@ -207,6 +253,10 @@ function prepareConfigWithPassPointers(configToSave, existingRaw) {
   const result = JSON.parse(JSON.stringify(configToSave));
   const passErrors = [];
   for (const { path: keyPath, passEntry } of SENSITIVE_CONFIG_KEYS) {
+    if (keyPath === 'databaseConfig.password' && getByPath(configToSave, 'databaseConfig.authMode') === 'iam') {
+      setByPath(result, 'databaseConfig.password', '');
+      continue;
+    }
     const incoming = getByPath(configToSave, keyPath);
     if (isMaskedOrEmpty(incoming)) {
       const existing = getByPath(existingRaw, keyPath);
@@ -281,6 +331,11 @@ async function saveConfig(config) {
           ...DEFAULT_CONFIG.aiConfig.maxTokens,
           ...config.aiConfig?.maxTokens
         }
+      },
+      // Ensure databaseConfig structure is complete
+      databaseConfig: {
+        ...DEFAULT_CONFIG.databaseConfig,
+        ...config.databaseConfig
       },
       // Explicitly preserve publishedSoaUrl (even if empty string)
       publishedSoaUrl: config.publishedSoaUrl !== undefined 

@@ -1,9 +1,21 @@
 # OSCAL Green and Blue instances (always on), ports 3019 and 3020
-# AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 (when in map), 3) native Amazon Linux 2023 fallback.
+# AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 / EMR (when resolved), 3) native Amazon Linux 2023 fallback.
 
 locals {
   oscal_ami_id     = var.oscal_ami_id != null ? var.oscal_ami_id : (var.use_image_factory_ami && local.image_factory_ami_id != null ? local.image_factory_ami_id : local.default_fallback_ami_id)
   oscal_ami_id_ok  = local.oscal_ami_id != null && local.oscal_ami_id != ""
+}
+
+locals {
+  rds_bootstrap_fragment = var.create_rds_postgres ? templatefile("${path.module}/templates/oscal-rds-bootstrap.sh.tftpl", {
+    aws_region        = var.aws_region
+    rds_address       = aws_db_instance.oscal[0].address
+    rds_port          = tostring(aws_db_instance.oscal[0].port)
+    db_name           = var.rds_database_name
+    master_username   = var.rds_master_username
+    iam_db_username   = var.rds_iam_app_username
+    master_secret_arn = aws_db_instance.oscal[0].master_user_secret[0].secret_arn
+  }) : ""
 }
 
 # User data: either Docker/podman (run_oscal_via_docker = true) or direct run with local EBS data (default). RHEL only.
@@ -80,6 +92,8 @@ SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
 
+${local.rds_bootstrap_fragment}
+
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
 systemctl start oscal-reporter.service
@@ -138,6 +152,8 @@ WantedBy=multi-user.target
 SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
+
+${local.rds_bootstrap_fragment}
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service

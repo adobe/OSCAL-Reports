@@ -80,6 +80,20 @@ Include in your request: account ID `442277170733`, that you need **ec2:RunInsta
 
 If apply fails with **AccessDenied: You are not authorized to use launch template**, set an approved Image Factory AMI in `terraform.tfvars`: `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (get from platform team).
 
+## SSAAU-169 (Image Factory Amazon Linux 2023 EMR)
+
+InfraSec tickets for AMS-OSCAL-Reporter Non-Prod (account **442277170733**) require the **latest** [Amazon Linux 2023 **EMR** flavor](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) from Image Factory, not the public Amazon `al2023-ami-*` fallback.
+
+1. **Confirm env:** `TERRAFORM_DIR=$PWD/terraform/envs/aws4403`, `AWS_PASS_ENTRY=AWS/AMS_4403-STG`, `aws_region = "us-east-1"` in `terraform.tfvars`.
+2. **Get AMI:** Open Image Factory EMR flavor (use your org if not DME), copy the newest **us-east-1** AMI for **x86_64** (this env uses `t3a.small`) or **arm64** if you use `t4g.small`. Optionally run (from repo root, with AWS creds):
+   ```bash
+   ./terraform/scripts/list-emr-candidate-amis.sh us-east-1 x86_64
+   ```
+3. **Pin:** Set `image_factory_amazon_linux_ami_us_east_1 = "ami-..."` in `terraform.tfvars` and keep `instance_architecture` aligned.
+4. **Apply:** `./terraform/run-with-aws-pass.sh plan -out=tfplan` then `./terraform/run-with-aws-pass.sh apply tfplan`.
+5. **Data / app:** New instances get new root volumes—restore `/opt/oscal/data` from S3 (ec2_automation backups) and run `./scripts/deploy-to-ec2.sh` with the same `TERRAFORM_DIR` and Pass entries. Check ALB target health and `/health` on 3019/3020.
+6. **Close ticket:** After CrowdStrike/Nexpose rescan is clean, close **SSAAU-169** (or use Adobe exception tooling if blocked).
+
 ---
 
-**Version:** 1.7.10 · **Last updated:** March 2026
+**Version:** 1.7.10 · **Last updated:** April 2026

@@ -4,7 +4,7 @@
 aws_region     = "us-east-1"
 aws_account_id = "442277170733"
 environment    = "prod"
-project_name   = "oscal-reports"
+project_name   = "ams-oscal-reports"
 
 vpc_cidr         = "10.0.0.0/16"
 # Default CIDRs for ALB HTTP testing, SSH, and direct Green/Blue 3019/3020. PCL disallows 0.0.0.0/0.
@@ -16,9 +16,25 @@ default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Replace with your IP(s), e.g. ["
 key_name = null  # Or "oscal-aws4403" after importing key: AWS_PASS_ENTRY=AWS/AMS_4403-STG ... run-with-aws-pass.sh import-key us-east-1
 
 s3_logs_bucket_name = "ams-oscal-442277170733"
+
+# AMI: AMS InfraSec (e.g. SSAAU-169) — use latest Image Factory **Amazon Linux 2023 EMR** for us-east-1.
+# UI: https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR
+# CLI (with AWS creds): ../../scripts/list-emr-candidate-amis.sh us-east-1 x86_64   # or arm64 for t4g
 use_image_factory_ami = true
-# Optional: Image Factory AL2023 AMI for us-east-1 (get from platform team if required by account)
-# image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"
+image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx" # Replace with latest EMR ami-*; must match instance_architecture below
+instance_architecture   = "x86_64" # or "arm64" for t4g.small
+instance_type           = "t3a.small" # or "t4g.small" with arm64
+
+# Optional: dynamic latest AMI (set image_factory_amazon_linux_ami_us_east_1 = null if using this)
+# image_factory_owner_id         = "000000000000"  # Image Factory / sharing account (from platform wiki)
+# image_factory_ami_name_pattern = "*Amazon*Linux*2023*EMR*"
+
+# Optional: RDS PostgreSQL for Database Integration (IAM auth; app creates tables on first use).
+# RDS uses private subnets only (no public IP). Ingress defaults to OSCAL EC2 SG only.
+# Optional extra CIDRs (VPC-internal): rds_additional_ingress_ipv4_cidr_blocks = ["10.0.20.0/28"]
+# create_rds_postgres         = true
+# rds_instance_class          = "db.t4g.micro"
+# rds_skip_final_snapshot     = true   # set false + rds_deletion_protection = true for production
 
 common_tags = {
   Team        = "Compliance"

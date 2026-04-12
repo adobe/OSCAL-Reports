@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './Settings.css';
 
 function Settings() {
-  const { canEditSettings, getAuthConfig } = useAuth();
+  const { canEditSettings, getAuthConfig, logout } = useAuth();
   const [gateways, setGateways] = useState({
     aws: {
       enabled: false,
@@ -26,10 +26,6 @@ function Settings() {
   });
   const [publishedSoaUrl, setPublishedSoaUrl] = useState('');
   const [customUrlInput, setCustomUrlInput] = useState('');
-  const [publishedSoaSource, setPublishedSoaSource] = useState('url');
-  const [storedPublishedSoaFiles, setStoredPublishedSoaFiles] = useState([]);
-  const [uploadMessage, setUploadMessage] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saveMessage, setSaveMessage] = useState('');
@@ -40,16 +36,6 @@ function Settings() {
   
   const isReadOnly = !canEditSettings();
 
-  const loadStoredPublishedSoaFiles = async () => {
-    try {
-      const res = await axios.get('/api/settings/published-soa/files', getAuthConfig());
-      setStoredPublishedSoaFiles(res.data?.files || []);
-    } catch (err) {
-      console.error('Failed to load stored published-soa files:', err);
-      setStoredPublishedSoaFiles([]);
-    }
-  };
-
   // Load settings from server on mount
   useEffect(() => {
     loadSettings();
@@ -58,25 +44,20 @@ function Settings() {
   const loadSettings = async () => {
     setIsLoading(true);
     try {
-      const [settingsRes, filesRes] = await Promise.all([
-        axios.get('/api/settings'),
-        axios.get('/api/settings/published-soa/files', getAuthConfig()).catch(() => ({ data: { files: [] } }))
-      ]);
+      const settingsRes = await axios.get('/api/settings');
       const config = settingsRes.data;
-      const files = filesRes.data?.files || [];
-      setStoredPublishedSoaFiles(files);
 
       if (config.apiGateways) {
         setGateways(config.apiGateways);
       }
 
       const url = config.publishedSoaUrl || '';
-      setPublishedSoaUrl(url);
+      // Only support external URL (repository path); no file upload
       if (url.startsWith('/api/published-soa/')) {
-        setPublishedSoaSource('file');
+        setPublishedSoaUrl('');
         setCustomUrlInput('');
       } else {
-        setPublishedSoaSource('url');
+        setPublishedSoaUrl(url);
         setCustomUrlInput(url);
       }
       
@@ -133,16 +114,16 @@ function Settings() {
         }
       }
 
-      // Validate Published SOA/CCM URL (only for external URLs)
-      const urlToSave = publishedSoaSource === 'url' ? customUrlInput : publishedSoaUrl;
-      if (urlToSave && urlToSave.trim() !== '' && !urlToSave.startsWith('/api/published-soa/')) {
+      // Validate Published SOA/CCM URL (external repository path only)
+      const urlToSave = customUrlInput ? customUrlInput.trim() : '';
+      if (urlToSave) {
         try {
           new URL(urlToSave);
         } catch (e) {
           throw new Error('Invalid Published SOA/CCM URL');
         }
       }
-      const trimmedUrl = urlToSave ? urlToSave.trim() : '';
+      const trimmedUrl = urlToSave;
       
       const config = {
         apiGateways: gateways,
@@ -195,7 +176,12 @@ function Settings() {
       }
     } catch (error) {
       console.error('Error saving settings:', error);
-      setSaveMessage(`❌ Error: ${error.response?.data?.error || error.message}`);
+      if (error.response?.status === 401) {
+        setSaveMessage('❌ Your session has expired or you are not logged in. Logging out…');
+        logout();
+      } else {
+        setSaveMessage(`❌ Error: ${error.response?.data?.error || error.message}`);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -212,63 +198,13 @@ function Settings() {
     }
   };
 
-  const effectivePublishedUrl = publishedSoaSource === 'url' ? customUrlInput : publishedSoaUrl;
-
-  const handleDefaultSourceChange = (source, selectedFilename) => {
-    setPublishedSoaSource(source);
-    if (source === 'url') {
-      setPublishedSoaUrl(customUrlInput);
-    } else {
-      setPublishedSoaUrl(selectedFilename ? `/api/published-soa/${selectedFilename}` : '');
-    }
-  };
-
   const handleCustomUrlChange = (value) => {
     setCustomUrlInput(value);
-    if (publishedSoaSource === 'url') {
-      setPublishedSoaUrl(value);
-    }
-  };
-
-  const handleUploadPublishedSoa = async (e) => {
-    const file = e?.target?.files?.[0];
-    if (!file || isReadOnly) return;
-    if (!file.name.toLowerCase().endsWith('.json')) {
-      setUploadMessage('Please select a .json file');
-      setTimeout(() => setUploadMessage(''), 3000);
-      return;
-    }
-    setIsUploading(true);
-    setUploadMessage('');
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = btoa(unescape(encodeURIComponent(reader.result)));
-          await axios.post('/api/settings/published-soa/upload', { filename: file.name, content: base64 }, getAuthConfig());
-          setUploadMessage(`✅ ${file.name} saved`);
-          await loadStoredPublishedSoaFiles();
-          setPublishedSoaSource('file');
-          setPublishedSoaUrl(`/api/published-soa/${file.name}`);
-          setTimeout(() => setUploadMessage(''), 4000);
-        } catch (err) {
-          setUploadMessage('❌ Upload failed: ' + (err.response?.data?.error || err.message));
-          setTimeout(() => setUploadMessage(''), 5000);
-        } finally {
-          setIsUploading(false);
-        }
-      };
-      reader.readAsText(file, 'utf8');
-    } catch (err) {
-      setUploadMessage('❌ Read failed: ' + err.message);
-      setTimeout(() => setUploadMessage(''), 5000);
-      setIsUploading(false);
-    }
-    e.target.value = '';
+    setPublishedSoaUrl(value);
   };
 
   const handleVerifyPublishedUrl = async () => {
-    const urlToVerify = publishedSoaSource === 'url' ? customUrlInput : publishedSoaUrl;
+    const urlToVerify = customUrlInput ? customUrlInput.trim() : '';
     if (!urlToVerify || urlToVerify.trim() === '') {
       setVerificationMessage('❌ Please enter a URL to verify');
       setTimeout(() => setVerificationMessage(''), 3000);
@@ -279,19 +215,13 @@ function Settings() {
     setVerificationMessage('🔄 Verifying URL...');
 
     try {
-      if (urlToVerify.startsWith('/api/published-soa/')) {
-        new URL(urlToVerify, window.location.origin);
-      } else {
-        try {
-          new URL(urlToVerify);
-        } catch (e) {
-          throw new Error('Invalid URL format');
-        }
+      try {
+        new URL(urlToVerify);
+      } catch (e) {
+        throw new Error('Invalid URL format');
       }
 
-      const response = urlToVerify.startsWith('/api/')
-        ? await axios.get(urlToVerify, getAuthConfig())
-        : await axios.post('/api/proxy-fetch', { url: urlToVerify });
+      const response = await axios.post('/api/proxy-fetch', { url: urlToVerify });
 
       console.log('🔍 Proxy response:', response);
       console.log('🔍 Response data keys:', response.data ? Object.keys(response.data) : 'No data');
@@ -299,11 +229,9 @@ function Settings() {
       const responseData = response.data;
       if (responseData) {
         let data = responseData;
-        if (!urlToVerify.startsWith('/api/')) {
-          const hasProxyWrapper = data.success !== undefined && data.status !== undefined && data.data !== undefined;
-          if (hasProxyWrapper) {
-            data = data.data;
-          }
+        const hasProxyWrapper = data.success !== undefined && data.status !== undefined && data.data !== undefined;
+        if (hasProxyWrapper) {
+          data = data.data;
         }
         
         console.log('🔍 Final data keys:', data ? Object.keys(data) : 'No data after unwrap');
@@ -383,7 +311,7 @@ function Settings() {
     return (
       <div className="settings-container">
         <div className="settings-header">
-          <h2>⚙️ Platform Settings</h2>
+          <h2>🌐 API Gateways and Information Catalogue Store</h2>
           <p className="settings-subtitle">Loading settings from server...</p>
           <p className="settings-subtitle" style={{ fontSize: '0.85rem', color: '#d97706', marginTop: '0.5rem', fontWeight: '500' }}>
             🔒 <strong>Administrator Access Only:</strong> This page can only be modified by the platform Administrator
@@ -399,7 +327,7 @@ function Settings() {
   return (
     <div className="settings-container">
       <div className="settings-header">
-        <h2>⚙️ Platform Settings</h2>
+        <h2>🌐 API Gateways and Information Catalogue Store</h2>
         <p className="settings-subtitle">Configure AWS and Azure API Gateway endpoints for automated control monitoring</p>
         <p className="settings-subtitle" style={{ fontSize: '0.85rem', color: '#718096', marginTop: '0.5rem' }}>
           💾 <strong>Server-side storage:</strong> Settings are saved on the server and persist across deployments
@@ -602,38 +530,20 @@ function Settings() {
           </div>
         </div>
 
-        {/* Published SOA/CCM URL or file */}
+        {/* Published SOA/CCM URL (repository path only) */}
         <div className="settings-section">
           <div className="section-header">
             <div className="section-title">
               <h3>📄 Published SOA/CCM URL</h3>
-              <small>URL or uploaded file for existing published SOA/CCM report (comparison baseline)</small>
+              <small>Repository path (URL) for existing published SOA/CCM report (comparison baseline)</small>
             </div>
           </div>
 
           <div className="gateway-form">
             <div className="form-group">
-              <label>Default published report</label>
-              <select
-                className="form-control published-soa-default-select"
-                value={publishedSoaSource === 'file' && publishedSoaUrl.startsWith('/api/published-soa/') ? publishedSoaUrl.replace(/^\/api\/published-soa\//, '') : ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  handleDefaultSourceChange(v ? 'file' : 'url', v);
-                }}
-                disabled={isReadOnly}
-              >
-                <option value="">Custom URL (enter below)</option>
-                {storedPublishedSoaFiles.map((f) => (
-                  <option key={f.name} value={f.name}>Stored file: {f.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
               <label>
-                Published Report URL (optional)
-                <small>GitHub raw URL or any JSON URL of published SOA/CCM for multi-report comparison</small>
+                Published Report URL
+                <small>Define the repository path (e.g. GitHub raw URL or any JSON URL) of published SOA/CCM for multi-report comparison</small>
               </label>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
                 <input
@@ -643,14 +553,14 @@ function Settings() {
                   onChange={(e) => handleCustomUrlChange(e.target.value)}
                   placeholder="https://raw.githubusercontent.com/.../report.json"
                   style={{ flex: 1 }}
-                  disabled={isReadOnly || publishedSoaSource !== 'url'}
+                  disabled={isReadOnly}
                 />
                 <button
                   type="button"
                   className="btn-verify"
                   onClick={handleVerifyPublishedUrl}
-                  disabled={isVerifying || !effectivePublishedUrl || isReadOnly}
-                  title="Verify URL or file and validate OSCAL structure"
+                  disabled={isVerifying || !customUrlInput?.trim() || isReadOnly}
+                  title="Verify URL and validate OSCAL structure"
                 >
                   {isVerifying ? '⏳ Verifying...' : '🔍 Verify'}
                 </button>
@@ -664,26 +574,9 @@ function Settings() {
               )}
             </div>
 
-            <div className="form-group published-soa-upload">
-              <label>Or upload a JSON file</label>
-              <small>Stored next to config; same filename overwrites existing file.</small>
-              <div className="published-soa-upload-row">
-                <input
-                  type="file"
-                  accept=".json"
-                  className="published-soa-file-input"
-                  onChange={handleUploadPublishedSoa}
-                  disabled={isReadOnly || isUploading}
-                />
-                <span className="published-soa-upload-status">
-                  {isUploading ? '⏳ Uploading...' : uploadMessage}
-                </span>
-              </div>
-            </div>
-
             <div className="info-box">
               <strong>ℹ️ How it works:</strong>
-              <p>Provide either a URL (e.g. GitHub raw link) or upload a JSON file. The chosen default is used as the baseline in Multi-Report Comparison. Uploaded files are stored in the same directory as config.</p>
+              <p>Enter the full URL (repository path) to your published SOA/CCM JSON report. This URL is used as the baseline in Multi-Report Comparison. Use Verify to check that the URL is accessible and contains a valid OSCAL System Security Plan.</p>
               <ul>
                 <li>✅ Compare your report with IaaS, PaaS, or SaaS provider reports</li>
                 <li>✅ Identify control differences across platforms</li>

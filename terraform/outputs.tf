@@ -116,3 +116,35 @@ output "public_subnet_id" {
   description = "First public subnet ID"
   value       = aws_subnet.public[0].id
 }
+
+# --- RDS PostgreSQL (when create_rds_postgres = true) ---
+output "rds_endpoint" {
+  description = "RDS PostgreSQL hostname (use in Database Integration host when not using EC2 env injection)"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].address : null
+}
+
+output "rds_port" {
+  description = "RDS PostgreSQL port"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].port : null
+}
+
+output "rds_database_name" {
+  description = "Initial database name on RDS"
+  value       = var.create_rds_postgres ? var.rds_database_name : null
+}
+
+output "rds_iam_app_username" {
+  description = "PostgreSQL IAM auth user (matches OSCAL_DATABASE_USER on EC2)"
+  value       = var.create_rds_postgres ? var.rds_iam_app_username : null
+}
+
+output "rds_master_secret_arn" {
+  description = "Secrets Manager ARN for RDS master password (bootstrap only; do not embed in app config)"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].master_user_secret[0].secret_arn : null
+  sensitive   = true
+}
+
+output "rds_private_subnet_cidrs" {
+  description = "CIDR blocks of subnets where RDS runs (private; no IGW route). OSCAL EC2 egress to 5432 is limited to these."
+  value       = var.create_rds_postgres ? aws_subnet.private_rds[*].cidr_block : []
+}
