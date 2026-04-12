@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# List pass entries, let user pick one (or add new), paste credentials, parse and store.
+# List pass entries, let user pick one (or add new), paste credentials, parse and store;
+# or delete an existing entry (with confirmation).
 # Credentials are read from stdin (paste then Ctrl+D); they are not written to disk.
 #
 # Usage:
@@ -49,15 +50,56 @@ else
     echo "  $((i + 1))) ${entries[$i]}"
   done
   echo "  0) New entry"
+  echo "  d) Delete an entry"
   echo "  q) Exit"
   echo ""
-  echo -n "Which entry do you want to update? (1-${#entries[@]}, 0=new, q=exit): "
+  echo -n "Which entry do you want to update? (1-${#entries[@]}, 0=new, d=delete, q=exit): "
   read -r choice
 
   choice="${choice#"${choice%%[![:space:]]*}"}"
   choice="${choice%"${choice##*[![:space:]]}"}"
   if [[ "$choice" == "q" || "$choice" == "Q" ]]; then
     echo "Exiting."
+    exit 0
+  fi
+
+  if [[ "$choice" == "d" || "$choice" == "D" ]]; then
+    echo ""
+    echo "Delete an entry (cannot be undone):"
+    for i in "${!entries[@]}"; do
+      echo "  $((i + 1))) ${entries[$i]}"
+    done
+    echo -n "Which entry to delete? (1-${#entries[@]}, c=cancel): "
+    read -r del_choice
+    del_choice="${del_choice#"${del_choice%%[![:space:]]*}"}"
+    del_choice="${del_choice%"${del_choice##*[![:space:]]}"}"
+    if [[ "$del_choice" == "c" || "$del_choice" == "C" ]]; then
+      echo "Cancelled."
+      exit 0
+    fi
+    if [[ ! "$del_choice" =~ ^[0-9]+$ ]]; then
+      echo "Error: Invalid selection." >&2
+      exit 1
+    fi
+    del_idx=$((del_choice - 1))
+    if [[ del_idx -lt 0 || del_idx -ge ${#entries[@]} ]]; then
+      echo "Error: Selection out of range." >&2
+      exit 1
+    fi
+    ENTRY="${entries[$del_idx]}"
+    echo ""
+    echo "You are about to permanently delete: $ENTRY"
+    echo -n "Type the entry path exactly to confirm: "
+    read -r confirm
+    confirm="${confirm#"${confirm%%[![:space:]]*}"}"
+    confirm="${confirm%"${confirm##*[![:space:]]}"}"
+    if [[ "$confirm" != "$ENTRY" ]]; then
+      echo "Confirmation did not match. Aborting." >&2
+      exit 1
+    fi
+    # -r removes a subtree if the path is a directory in the store; -f skips gpg interactive prompt
+    pass rm -rf "$ENTRY"
+    echo "Deleted: $ENTRY"
     exit 0
   fi
 

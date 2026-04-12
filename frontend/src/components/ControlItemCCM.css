@@ -42,6 +42,20 @@
   margin-bottom: 1rem;
 }
 
+/* Responsible Party row: Responsible Party (wider) + T1, T2, T3 (narrower) in one row */
+.form-row-responsible-party {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+.form-row-responsible-party .form-group-responsible-party,
+.form-row-responsible-party .form-group-adobe-slot {
+  flex: 1 1 0;
+  min-width: 110px;
+}
+
 .api-response-display {
   background: var(--light);
   border: 1px solid var(--border);
@@ -73,6 +87,15 @@
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .form-row-responsible-party {
+    flex-direction: column;
+  }
+  .form-row-responsible-party .form-group-responsible-party,
+  .form-row-responsible-party .form-group-adobe-slot {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }
 

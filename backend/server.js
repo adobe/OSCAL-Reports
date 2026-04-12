@@ -20,7 +20,10 @@ import { generatePDFReport } from './pdfExport.js';
 import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
-import { loadConfig, getResolvedConfig, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir } from './configManager.js';
+import { loadConfig, getResolvedConfig, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir, applyDatabaseEnvOverrides } from './configManager.js';
+import { testConnection, connectPgClient, ensureAdobeTeamsTable, getAdobeTeamOptions } from './database/dbClient.js';
+import { syncExportToDatabase } from './database/exportSync.js';
+import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
 import { isPassPointer, passShow } from './utils/passResolver.js';
 import { MASK } from './utils/sensitiveConfigKeys.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
@@ -92,6 +95,7 @@ import session from 'express-session';
 import csrf from 'csurf';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
 import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
+import { validateExportGenerationLimits } from './utils/exportLimits.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -2359,6 +2363,26 @@ app.get('/api/settings', optionalAuth, (req, res) => {
         }
       }
     }
+    // Merge OSCAL_DATABASE_* env (e.g. Terraform EC2) so GUI reflects IAM / host without editing config.json
+    applyDatabaseEnvOverrides(config);
+    // Mask database password for client (IAM mode does not use a static password)
+    if (config.databaseConfig) {
+      if (config.databaseConfig.authMode === 'iam') {
+        config.databaseConfig.password = '';
+      } else {
+        const v = config.databaseConfig.password;
+        if (typeof v === 'string' && v.trim()) {
+          config.databaseConfig.password = MASK;
+        } else if (isPassPointer(v)) {
+          try {
+            const resolved = passShow(v._pass);
+            config.databaseConfig.password = (resolved && resolved.trim()) ? MASK : '';
+          } catch {
+            config.databaseConfig.password = '';
+          }
+        }
+      }
+    }
     console.log('📖 Settings loaded and sent to client');
     res.json(config);
   } catch (error) {
@@ -2414,6 +2438,11 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
       aiConfig: {
         ...existingConfig.aiConfig,
         ...incomingConfig.aiConfig
+      },
+      // Ensure databaseConfig structure is properly merged
+      databaseConfig: {
+        ...existingConfig.databaseConfig,
+        ...incomingConfig.databaseConfig
       },
       // Explicitly include publishedSoaUrl from request (GitHub URL, /api/published-soa/filename.json, or empty)
       publishedSoaUrl: incomingConfig.publishedSoaUrl !== undefined
@@ -2486,6 +2515,79 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
     res.status(500).json({ 
       error: 'Failed to save settings',
       details: error.message 
+    });
+  }
+});
+
+// Database integration: test connection (Platform Admin only)
+app.post('/api/database/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
+  try {
+    const config = getResolvedConfig();
+    const dbConfig = config.databaseConfig;
+    if (!dbConfig || !dbConfig.enabled) {
+      return res.status(400).json({
+        success: false,
+        error: 'Database integration is not enabled. Enable it and save, then test again.'
+      });
+    }
+    if (!dbConfig.host || !dbConfig.database) {
+      return res.status(400).json({
+        success: false,
+        error: 'Host and database name are required.'
+      });
+    }
+    await testConnection(dbConfig);
+    console.log('Database connection test succeeded');
+    return res.json({ success: true });
+  } catch (error) {
+    console.log('Database connection test failed:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Connection failed'
+    });
+  }
+});
+
+// Adobe Team Responsible dropdown options (from DB lookup table). Returns empty when DB integration disabled.
+app.get('/api/database/adobe-team-options', optionalAuth, async (req, res) => {
+  try {
+    const config = getResolvedConfig();
+    const dbConfig = config?.databaseConfig;
+    if (!dbConfig || !dbConfig.enabled) {
+      return res.json({ options: [] });
+    }
+    const client = await connectPgClient(dbConfig);
+    try {
+      await ensureAdobeTeamsTable(client);
+      const options = await getAdobeTeamOptions(client);
+      return res.json({ options });
+    } finally {
+      await client.end().catch(() => {});
+    }
+  } catch (err) {
+    console.error('Adobe team options fetch failed:', err.message);
+    return res.status(503).json({
+      options: [],
+      error: 'Database unavailable or options could not be loaded.'
+    });
+  }
+});
+
+// Merge extended_data (e.g. adobeTeamResponsible) into controls after SSP extract when DB integration is on
+app.post('/api/database/merge-control-extended-data', authenticate, async (req, res) => {
+  try {
+    const { controls, systemInfo } = req.body || {};
+    if (!Array.isArray(controls)) {
+      return res.status(400).json({ error: 'controls array is required' });
+    }
+    const result = await mergeControlsFromExtendedData(controls, systemInfo && typeof systemInfo === 'object' ? systemInfo : {});
+    return res.json({ controls: result.controls, merged: result.merged });
+  } catch (err) {
+    console.error('merge-control-extended-data failed:', err.message);
+    return res.status(503).json({
+      merged: false,
+      controls: req.body?.controls || [],
+      error: 'Database merge failed'
     });
   }
 });
@@ -3598,27 +3700,10 @@ function filterOSCALImplementedRequirement(implementedReq) {
 app.post('/api/generate-ssp', async (req, res) => {
   try {
     const { metadata, controls, systemInfo, validationOptions = {} } = req.body;
-    
-    // SECURITY: API4:2023 - Unrestricted Resource Consumption Prevention
-    // Limit number of controls to prevent DoS attacks
-    if (controls && controls.length > 1000) {
-      return res.status(400).json({
-        error: 'Request too large',
-        message: 'Maximum 1000 controls per SSP generation request',
-        limit: 1000,
-        received: controls.length
-      });
-    }
-    
-    // SECURITY: Limit metadata size to prevent memory exhaustion
-    const metadataSize = JSON.stringify(metadata || {}).length;
-    if (metadataSize > 100000) { // 100KB
-      return res.status(400).json({
-        error: 'Metadata too large',
-        message: 'Metadata must be less than 100KB',
-        limit: '100KB',
-        received: `${Math.round(metadataSize / 1024)}KB`
-      });
+
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
     }
     
     // Debug: Log first control to see what structure we're receiving
@@ -3640,6 +3725,23 @@ app.post('/api/generate-ssp', async (req, res) => {
       console.log('Title:', metadata.title);
       console.log('Version:', metadata.version);
       console.log('=================================');
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on export: ${syncResult.controlsCount} controls, system synced`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
     }
 
     // Build SSP metadata - preserve catalog metadata and enhance with SSP-specific data
@@ -3869,6 +3971,7 @@ app.post('/api/generate-ssp', async (req, res) => {
             // Conditionally exclude custom props if "No Additional Properties" validation is enabled
             const customFieldsMapping = {
               'responsibleParty': 'responsible-party',
+              'adobeTeamResponsible': 'adobe-team-responsible',
               'controlOwner': 'control-owner',
               'consumerGuidance': 'consumer-guidance',
               'implementationDate': 'implementation-date',
@@ -4018,29 +4121,29 @@ app.post('/api/generate-ssp', async (req, res) => {
 app.post('/api/generate-sar', async (req, res) => {
   try {
     const { metadata, controls, assessmentInfo = {}, validationOptions = {} } = req.body;
-    
-    // SECURITY: API4:2023 - Unrestricted Resource Consumption Prevention
-    // Limit number of controls to prevent DoS attacks
-    if (controls && controls.length > 1000) {
-      return res.status(400).json({
-        error: 'Request too large',
-        message: 'Maximum 1000 controls per SAR generation request',
-        limit: 1000,
-        received: controls.length
-      });
+
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
     }
-    
-    // SECURITY: Limit metadata size to prevent memory exhaustion
-    const metadataSize = JSON.stringify(metadata || {}).length;
-    if (metadataSize > 100000) { // 100KB
-      return res.status(400).json({
-        error: 'Metadata too large',
-        message: 'Metadata must be less than 100KB',
-        limit: '100KB',
-        received: `${Math.round(metadataSize / 1024)}KB`
-      });
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], assessmentInfo);
+      if (!syncResult.skipped) {
+        console.log(`Database sync on SAR export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
     }
-    
+
     // SECURITY AUDIT LOG: OWASP A09 - Security Logging and Monitoring
     // Log SAR generation for audit trail and compliance
     console.log({
@@ -4126,6 +4229,28 @@ app.post('/api/generate-ccm', async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
 
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on CCM export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
+    }
+
     const workbook = await generateCCMExport(controls, systemInfo);
 
     // Generate buffer
@@ -4148,6 +4273,28 @@ app.post('/api/generate-pdf', async (req, res) => {
   try {
     const { controls, systemInfo, metadata } = req.body;
 
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on PDF export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
+    }
+
     const pdfBuffer = await generatePDFReport(controls, systemInfo, metadata);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -4166,6 +4313,28 @@ app.post('/api/generate-pdf', async (req, res) => {
 app.post('/api/generate-excel', async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
+
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on Excel export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
+    }
 
     const workbook = new ExcelJS.Workbook();
     
@@ -4256,7 +4425,12 @@ app.post('/api/generate-excel', async (req, res) => {
 app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
   try {
     const { controls, systemInfo, metadata } = req.body;
-    
+
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json({ success: false, ...limitErr.body });
+    }
+
     const jobId = createJob(
       JOB_TYPE.PDF_EXPORT,
       { controls, systemInfo, metadata },
@@ -4291,7 +4465,12 @@ app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
 app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
-    
+
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json({ success: false, ...limitErr.body });
+    }
+
     const jobId = createJob(
       JOB_TYPE.EXCEL_EXPORT,
       { controls, systemInfo },
@@ -4326,7 +4505,12 @@ app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
 app.post('/api/jobs/ccm', optionalAuth, async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
-    
+
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json({ success: false, ...limitErr.body });
+    }
+
     const jobId = createJob(
       JOB_TYPE.CCM_EXPORT,
       { controls, systemInfo },
@@ -5638,9 +5822,10 @@ app.post('/api/validate-oscal', async (req, res) => {
   }
 });
 
-// Serve React app for all other routes (SPA fallback)
-app.get('*', (req, res) => {
-  res.sendFile('index.html', { root: 'public' });
+// Serve React app for any unmatched GET (SPA fallback). Use middleware to avoid path-to-regexp v8 catch-all syntax.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Track timers for cleanup

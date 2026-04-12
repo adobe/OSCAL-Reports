@@ -82,7 +82,7 @@ variable "oscal_ami_id" {
 }
 
 variable "use_image_factory_ami" {
-  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 if in map; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/IMAGE_FACTORY.md."
+  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 (use EMR flavor for AMS InfraSec, e.g. SSAAU-169) if resolved; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/IMAGE_FACTORY.md."
   type        = bool
   default     = true
 }
@@ -95,14 +95,14 @@ variable "image_factory_owner_id" {
 }
 
 variable "image_factory_ami_name_pattern" {
-  description = "Optional: AMI name filter for dynamic lookup (e.g. 'Adobe*Amazon*Linux*'). Used with image_factory_owner_id when use_image_factory_ami = true. Leave null to use static map in image_factory_ami.tf."
+  description = "Optional: AMI name filter for dynamic lookup (e.g. '*Amazon*Linux*2023*EMR*' if names include EMR). Used with image_factory_owner_id when use_image_factory_ami = true. Leave null to use static map in image_factory_ami.tf."
   type        = string
   default     = null
 }
 
 # Optional: set Image Factory Amazon Linux 2023 AMI per region from tfvars (no need to edit image_factory_ami.tf).
 variable "image_factory_amazon_linux_ami_us_east_1" {
-  description = "Optional: Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1. When set, used for Green and Blue. Get from Image Factory UI. Leave null to use static map in image_factory_ami.tf or native AL2023."
+  description = "Optional: Adobe Image Factory Amazon Linux 2023 **EMR** (or approved AL2023) AMI ID for us-east-1. When set, used for Green and Blue. Get latest from Image Factory UI EMR flavor; optional CLI: terraform/scripts/list-emr-candidate-amis.sh. Leave null to use static map in image_factory_ami.tf or native AL2023."
   type        = string
   default     = null
 }
@@ -190,6 +190,102 @@ variable "alb_port_justification" {
   description = "Free-form description for Adobe:PortJustification tag on the ALB. Required for AMS PCL: resources with port exposure must have Adobe:PublicPorts and Adobe:PortJustification. ELB tag values allow only letters, numbers, spaces, and _.:/=+-@ (no parentheses). Example: \"OSCAL Report Generator production access for AMS Gov Cloud\"."
   type        = string
   default     = "OSCAL Report Generator web access HTTPS and HTTP"
+}
+
+# --- Optional RDS PostgreSQL (Database Integration) ---
+variable "create_rds_postgres" {
+  description = "When true, provisions Amazon RDS PostgreSQL in the VPC, enables IAM DB auth, and EC2 user_data bootstraps the app IAM user and OSCAL_DATABASE_* systemd environment variables."
+  type        = bool
+  default     = false
+}
+
+variable "rds_engine_version" {
+  description = "PostgreSQL major.minor for RDS (e.g. 16.6). Check AWS for supported versions in your region."
+  type        = string
+  default     = "16.6"
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class (e.g. db.t4g.micro for Graviton)"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_allocated_storage" {
+  description = "Initial allocated storage (GB) for RDS"
+  type        = number
+  default     = 20
+}
+
+variable "rds_max_allocated_storage" {
+  description = "Max storage for autoscaling (GB); set 0 to disable autoscaling"
+  type        = number
+  default     = 100
+}
+
+variable "rds_database_name" {
+  description = "Initial database name on RDS (used by OSCAL Database Integration)"
+  type        = string
+  default     = "oscal"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,62}$", var.rds_database_name))
+    error_message = "rds_database_name must start with a letter and be valid for PostgreSQL/RDS."
+  }
+}
+
+variable "rds_master_username" {
+  description = "Master username for RDS (Secrets Manager holds password). Not the IAM app user."
+  type        = string
+  default     = "oscalmaster"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,15}$", var.rds_master_username))
+    error_message = "rds_master_username must be 1–16 alphanumeric characters (RDS constraint)."
+  }
+}
+
+variable "rds_iam_app_username" {
+  description = "PostgreSQL role name for IAM database authentication (must match OSCAL_DATABASE_USER on EC2)"
+  type        = string
+  default     = "oscal_app"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{0,62}$", var.rds_iam_app_username))
+    error_message = "rds_iam_app_username must be a valid PostgreSQL identifier (lowercase recommended)."
+  }
+}
+
+variable "rds_backup_retention_period" {
+  description = "RDS backup retention in days"
+  type        = number
+  default     = 7
+}
+
+variable "rds_skip_final_snapshot" {
+  description = "When true, no final snapshot on destroy (dev/stage). Set false for production."
+  type        = bool
+  default     = true
+}
+
+variable "rds_deletion_protection" {
+  description = "Enable RDS deletion protection (recommended for production)"
+  type        = bool
+  default     = false
+}
+
+# Optional: extra IPv4 CIDR blocks allowed to connect to RDS on 5432 (in addition to the OSCAL EC2 security group).
+# Use only for VPC-internal ranges (e.g. private subnets for a bastion or corporate CIDRs routed into the VPC).
+# Do not set to broad public ranges; RDS is not publicly accessible and should not be exposed to the internet.
+variable "rds_additional_ingress_ipv4_cidr_blocks" {
+  description = "Additional IPv4 CIDR blocks permitted to reach RDS PostgreSQL (port 5432). Empty = OSCAL instances only (via security group). Each block must be reachable only inside your network design (typically RFC1918 inside the VPC)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !contains(var.rds_additional_ingress_ipv4_cidr_blocks, "0.0.0.0/0")
+    error_message = "rds_additional_ingress_ipv4_cidr_blocks must not contain 0.0.0.0/0 (no open internet to RDS)."
+  }
 }
 
 # Tags

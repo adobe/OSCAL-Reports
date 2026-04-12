@@ -15,6 +15,20 @@ Ensure the AMI you use matches `instance_architecture` (arm64 for t4g, x86_64 fo
 
 - **Wiki:** [Adobe Image Factory](https://wiki.corp.adobe.com/pages/viewpage.action?spaceKey=imagefactory&title=Adobe+Image+Factory) – overview, process, and how to find approved AMIs.
 - **UI:** [Adobe Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) – browse and select released images (filter by AWS, **Amazon Linux 2023**).
+- **EMR flavor (InfraSec):** [Amazon Linux 2023 EMR](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) – use the **latest** released AMI for your region and architecture when remediating tickets such as **SSAAU-169** (AMS-OSCAL-Reporter). “EMR” here is the Image Factory **flavor name**, not AWS EMR clusters.
+
+## Amazon Linux 2023 EMR vs generic AL2023
+
+InfraSec vulnerability tickets often require the **Amazon Linux 2023 EMR** Image Factory build so host scanning (CrowdStrike Spotlight / Nexpose) aligns with Adobe’s hardened image line.
+
+- **Pinning (recommended):** In `terraform.tfvars`, set `image_factory_amazon_linux_ami_us_east_1 = "ami-..."` (for `aws_region = "us-east-1"`) to the **latest EMR** AMI ID from the Image Factory UI. Match **`instance_architecture`** (`arm64` for Graviton / `x86_64` for AMD) to the AMI.
+- **Discovery (CLI):** With AWS credentials for the target account, run from the repo root:
+  ```bash
+  ./terraform/scripts/list-emr-candidate-amis.sh us-east-1 x86_64
+  # or: ./terraform/scripts/list-emr-candidate-amis.sh us-east-1 arm64
+  ```
+  Pick the newest row that matches the EMR flavor you selected in Image Factory, then paste its `ami-*` into `terraform.tfvars`.
+- **If you omit a pinned Image Factory AMI** and do not configure dynamic lookup (`image_factory_owner_id` + `image_factory_ami_name_pattern`), Terraform falls back to **Amazon-owned** `al2023-ami-*`. That is still “Amazon Linux 2023” in AWS but **may not satisfy** EMR-specific InfraSec asks—always pin EMR for AMS production/stage when the ticket requires it.
 
 ## AMI selection: Image Factory Amazon Linux 2023, then native Amazon Linux 2023
 
@@ -79,7 +93,7 @@ image_factory_owner_id         = "<AWS_ACCOUNT_ID_OWNING_AMIS>"   # e.g. Image F
 image_factory_ami_name_pattern = "<NAME_PATTERN>"                # e.g. "Adobe*Amazon*Linux*"
 ```
 
-Terraform will use `data "aws_ami"` with `most_recent = true` and the given owner + name filter instead of the static map. Use an **Amazon Linux 2023** name pattern. Leave both **null** to use the built-in static map (Image Factory Amazon Linux 2023 when in map; else native Amazon Linux 2023).
+Terraform will use `data "aws_ami"` with `most_recent = true` and the given owner + name filter instead of the static map. Use a pattern that matches **only** the EMR line you intend (e.g. include `*EMR*` in the pattern if Image Factory AMI names include it). Leave both **null** to use the built-in static map (Image Factory Amazon Linux 2023 when in map; else native Amazon Linux 2023).
 
 ## S3 bucket naming (AMS)
 
@@ -108,8 +122,9 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 
 | Item | Action |
 |------|--------|
-| AMI preference | **First choice:** Adobe Image Factory **Amazon Linux 2023** (when in map). **Fallback:** native Amazon Linux 2023. **Ollama and OSCAL use the same chain.** |
-| Where to find AMIs | [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) (filter by AWS, Amazon Linux 2023) |
+| AMI preference | **First choice:** Adobe Image Factory **Amazon Linux 2023 EMR** (or approved AL2023) when pinned or resolved. **Fallback:** native Amazon Linux 2023. **Ollama and OSCAL use the same chain.** |
+| Where to find AMIs | [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) — **EMR:** [Amazon Linux 2023 EMR flavor](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) |
+| SSAAU-169 / InfraSec | Pin latest EMR `ami-*` in `terraform.tfvars`; run `terraform/scripts/list-emr-candidate-amis.sh` to list candidates; replace EC2 via `terraform apply`. |
 | Terraform variables | `use_image_factory_ami` (default **true** = Image Factory Amazon Linux 2023 when in map, else native AL2023); `oscal_ami_id`, `ollama_ami_id` (null = use preference order) |
 | Add Image Factory Amazon Linux | In `terraform.tfvars` set `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (from Image Factory UI), or add entries in `terraform/image_factory_ami.tf` in `image_factory_amazon_linux_by_region`. Both Green/Blue and Ollama use it. |
 | Replace Ollama instance for new AMI | Set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/run-install-ollama-on-instance.sh`. |

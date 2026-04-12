@@ -7,7 +7,9 @@
 # License: MIT
 #
 # Usage: ./bump_version.sh [major|minor|patch] "changelog message"
+#        ./bump_version.sh set VERSION "changelog message"
 # Example: ./bump_version.sh minor "Add new AI integration features"
+# Example: ./bump_version.sh set 1.7.11 "Release 1.7.11"
 #
 # This script:
 # - Updates version in all 3 package.json files (root, backend, frontend)
@@ -185,18 +187,28 @@ print_header "OSCAL Version Bumping Script"
 # Check arguments
 if [ $# -lt 2 ]; then
   print_error "Usage: ./bump_version.sh [major|minor|patch] \"changelog message\""
+  print_error "        ./bump_version.sh set VERSION \"changelog message\""
   print_info "Example: ./bump_version.sh minor \"Add new features\""
+  print_info "Example: ./bump_version.sh set 1.7.11 \"Release 1.7.11\""
   exit 1
 fi
 
 BUMP_TYPE="$1"
 CHANGELOG_MESSAGE="$2"
+SET_VERSION=""
 
-# Validate bump type
-if [[ ! "$BUMP_TYPE" =~ ^(major|minor|patch)$ ]]; then
-  print_error "Invalid bump type: $BUMP_TYPE"
-  print_info "Valid types: major, minor, patch"
-  exit 1
+if [ "$BUMP_TYPE" = "set" ]; then
+  if [ $# -lt 3 ]; then
+    print_error "Usage: ./bump_version.sh set VERSION \"changelog message\""
+    exit 1
+  fi
+  SET_VERSION="$2"
+  CHANGELOG_MESSAGE="$3"
+  # Validate semantic version format (basic: x.y.z)
+  if [[ ! "$SET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    print_error "Invalid version format: $SET_VERSION (use x.y.z)"
+    exit 1
+  fi
 fi
 
 # Check if we're in the project root
@@ -210,9 +222,20 @@ CURRENT_VERSION=$(get_current_version "package.json")
 print_info "Current version: $CURRENT_VERSION"
 
 # Calculate new version
-NEW_VERSION=$(bump_version "$CURRENT_VERSION" "$BUMP_TYPE")
-print_info "New version: $NEW_VERSION"
-print_info "Bump type: $BUMP_TYPE"
+if [ -n "$SET_VERSION" ]; then
+  NEW_VERSION="$SET_VERSION"
+  print_info "Setting version to: $NEW_VERSION"
+else
+  # Validate bump type
+  if [[ ! "$BUMP_TYPE" =~ ^(major|minor|patch)$ ]]; then
+    print_error "Invalid bump type: $BUMP_TYPE"
+    print_info "Valid types: major, minor, patch, or use: set VERSION"
+    exit 1
+  fi
+  NEW_VERSION=$(bump_version "$CURRENT_VERSION" "$BUMP_TYPE")
+  print_info "New version: $NEW_VERSION"
+  print_info "Bump type: $BUMP_TYPE"
+fi
 
 # Confirm with user
 echo ""

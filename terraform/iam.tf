@@ -58,3 +58,33 @@ resource "aws_iam_instance_profile" "oscal" {
   name_prefix = "${var.project_name}-oscal-"
   role        = aws_iam_role.oscal_instance.name
 }
+
+# RDS: read master secret for EC2 bootstrap; IAM DB auth token for application connections
+resource "aws_iam_role_policy" "oscal_rds" {
+  count = var.create_rds_postgres ? 1 : 0
+
+  name_prefix = "${var.project_name}-rds-"
+  role        = aws_iam_role.oscal_instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "RdsMasterSecretBootstrap"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = aws_db_instance.oscal[0].master_user_secret[0].secret_arn
+      },
+      {
+        Sid    = "RdsIamDbAuthConnect"
+        Effect = "Allow"
+        Action = [
+          "rds-db:connect"
+        ]
+        Resource = "arn:aws:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.oscal[0].resource_id}/${var.rds_iam_app_username}"
+      }
+    ]
+  })
+}

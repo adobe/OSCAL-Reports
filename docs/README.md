@@ -25,6 +25,7 @@
 | [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md) | AI models (Mistral, Gemma), config, and token limits |
 | [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md) | Step-by-step AWS setup for Bedrock AI integration (IAM, model access, config) |
 | [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
+| [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) | Optional PostgreSQL/RDS: Platform Settings → Database, export sync, extended_data table; includes list of fields stored (not in OSCAL schema) |
 
 ---
 

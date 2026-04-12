@@ -1,0 +1,64 @@
+# --- RDS PostgreSQL bootstrap (Terraform Database Integration) ---
+set -e
+MARKER="/opt/oscal/data/.rds-bootstrap-done"
+mkdir -p /opt/oscal/data
+if [[ -f "$MARKER" ]]; then
+  echo "RDS bootstrap: marker exists, skipping"
+else
+  dnf install -y postgresql15 jq awscli 2>/dev/null || dnf install -y postgresql jq awscli
+  export AWS_DEFAULT_REGION="${aws_region}"
+  RDS_HOST="${rds_address}"
+  RDS_PORT="${rds_port}"
+  DB_NAME="${db_name}"
+  MASTER_USER="${master_username}"
+  SECRET_ARN="${master_secret_arn}"
+
+  echo "RDS bootstrap: waiting for database at $RDS_HOST:$RDS_PORT ..."
+  for _attempt in $(seq 1 90); do
+    PGPASSWORD="$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text 2>/dev/null | jq -r '.password // empty')" || true
+    export PGPASSWORD
+    if [[ -n "$PGPASSWORD" ]] && psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -c 'SELECT 1' >/dev/null 2>&1; then
+      echo "RDS bootstrap: database is reachable"
+      break
+    fi
+    sleep 10
+  done
+
+  PGPASSWORD="$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text | jq -r '.password')"
+  export PGPASSWORD
+
+  cat > /tmp/oscal-rds-create-role.sql <<'ROLESQL'
+DO $$BODY$$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'ROLEHOLDER') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN', 'ROLEHOLDER');
+  END IF;
+END
+$$BODY$$;
+ROLESQL
+  sed -i "s/ROLEHOLDER/${iam_db_username}/g" /tmp/oscal-rds-create-role.sql
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -f /tmp/oscal-rds-create-role.sql
+  rm -f /tmp/oscal-rds-create-role.sql
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT rds_iam TO \"${iam_db_username}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT CONNECT ON DATABASE \"${db_name}\" TO \"${iam_db_username}\";"
+
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT USAGE, CREATE ON SCHEMA public TO \"${iam_db_username}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"${iam_db_username}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"${iam_db_username}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"${iam_db_username}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"${iam_db_username}\";"
+
+  touch "$MARKER"
+  echo "RDS bootstrap: IAM user and grants completed"
+fi
+
+UNIT="/etc/systemd/system/oscal-reporter.service"
+if ! grep -q 'OSCAL_DATABASE_AUTH=iam' "$UNIT" 2>/dev/null; then
+  sed -i '/Environment=AWS_REGION=/a Environment=OSCAL_DATABASE_ENABLED=1' "$UNIT"
+  sed -i '/Environment=OSCAL_DATABASE_ENABLED=1/a Environment=OSCAL_DATABASE_AUTH=iam' "$UNIT"
+  sed -i '/Environment=OSCAL_DATABASE_AUTH=iam/a Environment=OSCAL_DATABASE_HOST=${rds_address}' "$UNIT"
+  sed -i '/Environment=OSCAL_DATABASE_HOST=/a Environment=OSCAL_DATABASE_PORT=${rds_port}' "$UNIT"
+  sed -i '/Environment=OSCAL_DATABASE_PORT=/a Environment=OSCAL_DATABASE_NAME=${db_name}' "$UNIT"
+  sed -i '/Environment=OSCAL_DATABASE_NAME=/a Environment=OSCAL_DATABASE_USER=${iam_db_username}' "$UNIT"
+  sed -i '/Environment=OSCAL_DATABASE_USER=/a Environment=OSCAL_DATABASE_SSL=require' "$UNIT"
+fi
