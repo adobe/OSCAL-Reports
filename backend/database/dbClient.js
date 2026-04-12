@@ -3,15 +3,60 @@
  * Used by Platform Settings (test-connection) and future schema-less storage.
  * Supports password auth and AWS RDS IAM database authentication (authMode: iam).
  *
+ * RDS TLS: Amazon RDS uses CAs under Amazon Trust Services. Node's default trust store
+ * may not include them, which yields "self-signed certificate in certificate chain" when
+ * sslMode is require/prefer with rejectUnauthorized alone. We merge tls.rootCertificates
+ * with backend/database/rds-global-bundle.pem (from https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem).
+ * Override CA file: OSCAL_DATABASE_SSL_CA_PATH.
+ *
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
  * @license GPL-3.0-or-later
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import tls from 'node:tls';
+import { fileURLToPath } from 'node:url';
+
 import pg from 'pg';
 import { Signer } from '@aws-sdk/rds-signer';
 
 const { Client } = pg;
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * PEM bundle for TLS verify when sslMode is require/prefer: Mozilla roots (Node) + optional RDS global bundle + optional env CA path.
+ * @returns {string|undefined}
+ */
+function buildSslCaPem() {
+  const customPath = process.env.OSCAL_DATABASE_SSL_CA_PATH?.trim();
+  let customPem = '';
+  if (customPath) {
+    try {
+      customPem = fs.readFileSync(customPath, 'utf8').trim();
+    } catch {
+      customPem = '';
+    }
+  }
+  const parts = [];
+  if (customPem) parts.push(customPem);
+  if (Array.isArray(tls.rootCertificates) && tls.rootCertificates.length > 0) {
+    parts.push(tls.rootCertificates.join('\n'));
+  }
+  const bundledRds = path.join(__dirname, 'rds-global-bundle.pem');
+  try {
+    if (fs.existsSync(bundledRds)) {
+      const rdsPem = fs.readFileSync(bundledRds, 'utf8').trim();
+      if (rdsPem) parts.push(rdsPem);
+    }
+  } catch {
+    // ignore missing optional bundle
+  }
+  const merged = parts.join('\n').trim();
+  return merged || undefined;
+}
 
 /**
  * @param {string} host
@@ -44,7 +89,13 @@ export function getClientConfig(config) {
   const connectionTimeoutMillis = Number(config.connectionTimeout) || 10000;
   let ssl = false;
   if (config.sslMode === 'require' || config.sslMode === 'prefer') {
-    ssl = { rejectUnauthorized: true };
+    const ca = buildSslCaPem();
+    if (!ca) {
+      throw new Error(
+        'TLS for PostgreSQL requires CA material. Ensure backend/database/rds-global-bundle.pem is present or set OSCAL_DATABASE_SSL_CA_PATH to a PEM bundle.'
+      );
+    }
+    ssl = { rejectUnauthorized: true, ca };
   }
   return {
     host: config.host.trim(),

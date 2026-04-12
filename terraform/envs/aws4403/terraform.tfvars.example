@@ -29,10 +29,10 @@ instance_type           = "t3a.small" # or "t4g.small" with arm64
 # image_factory_owner_id         = "000000000000"  # Image Factory / sharing account (from platform wiki)
 # image_factory_ami_name_pattern = "*Amazon*Linux*2023*EMR*"
 
-# Optional: RDS PostgreSQL for Database Integration (IAM auth; app creates tables on first use).
+# RDS PostgreSQL for Database Integration (IAM auth; app creates tables on first use).
 # RDS uses private subnets only (no public IP). Ingress defaults to OSCAL EC2 SG only.
 # Optional extra CIDRs (VPC-internal): rds_additional_ingress_ipv4_cidr_blocks = ["10.0.20.0/28"]
-# create_rds_postgres         = true
+create_rds_postgres = true
 # rds_instance_class          = "db.t4g.micro"
 # rds_skip_final_snapshot     = true   # set false + rds_deletion_protection = true for production
 
@@ -41,3 +41,10 @@ common_tags = {
   Account     = "AWS4403"
   Environment = "staging"
 }
+
+# Resilience (direct-run): ASG + optional gp3 at /opt/oscal + SSM (see docs/AWS_TERRAFORM.md)
+# oscal_persistent_ebs_enabled = true
+# oscal_data_volume_size_gb    = 50
+# oscal_asg_health_check_grace_period = 420
+# oscal_ssm_post_boot_association_enabled = true
+# oscal_ssm_release_s3_prefix  = null   # e.g. "releases/current" inside s3_logs_bucket_name
