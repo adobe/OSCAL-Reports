@@ -6,7 +6,7 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 
 - **VPC** and public subnets (2 AZs)
 - **Application Load Balancer** (ALB) with HTTP (and optional HTTPS) listeners
-- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) EC2 instances (always on). **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. By default instances run the app **directly** (Node.js + systemd); config and users are synced from **S3** (or on EBS with backup to S3 via **ec2_automation** every 10 min). Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead.
+- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) each run as a **single-instance Auto Scaling Group** (Launch Template + ELB health checks) so a failed or terminated instance is replaced automatically. **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. With **direct run** (`run_oscal_via_docker = false`, default), optional **dedicated gp3 volumes** (`oscal_persistent_ebs_enabled = true`) are created per role, tagged for discovery, and mounted at **`/opt/oscal`** on boot (application tree and `/opt/oscal/data`); volumes are **not** deleted when the instance is replaced. **SSM** runs a periodic **Command** document on instances tagged `OSCAL_SSM_TARGET=true` (mount check, optional `aws s3 sync` from `oscal_ssm_release_s3_prefix` inside the logs bucket, `systemctl restart oscal-reporter` when the unit exists). Config and users on the instance are backed up to **S3** via **ec2_automation** every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead (no extra data volumes; ASGs still provide replacement).
 - **S3** bucket for **logs**, **config**, and **users** (subfolders: `logs/`, `config/green/`, `config/blue/`, `users/`). ec2_automation backs up instance data to S3 so it is retained if instances are replaced.
 - **Optional RDS PostgreSQL** (`create_rds_postgres = true` in tfvars): RDS is placed in **dedicated private subnets** (no route to the internet gateway, `map_public_ip_on_launch = false`, **`publicly_accessible = false`**), so it has **no public IP** and is reachable only on **private addresses** inside the VPC. The RDS security group allows PostgreSQL **only** from the OSCAL EC2 security group; you may add **`rds_additional_ingress_ipv4_cidr_blocks`** for extra **internal** ranges (e.g. a bastion subnet), never `0.0.0.0/0`. OSCAL instances egress to PostgreSQL **only toward those private subnet CIDRs**, not the open internet. **IAM database authentication**, master password in **Secrets Manager** (RDS-managed), app user `rds_iam_app_username` (default `oscal_app`). Green/Blue **user_data** bootstraps the IAM role and injects **systemd** `OSCAL_DATABASE_*`. The Node app uses `@aws-sdk/rds-signer` for tokens. **Tables** are created on first successful DB connection. **GUI:** Platform Settings → Database. **Cost:** RDS is billed separately; leave `create_rds_postgres = false` (default) if you use an external database. **`default_allowed_cidr_blocks`** still applies only to **ALB / SSH / direct app ports** (admin paths), not to exposing RDS on the public internet.
 - **Tagging:** All resources receive `Project`, `Environment`, `ManagedBy`, and `Stack` (plus any `common_tags`). Filter by `Stack = <project_name>` in any account to find or remove the stack. See [terraform/README.md](../terraform/README.md) for add/remove lifecycle.
@@ -93,7 +93,7 @@ terraform init
 terraform plan -out=tfplan
 ```
 
-Review the plan. It will create VPC, subnets, security groups, ALB, target groups, OSCAL Green/Blue instances, S3 bucket, and IAM roles.
+Review the plan. It will create VPC, subnets, security groups, ALB, target groups, OSCAL Green/Blue **Auto Scaling Groups** (launch templates, optional persistent EBS, SSM document/association when enabled), S3 bucket, and IAM roles.
 
 ### 3. Apply
 
@@ -112,8 +112,10 @@ terraform apply
 After apply, Terraform prints outputs such as:
 
 - `alb_dns_name` / `alb_url_http` – URL to access the app (HTTP). When `alb_ssl_certificate_arn` is set, use `alb_url_https` for HTTPS.
-- `oscal_green_instance_id`, `oscal_blue_instance_id` – EC2 instance IDs
-- `oscal_green_public_ip`, `oscal_blue_public_ip` – public IPs for SSH and deploy (when in public subnets)
+- `oscal_green_instance_id`, `oscal_blue_instance_id` – current EC2 instance IDs for each ASG (null until the group launches a member)
+- `oscal_green_autoscaling_group_name`, `oscal_blue_autoscaling_group_name` – ASG names (for Console / CLI)
+- `oscal_green_public_ip`, `oscal_blue_public_ip` – public IPs for SSH and deploy when the instance has a public IP
+- `oscal_post_boot_ssm_document_name` – SSM Command document used by the periodic association
 - `s3_logs_bucket_name` – S3 bucket for logs, config, and users
 
 **AI:** Configure the OSCAL app to use **AWS Bedrock** (or Mistral API) via Settings → AI Integration or `config/app/config.json`. No OLLAMA_URL or Lambda is used; see [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md).
@@ -123,22 +125,27 @@ After apply, Terraform prints outputs such as:
 By default (`run_oscal_via_docker = false`), EC2 instances:
 
 - Install **Node.js 20**.
+- When **`oscal_persistent_ebs_enabled`** is true (default), attach and mount **dedicated gp3 data volumes** at **`/opt/oscal`** (same path for app and data). When false or in Docker mode, only the root volume is used.
 - Store **config and users on EBS** at **/opt/oscal/data** (no S3 mount). **ec2_automation** (cron every 10 min) backs up config, users, and logs to S3 (`config/green/`, `config/blue/`, `logs/green/`, `logs/blue/`) so data is retained if instances are replaced (max 10 min loss).
 - Run the app via **systemd** (`oscal-reporter.service`) after code is deployed.
 
-To **deploy application code** after Terraform apply, run from the repo root (SSH key from [Pass](https://www.passwordstore.org/) entry `AWS/OSCAL-AWS4379-SSH` or set `SSH_KEY_FILE`):
+To **deploy or update application code** after Terraform apply, keep using **`./scripts/deploy-to-ec2.sh`** from the repo root. That remains the intended path for real releases: full `rsync` of the repo, `npm install`, frontend build, `ec2_automation` setup, and `systemctl restart oscal-reporter`. **SSM** (optional `oscal_ssm_release_s3_prefix` and the periodic association) is only for light verification, optional artifact sync from a prefix in the logs bucket, and service nudges—not a substitute for this script when you need a normal code deploy.
+
+Set **`TERRAFORM_DIR`** to your env (e.g. `export TERRAFORM_DIR=$PWD/terraform/envs/aws4403`) so Terraform outputs resolve to the current ASG instance IPs. SSH key from [Pass](https://www.passwordstore.org/) (e.g. `AWS/OSCAL-AWS4403-SSH`) or **`SSH_KEY_FILE`**.
 
 ```bash
+export TERRAFORM_DIR=$PWD/terraform/envs/aws4403   # if not already the default
 ./scripts/deploy-to-ec2.sh
 ```
 
 **Amazon Linux 2023 (Image Factory or native):** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 
-The deploy script syncs the repo to `/opt/oscal/app` on both instances, runs `npm install` and frontend build, copies the build into `backend/public`, writes **ec2_automation.env** (S3 bucket and paths for backup), installs **ec2_automation** cron, and restarts `oscal-reporter.service`. To deploy to one instance only:
+The deploy script syncs the repo to `/opt/oscal/app` on both instances, runs `npm install` and frontend build, copies the build into `backend/public`, writes **ec2_automation.env** (S3 bucket and paths for backup), installs **ec2_automation** cron, and restarts `oscal-reporter.service`. With **persistent EBS** mounted at `/opt/oscal`, the same paths apply; data under `/opt/oscal/data` survives instance replacement. To deploy to one role only (IPs from Terraform via `run-with-aws-pass.sh`):
 
 ```bash
-./scripts/deploy-to-ec2.sh --green-only $(terraform -chdir=terraform output -raw oscal_green_public_ip)
-./scripts/deploy-to-ec2.sh --blue-only $(terraform -chdir=terraform output -raw oscal_blue_public_ip)
+export TERRAFORM_DIR=$PWD/terraform/envs/aws4403
+./scripts/deploy-to-ec2.sh --green-only "$(./terraform/run-with-aws-pass.sh output -raw oscal_green_public_ip 2>/dev/null || ./terraform/run-with-aws-pass.sh output -raw oscal_green_private_ip)"
+./scripts/deploy-to-ec2.sh --blue-only "$(./terraform/run-with-aws-pass.sh output -raw oscal_blue_public_ip 2>/dev/null || ./terraform/run-with-aws-pass.sh output -raw oscal_blue_private_ip)"
 ```
 
 Config and users live on each instance at `/opt/oscal/data`; the deploy script does **not** sync them to S3 (ec2_automation performs backups every 10 min). To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply.
@@ -151,6 +158,64 @@ In the AWS S3 console, open your bucket → **`config`** or **`logs`** → **`gr
 - `logs/green/`, `logs/blue/` (log files)
 
 Terraform creates folder placeholders; ec2_automation populates them. For new instances, ensure `/opt/oscal/data/config.json` and `users.json` exist (e.g. copy from backup or create from examples) before or after first deploy.
+
+### Migrating Terraform state from standalone `aws_instance` to ASG
+
+If your state still contains **`aws_instance.oscal_green` / `oscal_blue`** and **`aws_lb_target_group_attachment`** resources from an older layout, Terraform will want to **destroy** those and create ASGs, launch templates, volumes, and attachments. Before apply in a shared account:
+
+1. **Back up** `/opt/oscal` (or rely on S3 `config/` and `logs/` from ec2_automation) and note current instance IDs.
+2. **Remove old resources from state** (addresses must match `terraform state list`):
+
+   ```bash
+   terraform state list | grep -E 'aws_instance\.oscal_|aws_lb_target_group_attachment'
+   terraform state rm '<each-address-from-the-list-above>'
+   ```
+
+   Typical older addresses include `aws_instance.oscal_green`, `aws_instance.oscal_blue`, and one or more `aws_lb_target_group_attachment.*` resources that registered fixed instance IDs to the Green/Blue target groups.
+
+3. **Apply** so Terraform creates **`aws_ebs_volume`**, **`aws_launch_template`**, **`aws_autoscaling_group`**, **`aws_autoscaling_attachment`**, and SSM resources. **Data volumes start empty** unless you snapshot/restore or copy data onto them after first attach (e.g. from S3 or an old volume snapshot in the same AZ as each subnet).
+
+4. **Tune** `oscal_asg_health_check_grace_period` if the ASG replaces instances too aggressively while user_data installs Node and mounts disk.
+
+**EventBridge:** Per-instance “EC2 running → Run Command” rules need the event’s `instance-id` passed into `SendCommand`; the managed layout uses a **scheduled SSM association** (`rate(30 minutes)`) instead so replacements are not coupled to global EC2 events. You can add a custom EventBridge rule later if your org requires immediate post-boot runs.
+
+### Checklist: precautions, apply, and verification
+
+**Before plan/apply**
+
+- **Credentials:** Refresh AWS session if needed (`aws sts get-caller-identity` or `./terraform/run-with-aws-pass.sh plan`). Wrong account → set `TERRAFORM_DIR` and `AWS_PASS_ENTRY` for the intended env (e.g. aws4403).
+- **State vs code:** If you still have old **`aws_instance`** / **`aws_lb_target_group_attachment`** in state, follow **Migrating Terraform state** above *before* apply, or Terraform may try to destroy/recreate in the wrong order.
+- **AMI:** Ensure `oscal_ami_id` / Image Factory / `image_factory_amazon_linux_ami_us_east_1` resolves (`terraform plan` must not fail the launch template precondition).
+- **AZ and EBS:** Green uses `public[0]` AZ, Blue uses `public[1]` AZ. Persistent volumes are created in those AZs only—do not change subnet/AZ in tfvars without a volume migration plan.
+- **SCP / IAM:** Org SCPs must allow **`ec2:RunInstances`**, **`autoscaling:*`** (as needed), **SSM**, and **ELB** APIs your role uses. PCL still applies to SGs and S3.
+- **S3 bucket:** Empty-bucket rules apply on destroy; for apply, bucket name must remain globally unique.
+- **`oscal_asg_health_check_grace_period`:** Default (e.g. 420s) allows user_data (mount, Node install, service start) before ELB health drives ASG replacement. If you see **replace loops**, increase it; if failover feels too slow, decrease carefully.
+
+**Plan review**
+
+- Confirm **destroy/create** list matches intent (especially first cutover from standalone EC2).
+- New resources should include **`aws_autoscaling_group`**, **`aws_launch_template`**, **`aws_autoscaling_attachment`**, optional **`aws_ebs_volume`**, **`aws_ssm_document`**, **`aws_ssm_association`**.
+
+**After apply**
+
+1. **Outputs:** `terraform output` (via wrapper) — `oscal_green_instance_id`, `oscal_*_public_ip` / `private_ip` should be non-null once instances are **running** (ASG may take a few minutes).
+2. **ALB targets:** EC2 → Target Groups → Green/Blue → targets **healthy** (HTTP `/health` on 3019 / 3020 per `alb.tf`).
+3. **SSH / deploy:** `./scripts/deploy-to-ec2.sh` (or `--both`) so **`/opt/oscal/app`** matches your repo; restores full build after a fresh instance.
+4. **Data:** If new persistent volumes are **empty**, seed **`/opt/oscal/data`** from S3 `config/<green|blue>/` or snapshots before expecting the app to serve traffic.
+5. **SSM:** Systems Manager → **Run Command** / **Compliance** — association on document `oscal_post_boot_ssm_document_name` (output) should show successful invocations on tagged instances after ~30 minutes (or run the document manually once).
+6. **Persistence:** On a **replacement** test (optional), terminate one instance in the ASG (console) and confirm a new instance attaches the **same** gp3 data volume and service recovers (only when `oscal_persistent_ebs_enabled` is true).
+
+**Quick tests**
+
+| Check | Command / action |
+|--------|-------------------|
+| ALB health | `curl -sS -o /dev/null -w "%{http_code}" "http://$(terraform output -raw alb_dns_name)/health"` (or HTTPS URL if cert in use); expect **200** from default routing or host rules. |
+| Green direct | From a host allowed by SGs: `curl -sS -o /dev/null -w "%{http_code}" "http://<green-ip>:3019/health"` |
+| Blue direct | `curl ... "http://<blue-ip>:3020/health"` |
+| App UI | Open ALB URL or green/blue hostnames in browser; exercise login and one report path. |
+| Logs | Instance: `journalctl -u oscal-reporter -n 50 --no-pager`; S3: `logs/green/` or `logs/blue/` after ec2_automation runs. |
+
+**Launch template note:** Instances launched from the template are tagged with **`Stack = project_name`** explicitly (required for Terraform outputs, SSM association targets, and **`ec2:AttachVolume`** IAM conditions). Provider **`default_tags`** alone do not propagate to LT-launched instances.
 
 ### Blue/Green host-based routing (optional)
 
@@ -172,7 +237,7 @@ If your organisation does not authorize `acm:RequestCertificate`, you can establ
    - `alb_allow_http_for_testing = true` – ALB security group allows port 80 from `default_allowed_cidr_blocks` so you can reach the ALB for testing.
 2. **Apply:** From repo root with `TERRAFORM_DIR` set to your env (e.g. `terraform/envs/aws4403`), run `./terraform/run-with-aws-pass.sh apply`.
 3. **Use the ALB:** After apply, run `terraform output alb_url_http` (or `alb_dns_name`). From a machine whose IP is in `default_allowed_cidr_blocks`, open **http://&lt;alb_dns_name&gt;** in a browser or run `curl http://&lt;alb_dns_name&gt;/health`.
-4. **If direct instance URLs work (e.g. http://&lt;green-ip&gt;:3019) but the ALB URL does not:** The ALB allows port 80 only from `default_allowed_cidr_blocks`. Add your current public IP (run `curl -s ifconfig.me` to see it) as `"x.x.x.x/32"` in `default_allowed_cidr_blocks` in tfvars, then run `terraform apply` again. Also check in the AWS Console that the ALB target groups show the instances as **Healthy** (Targets tab); if they are Unhealthy, the ALB returns 503.
+4. **If direct instance URLs work (e.g. http://&lt;green-ip&gt;:3019) but the ALB URL does not:** The ALB allows port 80 only from `default_allowed_cidr_blocks`. Add your current public IP (run `curl -s ifconfig.me` to see it) as `"x.x.x.x/32"` in `default_allowed_cidr_blocks` in tfvars, then run `terraform apply` again. Also check in the AWS Console that the ALB target groups show the ASG-registered targets as **Healthy** (Targets tab); if they are Unhealthy, the ALB returns 503.
 5. **Add a certificate later:** When your organisation provides an ACM certificate (same account/region), set `alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT:certificate/CERT_ID"` in tfvars, keep `create_alb_certificate = false`, and run `terraform apply` again. Terraform will add the HTTPS listener (443) and HTTP→HTTPS redirect; no ACM request is made.
 
 **Let's Encrypt and import into ACM:** If you use Let's Encrypt (e.g. when ACM *request* is not allowed but ACM *import* is), run the script `scripts/letsencrypt-acm-import.sh` from the repo root. It uses **manual DNS-01** validation: you add the TXT record in Route53 yourself (Route53 may be in a different AWS account; the script prompts you with exact steps). The script then imports the issued cert into ACM and can update your env's `terraform.tfvars` with the new cert ARN. Prerequisites: `certbot` installed, AWS CLI credentials for the ALB account (Pass entry `AWS/AMS_4403-STG` or env). See the script header for usage and environment variables.

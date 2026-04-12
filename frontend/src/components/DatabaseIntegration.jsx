@@ -207,7 +207,9 @@ function DatabaseIntegration({ embedded = false }) {
                 <option value="iam">AWS RDS IAM database authentication</option>
               </select>
               <small>
-                IAM mode uses the instance or task role (no static DB password). Use &quot;Require&quot; SSL for RDS.
+                IAM mode uses the instance or task role (no static DB password). Use &quot;Require&quot; SSL for RDS. The
+                default Terraform user <code>oscal_app</code> has no password—password mode will always fail for that
+                user.
               </small>
             </div>
 
@@ -256,6 +258,12 @@ function DatabaseIntegration({ embedded = false }) {
                   onChange={(e) => setDatabaseConfig({ ...databaseConfig, user: e.target.value })}
                   disabled={!canEdit}
                 />
+                {(databaseConfig.user || '').toLowerCase().trim() === 'oscal_app' &&
+                  databaseConfig.authMode !== 'iam' && (
+                    <span className="auth-user-iam-hint">
+                      User <code>oscal_app</code> from Terraform/RDS is IAM-only—switch Authentication to AWS RDS IAM.
+                    </span>
+                  )}
               </div>
               {databaseConfig.authMode !== 'iam' && (
                 <div className="form-group">

@@ -1,5 +1,39 @@
 # Outputs for OSCAL deployment (AI via AWS Bedrock)
 
+data "aws_instances" "oscal_green_members" {
+  filter {
+    name   = "tag:Stack"
+    values = [var.project_name]
+  }
+  filter {
+    name   = "tag:OSCAL_PERSISTENT_ROLE"
+    values = ["green"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+
+  depends_on = [aws_autoscaling_group.oscal_green]
+}
+
+data "aws_instances" "oscal_blue_members" {
+  filter {
+    name   = "tag:Stack"
+    values = [var.project_name]
+  }
+  filter {
+    name   = "tag:OSCAL_PERSISTENT_ROLE"
+    values = ["blue"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+
+  depends_on = [aws_autoscaling_group.oscal_blue]
+}
+
 output "aws_region" {
   description = "AWS region (for scripts that need region)"
   value       = var.aws_region
@@ -68,33 +102,48 @@ output "alb_target_group_blue_arn" {
 }
 
 output "oscal_green_instance_id" {
-  description = "EC2 instance ID for OSCAL Green (port 3019)"
-  value       = aws_instance.oscal_green.id
+  description = "EC2 instance ID for OSCAL Green ASG member (port 3019); null until the ASG launches an instance."
+  value       = length(data.aws_instances.oscal_green_members.ids) > 0 ? data.aws_instances.oscal_green_members.ids[0] : null
 }
 
 output "oscal_green_private_ip" {
-  description = "Private IP of OSCAL Green"
-  value       = aws_instance.oscal_green.private_ip
+  description = "Private IP of OSCAL Green (current ASG instance)"
+  value       = length(data.aws_instances.oscal_green_members.private_ips) > 0 ? data.aws_instances.oscal_green_members.private_ips[0] : null
 }
 
 output "oscal_green_public_ip" {
-  description = "Public IP of OSCAL Green (for SSH/deploy from laptop)"
-  value       = aws_instance.oscal_green.public_ip
+  description = "Public IP of OSCAL Green (for SSH/deploy when the instance has a public IP)"
+  value = length(data.aws_instances.oscal_green_members.public_ips) > 0 && data.aws_instances.oscal_green_members.public_ips[0] != "" ? data.aws_instances.oscal_green_members.public_ips[0] : null
 }
 
 output "oscal_blue_instance_id" {
-  description = "EC2 instance ID for OSCAL Blue (port 3020)"
-  value       = aws_instance.oscal_blue.id
+  description = "EC2 instance ID for OSCAL Blue ASG member (port 3020); null until the ASG launches an instance."
+  value       = length(data.aws_instances.oscal_blue_members.ids) > 0 ? data.aws_instances.oscal_blue_members.ids[0] : null
 }
 
 output "oscal_blue_private_ip" {
-  description = "Private IP of OSCAL Blue"
-  value       = aws_instance.oscal_blue.private_ip
+  description = "Private IP of OSCAL Blue (current ASG instance)"
+  value       = length(data.aws_instances.oscal_blue_members.private_ips) > 0 ? data.aws_instances.oscal_blue_members.private_ips[0] : null
 }
 
 output "oscal_blue_public_ip" {
-  description = "Public IP of OSCAL Blue (for SSH/deploy from laptop)"
-  value       = aws_instance.oscal_blue.public_ip
+  description = "Public IP of OSCAL Blue (for SSH/deploy when the instance has a public IP)"
+  value = length(data.aws_instances.oscal_blue_members.public_ips) > 0 && data.aws_instances.oscal_blue_members.public_ips[0] != "" ? data.aws_instances.oscal_blue_members.public_ips[0] : null
+}
+
+output "oscal_green_autoscaling_group_name" {
+  description = "Auto Scaling Group name for OSCAL Green (steady state: one instance)"
+  value       = aws_autoscaling_group.oscal_green.name
+}
+
+output "oscal_blue_autoscaling_group_name" {
+  description = "Auto Scaling Group name for OSCAL Blue (steady state: one instance)"
+  value       = aws_autoscaling_group.oscal_blue.name
+}
+
+output "oscal_post_boot_ssm_document_name" {
+  description = "SSM Command document name for periodic post-boot checks (optional S3 sync when oscal_ssm_release_s3_prefix is set)"
+  value       = aws_ssm_document.oscal_post_boot.name
 }
 
 output "s3_logs_bucket_name" {

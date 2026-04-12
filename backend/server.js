@@ -2541,9 +2541,18 @@ app.post('/api/database/test-connection', authenticate, authorize(PERMISSIONS.ED
     return res.json({ success: true });
   } catch (error) {
     console.log('Database connection test failed:', error.message);
+    let clientMessage = error.message || 'Connection failed';
+    const pwFail = /password authentication failed/i.test(clientMessage);
+    if (pwFail && dbConfig.authMode === 'password') {
+      clientMessage +=
+        ' The Terraform/RDS application user (default oscal_app) is created for IAM database authentication only—it has no PostgreSQL password. Choose "AWS RDS IAM database authentication", use SSL "Require", and ensure this server has an EC2 instance role (or other AWS credentials) allowed to connect.';
+    } else if (pwFail && dbConfig.authMode === 'iam') {
+      clientMessage +=
+        ' With IAM auth, confirm the instance/task role includes rds-db:connect for this RDS DB resource and database user, and that the IAM database user was created (Terraform user_data bootstrap).';
+    }
     return res.status(500).json({
       success: false,
-      error: error.message || 'Connection failed'
+      error: clientMessage
     });
   }
 });
