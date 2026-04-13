@@ -25,7 +25,7 @@ WORKDIR /app
 
 # Install dependencies for production
 COPY backend/package*.json ./
-RUN npm install --production --no-audit --no-fund
+RUN npm install --omit=dev --no-audit --no-fund
 
 # Copy backend source
 COPY backend/ ./
@@ -35,6 +35,13 @@ COPY --from=frontend-builder /app/frontend/dist ./public
 
 # Create config directory structure
 RUN mkdir -p /app/config/app
+
+# Install pass (password-store) and gnupg for config secret resolution (_pass pointers).
+# Key generation is not run at build time (GPG needs a TTY/entropy; causes "Not a tty" in Docker build).
+# To initialize pass in a running container: see docs or run:
+#   docker exec -it <container> sh -c 'gpg --batch --quick-generate-key "OSCAL Docker" default default 0 && pass init $(gpg -k --with-colons "OSCAL Docker" | awk -F: "/^pub:/{print \$5;exit}")'
+RUN apk add --no-cache pass gnupg \
+    && mkdir -p /root/.password-store
 
 # Build argument for build timestamp (used for password generation)
 ARG BUILD_TIMESTAMP=""

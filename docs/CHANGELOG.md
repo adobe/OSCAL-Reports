@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.12] - 2026-04-14
+
+### Changed
+- Release 1.7.12
+## [1.7.12] - 2026-04-13
+
+### Changed
+- Release 1.7.12
+
+## [1.7.11] - 2026-03-13
+
+### Changed
+- Release 1.7.11
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

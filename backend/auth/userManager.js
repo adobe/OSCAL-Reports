@@ -456,22 +456,34 @@ export async function initializeDefaultUsers() {
  */
 export async function authenticateUser(username, password) {
   const users = await loadUsers();
-  
+  const loginId = typeof username === 'string' ? username.trim() : '';
+  const loginIdLower = loginId.toLowerCase();
+
   if (process.env.NODE_ENV === 'development') {
-    console.log(`🔍 Authentication attempt for username: ${username}`);
+    console.log(`🔍 Authentication attempt for username: ${loginId}`);
     console.log(`   Total users loaded: ${users.length}`);
+    console.log(`   Users file: ${getUsersPath()}`);
   }
-  
-  // Find user by username or by email (same identifier users often type either)
-  const userByUsername = users.find(u => u.username === username)
-    || users.find(u => (u.email && u.email.toLowerCase() === String(username).toLowerCase()));
-  
+
+  // Find by exact username first
+  let userByUsername = users.find((u) => u.username === loginId);
+
+  // Same field often holds email: match email; if multiple accounts share an email, prefer active
+  if (!userByUsername && loginIdLower) {
+    const emailMatches = users.filter(
+      (u) => u.email && String(u.email).toLowerCase() === loginIdLower
+    );
+    userByUsername =
+      emailMatches.find((u) => u.isActive !== false) ||
+      emailMatches[0];
+  }
+
   if (!userByUsername) {
-    console.log(`❌ User not found: ${username}`);
+    console.log(`❌ User not found: ${loginId}`);
     return null;
   }
   
-  console.log(`✅ User found: ${username}`);
+  console.log(`✅ User found: ${userByUsername.username}`);
   console.log(`   User ID: ${userByUsername.id}`);
   console.log(`   Is Active: ${userByUsername.isActive}`);
   console.log(`   Role: ${userByUsername.role}`);
@@ -479,26 +491,26 @@ export async function authenticateUser(username, password) {
   
   // Verify password (supports both old and new formats)
   if (!verifyPassword(password, userByUsername.password)) {
-    console.log(`❌ Password mismatch for user: ${username}`);
+    console.log(`❌ Password mismatch for user: ${userByUsername.username}`);
     return null;
   }
   
   // Migrate legacy password to PBKDF2 if needed (during successful login)
   if (isLegacyPasswordHash(userByUsername.password)) {
-    console.log(`🔄 Migrating legacy password to FIPS 140-2 compliant format for user: ${username}`);
-    migratePasswordToPBKDF2(username, password);
+    console.log(`🔄 Migrating legacy password to FIPS 140-2 compliant format for user: ${userByUsername.username}`);
+    migratePasswordToPBKDF2(userByUsername.username, password);
   }
   
   // Check if active
   if (!userByUsername.isActive) {
-    console.log(`❌ User is inactive: ${username}`);
+    console.log(`❌ User is inactive: ${userByUsername.username}`);
     return null;
   }
   
-  console.log(`✅ All checks passed for user: ${username}`);
+  console.log(`✅ All checks passed for user: ${userByUsername.username}`);
   
-  // Update last login timestamp
-  const userIndex = users.findIndex(u => u.username === username);
+  // Update last login timestamp (match by id so email-as-login still updates the right row)
+  const userIndex = users.findIndex((u) => u.id === userByUsername.id);
   if (userIndex !== -1) {
     users[userIndex].lastLoginAt = new Date().toISOString();
     await saveUsers(users);

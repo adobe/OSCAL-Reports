@@ -21,7 +21,7 @@ const STATUS_OPTIONS = [
   { value: 'not-applicable', label: 'Not Applicable', color: 'not-applicable' }
 ];
 
-function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = [] }) {
+function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = [], databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
   const { canEditImplementationStatus } = useAuth();
   const [fetchingData, setFetchingData] = useState({});
   const [credentials, setCredentials] = useState([]);
@@ -325,26 +325,58 @@ function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = []
               />
             </div>
 
-            <div className="form-row-3">
-              <div className="form-group">
+            <div className="form-row form-row-responsible-party">
+              <div className="form-group form-group-responsible-party">
                 <label htmlFor={`responsibleParty-${control.id}`}>Responsible Party</label>
-              <select
-                id={`responsibleParty-${control.id}`}
-                className="form-control"
-                value={control.responsibleParty || ''}
-                onChange={(e) => onUpdate(control.id, 'responsibleParty', e.target.value)}
-              >
-                <option value="">Select...</option>
-                <option value="Implemented By Adobe">Implemented By Adobe</option>
-                <option value="Inherited from CSP">Inherited from CSP</option>
-                <option value="Shared">Shared</option>
-                <option value="Consumer Responsibility">Consumer Responsibility</option>
-                <option value="Consumer Implementation Required">Consumer Implementation Required</option>
-                <option value="Consumer Configuration Required">Consumer Configuration Required</option>
-                <option value="Not Applicable">Not Applicable</option>
-              </select>
+                <select
+                  id={`responsibleParty-${control.id}`}
+                  className="form-control"
+                  value={control.responsibleParty || ''}
+                  onChange={(e) => onUpdate(control.id, 'responsibleParty', e.target.value)}
+                >
+                  <option value="">Select...</option>
+                  <option value="Implemented By Adobe">Implemented By Adobe</option>
+                  <option value="Inherited from CSP">Inherited from CSP</option>
+                  <option value="Shared">Shared</option>
+                  <option value="Consumer Responsibility">Consumer Responsibility</option>
+                  <option value="Consumer Implementation Required">Consumer Implementation Required</option>
+                  <option value="Consumer Configuration Required">Consumer Configuration Required</option>
+                  <option value="Not Applicable">Not Applicable</option>
+                </select>
               </div>
+              {databaseIntegrationEnabled && control.responsibleParty === 'Implemented By Adobe' && (
+                <>
+                  {[0, 1, 2].map((slotIndex) => {
+                    const arr = Array.isArray(control.adobeTeamResponsible) ? control.adobeTeamResponsible : [];
+                    const value = arr[slotIndex] ?? '';
+                    return (
+                      <div key={slotIndex} className="form-group form-group-adobe-slot">
+                        <label htmlFor={`adobe-team-slot-${slotIndex}-${control.id}`}>T{slotIndex + 1}</label>
+                        <select
+                          id={`adobe-team-slot-${slotIndex}-${control.id}`}
+                          className="form-control"
+                          value={value}
+                          onChange={(e) => {
+                            const newVal = e.target.value;
+                            const prev = Array.isArray(control.adobeTeamResponsible) ? control.adobeTeamResponsible : [];
+                            const newArr = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? ''];
+                            newArr[slotIndex] = newVal;
+                            onUpdate(control.id, 'adobeTeamResponsible', newArr);
+                          }}
+                        >
+                          <option value="">—</option>
+                          {adobeTeamOptions.map((opt) => (
+                            <option key={String(opt.id) + opt.label} value={opt.label}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
 
+            <div className="form-row-3">
               <div className="form-group">
                 <label htmlFor={`controlOwner-${control.id}`}>Cloud Provider Responsibility</label>
                 <select

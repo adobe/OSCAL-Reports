@@ -35,12 +35,12 @@ set -e
 # ============================================================================
 
 # URL Configuration (can be overridden by environment variables)
-# BLUE_URL="${BLUE_URL:-http://52.203.252.66:3020}"
-# GREEN_URL="${GREEN_URL:-http://44.203.33.18:3019}"
+BLUE_URL="${BLUE_URL:-http://44.201.190.106:3020}"
+GREEN_URL="${GREEN_URL:-http://192.168.1.200:3019}"
 # BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
 # GREEN_URL="${GREEN_URL:-http://nas.keekar.com:3019/}"
-BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
-GREEN_URL="${GREEN_URL:-https://keekar.3utilities.com}"
+# BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
+# GREEN_URL="${GREEN_URL:-https://keekar.3utilities.com}"
 
 
 # Legacy container/port names (deprecated; BLUE_URL/GREEN_URL used instead)
@@ -450,6 +450,7 @@ if [ "$BLUE_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
     print_info "Using Blue password from environment/cli"
     if api_login_attempt "$BLUE_URL" "$BLUE_USER" "$BLUE_PASSWORD" "$COOKIE_JAR_BLUE"; then
       BLUE_LOGGED_IN=true
+      BLUE_TOKEN=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty')
     else
       print_error "Blue authentication failed (password from environment/cli)!"
       print_login_failure "$BLUE_URL"
@@ -463,6 +464,7 @@ if [ "$BLUE_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
       if api_login_attempt "$BLUE_URL" "$BLUE_USER" "$BLUE_PASSWORD" "$COOKIE_JAR_BLUE"; then
         print_info "Blue authenticated using pass ($BLUE_PASS_ENTRY)"
         BLUE_LOGGED_IN=true
+        BLUE_TOKEN=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty')
       else
         print_warning "Pass vault login failed for Blue ($BLUE_PASS_ENTRY); will prompt for password."
         BLUE_PASSWORD=""
@@ -484,6 +486,7 @@ if [ "$BLUE_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = "
         fi
         if api_login_attempt "$BLUE_URL" "$BLUE_USER" "$BLUE_PASSWORD" "$COOKIE_JAR_BLUE"; then
           BLUE_LOGGED_IN=true
+          BLUE_TOKEN=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty')
         else
           print_error "Blue authentication failed!"
           print_login_failure "$BLUE_URL"
@@ -530,6 +533,7 @@ if [ "$GREEN_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
     print_info "Using Green password from environment/cli"
     if api_login_attempt "$GREEN_URL" "$GREEN_USER" "$GREEN_PASSWORD" "$COOKIE_JAR_GREEN"; then
       GREEN_LOGGED_IN=true
+      GREEN_TOKEN=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty')
     else
       print_error "Green authentication failed (password from environment/cli)!"
       print_login_failure "$GREEN_URL"
@@ -543,6 +547,7 @@ if [ "$GREEN_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
       if api_login_attempt "$GREEN_URL" "$GREEN_USER" "$GREEN_PASSWORD" "$COOKIE_JAR_GREEN"; then
         print_info "Green authenticated using pass ($GREEN_PASS_ENTRY)"
         GREEN_LOGGED_IN=true
+        GREEN_TOKEN=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty')
       else
         print_warning "Pass vault login failed for Green ($GREEN_PASS_ENTRY); will prompt for password."
         GREEN_PASSWORD=""
@@ -564,6 +569,7 @@ if [ "$GREEN_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
         fi
         if api_login_attempt "$GREEN_URL" "$GREEN_USER" "$GREEN_PASSWORD" "$COOKIE_JAR_GREEN"; then
           GREEN_LOGGED_IN=true
+          GREEN_TOKEN=$(echo "$API_LOGIN_BODY" | jq -r '.sessionToken // empty')
         else
           print_error "Green authentication failed!"
           print_login_failure "$GREEN_URL"

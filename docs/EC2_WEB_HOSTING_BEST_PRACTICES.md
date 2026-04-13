@@ -41,7 +41,7 @@ Use a **strict layout** so config is never confused with app code:
 - **Secrets:** Use [pass](https://www.passwordstore.org/) for the service user. The deploy script ensures the Pass vault at `$SVC_HOME/.password-store` is created and initialized. Store Okta client secret, SMTP password, etc. there; `config.json` holds only pointers (e.g. `"_pass": "OSCAL/sso-oauth-okta-client-secret"`).
 - **Adding a secret on instance:**  
   `sudo -u svc_ams-oscal pass insert OSCAL/entry-name`
-- **If Pass is missing:** Deploy will warn; secrets would be stored in plain text in config. Fix by running `./scripts/debug/install-pass-svc-oscal.sh` then re-deploy or add secrets manually.
+- **If Pass is missing:** Deploy will warn; secrets would be stored in plain text in config. Re-run `./scripts/deploy-to-ec2.sh` after fixing Pass on the instance, or add secrets manually (`sudo -u svc_ams-oscal pass insert …`).
 
 ---
 
@@ -84,11 +84,11 @@ Use a **strict layout** so config is never confused with app code:
 - **ec2_automation.sh** backs up config, users, and logs to S3 and (optionally) updates the app from GitHub and restarts the service.
 - **Green:** By default deploy installs a **cron** for user `svc_ams-oscal` every 10 minutes:  
   `*/10 * * * * ... /opt/oscal/scripts/ec2_automation.sh ...`  
-  With `ENABLE_GITHUB_UPDATE=true` (default), Green can pull from `main`, build, and restart.
-- **Blue:** By default deploy **does not** install this cron on Blue (and removes it if present). Blue uses **manual deploys only** so that manual pushes are not overwritten by an automatic git pull/restart. Set `DEPLOY_BLUE_AUTO_UPDATE=1` when running deploy if you want cron (and GitHub auto-update) on Blue too.
+  **`ENABLE_GITHUB_UPDATE` defaults to false** in `ec2_automation.sh` and in deploy-generated `ec2_automation.env`, so cron does **not** pull from GitHub unless you opt in (set `ENABLE_GITHUB_UPDATE=true` on the instance, or deploy with **`DEPLOY_ENABLE_GITHUB_UPDATE=1`**).
+- **Blue:** By default deploy installs the **same** cron on Blue (`DEPLOY_BLUE_AUTO_UPDATE` defaults to `1`) so S3 backup and Pass ↔ Secrets Manager sync run on both instances (still no GitHub pull unless `DEPLOY_ENABLE_GITHUB_UPDATE=1`). Set **`DEPLOY_BLUE_AUTO_UPDATE=0`** when running deploy if you want Blue **manual-only** (no cron; deploy removes the ec2_automation line from Blue’s crontab).
 - **ec2_automation.env** (per instance):  
-  `S3_BUCKET`, `S3_CONFIG_PREFIX`, `S3_LOGS_PREFIX`, `DEPLOYMENT_ROLE`, `ENABLE_GITHUB_UPDATE`.  
-  To disable auto-update on an instance that has cron, set `ENABLE_GITHUB_UPDATE=false` in `/opt/oscal/scripts/ec2_automation.env` (deploy overwrites this file on next run unless you change the deploy logic).
+  `S3_BUCKET`, `S3_CONFIG_PREFIX`, `S3_LOGS_PREFIX`, `DEPLOYMENT_ROLE`, `ENABLE_GITHUB_UPDATE`, and (when Terraform provides it) `PASS_SECRETS_SYNC_ENABLED`, `PASS_SECRETS_SYNC_SECRET_ARN`, `PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS` for Pass vault sync to AWS Secrets Manager.  
+  Deploy overwrites this file on each run; use **`DEPLOY_ENABLE_GITHUB_UPDATE=1`** when deploying if you want GitHub pull-on-cron enabled again.
 
 ---
 
@@ -108,19 +108,14 @@ Use a **strict layout** so config is never confused with app code:
   - SSH and run:  
     `sudo systemctl status oscal-reporter.service`  
     `sudo journalctl -u oscal-reporter.service -n 50 --no-pager`  
-  - From repo root you can run:  
-    `./scripts/debug/check-oscal-instance.sh --blue` or  
-    `./scripts/debug/check-oscal-instance.sh --blue <blue_ip>`  
-  That script shows service status, journalctl, disk, cron for `svc_ams-oscal`, `ec2_automation.env`, recent ec2_automation logs, and local `/health` on 3020.
+  - From repo root, SSH to the instance (e.g. `./scripts/debug/ssh-ec2.sh blue`) and inspect the same items: `systemctl`, `journalctl`, disk, `sudo crontab -u svc_ams-oscal -l`, `/opt/oscal/scripts/ec2_automation.env`, `/opt/oscal/app/logs/`, and `curl -sf http://127.0.0.1:3020/health` (Blue) or port `3019` (Green).
 - **Blue only – disable cron and fix env now (one-off):**  
   `./scripts/debug/fix-blue-no-cron.sh`  
   (or with explicit IP). This sets `ENABLE_GITHUB_UPDATE=false` and removes the ec2_automation cron on Blue.
 - **Backup/restore verification:**  
-  `./scripts/debug/verify-ec2-backup.sh`  
-  Checks crontab (as ec2-user; actual cron is under `svc_ams-oscal`), S3 env, and runs ec2_automation once.
+  On the instance: confirm `sudo crontab -u svc_ams-oscal -l` includes `ec2_automation.sh`, check `/opt/oscal/scripts/ec2_automation.env` for `S3_BUCKET`, and run `/opt/oscal/scripts/ec2_automation.sh` once and confirm S3 objects update under `config/<role>/`.
 - **Pass vault on instances:**  
-  `./scripts/debug/check-pass-vault-on-ec2.sh`  
-  Reports whether config references Pass entries and if those are present on instances.
+  Compare `config.json` `_pass` references with `sudo -u svc_ams-oscal env HOME=/var/lib/svc_ams-oscal pass ls` (and `pass show` for specific keys).
 - **AI engine (Ollama) unreachable from Green/Blue:**  
   See [AWS_TERRAFORM.md – Troubleshooting: AI Engine unreachable](AWS_TERRAFORM.md#troubleshooting-ai-engine-unreachable-from-greenblue). Use `./scripts/debug/check-ollama-connectivity.sh` (optionally `--blue-only <ip>` or `--green-only <ip>`).
 
@@ -133,11 +128,7 @@ Use a **strict layout** so config is never confused with app code:
 | `scripts/deploy-to-ec2.sh` | Full deploy to Green/Blue: code, config seed, cron, systemd, health check. |
 | `scripts/ec2_automation.sh` | Backup to S3; optional git pull + build + restart. Runs from cron on Green by default. |
 | `scripts/reactivate-admin.sh` | Reactivate admin user in `users.json`. Use repo path or pass path; works with `/opt/oscal/data/users.json`. |
-| `scripts/debug/check-pass-vault-on-ec2.sh` | Check Pass vault usage on instances. |
-| `scripts/debug/check-oscal-instance.sh` | Diagnose Green/Blue: service, logs, disk, cron, ec2_automation, /health. Use `--green` or `--blue`. |
 | `scripts/debug/fix-blue-no-cron.sh` | One-off: set ENABLE_GITHUB_UPDATE=false and remove ec2_automation cron on Blue. |
-| `scripts/debug/verify-ec2-backup.sh` | Verify backup path and run ec2_automation once. |
-| `scripts/debug/install-pass-svc-oscal.sh` | Install and initialize Pass for `svc_ams-oscal` on instance(s). |
 | `scripts/debug/diagnose-okta-on-ec2.sh` | Diagnose Okta SSO on EC2 (config paths, tokens). |
 | `scripts/debug/check-ollama-connectivity.sh` | Check connectivity from Green/Blue to Ollama NLB. |
 | `scripts/debug/restore-blue-config.sh` | Copy config/users from Green to Blue (e.g. after replacing Blue). |
@@ -176,6 +167,6 @@ Use a **strict layout** so config is never confused with app code:
 - [ ] Config and users only in `/opt/oscal/data`; no duplicate under `/opt/oscal/app`.
 - [ ] App and cron run as `svc_ams-oscal`; Pass vault used for secrets.
 - [ ] Deploy via `./scripts/deploy-to-ec2.sh`; Terraform via `run-with-aws-pass.sh`.
-- [ ] Green: cron every 10 min (backup + optional GitHub update). Blue: no cron by default (manual deploy only).
-- [ ] Health verified after deploy; troubleshoot with `check-oscal-instance.sh`, `journalctl`, and backup/Pass scripts as needed.
+- [ ] Green and Blue: cron every 10 min by default (S3 backup + Pass/SM sync; GitHub pull off unless `DEPLOY_ENABLE_GITHUB_UPDATE=1`). Blue manual-only: deploy with `DEPLOY_BLUE_AUTO_UPDATE=0`.
+- [ ] Health verified after deploy; troubleshoot with SSH, `journalctl`, S3 backup paths, and Pass as needed.
 - [ ] ALB idle timeout ≥ 300 s; SSH key from Pass or `SSH_KEY_FILE`.
