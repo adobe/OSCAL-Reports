@@ -191,6 +191,22 @@ jobs:
           fi
 
   ###############################################################################
+  # ec2_automation Pass ↔ Secrets Manager sync (mocked integration tests)
+  ###############################################################################
+  ec2-automation-pass-sync-tests:
+    name: ec2_automation Pass / Secrets Manager sync tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Run Pass ↔ Secrets Manager sync test suite
+        run: |
+          chmod +x test_cases/scripts/run-all-tests.sh
+          ./test_cases/scripts/run-all-tests.sh --ec2-pass-sync-only
+
+  ###############################################################################
   # Test Script Execution (Dry Run)
   ###############################################################################
   dry-run-test:
@@ -229,7 +245,7 @@ jobs:
   shell-validation-summary:
     name: Shell Validation Summary
     runs-on: ubuntu-latest
-    needs: [shellcheck, git-hooks-validation, shell-best-practices]
+    needs: [shellcheck, git-hooks-validation, shell-best-practices, ec2-automation-pass-sync-tests]
     if: always()
     
     steps:
@@ -243,6 +259,7 @@ jobs:
           echo "- ShellCheck linting: ${{ needs.shellcheck.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Git hooks validation: ${{ needs.git-hooks-validation.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Best practices check: ${{ needs.shell-best-practices.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ec2_automation Pass/Secrets sync tests: ${{ needs.ec2-automation-pass-sync-tests.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ needs.shellcheck.result }}" == "success" ]; then

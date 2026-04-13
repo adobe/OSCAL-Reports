@@ -1,0 +1,57 @@
+# Mount OSCAL persistent gp3 volume at /opt/oscal (role=${oscal_role}, stack=${stack_name})
+# Requires: aws CLI, IMDSv2; ext4 on volume; instance role may ec2:AttachVolume on tagged volumes.
+set -e
+TOKEN=$(curl -sSfX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+IID=$(curl -sSfH "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/instance-id")
+AZ=$(curl -sSfH "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/placement/availability-zone")
+REGION="${aws_region}"
+ROLE="${oscal_role}"
+STACK="${stack_name}"
+export AWS_DEFAULT_REGION="$REGION"
+
+VID=""
+for _ in $(seq 1 90); do
+  VID=$(aws ec2 describe-volumes \
+    --filters \
+      "Name=tag:OSCAL_PERSISTENT_ROLE,Values=$ROLE" \
+      "Name=tag:Stack,Values=$STACK" \
+      "Name=availability-zone,Values=$AZ" \
+      "Name=status,Values=available" \
+    --query 'Volumes[0].VolumeId' --output text 2>/dev/null || true)
+  if [[ -n "$VID" && "$VID" != "None" ]]; then break; fi
+  sleep 5
+done
+if [[ -z "$VID" || "$VID" == "None" ]]; then
+  echo "oscal-persistent-volume: no available volume for role=$ROLE stack=$STACK in $AZ" >&2
+  exit 1
+fi
+
+ATTACHED=$(aws ec2 describe-volumes --volume-ids "$VID" --query 'Volumes[0].Attachments[0].InstanceId' --output text 2>/dev/null || echo "")
+if [[ "$ATTACHED" != "$IID" ]]; then
+  aws ec2 attach-volume --volume-id "$VID" --instance-id "$IID" --device /dev/sdf
+  aws ec2 wait volume-in-use --volume-ids "$VID"
+fi
+
+DEV=""
+for _ in $(seq 1 45); do
+  if [[ -b /dev/nvme1n1 ]]; then DEV=/dev/nvme1n1; break; fi
+  if [[ -b /dev/xvdf ]]; then DEV=/dev/xvdf; break; fi
+  if [[ -b /dev/sdf ]]; then DEV=/dev/sdf; break; fi
+  sleep 2
+done
+if [[ -z "$DEV" ]]; then
+  echo "oscal-persistent-volume: could not find block device after attach" >&2
+  exit 1
+fi
+
+if ! blkid "$DEV" >/dev/null 2>&1; then
+  mkfs.ext4 -F "$DEV"
+fi
+mkdir -p /opt/oscal
+if ! findmnt -n /opt/oscal >/dev/null 2>&1; then
+  mount "$DEV" /opt/oscal
+fi
+UUID_VAL=$(blkid -s UUID -o value "$DEV" || true)
+if [[ -n "$UUID_VAL" ]] && ! grep -q "/opt/oscal" /etc/fstab 2>/dev/null; then
+  echo "UUID=$UUID_VAL /opt/oscal ext4 defaults,nofail 0 2" >> /etc/fstab
+fi

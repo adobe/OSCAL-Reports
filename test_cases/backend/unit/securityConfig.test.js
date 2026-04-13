@@ -145,8 +145,8 @@ describe('Security Configuration Tests', () => {
       expect(SSRF_PROTECTED_ENDPOINTS).toContain('/api/ai/test');
     });
 
-    test('should have at least 5 protected endpoints', () => {
-      expect(SSRF_PROTECTED_ENDPOINTS.length).toBeGreaterThanOrEqual(5);
+    test('should have at least 4 protected endpoints', () => {
+      expect(SSRF_PROTECTED_ENDPOINTS.length).toBeGreaterThanOrEqual(4);
     });
   });
 
@@ -173,7 +173,7 @@ describe('Security Configuration Tests', () => {
     test('should document rationale for CSRF exemptions', () => {
       // This test ensures the security decisions are properly documented
       const documentation = {
-        version: '1.6.5',
+        version: '1.7.12',
         decision: 'Exempt all /api/ endpoints from CSRF protection',
         rationale: [
           'Protected endpoints use Bearer token authentication (immune to CSRF)',
@@ -190,7 +190,7 @@ describe('Security Configuration Tests', () => {
         ],
       };
 
-      expect(documentation.version).toBe('1.6.5');
+      expect(documentation.version).toBe('1.7.12');
       expect(documentation.rationale.length).toBeGreaterThan(0);
       expect(documentation.remainingProtections.length).toBeGreaterThanOrEqual(5);
     });

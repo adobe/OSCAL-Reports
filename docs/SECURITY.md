@@ -49,7 +49,7 @@
 - **Error handling**: Specific exceptions; generic user-facing messages.
 
 ### API & DoS (API4)
-- **Request limits**: Max 1000 controls per SAR/SSP request; 100KB metadata limit.
+- **Request limits**: Export payloads use configurable caps (default 10,000 controls, 512KB metadata); set `OSCAL_EXPORT_MAX_CONTROLS` and `OSCAL_EXPORT_MAX_METADATA_BYTES` for large catalogs. Same checks apply to CCM/Excel/PDF and async job routes.
 - **Rate limiting**: 100 requests per 15 minutes per IP.
 - **Timeout**: 240-second server timeout.
 

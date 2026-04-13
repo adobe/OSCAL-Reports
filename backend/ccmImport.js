@@ -180,6 +180,7 @@ function extractControls(ccmSheet) {
       
       // Responsible parties
       responsibleParty: safeGetCell(row, 'responsible party'),
+      adobeTeamResponsible: parseAdobeTeamResponsible(safeGetCell(row, 'adobe team responsible')),
       consumerGuidance: safeGetCell(row, 'consumer guidance'),
       controlOwner: safeGetCell(row, 'cloud provider responsibility'),
       
@@ -299,6 +300,17 @@ function parseJSON(value) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse Adobe Team Responsible cell: comma-separated labels, max 3 entries.
+ * @param {string} value - Cell value (e.g. "Adobe Corporate, Adobe SoC")
+ * @returns {string[]} Array of up to 3 non-empty trimmed strings
+ */
+function parseAdobeTeamResponsible(value) {
+  if (!value || typeof value !== 'string') return [];
+  const parts = value.split(',').map((s) => s.trim()).filter(Boolean);
+  return parts.slice(0, 3);
 }
 
 /**

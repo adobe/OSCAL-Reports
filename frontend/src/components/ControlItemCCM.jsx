@@ -25,7 +25,7 @@ const STATUS_OPTIONS = [
 const RISK_LEVELS = ['Critical', 'High', 'Medium', 'Low'];
 const TEST_FREQUENCIES = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annually', 'Ad-hoc'];
 
-function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls = [], organizationName = 'Organization' }) {
+function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls = [], organizationName = 'Organization', databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
   const { canEditImplementationStatus, canEditTestingMethod } = useAuth();
   const [activeTab, setActiveTab] = useState('implementation');
   const [fetchingData, setFetchingData] = useState({});
@@ -395,21 +395,53 @@ function ControlItemCCM({ control, isExpanded, onToggle, onUpdate, allControls =
 
             {activeTab === 'responsibility' && (
               <div className="control-form">
-                <div className="form-group">
-                  <label htmlFor={`responsible-party-${control.id}`}>Responsible Party</label>
-                  <select
-                    id={`responsible-party-${control.id}`}
-                    className="form-control"
-                    value={control.responsibleParty || ''}
-                    onChange={(e) => handleChange('responsibleParty', e.target.value)}
-                  >
-                    <option value="">Select...</option>
-                    <option value="Not Applicable">Not Applicable</option>
-                    <option value="Inherited from Service Provider">Inherited from Service Provider</option>
-                    <option value={`Implemented by ${organizationName}`}>Implemented by {organizationName}</option>
-                    <option value="Shared">Shared</option>
-                    <option value="Consumer Responsibility">Consumer Responsibility</option>
-                  </select>
+                <div className="form-row form-row-responsible-party">
+                  <div className="form-group form-group-responsible-party">
+                    <label htmlFor={`responsible-party-${control.id}`}>Responsible Party</label>
+                    <select
+                      id={`responsible-party-${control.id}`}
+                      className="form-control"
+                      value={control.responsibleParty || ''}
+                      onChange={(e) => handleChange('responsibleParty', e.target.value)}
+                    >
+                      <option value="">Select...</option>
+                      <option value="Not Applicable">Not Applicable</option>
+                      <option value="Inherited from Service Provider">Inherited from Service Provider</option>
+                      <option value={`Implemented by ${organizationName}`}>Implemented by {organizationName}</option>
+                      <option value="Shared">Shared</option>
+                      <option value="Consumer Responsibility">Consumer Responsibility</option>
+                    </select>
+                  </div>
+                  {databaseIntegrationEnabled && control.responsibleParty && (control.responsibleParty === `Implemented by ${organizationName}` || control.responsibleParty.toLowerCase().includes('implemented by adobe')) && (
+                    <>
+                      {[0, 1, 2].map((slotIndex) => {
+                        const arr = Array.isArray(control.adobeTeamResponsible) ? control.adobeTeamResponsible : [];
+                        const value = arr[slotIndex] ?? '';
+                        return (
+                          <div key={slotIndex} className="form-group form-group-adobe-slot">
+                            <label htmlFor={`adobe-team-slot-${slotIndex}-${control.id}`}>T{slotIndex + 1}</label>
+                            <select
+                              id={`adobe-team-slot-${slotIndex}-${control.id}`}
+                              className="form-control"
+                              value={value}
+                              onChange={(e) => {
+                                const newVal = e.target.value;
+                                const prev = Array.isArray(control.adobeTeamResponsible) ? control.adobeTeamResponsible : [];
+                                const newArr = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? ''];
+                                newArr[slotIndex] = newVal;
+                                handleChange('adobeTeamResponsible', newArr);
+                              }}
+                            >
+                              <option value="">—</option>
+                              {adobeTeamOptions.map((opt) => (
+                                <option key={String(opt.id) + opt.label} value={opt.label}>{opt.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
 
                 {control.responsibleParty === 'Consumer Responsibility' && (

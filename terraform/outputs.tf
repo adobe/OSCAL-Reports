@@ -1,8 +1,52 @@
 # Outputs for OSCAL deployment (AI via AWS Bedrock)
 
+data "aws_instances" "oscal_green_members" {
+  filter {
+    name   = "tag:Stack"
+    values = [var.project_name]
+  }
+  filter {
+    name   = "tag:OSCAL_PERSISTENT_ROLE"
+    values = ["green"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+
+  depends_on = [aws_autoscaling_group.oscal_green]
+}
+
+data "aws_instances" "oscal_blue_members" {
+  filter {
+    name   = "tag:Stack"
+    values = [var.project_name]
+  }
+  filter {
+    name   = "tag:OSCAL_PERSISTENT_ROLE"
+    values = ["blue"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+
+  depends_on = [aws_autoscaling_group.oscal_blue]
+}
+
 output "aws_region" {
   description = "AWS region (for scripts that need region)"
   value       = var.aws_region
+}
+
+output "oscal_ec2_iam_role_name" {
+  description = "IAM role attached to OSCAL EC2 (Green/Blue). Inline policies: S3, SSM, optional EBS/SSM-release; when RDS is enabled, Secrets Manager read for RDS master + rds-db:connect for IAM DB auth."
+  value       = aws_iam_role.oscal_instance.name
+}
+
+output "oscal_ec2_instance_profile_name" {
+  description = "EC2 instance profile on OSCAL launch templates. In console: EC2 → Instances → select instance → Security → IAM role shows this profile’s role."
+  value       = aws_iam_instance_profile.oscal.name
 }
 
 output "alb_arn" {
@@ -68,33 +112,48 @@ output "alb_target_group_blue_arn" {
 }
 
 output "oscal_green_instance_id" {
-  description = "EC2 instance ID for OSCAL Green (port 3019)"
-  value       = aws_instance.oscal_green.id
+  description = "EC2 instance ID for OSCAL Green ASG member (port 3019); null until the ASG launches an instance."
+  value       = length(data.aws_instances.oscal_green_members.ids) > 0 ? data.aws_instances.oscal_green_members.ids[0] : null
 }
 
 output "oscal_green_private_ip" {
-  description = "Private IP of OSCAL Green"
-  value       = aws_instance.oscal_green.private_ip
+  description = "Private IP of OSCAL Green (current ASG instance)"
+  value       = length(data.aws_instances.oscal_green_members.private_ips) > 0 ? data.aws_instances.oscal_green_members.private_ips[0] : null
 }
 
 output "oscal_green_public_ip" {
-  description = "Public IP of OSCAL Green (for SSH/deploy from laptop)"
-  value       = aws_instance.oscal_green.public_ip
+  description = "Public IP of OSCAL Green (for SSH/deploy when the instance has a public IP)"
+  value = length(data.aws_instances.oscal_green_members.public_ips) > 0 && data.aws_instances.oscal_green_members.public_ips[0] != "" ? data.aws_instances.oscal_green_members.public_ips[0] : null
 }
 
 output "oscal_blue_instance_id" {
-  description = "EC2 instance ID for OSCAL Blue (port 3020)"
-  value       = aws_instance.oscal_blue.id
+  description = "EC2 instance ID for OSCAL Blue ASG member (port 3020); null until the ASG launches an instance."
+  value       = length(data.aws_instances.oscal_blue_members.ids) > 0 ? data.aws_instances.oscal_blue_members.ids[0] : null
 }
 
 output "oscal_blue_private_ip" {
-  description = "Private IP of OSCAL Blue"
-  value       = aws_instance.oscal_blue.private_ip
+  description = "Private IP of OSCAL Blue (current ASG instance)"
+  value       = length(data.aws_instances.oscal_blue_members.private_ips) > 0 ? data.aws_instances.oscal_blue_members.private_ips[0] : null
 }
 
 output "oscal_blue_public_ip" {
-  description = "Public IP of OSCAL Blue (for SSH/deploy from laptop)"
-  value       = aws_instance.oscal_blue.public_ip
+  description = "Public IP of OSCAL Blue (for SSH/deploy when the instance has a public IP)"
+  value = length(data.aws_instances.oscal_blue_members.public_ips) > 0 && data.aws_instances.oscal_blue_members.public_ips[0] != "" ? data.aws_instances.oscal_blue_members.public_ips[0] : null
+}
+
+output "oscal_green_autoscaling_group_name" {
+  description = "Auto Scaling Group name for OSCAL Green (steady state: one instance)"
+  value       = aws_autoscaling_group.oscal_green.name
+}
+
+output "oscal_blue_autoscaling_group_name" {
+  description = "Auto Scaling Group name for OSCAL Blue (steady state: one instance)"
+  value       = aws_autoscaling_group.oscal_blue.name
+}
+
+output "oscal_post_boot_ssm_document_name" {
+  description = "SSM Command document name for periodic post-boot checks (optional S3 sync when oscal_ssm_release_s3_prefix is set)"
+  value       = aws_ssm_document.oscal_post_boot.name
 }
 
 output "s3_logs_bucket_name" {
@@ -115,4 +174,51 @@ output "vpc_cidr" {
 output "public_subnet_id" {
   description = "First public subnet ID"
   value       = aws_subnet.public[0].id
+}
+
+# --- RDS PostgreSQL (when create_rds_postgres = true) ---
+output "rds_endpoint" {
+  description = "RDS PostgreSQL hostname (use in Database Integration host when not using EC2 env injection)"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].address : null
+}
+
+output "rds_port" {
+  description = "RDS PostgreSQL port"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].port : null
+}
+
+output "rds_database_name" {
+  description = "Initial database name on RDS"
+  value       = var.create_rds_postgres ? var.rds_database_name : null
+}
+
+output "rds_iam_app_username" {
+  description = "PostgreSQL IAM auth user (matches OSCAL_DATABASE_USER on EC2)"
+  value       = var.create_rds_postgres ? var.rds_iam_app_username : null
+}
+
+output "rds_dbi_resource_id" {
+  description = "RDS DBI resource id (must match rds-db:connect IAM policy; compare to RDS console Configuration → Resource ID)"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].resource_id : null
+}
+
+output "rds_master_secret_arn" {
+  description = "Secrets Manager ARN for RDS master password (bootstrap only; do not embed in app config)"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].master_user_secret[0].secret_arn : null
+  sensitive   = true
+}
+
+output "rds_master_username" {
+  description = "RDS master PostgreSQL user (bootstrap psql -U; default oscalmaster)"
+  value       = var.create_rds_postgres ? var.rds_master_username : null
+}
+
+output "rds_private_subnet_cidrs" {
+  description = "CIDR blocks of subnets where RDS runs (private; no IGW route). OSCAL EC2 egress to 5432 is limited to these."
+  value       = var.create_rds_postgres ? aws_subnet.private_rds[*].cidr_block : []
+}
+
+output "oscal_pass_secrets_sync_secret_arn" {
+  description = "Secrets Manager ARN for Pass vault bundle sync (ec2_automation). Null when oscal_pass_secrets_sync_enabled is false."
+  value       = var.oscal_pass_secrets_sync_enabled ? aws_secretsmanager_secret.oscal_pass_sync[0].arn : null
 }

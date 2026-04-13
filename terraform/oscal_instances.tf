@@ -1,9 +1,40 @@
 # OSCAL Green and Blue instances (always on), ports 3019 and 3020
-# AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 (when in map), 3) native Amazon Linux 2023 fallback.
+# AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 / EMR (when resolved), 3) native Amazon Linux 2023 fallback.
 
 locals {
-  oscal_ami_id     = var.oscal_ami_id != null ? var.oscal_ami_id : (var.use_image_factory_ami && local.image_factory_ami_id != null ? local.image_factory_ami_id : local.default_fallback_ami_id)
-  oscal_ami_id_ok  = local.oscal_ami_id != null && local.oscal_ami_id != ""
+  oscal_ami_id    = var.oscal_ami_id != null ? var.oscal_ami_id : (var.use_image_factory_ami && local.image_factory_ami_id != null ? local.image_factory_ami_id : local.default_fallback_ami_id)
+  oscal_ami_id_ok = local.oscal_ami_id != null && local.oscal_ami_id != ""
+
+  # Extra gp3 volumes + /opt/oscal mount (direct-run only); Docker mode uses root only.
+  oscal_persistent_ebs = !var.run_oscal_via_docker && var.oscal_persistent_ebs_enabled
+
+  oscal_mount_snippet_green = local.oscal_persistent_ebs ? templatefile("${path.module}/templates/oscal-persistent-volume-mount.sh.tftpl", {
+    oscal_role  = "green"
+    stack_name  = var.project_name
+    aws_region  = var.aws_region
+  }) : ""
+
+  oscal_mount_snippet_blue = local.oscal_persistent_ebs ? templatefile("${path.module}/templates/oscal-persistent-volume-mount.sh.tftpl", {
+    oscal_role  = "blue"
+    stack_name  = var.project_name
+    aws_region  = var.aws_region
+  }) : ""
+
+  # SSM optional release sync (prefix inside logs bucket; trimmed for IAM and scripts)
+  oscal_ssm_release_s3_prefix_trimmed = var.oscal_ssm_release_s3_prefix != null ? trimsuffix(trimprefix(var.oscal_ssm_release_s3_prefix, "/"), "/") : ""
+  oscal_ssm_release_s3_read           = local.oscal_ssm_release_s3_prefix_trimmed != ""
+}
+
+locals {
+  rds_bootstrap_fragment = var.create_rds_postgres ? templatefile("${path.module}/templates/oscal-rds-bootstrap.sh.tftpl", {
+    aws_region        = var.aws_region
+    rds_address       = aws_db_instance.oscal[0].address
+    rds_port          = tostring(aws_db_instance.oscal[0].port)
+    db_name           = var.rds_database_name
+    master_username   = var.rds_master_username
+    iam_db_username   = var.rds_iam_app_username
+    master_secret_arn = aws_db_instance.oscal[0].master_user_secret[0].secret_arn
+  }) : ""
 }
 
 # User data: either Docker/podman (run_oscal_via_docker = true) or direct run with local EBS data (default). RHEL only.
@@ -30,6 +61,7 @@ EOT
   oscal_direct_user_data_green = <<-EOT
 #!/bin/bash
 set -e
+${local.oscal_mount_snippet_green}
 PORT="3019"
 DATA_DIR="/opt/oscal/data"
 SVC_USER="svc_ams-oscal"
@@ -80,6 +112,8 @@ SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
 
+${local.rds_bootstrap_fragment}
+
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
 systemctl start oscal-reporter.service
@@ -88,6 +122,7 @@ EOT
   oscal_direct_user_data_blue = <<-EOT
 #!/bin/bash
 set -e
+${local.oscal_mount_snippet_blue}
 PORT="3020"
 DATA_DIR="/opt/oscal/data"
 SVC_USER="svc_ams-oscal"
@@ -139,6 +174,8 @@ SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
 
+${local.rds_bootstrap_fragment}
+
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
 systemctl start oscal-reporter.service
@@ -149,85 +186,4 @@ EOT
   oscal_user_data_blue  = var.run_oscal_via_docker ? local.oscal_user_data_blue_docker : local.oscal_direct_user_data_blue
 }
 
-resource "aws_instance" "oscal_green" {
-  lifecycle {
-    precondition {
-      condition     = local.oscal_ami_id_ok
-      error_message = "OSCAL AMI could not be resolved. Set oscal_ami_id, or use_image_factory_ami = true with Image Factory access, or use a supported region for Amazon Linux (see image_factory_ami.tf)."
-    }
-    # Avoid "collecting instance settings: empty result" when replacing (create new before destroying old)
-    create_before_destroy = true
-  }
-  ami                    = local.oscal_ami_id
-  instance_type          = var.instance_type
-  key_name               = var.key_name
-  subnet_id              = aws_subnet.public[0].id
-  vpc_security_group_ids = [aws_security_group.oscal.id]
-  iam_instance_profile   = aws_iam_instance_profile.oscal.name
-
-  root_block_device {
-    volume_size = 30
-    volume_type = "gp3"
-  }
-
-  user_data = base64encode(local.oscal_user_data_green)
-
-  metadata_options {
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 1
-  }
-
-  tags = {
-    Name   = "${var.project_name}-oscal-green"
-    Port   = "3019"
-  }
-
-  depends_on = [aws_iam_instance_profile.oscal]
-}
-
-resource "aws_instance" "oscal_blue" {
-  lifecycle {
-    precondition {
-      condition     = local.oscal_ami_id_ok
-      error_message = "OSCAL AMI could not be resolved. Set oscal_ami_id, or use_image_factory_ami = true with Image Factory access, or use a supported region for Amazon Linux (see image_factory_ami.tf)."
-    }
-    create_before_destroy = true
-  }
-  ami                    = local.oscal_ami_id
-  instance_type          = var.instance_type
-  key_name               = var.key_name
-  subnet_id              = aws_subnet.public[1].id
-  vpc_security_group_ids = [aws_security_group.oscal.id]
-  iam_instance_profile   = aws_iam_instance_profile.oscal.name
-
-  root_block_device {
-    volume_size = 30
-    volume_type = "gp3"
-  }
-
-  user_data = base64encode(local.oscal_user_data_blue)
-
-  metadata_options {
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 1
-  }
-
-  tags = {
-    Name   = "${var.project_name}-oscal-blue"
-    Port   = "3020"
-  }
-
-  depends_on = [aws_iam_instance_profile.oscal]
-}
-
-resource "aws_lb_target_group_attachment" "green" {
-  target_group_arn = aws_lb_target_group.green.arn
-  target_id       = aws_instance.oscal_green.id
-  port            = 3019
-}
-
-resource "aws_lb_target_group_attachment" "blue" {
-  target_group_arn = aws_lb_target_group.blue.arn
-  target_id       = aws_instance.oscal_blue.id
-  port            = 3020
-}
+# EC2 instances and ALB attachments are defined in oscal_asg_ebs.tf (Auto Scaling + Launch Template + persistent EBS).

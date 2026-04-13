@@ -1,6 +1,6 @@
 # Terraform: OSCAL on AWS
 
-This directory contains Terraform to provision the AWS architecture for the OSCAL Report Generator (ALB, Green/Blue OSCAL instances, S3). AI is provided via AWS Bedrock (no self-hosted Ollama).
+This directory contains Terraform to provision the AWS architecture for the OSCAL Report Generator (ALB, Green/Blue OSCAL **Auto Scaling Groups**, S3). AI is provided via AWS Bedrock (no self-hosted Ollama).
 
 **Usage and variables:** See [docs/AWS_TERRAFORM.md](../docs/AWS_TERRAFORM.md).
 
@@ -24,13 +24,20 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `vpc.tf` – VPC, subnets, internet gateway
 - `security_groups.tf` – ALB, OSCAL security groups
 - `alb.tf` – Application Load Balancer and target groups (Green 3019, Blue 3020)
-- `oscal_instances.tf` – Green and Blue EC2 instances
+- `oscal_instances.tf` – Green/Blue user data (Node/Docker), locals for persistent EBS snippets
+- `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (size 1), optional gp3 volumes, ALB attachments
+- `oscal_ssm.tf` – SSM Command document and optional periodic association (post-boot checks / optional S3 sync)
+- `rds.tf` – Amazon RDS PostgreSQL (Database Integration; IAM DB auth) when `create_rds_postgres = true` (default **true**; set `false` in `terraform.tfvars` to skip RDS)
 - `s3.tf` – S3 bucket for logs, config, users (Public Access Block for PCL rule `custom-s3-pab-check`)
-- `iam.tf` – OSCAL instance profile (S3, SSM)
+- `oscal_pass_sync_secret.tf` – Secrets Manager JSON bundle for Pass vault sync (`oscal_pass_secrets_sync_enabled`; output `oscal_pass_secrets_sync_secret_arn` for deploy)
+- `iam.tf` – OSCAL instance profile (S3, SSM, optional Pass-sync secret Get/Put, optional RDS Secrets Manager + `rds-db:connect`)
+- `templates/oscal-rds-bootstrap.sh.tftpl` – EC2 user_data fragment: IAM DB user + systemd `OSCAL_DATABASE_*` env vars
 
-Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.example`) and state under `envs/<env>/`.
+Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.example`) and state under `envs/<env>/`. **Every** shared root `*.tf` (including `rds.tf`, `oscal_asg_ebs.tf`, `oscal_ssm.tf`) must be **symlinked** into each env directory; `run-with-aws-pass.sh` defaults to `terraform/envs/aws4403`, so a missing symlink omits that file from the module and causes errors such as undeclared `aws_db_instance.oscal`.
 
-**Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js and mounts config/users from S3 (destroy/rebuild instances without data loss). After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` in that env’s `terraform.tfvars`.
+**Image Factory EMR (InfraSec):** To list candidate **Amazon Linux 2023 EMR** AMIs launchable in your account, run [scripts/list-emr-candidate-amis.sh](scripts/list-emr-candidate-amis.sh) with AWS credentials (see [docs/IMAGE_FACTORY.md](../docs/IMAGE_FACTORY.md) and [envs/aws4403/README.md](envs/aws4403/README.md) § SSAAU-169).
+
+**Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js; config/users live under **`/opt/oscal/data`** on the instance (persistent gp3 at **`/opt/oscal`** when enabled) with **ec2_automation** backups to S3. After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` in that env’s `terraform.tfvars`.
 
 **Credentials from Pass (default aws4403):** With [Pass](https://www.passwordstore.org/) and credentials in `AWS/AMS_4403-STG`:
 
@@ -41,7 +48,7 @@ Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.
 
 For AWS4379 Sandbox: `AWS_PASS_ENTRY="AWS/AWS4379 Sandbox" TERRAFORM_DIR=$PWD/terraform/envs/aws4379 ./run-with-aws-pass.sh plan`
 
-**Tagging and stack lifecycle:** Every resource created by this Terraform stack is tagged via the provider `default_tags` with: `Project`, `Environment`, `ManagedBy`, `Stack`, plus any `common_tags` you set in `terraform.tfvars` (e.g. `Team`, `Account`). In any AWS account you can:
+**Tagging and stack lifecycle:** Every resource created by this Terraform stack is tagged via the provider `default_tags` with: `Project`, `Environment`, `ManagedBy`, `Stack`, **`Service ID`** (default `602844`; override with `adobe_service_id_tag` in `terraform.tfvars`), plus any `common_tags` you set in `terraform.tfvars` (e.g. `Team`, `Account`). In any AWS account you can:
 
 - **Find all stack resources:** In the console, use Tag Editor or Resource Groups and filter by `Stack = <project_name>` (e.g. `oscal-reports`) or by `Project` and `Environment`.
 - **Add the stack:** From the correct env directory (e.g. `terraform/envs/aws4403`) run `terraform apply`; all created resources are tagged consistently.
@@ -92,11 +99,15 @@ Security groups have `revoke_rules_on_delete = true` so Terraform revokes the gr
 If `terraform apply` fails with `DuplicateListener: A listener already exists on this port` when adding `alb_ssl_certificate_arn` (switching to HTTPS), the ALB already has a listener on port 80 and Terraform is trying to create the HTTP→HTTPS redirect listener. Import the existing listener into state, then re-run apply:
 
 ```bash
-./scripts/debug/import-alb-http-redirect-listener.sh
+# From your env directory (e.g. terraform/envs/aws4403), with AWS credentials set:
+region=$(terraform output -raw aws_region)
+alb_arn=$(terraform output -raw alb_arn)
+listener_arn=$(aws elbv2 describe-listeners --load-balancer-arn "$alb_arn" --region "$region" --query "Listeners[?Port==\`80\`].ListenerArn" --output text)
+terraform import 'aws_lb_listener.http_redirect[0]' "$listener_arn"
 ```
 
-From the env directory (e.g. `terraform/envs/aws4403`), run `terraform apply` again. AWS credentials must be set (Pass entry `AWS/AMS_4403-STG` or env).
+Then run `terraform plan` and `terraform apply` again. AWS credentials must be set (Pass entry `AWS/AMS_4403-STG` or env).
 
 ---
 
-**Version:** 1.7.10 · **Last updated:** March 2026
+**Version:** 1.7.12 · **Last updated:** April 2026
