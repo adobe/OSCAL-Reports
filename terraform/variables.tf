@@ -25,6 +25,13 @@ variable "project_name" {
   default     = "AMS-oscal-reports"
 }
 
+# Applied on all resources via provider default_tags (merge with common_tags).
+variable "adobe_service_id_tag" {
+  description = "Value for AWS default tag key \"Service ID\" (Adobe CMDB / chargeback). Propagates to resources created by this stack."
+  type        = string
+  default     = "602844"
+}
+
 # Networking
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
@@ -317,6 +324,13 @@ variable "rds_additional_ingress_ipv4_cidr_blocks" {
     condition     = !contains(var.rds_additional_ingress_ipv4_cidr_blocks, "0.0.0.0/0")
     error_message = "rds_additional_ingress_ipv4_cidr_blocks must not contain 0.0.0.0/0 (no open internet to RDS)."
   }
+}
+
+# Pass vault ↔ Secrets Manager (ec2_automation); single bundle secret + instance IAM
+variable "oscal_pass_secrets_sync_enabled" {
+  description = "When true, create aws_secretsmanager_secret for OSCAL Pass sync and grant EC2 instance role Get/Put/Describe on it. Set false to skip secret creation (e.g. account not ready)."
+  type        = bool
+  default     = true
 }
 
 # Tags

@@ -27,6 +27,7 @@ function Settings() {
   const [publishedSoaUrl, setPublishedSoaUrl] = useState('');
   const [customUrlInput, setCustomUrlInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isTestingGateway, setIsTestingGateway] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saveMessage, setSaveMessage] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -278,32 +279,49 @@ function Settings() {
 
   const handleTestConnection = async (provider) => {
     const gateway = gateways[provider];
-    if (!gateway.enabled || !gateway.url) {
-      alert(`Please enable and configure ${provider.toUpperCase()} API Gateway first`);
+    const url = (gateway.url || '').trim();
+    if (!url) {
+      setSaveMessage(`⚠️ Enter an API Gateway URL to test (nothing is saved until you click Save Settings).`);
+      setTimeout(() => setSaveMessage(''), 6000);
+      return;
+    }
+    try {
+      // eslint-disable-next-line no-new
+      new URL(url);
+    } catch {
+      setSaveMessage(`❌ Invalid URL for ${provider.toUpperCase()} gateway`);
+      setTimeout(() => setSaveMessage(''), 6000);
       return;
     }
 
     try {
-      setSaveMessage(`🔄 Testing ${provider.toUpperCase()} connection...`);
+      setIsTestingGateway(true);
+      setSaveMessage(`🔄 Testing ${provider.toUpperCase()} connection using the URL in this form…`);
       const response = await fetch('/api/proxy-fetch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: gateway.url,
+          url,
           method: 'GET'
         })
       });
 
       const result = await response.json();
       if (result.success) {
-        setSaveMessage(`✅ ${provider.toUpperCase()} connection successful!`);
+        setSaveMessage(
+          gateway.enabled
+            ? `✅ ${provider.toUpperCase()} connection successful. You can Save Settings to persist this URL.`
+            : `✅ ${provider.toUpperCase()} connection successful. Enable the gateway and Save when you want to use it in production.`
+        );
       } else {
         setSaveMessage(`❌ ${provider.toUpperCase()} connection failed: ${result.error}`);
       }
-      setTimeout(() => setSaveMessage(''), 5000);
+      setTimeout(() => setSaveMessage(''), 8000);
     } catch (error) {
       setSaveMessage(`❌ Error testing connection: ${error.message}`);
-      setTimeout(() => setSaveMessage(''), 5000);
+      setTimeout(() => setSaveMessage(''), 8000);
+    } finally {
+      setIsTestingGateway(false);
     }
   };
 
@@ -328,7 +346,7 @@ function Settings() {
     <div className="settings-container">
       <div className="settings-header">
         <h2>🌐 API Gateways and Information Catalogue Store</h2>
-        <p className="settings-subtitle">Configure AWS and Azure API Gateway endpoints for automated control monitoring</p>
+        <p className="settings-subtitle">Configure AWS and Azure API Gateway endpoints for automated control monitoring. Use <strong>Test Connection</strong> with the URL in the form (no save required); save when you want to persist settings.</p>
         <p className="settings-subtitle" style={{ fontSize: '0.85rem', color: '#718096', marginTop: '0.5rem' }}>
           💾 <strong>Server-side storage:</strong> Settings are saved on the server and persist across deployments
         </p>
@@ -422,7 +440,7 @@ function Settings() {
                 value={gateways.aws.url}
                 onChange={(e) => handleGatewayChange('aws', 'url', e.target.value)}
                 placeholder="https://api.execute-api.ap-southeast-2.amazonaws.com/prod"
-                disabled={!gateways.aws.enabled || isReadOnly}
+                disabled={isReadOnly}
               />
             </div>
 
@@ -435,7 +453,7 @@ function Settings() {
                 className="form-control"
                 value={gateways.aws.region}
                 onChange={(e) => handleGatewayChange('aws', 'region', e.target.value)}
-                disabled={!gateways.aws.enabled || isReadOnly}
+                disabled={isReadOnly}
               >
                 <option value="us-east-1">US East (N. Virginia)</option>
                 <option value="us-west-2">US West (Oregon)</option>
@@ -450,9 +468,9 @@ function Settings() {
               <button 
                 className="btn-primary" 
                 onClick={() => handleTestConnection('aws')}
-                disabled={!gateways.aws.enabled || !gateways.aws.url || isReadOnly}
+                disabled={!gateways.aws.url?.trim() || isReadOnly || isTestingGateway}
               >
-                🔍 Test Connection
+                {isTestingGateway ? '⏳ Testing…' : '🔍 Test Connection'}
               </button>
               <button 
                 className="btn-danger" 
@@ -501,7 +519,7 @@ function Settings() {
                 value={gateways.azure.url}
                 onChange={(e) => handleGatewayChange('azure', 'url', e.target.value)}
                 placeholder="https://your-api.azure-api.net"
-                disabled={!gateways.azure.enabled || isReadOnly}
+                disabled={isReadOnly}
               />
             </div>
 
@@ -509,9 +527,9 @@ function Settings() {
               <button 
                 className="btn-primary" 
                 onClick={() => handleTestConnection('azure')}
-                disabled={!gateways.azure.enabled || !gateways.azure.url || isReadOnly}
+                disabled={!gateways.azure.url?.trim() || isReadOnly || isTestingGateway}
               >
-                🔍 Test Connection
+                {isTestingGateway ? '⏳ Testing…' : '🔍 Test Connection'}
               </button>
               <button 
                 className="btn-danger" 
@@ -592,7 +610,7 @@ function Settings() {
             <button 
               className="btn-primary btn-large" 
               onClick={handleSave}
-              disabled={isSaving || isReadOnly}
+              disabled={isSaving || isTestingGateway || isReadOnly}
             >
               {isSaving ? '⏳ Saving...' : (isReadOnly ? '🔒 Read-Only (Admin Access Required)' : '💾 Save Settings')}
             </button>
@@ -606,8 +624,8 @@ function Settings() {
             <h4>1. Configure Your API Gateway</h4>
             <p>Set up AWS API Gateway or Azure API Management with appropriate authentication (IAM, Cognito, Azure AD, API keys, etc.)</p>
 
-            <h4>2. Enable and Enter Gateway URL</h4>
-            <p>Toggle on the provider you want to use and enter your API Gateway base URL above</p>
+            <h4>2. Enter and test your gateway URL</h4>
+            <p>Enter the API Gateway base URL and use Test Connection (no save required). Toggle the provider on and save when you want production routing to use that gateway.</p>
 
             <h4>3. Use in Controls</h4>
             <p>When adding API URLs to controls, the system will automatically route requests through your configured gateway</p>

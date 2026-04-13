@@ -35,6 +35,12 @@ const OAUTH_CLIENT_SECRET_ENTRIES = ['OSCAL/sso-oauth-okta-client-secret', 'OSCA
  * @param {string} entry - Pass entry name (e.g. OSCAL/smtp-password)
  * @returns {string}
  */
+/** Strip UTF-8 BOM and trim (pass / editors sometimes leave BOM on first line). */
+function normalizePassValue(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/^\uFEFF/, '').trim();
+}
+
 export function passShow(entry) {
   if (PASS_DISABLED) {
     return '';
@@ -56,9 +62,9 @@ export function passShow(entry) {
     const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return '';
     if (lines.length > 1 && OAUTH_CLIENT_SECRET_ENTRIES.includes(entry)) {
-      return lines[lines.length - 1];
+      return normalizePassValue(lines[lines.length - 1]);
     }
-    return lines[0];
+    return normalizePassValue(lines[0]);
   } catch (err) {
     if (err.status !== 1 && err.code !== 'ENOENT') {
       console.warn(`[pass] Failed to resolve entry "${entry}": ${err.message}`);

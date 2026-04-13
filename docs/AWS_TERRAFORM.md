@@ -353,7 +353,8 @@ The ALB returns **503 Service Temporarily Unavailable** when the target group th
   From the repo root (with Terraform applied and AWS credentials as for Terraform):
 
   ```bash
-  ./scripts/debug/check-alb-target-health.sh
+  # Example: list target health (replace TG_ARN from EC2 → Target Groups, or from terraform state)
+  aws elbv2 describe-target-health --target-group-arn "<TARGET_GROUP_ARN>" --region "<AWS_REGION>"
   ```
 
   Or in the AWS Console: **EC2 → Target Groups →** select the Green/Blue target groups and open the **Targets** tab to see Healthy/Unhealthy.

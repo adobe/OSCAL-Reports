@@ -9,7 +9,7 @@
 # Usage: ./bump_version.sh [major|minor|patch] "changelog message"
 #        ./bump_version.sh set VERSION "changelog message"
 # Example: ./bump_version.sh minor "Add new AI integration features"
-# Example: ./bump_version.sh set 1.7.11 "Release 1.7.11"
+# Example: ./bump_version.sh set 1.7.12 "Release 1.7.12"
 #
 # This script:
 # - Updates version in all 3 package.json files (root, backend, frontend)
@@ -189,7 +189,7 @@ if [ $# -lt 2 ]; then
   print_error "Usage: ./bump_version.sh [major|minor|patch] \"changelog message\""
   print_error "        ./bump_version.sh set VERSION \"changelog message\""
   print_info "Example: ./bump_version.sh minor \"Add new features\""
-  print_info "Example: ./bump_version.sh set 1.7.11 \"Release 1.7.11\""
+  print_info "Example: ./bump_version.sh set 1.7.12 \"Release 1.7.12\""
   exit 1
 fi
 

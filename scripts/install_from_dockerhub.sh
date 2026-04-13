@@ -9,7 +9,7 @@
 # License: GPL-3.0-or-later
 #
 # Usage:
-#   ./deploy_from_dockerhub.sh [--force] [--skip-backup]
+#   ./install_from_dockerhub.sh [--force] [--skip-backup]
 #
 # Options:
 #   --force         Force deployment even if lock file exists
@@ -1001,7 +1001,7 @@ if [ -n "$BACKUP_IMAGE_TAG" ]; then
   echo "    docker stop $CONTAINER_NAME"
   echo "    docker rm $CONTAINER_NAME"
   echo "    docker tag $BACKUP_IMAGE_TAG $DOCKER_IMAGE"
-  echo "    ./deploy_from_dockerhub.sh"
+  echo "    ./install_from_dockerhub.sh"
 fi
 echo ""
 

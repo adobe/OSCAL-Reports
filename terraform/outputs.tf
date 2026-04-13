@@ -39,6 +39,16 @@ output "aws_region" {
   value       = var.aws_region
 }
 
+output "oscal_ec2_iam_role_name" {
+  description = "IAM role attached to OSCAL EC2 (Green/Blue). Inline policies: S3, SSM, optional EBS/SSM-release; when RDS is enabled, Secrets Manager read for RDS master + rds-db:connect for IAM DB auth."
+  value       = aws_iam_role.oscal_instance.name
+}
+
+output "oscal_ec2_instance_profile_name" {
+  description = "EC2 instance profile on OSCAL launch templates. In console: EC2 → Instances → select instance → Security → IAM role shows this profile’s role."
+  value       = aws_iam_instance_profile.oscal.name
+}
+
 output "alb_arn" {
   description = "ARN of the Application Load Balancer (for scripts and import)"
   value       = aws_lb.main.arn
@@ -187,13 +197,28 @@ output "rds_iam_app_username" {
   value       = var.create_rds_postgres ? var.rds_iam_app_username : null
 }
 
+output "rds_dbi_resource_id" {
+  description = "RDS DBI resource id (must match rds-db:connect IAM policy; compare to RDS console Configuration → Resource ID)"
+  value       = var.create_rds_postgres ? aws_db_instance.oscal[0].resource_id : null
+}
+
 output "rds_master_secret_arn" {
   description = "Secrets Manager ARN for RDS master password (bootstrap only; do not embed in app config)"
   value       = var.create_rds_postgres ? aws_db_instance.oscal[0].master_user_secret[0].secret_arn : null
   sensitive   = true
 }
 
+output "rds_master_username" {
+  description = "RDS master PostgreSQL user (bootstrap psql -U; default oscalmaster)"
+  value       = var.create_rds_postgres ? var.rds_master_username : null
+}
+
 output "rds_private_subnet_cidrs" {
   description = "CIDR blocks of subnets where RDS runs (private; no IGW route). OSCAL EC2 egress to 5432 is limited to these."
   value       = var.create_rds_postgres ? aws_subnet.private_rds[*].cidr_block : []
+}
+
+output "oscal_pass_secrets_sync_secret_arn" {
+  description = "Secrets Manager ARN for Pass vault bundle sync (ec2_automation). Null when oscal_pass_secrets_sync_enabled is false."
+  value       = var.oscal_pass_secrets_sync_enabled ? aws_secretsmanager_secret.oscal_pass_sync[0].arn : null
 }

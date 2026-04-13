@@ -84,7 +84,7 @@ if [ "$FROM_BACKUP" = true ]; then
   # Find latest backup dir (by mtime) that has a volume tarball
   if [ ! -d "$BACKUPS_BASE" ]; then
     print_error "No backups directory found: $BACKUPS_BASE"
-    echo "  Deploy backups are created when you run scripts/deploy_from_dockerhub.sh from the Blue directory."
+    echo "  Deploy backups are created when you run scripts/install_from_dockerhub.sh from the Blue directory."
     exit 1
   fi
 
