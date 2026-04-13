@@ -28,25 +28,23 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
       
-      - name: 📝 Extract changelog for this version
+      - name: 📝 Write release notes file for this version
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          
-          # Extract the section for this version from CHANGELOG.md (docs/ or root)
+          NOTES="${RUNNER_TEMP}/release-notes.md"
           if [ -f docs/CHANGELOG.md ]; then
-            CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" docs/CHANGELOG.md | sed '$d')
-            echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGELOG" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            sed -n "/## \\[${VERSION}\\]/,/## \\[/p" docs/CHANGELOG.md | sed '$d' > "$NOTES"
           elif [ -f CHANGELOG.md ]; then
-            CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | sed '$d')
-            echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGELOG" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            sed -n "/## \\[${VERSION}\\]/,/## \\[/p" CHANGELOG.md | sed '$d' > "$NOTES"
           else
-            echo "changelog=Release $VERSION" >> $GITHUB_OUTPUT
+            echo "Release ${VERSION}" > "$NOTES"
           fi
+          if [ ! -s "$NOTES" ]; then
+            echo "Release ${VERSION}" > "$NOTES"
+          fi
+          echo "path=$NOTES" >> "$GITHUB_OUTPUT"
       
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
@@ -94,7 +92,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ steps.version.outputs.version }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          body_path: ${{ steps.changelog.outputs.path }}
           draft: false
           prerelease: false
           token: ${{ github.token }}
