@@ -12,7 +12,9 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -89,18 +91,17 @@ jobs:
               $ROOT_EXTRAS
       
       - name: 🎉 Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ steps.version.outputs.version }}
           body: ${{ steps.changelog.outputs.changelog }}
           draft: false
           prerelease: false
+          token: ${{ github.token }}
           files: |
             oscal-backend-${{ steps.version.outputs.version }}.tar.gz
             oscal-frontend-${{ steps.version.outputs.version }}.tar.gz
             oscal-report-generator-${{ steps.version.outputs.version }}.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: 📢 Release notification
         run: |
