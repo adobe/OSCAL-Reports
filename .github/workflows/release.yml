@@ -26,7 +26,7 @@ jobs:
         id: version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
       
       - name: 📝 Write release notes file for this version
@@ -103,7 +103,6 @@ jobs:
           body_path: ${{ steps.changelog.outputs.path }}
           draft: false
           prerelease: false
-          token: ${{ github.token }}
           files: |
             oscal-backend-${{ steps.version.outputs.version }}.tar.gz
             oscal-frontend-${{ steps.version.outputs.version }}.tar.gz
