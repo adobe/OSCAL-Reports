@@ -30,6 +30,7 @@ function DatabaseIntegration({ embedded = false }) {
   const { canManageUsers, getAuthConfig } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState('');
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [lastSaved, setLastSaved] = useState(null);
@@ -44,12 +45,18 @@ function DatabaseIntegration({ embedded = false }) {
       setLoading(true);
       const response = await axios.get('/api/settings', getAuthConfig());
       const cfg = response.data.databaseConfig || defaultDatabaseConfig;
+      const authMode = cfg.authMode === 'iam' ? 'iam' : 'password';
+      let sslMode = cfg.sslMode || 'disable';
+      if (authMode === 'iam' && sslMode === 'disable') {
+        sslMode = 'require';
+      }
       setDatabaseConfig({
         ...defaultDatabaseConfig,
         ...cfg,
         port: cfg.port ?? 5432,
         connectionTimeout: cfg.connectionTimeout ?? 10000,
-        authMode: cfg.authMode === 'iam' ? 'iam' : 'password'
+        authMode,
+        sslMode
       });
       if (response.data.lastModified) {
         setLastSaved(response.data.lastModified);
@@ -108,25 +115,42 @@ function DatabaseIntegration({ embedded = false }) {
   };
 
   const handleTestConnection = async () => {
-    if (!databaseConfig.enabled || !databaseConfig.host || !databaseConfig.database) {
-      setMessage('Enable integration and set Host and Database name, then save before testing.');
+    const host = (databaseConfig.host || '').trim();
+    const database = (databaseConfig.database || '').trim();
+    if (!host || !database) {
+      setMessage('Enter Host and Database name, then use Test connection (nothing is saved until you click Save).');
       return;
     }
     try {
-      setSaving(true);
-      setMessage('Testing connection...');
-      const response = await axios.post('/api/database/test-connection', {}, getAuthConfig());
+      setTesting(true);
+      setMessage('Testing connection using values in this form…');
+      const testPayload = {
+        databaseConfig: {
+          ...databaseConfig,
+          host,
+          database,
+          password:
+            databaseConfig.password === MASK || databaseConfig.password === '********'
+              ? ''
+              : databaseConfig.password
+        }
+      };
+      const response = await axios.post('/api/database/test-connection', testPayload, getAuthConfig());
       if (response.data.success) {
-        setMessage('Database connection test successful');
+        setMessage(
+          databaseConfig.enabled
+            ? 'Database connection test successful. You can Save configuration to persist these settings.'
+            : 'Database connection test successful. Enable integration and Save when you are ready to use this database.'
+        );
       } else {
         setMessage('Connection test failed: ' + (response.data.error || 'Unknown error'));
       }
-      setTimeout(() => setMessage(''), 5000);
+      setTimeout(() => setMessage(''), 8000);
     } catch (error) {
       setMessage('Connection test failed: ' + (error.response?.data?.error || error.message));
       setTimeout(() => setMessage(''), 8000);
     } finally {
-      setSaving(false);
+      setTesting(false);
     }
   };
 
@@ -142,7 +166,7 @@ function DatabaseIntegration({ embedded = false }) {
         <div className="database-integration-header">
           <h3>Database Integration</h3>
           <p className="section-description">
-            Configure PostgreSQL or AWS RDS for storing custom and organisational context fields. Connection can be tested after saving.
+            Configure PostgreSQL or AWS RDS for storing custom and organisational context fields. Use <strong>Test connection</strong> with the values in this form (no save required). Save only when you want to persist settings on the server.
           </p>
         </div>
       )}
@@ -154,7 +178,7 @@ function DatabaseIntegration({ embedded = false }) {
       )}
 
       {message && (
-        <div className={`message ${message.startsWith('Database connection test successful') || message.startsWith('Configuration saved') || (message.includes('saved successfully') && !message.includes('Failed')) ? 'success' : message.includes('Read-only') ? 'warning' : 'error'}`}>
+        <div className={`message ${message.includes('connection test successful') || message.startsWith('Configuration saved') || (message.includes('saved successfully') && !message.includes('Failed')) ? 'success' : message.includes('Read-only') ? 'warning' : 'error'}`}>
           {message}
         </div>
       )}
@@ -188,7 +212,7 @@ function DatabaseIntegration({ embedded = false }) {
           <small>When enabled, custom fields and organisational context can be stored in the configured database (PostgreSQL or AWS RDS).</small>
         </div>
 
-        {databaseConfig.enabled && (
+        {(databaseConfig.enabled || canEdit) && (
           <>
             <div className="form-group">
               <label>Authentication</label>
@@ -198,7 +222,8 @@ function DatabaseIntegration({ embedded = false }) {
                   setDatabaseConfig({
                     ...databaseConfig,
                     authMode: e.target.value,
-                    password: e.target.value === 'iam' ? '' : databaseConfig.password
+                    password: e.target.value === 'iam' ? '' : databaseConfig.password,
+                    sslMode: e.target.value === 'iam' ? 'require' : databaseConfig.sslMode
                   })
                 }
                 disabled={!canEdit}
@@ -307,10 +332,10 @@ function DatabaseIntegration({ embedded = false }) {
               <small>Default: 10000 (10 seconds).</small>
             </div>
 
-            {databaseConfig.enabled && (
+            {(databaseConfig.host || '').trim() && (databaseConfig.database || '').trim() && (
               <div className="config-actions">
-                <button type="button" className="btn-test" onClick={handleTestConnection} disabled={!canEdit || saving}>
-                  Test connection
+                <button type="button" className="btn-test" onClick={handleTestConnection} disabled={!canEdit || saving || testing}>
+                  {testing ? 'Testing…' : 'Test connection'}
                 </button>
               </div>
             )}
@@ -318,7 +343,7 @@ function DatabaseIntegration({ embedded = false }) {
         )}
 
         <div className="config-actions" style={{ marginTop: '1rem' }}>
-          <button type="button" className="btn-primary" onClick={handleSave} disabled={!canEdit || saving}>
+          <button type="button" className="btn-primary" onClick={handleSave} disabled={!canEdit || saving || testing}>
             {saving ? 'Saving...' : 'Save configuration'}
           </button>
         </div>

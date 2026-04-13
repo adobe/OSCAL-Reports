@@ -125,7 +125,3 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.zip
-
-# Retired scripts (removed to avoid merge conflicts)
-scripts/activate-users-green-via-ssh.sh
-scripts/alb-import-existing-listeners.sh

@@ -27,6 +27,56 @@ const { Client } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Infer AWS region from a standard RDS / Aurora / RDS Proxy hostname
+ * (… .{region}.rds.amazonaws.com[.cn]). Returns null for custom DNS or non-RDS hosts.
+ * Wrong region when calling the IAM Signer produces a token Postgres rejects as "password authentication failed".
+ * @param {string} host
+ * @returns {string|null}
+ */
+export function inferAwsRegionFromRdsHostname(host) {
+  if (!host || typeof host !== 'string') return null;
+  const h = host.trim().toLowerCase();
+  const suffix = h.endsWith('.rds.amazonaws.com.cn')
+    ? '.rds.amazonaws.com.cn'
+    : h.endsWith('.rds.amazonaws.com')
+      ? '.rds.amazonaws.com'
+      : null;
+  if (!suffix) return null;
+  const parts = h.split('.');
+  const rdsIndex = parts.indexOf('rds');
+  if (rdsIndex < 1) return null;
+  if (suffix === '.rds.amazonaws.com') {
+    if (parts.length < rdsIndex + 3 || parts[rdsIndex + 1] !== 'amazonaws' || parts[rdsIndex + 2] !== 'com') {
+      return null;
+    }
+  } else if (parts.length < rdsIndex + 4 || parts[rdsIndex + 1] !== 'amazonaws' || parts[rdsIndex + 2] !== 'com' || parts[rdsIndex + 3] !== 'cn') {
+    return null;
+  }
+  const region = parts[rdsIndex - 1];
+  if (!region || region.length < 6 || region.length > 32 || !/^[a-z0-9-]+$/.test(region)) {
+    return null;
+  }
+  return region;
+}
+
+/**
+ * Region passed to @aws-sdk/rds-signer (must match the RDS instance region).
+ * @param {string} host
+ * @returns {string}
+ */
+function resolveRdsSignerRegion(host) {
+  const explicit = process.env.OSCAL_DATABASE_RDS_REGION?.trim();
+  if (explicit) return explicit;
+  const inferred = inferAwsRegionFromRdsHostname(host);
+  if (inferred) return inferred;
+  return (
+    process.env.AWS_REGION?.trim() ||
+    process.env.AWS_DEFAULT_REGION?.trim() ||
+    'us-east-1'
+  );
+}
+
+/**
  * PEM bundle for TLS verify when sslMode is require/prefer: Mozilla roots (Node) + optional RDS global bundle + optional env CA path.
  * @returns {string|undefined}
  */
@@ -65,14 +115,27 @@ function buildSslCaPem() {
  * @returns {Promise<string>}
  */
 async function getIamAuthToken(host, port, user) {
-  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+  const region = resolveRdsSignerRegion(host);
   const signer = new Signer({
     hostname: host,
     port,
     username: user,
     region
   });
-  return signer.getAuthToken();
+  try {
+    return await signer.getAuthToken();
+  } catch (e) {
+    const raw = e && e.message ? String(e.message) : String(e);
+    const creds =
+      e?.name === 'CredentialsProviderError' ||
+      /Could not load credentials|Could not resolve credentials|EC2 Metadata|metadata service/i.test(raw);
+    if (creds) {
+      throw new Error(
+        `RDS IAM auth could not load AWS credentials (signer region: ${region}). The app needs an EC2 instance role or valid local AWS credentials. Detail: ${raw}`
+      );
+    }
+    throw new Error(`RDS IAM auth token failed (signer region: ${region}): ${raw}`);
+  }
 }
 
 /**
@@ -88,7 +151,12 @@ export function getClientConfig(config) {
   const port = Number(config.port) || 5432;
   const connectionTimeoutMillis = Number(config.connectionTimeout) || 10000;
   let ssl = false;
-  if (config.sslMode === 'require' || config.sslMode === 'prefer') {
+  // RDS IAM DB auth requires TLS. With ssl:false the server sees "no encryption" and rejects (pg_hba / RDS policy).
+  const useTls =
+    config.sslMode === 'require' ||
+    config.sslMode === 'prefer' ||
+    config.authMode === 'iam';
+  if (useTls) {
     const ca = buildSslCaPem();
     if (!ca) {
       throw new Error(
@@ -224,11 +292,14 @@ export async function getAdobeTeamOptions(client) {
  * Test database connectivity: connect, run SELECT 1, ensure extended_data table exists, then close.
  * Uses resolved config (password from pass/env or IAM token). Do not log password or token.
  * @param {Object} config - databaseConfig from getResolvedConfig()
+ * @param {{ allowFormPreview?: boolean }} [options] - When allowFormPreview is true, connection is tested from unsaved
+ *   Platform Settings form values even if config.enabled is false (admin verifies DB before enabling integration).
  * @returns {Promise<{ ok: true }>}
  * @throws {Error} on connection or query failure
  */
-export async function testConnection(config) {
-  if (!config || !config.enabled) {
+export async function testConnection(config, options = {}) {
+  const allowFormPreview = options.allowFormPreview === true;
+  if (!config || (!allowFormPreview && !config.enabled)) {
     throw new Error('Database integration is not enabled');
   }
   const client = await connectPgClient(config);

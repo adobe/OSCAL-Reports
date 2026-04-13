@@ -10,4 +10,4 @@ See each subfolder’s README for details.
 
 ---
 
-**Version:** 1.7.10 · **Last updated:** March 2026
+**Version:** 1.7.12 · **Last updated:** April 2026

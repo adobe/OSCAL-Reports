@@ -1,6 +1,6 @@
 {
   "name": "oscal-ssp-backend",
-  "version": "1.7.11",
+  "version": "1.7.12",
   "description": "Backend API for Keekar's OSCAL SOA/SSP/CCM Generator",
   "main": "server.js",
   "type": "module",
@@ -27,7 +27,7 @@
     "@smithy/node-http-handler": "^4.4.16",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
-    "axios": ">=1.13.6",
+    "axios": ">=1.15.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csurf": "^1.11.0",
@@ -35,8 +35,8 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "fast-xml-parser": "5.5.3",
-    "nodemailer": "^8.0.2",
+    "fast-xml-parser": "5.5.12",
+    "nodemailer": "^8.0.5",
     "pdfkit": "^0.17.2",
     "pg": "^8.13.0",
     "qs": ">=6.15.0",
@@ -49,10 +49,26 @@
     "supertest": "^7.2.2"
   },
   "overrides": {
-    "axios": ">=1.13.6",
+    "axios": ">=1.15.0",
     "qs": ">=6.15.0",
     "lodash": ">=4.17.23",
     "cookie": ">=0.7.0",
-    "minimatch": ">=10.2.1"
+    "minimatch": ">=10.2.1",
+    "path-to-regexp": ">=8.4.0",
+    "picomatch": ">=4.0.4",
+    "brace-expansion": ">=5.0.5",
+    "yaml": ">=1.10.3",
+    "@aws-sdk/xml-builder": {
+      "fast-xml-parser": "5.5.12"
+    },
+    "@jest/reporters": {
+      "glob": "13.0.6"
+    },
+    "jest-config": {
+      "glob": "13.0.6"
+    },
+    "jest-runtime": {
+      "glob": "13.0.6"
+    }
   }
 }

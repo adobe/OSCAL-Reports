@@ -30,3 +30,6 @@ alb_certificate_ready  = false  # Set true after ACM CNAMEs added in Route53
 common_tags = {
   Team = "Compliance"
 }
+
+# Optional: override default tag "Service ID" (default 602844).
+# adobe_service_id_tag = "602844"
