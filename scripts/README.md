@@ -9,14 +9,14 @@ Build the OSCAL Report Generator Docker image locally and push it to Docker Hub 
 
 **What it does:**
 - Builds the image from the repo root using the project Dockerfile
-- Tags the image using version from `package.json` (e.g. `v1.7.10`) or an optional tag argument
+- Tags the image using version from `package.json` (e.g. `v1.7.12`) or an optional tag argument
 - Pushes the image to Docker Hub; when the tag is a version, also tags and pushes `latest`
 
 **Usage:** From the repository root (after `docker login`):
 ```bash
 DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
 # Or with an explicit tag:
-./scripts/build-and-push-dockerhub.sh v1.7.10
+./scripts/build-and-push-dockerhub.sh v1.7.12
 ```
 
 **Environment:** `DOCKERHUB_USERNAME` (default: `keekar`) – your Docker Hub username.
@@ -142,7 +142,7 @@ BLUE_SCRIPTS_DIR=/path/to/Blue/scripts GREEN_SCRIPTS_DIR=/path/to/Green/scripts 
 
 ---
 
-### 7. `deploy_from_dockerhub.sh` ⭐ NEW
+### 7. `install_from_dockerhub.sh` ⭐ NEW
 Fast deployment script that pulls pre-built images from Docker Hub.
 
 **What it does:**
@@ -156,19 +156,19 @@ Fast deployment script that pulls pre-built images from Docker Hub.
 ```bash
 # From Blue or Green deployment directory
 cd /path/to/OSCAL_Blue  # or OSCAL_Green
-./scripts/deploy_from_dockerhub.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 **Options:**
 ```bash
 # Force deployment (override lock file)
-./scripts/deploy_from_dockerhub.sh --force
+./scripts/install_from_dockerhub.sh --force
 
 # Skip API backup (use volume backup only)
-./scripts/deploy_from_dockerhub.sh --skip-backup
+./scripts/install_from_dockerhub.sh --skip-backup
 
 # Combine options
-./scripts/deploy_from_dockerhub.sh --force --skip-backup
+./scripts/install_from_dockerhub.sh --force --skip-backup
 ```
 
 **Advantages:**
@@ -208,7 +208,7 @@ cd /path/to/OSCAL_Blue  # or OSCAL_Green
 cd /mnt/pool/OSCAL_Blue  # or OSCAL_Green
 
 # Run deployment
-./scripts/deploy_from_dockerhub.sh
+./scripts/install_from_dockerhub.sh
 
 # The script will:
 # - Backup your data automatically
@@ -222,10 +222,10 @@ cd /mnt/pool/OSCAL_Blue  # or OSCAL_Green
 # Add to crontab (crontab -e)
 
 # Blue: 2nd & 4th Sunday at 2 AM
-0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
+0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
 
 # Green: 1st, 3rd, 5th Sunday at 2 AM
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
 ```
 
 ### For Custom Builds or Development
@@ -473,5 +473,5 @@ If you encounter issues:
 ---
 
 **Author:** Mukesh Kesharwani  
-**Version:** 1.7.10  
+**Version:** 1.7.12  
 **Last Updated:** March 2026

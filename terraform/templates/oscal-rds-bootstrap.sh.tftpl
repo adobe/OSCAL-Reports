@@ -28,13 +28,13 @@ else
   export PGPASSWORD
 
   cat > /tmp/oscal-rds-create-role.sql <<'ROLESQL'
-DO $$BODY$$
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'ROLEHOLDER') THEN
     EXECUTE format('CREATE ROLE %I LOGIN', 'ROLEHOLDER');
   END IF;
 END
-$$BODY$$;
+$$;
 ROLESQL
   sed -i "s/ROLEHOLDER/${iam_db_username}/g" /tmp/oscal-rds-create-role.sql
   psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -f /tmp/oscal-rds-create-role.sql
@@ -52,13 +52,22 @@ ROLESQL
   echo "RDS bootstrap: IAM user and grants completed"
 fi
 
-UNIT="/etc/systemd/system/oscal-reporter.service"
-if ! grep -q 'OSCAL_DATABASE_AUTH=iam' "$UNIT" 2>/dev/null; then
-  sed -i '/Environment=AWS_REGION=/a Environment=OSCAL_DATABASE_ENABLED=1' "$UNIT"
-  sed -i '/Environment=OSCAL_DATABASE_ENABLED=1/a Environment=OSCAL_DATABASE_AUTH=iam' "$UNIT"
-  sed -i '/Environment=OSCAL_DATABASE_AUTH=iam/a Environment=OSCAL_DATABASE_HOST=${rds_address}' "$UNIT"
-  sed -i '/Environment=OSCAL_DATABASE_HOST=/a Environment=OSCAL_DATABASE_PORT=${rds_port}' "$UNIT"
-  sed -i '/Environment=OSCAL_DATABASE_PORT=/a Environment=OSCAL_DATABASE_NAME=${db_name}' "$UNIT"
-  sed -i '/Environment=OSCAL_DATABASE_NAME=/a Environment=OSCAL_DATABASE_USER=${iam_db_username}' "$UNIT"
-  sed -i '/Environment=OSCAL_DATABASE_USER=/a Environment=OSCAL_DATABASE_SSL=require' "$UNIT"
+# Systemd drop-in for app DB env (runs even when SQL bootstrap was skipped due to marker — fixes missing env if marker predates drop-in).
+DROPIN_DIR="/etc/systemd/system/oscal-reporter.service.d"
+DROPIN="$DROPIN_DIR/50-oscal-rds-env.conf"
+if [[ ! -f "$DROPIN" ]]; then
+  mkdir -p "$DROPIN_DIR"
+  cat > "$DROPIN" <<'RDSENVEOF'
+[Service]
+Environment=OSCAL_DATABASE_ENABLED=1
+Environment=OSCAL_DATABASE_AUTH=iam
+Environment=OSCAL_DATABASE_HOST=__RDS_HOST__
+Environment=OSCAL_DATABASE_PORT=__RDS_PORT__
+Environment=OSCAL_DATABASE_NAME=__DB_NAME__
+Environment=OSCAL_DATABASE_USER=__IAM_DB_USER__
+Environment=OSCAL_DATABASE_SSL=require
+Environment=OSCAL_DATABASE_RDS_REGION=__AWS_REGION__
+RDSENVEOF
+  sed -i "s|__RDS_HOST__|${rds_address}|g;s|__RDS_PORT__|${rds_port}|g;s|__DB_NAME__|${db_name}|g;s|__IAM_DB_USER__|${iam_db_username}|g;s|__AWS_REGION__|${aws_region}|g" "$DROPIN"
+  chmod 644 "$DROPIN"
 fi

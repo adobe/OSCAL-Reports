@@ -238,15 +238,7 @@ function AIIntegration({ embedded = false }) {
   };
 
   const handleTestConnection = async () => {
-    if (!aiConfig.enabled) {
-      setTestResult({
-        success: false,
-        message: 'Please enable AI integration before testing'
-      });
-      return;
-    }
-
-    // Validate based on provider
+    // Validate based on provider (uses current form values; Save is not required first)
     if (aiConfig.provider === 'aws-bedrock') {
       const hasAccessKey = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
         (aiConfig.awsAccessKeyId && typeof aiConfig.awsAccessKeyId === 'object' && aiConfig.awsAccessKeyId._pass);
@@ -255,15 +247,15 @@ function AIIntegration({ embedded = false }) {
       if (!aiConfig.awsRegion || !hasAccessKey || !hasSecretKey) {
         setTestResult({
           success: false,
-          message: 'Please configure AWS region and credentials before testing (or ensure they are stored in pass vault)'
+          message: 'Configure AWS region and credentials in this form to test (or use Pass vault entries already saved on the server).'
         });
         return;
       }
     } else {
-      if (!aiConfig.url) {
+      if (!aiConfig.url?.trim()) {
         setTestResult({
           success: false,
-          message: 'Please configure AI Engine URL before testing'
+          message: 'Enter the AI Engine URL in this form to test the connection.'
         });
         return;
       }
@@ -393,7 +385,7 @@ function AIIntegration({ embedded = false }) {
       {!embedded && (
         <div className="ai-integration-header">
           <h2>🤖 AI Integration</h2>
-          <p className="subtitle">Configure AI Engine for control implementation suggestions</p>
+          <p className="subtitle">Configure AI Engine for control implementation suggestions. Test connection uses values in this form; save when you want to persist.</p>
           <p className="subtitle" style={{ fontSize: '0.85rem', color: '#d97706', marginTop: '0.5rem', fontWeight: '500' }}>
             🔒 <strong>Administrator Access Only:</strong> This page can only be modified by the platform Administrator
           </p>
@@ -447,7 +439,7 @@ function AIIntegration({ embedded = false }) {
                   className="form-control"
                   value={aiConfig.provider}
                   onChange={(e) => setAiConfig({ ...aiConfig, provider: e.target.value })}
-                  disabled={!aiConfig.enabled || isReadOnly}
+                  disabled={isReadOnly}
                 >
                   <option value="aws-bedrock">AWS Bedrock</option>
                   <option value="mistral-api">Mistral API (Cloud)</option>
@@ -483,7 +475,7 @@ function AIIntegration({ embedded = false }) {
                   value={aiConfig.allowedUsersForAI || ''}
                   onChange={(e) => setAiConfig({ ...aiConfig, allowedUsersForAI: e.target.value })}
                   placeholder="*@adobe.com, mkesharw"
-                  disabled={!aiConfig.enabled || isReadOnly}
+                  disabled={isReadOnly}
                 />
               </div>
             )}
@@ -502,7 +494,7 @@ function AIIntegration({ embedded = false }) {
                     value={aiConfig.url || 'https://api.mistral.ai/v1/chat/completions'}
                     onChange={(e) => setAiConfig({ ...aiConfig, url: e.target.value })}
                     placeholder="https://api.mistral.ai/v1/chat/completions"
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   />
                 </div>
                 <div className="form-group">
@@ -516,7 +508,7 @@ function AIIntegration({ embedded = false }) {
                     value={aiConfig.apiToken}
                     onChange={(e) => setAiConfig({ ...aiConfig, apiToken: e.target.value })}
                     placeholder="Enter your Mistral API key"
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   />
                 </div>
               </>
@@ -534,7 +526,7 @@ function AIIntegration({ embedded = false }) {
                     className="form-control"
                     value={aiConfig.awsRegion || 'us-east-1'}
                     onChange={(e) => setAiConfig({ ...aiConfig, awsRegion: e.target.value })}
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   >
                     <option value="us-east-1">US East (N. Virginia) - us-east-1</option>
                     <option value="us-west-2">US West (Oregon) - us-west-2</option>
@@ -563,7 +555,7 @@ function AIIntegration({ embedded = false }) {
                     value={typeof aiConfig.awsAccessKeyId === 'string' ? aiConfig.awsAccessKeyId : (aiConfig.awsAccessKeyId?._pass ? '********' : '')}
                     onChange={(e) => setAiConfig({ ...aiConfig, awsAccessKeyId: e.target.value })}
                     placeholder={aiConfig.awsAccessKeyId?._pass ? '' : 'AKIAIOSFODNN7EXAMPLE'}
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   />
                   {(typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId === '********') || aiConfig.awsAccessKeyId?._pass ? (
                     <small className="form-text text-muted">Stored in pass vault</small>
@@ -580,7 +572,7 @@ function AIIntegration({ embedded = false }) {
                     value={typeof aiConfig.awsSecretAccessKey === 'string' ? aiConfig.awsSecretAccessKey : (aiConfig.awsSecretAccessKey?._pass ? '********' : '')}
                     onChange={(e) => setAiConfig({ ...aiConfig, awsSecretAccessKey: e.target.value })}
                     placeholder={aiConfig.awsSecretAccessKey?._pass ? '' : 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'}
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   />
                   {(typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey === '********') || aiConfig.awsSecretAccessKey?._pass ? (
                     <small className="form-text text-muted">Stored in pass vault</small>
@@ -595,7 +587,7 @@ function AIIntegration({ embedded = false }) {
                     className="form-control"
                     value={aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0'}
                     onChange={(e) => setAiConfig({ ...aiConfig, bedrockModelId: e.target.value })}
-                    disabled={!aiConfig.enabled || isReadOnly || bedrockModelsLoading}
+                    disabled={isReadOnly || bedrockModelsLoading}
                   >
                     {bedrockModelsLoading && (
                       <option value={aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0'}>Loading models…</option>
@@ -628,7 +620,7 @@ function AIIntegration({ embedded = false }) {
                       type="button"
                       className="btn btn-sm btn-outline-secondary mt-1"
                       onClick={() => fetchBedrockModels(aiConfig.awsRegion || 'us-east-1')}
-                      disabled={!aiConfig.enabled || isReadOnly}
+                      disabled={isReadOnly}
                     >
                       Refresh models
                     </button>
@@ -649,7 +641,7 @@ function AIIntegration({ embedded = false }) {
                     className="form-control"
                     value={aiConfig.model}
                     onChange={handleModelChange}
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   >
                     {availableModels.map(model => (
                       <option key={model} value={model}>
@@ -667,7 +659,7 @@ function AIIntegration({ embedded = false }) {
                       checkModelWarning(e.target.value);
                     }}
                     placeholder="mistral-7b-instruct"
-                    disabled={!aiConfig.enabled || isReadOnly}
+                    disabled={isReadOnly}
                   />
                 )}
                 {modelWarning && (
@@ -699,7 +691,7 @@ function AIIntegration({ embedded = false }) {
                 placeholder="180000"
                 min="60000"
                 max="600000"
-                disabled={!aiConfig.enabled || isReadOnly}
+                disabled={isReadOnly}
               />
             </div>
 
@@ -723,7 +715,6 @@ function AIIntegration({ embedded = false }) {
                 className="btn-primary" 
                 onClick={handleTestConnection}
                 disabled={
-                  !aiConfig.enabled ||
                   testing ||
                   isReadOnly ||
                   (aiConfig.provider === 'aws-bedrock'
@@ -734,7 +725,7 @@ function AIIntegration({ embedded = false }) {
                         (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
                         (aiConfig.awsSecretAccessKey?._pass)
                       ))
-                    : !aiConfig.url)
+                    : !aiConfig.url?.trim())
                 }
               >
                 {testing ? '⏳ Testing...' : '🔍 Test Connection'}
@@ -813,7 +804,7 @@ function AIIntegration({ embedded = false }) {
             <button 
               className="btn-primary btn-large" 
               onClick={handleSave}
-              disabled={saving || isReadOnly}
+              disabled={saving || testing || isReadOnly}
             >
               {saving ? '⏳ Saving...' : (isReadOnly ? '🔒 Read-Only (Admin Access Required)' : '💾 Save AI Configuration')}
             </button>

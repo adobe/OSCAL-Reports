@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# ec2_automation.sh: Backup config/users/logs to S3 and update app from GitHub main; runs every 10 min via cron.
-# Requires env (set by cron or deploy): S3_BUCKET, S3_CONFIG_PREFIX (e.g. config/green), S3_LOGS_PREFIX (e.g. logs/green), DEPLOYMENT_ROLE (green|blue).
+# ec2_automation.sh: Backup config/users/logs to S3; optional GitHub pull/build/restart; optional Pass ↔ AWS Secrets Manager sync.
+# Runs every 10 min via cron (svc_ams-oscal). Requires env: S3_BUCKET, S3_CONFIG_PREFIX, S3_LOGS_PREFIX, DEPLOYMENT_ROLE (green|blue).
+# Pass sync: PASS_SECRETS_SYNC_ENABLED, PASS_SECRETS_SYNC_SECRET_ARN, PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS (from ec2_automation.env).
+# Pass ↔ Secrets Manager allowlist: scripts/lib/ec2-automation-pass-sync.sh (pass_secrets_sync_allowlist).
 # Logs in OpenTelemetry-style JSONL to OSCAL project log directory.
 
 set -e
@@ -17,9 +19,23 @@ APP_DIR="${APP_DIR:-/opt/oscal/app}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 LOG_FILE="${LOG_DIR}/ec2_automation.jsonl"
 
-# Set to false to disable git pull / build / restart (e.g. Green: manual deploy only, no overwrite from GitHub)
-# Override per instance via ec2_automation.env: ENABLE_GITHUB_UPDATE=false
-ENABLE_GITHUB_UPDATE="${ENABLE_GITHUB_UPDATE:-true}"
+# Default false: do not git pull / build / restart from GitHub on a schedule (avoids overwriting a deliberate deploy with repo state).
+# Set true in ec2_automation.env (or deploy with DEPLOY_ENABLE_GITHUB_UPDATE=1) only if you want cron-driven updates from GitHub.
+ENABLE_GITHUB_UPDATE="${ENABLE_GITHUB_UPDATE:-false}"
+
+# Pass ↔ Secrets Manager: when ARN is set, default sync on unless explicitly disabled in env.
+PASS_SECRETS_SYNC_SECRET_ARN="${PASS_SECRETS_SYNC_SECRET_ARN:-}"
+if [ -z "${PASS_SECRETS_SYNC_SECRET_ARN}" ]; then
+  PASS_SECRETS_SYNC_ENABLED=false
+elif [ -z "${PASS_SECRETS_SYNC_ENABLED:-}" ]; then
+  PASS_SECRETS_SYNC_ENABLED=true
+else
+  case "$(echo "${PASS_SECRETS_SYNC_ENABLED}" | tr '[:upper:]' '[:lower:]')" in
+    false|no|0) PASS_SECRETS_SYNC_ENABLED=false ;;
+    *) PASS_SECRETS_SYNC_ENABLED=true ;;
+  esac
+fi
+PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS="${PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS:-21600}"
 
 # OpenTelemetry-style log: severityNumber 9=INFO, 17=ERROR; event.outcome success|failure
 otel_log() {
@@ -39,6 +55,17 @@ otel_log() {
   [ -n "$extra" ] && attrs="$attrs,$extra"
   echo "{\"timestamp\":\"$ts\",\"severityNumber\":$severity_num,\"body\":\"${message//\"/\\\"}\",\"attributes\":{$attrs}}" >> "$LOG_FILE"
 }
+
+# --- Pass vault ↔ AWS Secrets Manager (allowlist; never log secret values) ---
+if [ -f "$SCRIPT_DIR/lib/ec2-automation-pass-sync.sh" ]; then
+  # shellcheck source=./lib/ec2-automation-pass-sync.sh disable=SC1091
+  . "$SCRIPT_DIR/lib/ec2-automation-pass-sync.sh"
+else
+  pass_secrets_sync_run() {
+    otel_log "warn" "pass secrets sync unavailable: missing lib/ec2-automation-pass-sync.sh (re-deploy scripts/lib from repo)" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.skipped\":\"missing_lib\""
+    return 0
+  }
+fi
 
 # Ensure AWS CLI is installed
 ensure_aws_cli() {
@@ -153,7 +180,7 @@ if [ "$OUTCOME" = "success" ] && [ -n "$S3_BUCKET" ]; then
   backup_to_s3 || { OUTCOME="failure"; EXTRA="\"error.type\":\"BackupFailed\""; }
 fi
 
-case "$(echo "${ENABLE_GITHUB_UPDATE:-true}" | tr '[:upper:]' '[:lower:]')" in
+case "$(echo "${ENABLE_GITHUB_UPDATE:-false}" | tr '[:upper:]' '[:lower:]')" in
   false|no|0) ;;
   *)
     if [ "$OUTCOME" = "success" ]; then
@@ -161,5 +188,7 @@ case "$(echo "${ENABLE_GITHUB_UPDATE:-true}" | tr '[:upper:]' '[:lower:]')" in
     fi
     ;;
 esac
+
+pass_secrets_sync_run || true
 
 otel_log "info" "ec2_automation completed" "$OUTCOME" "$EXTRA"

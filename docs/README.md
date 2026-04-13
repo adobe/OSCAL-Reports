@@ -159,4 +159,4 @@ Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEP
 
 ---
 
-**Version:** 1.7.10 · **Last updated:** March 2026
+**Version:** 1.7.12 · **Last updated:** April 2026

@@ -155,7 +155,9 @@ resource "aws_iam_role_policy" "oscal_rds" {
         Action = [
           "rds-db:connect"
         ]
-        Resource = "arn:aws:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.oscal[0].resource_id}/${var.rds_iam_app_username}"
+        # Scoped to this DB instance only. DbUserName may be wildcard per AWS IAM (covers oscal_app and avoids
+        # subtle username mismatch between policy and Signer/bootstrap).
+        Resource = "arn:${data.aws_partition.current.partition}:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.oscal[0].resource_id}/*"
       }
     ]
   })

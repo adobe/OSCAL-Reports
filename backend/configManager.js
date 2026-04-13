@@ -206,6 +206,10 @@ export function applyDatabaseEnvOverrides(config) {
   if (process.env.OSCAL_DATABASE_AUTH === 'iam' || process.env.OSCAL_DATABASE_IAM === '1') {
     db.authMode = 'iam';
     db.password = '';
+    // IAM to RDS requires TLS; avoid "no pg_hba.conf entry ... no encryption" if config.json still has sslMode disable.
+    if (!db.sslMode || db.sslMode === 'disable') {
+      db.sslMode = 'require';
+    }
   }
   if (process.env.OSCAL_DATABASE_HOST && String(process.env.OSCAL_DATABASE_HOST).trim()) {
     db.host = String(process.env.OSCAL_DATABASE_HOST).trim();
@@ -226,6 +230,69 @@ export function applyDatabaseEnvOverrides(config) {
   if (process.env.OSCAL_DATABASE_ENABLED === '1') {
     db.enabled = true;
   }
+}
+
+/**
+ * Effective databaseConfig for POST /api/database/test-connection when the client sends
+ * the current Platform Settings form. Does not apply OSCAL_DATABASE_AUTH=iam from the
+ * environment, so admins can test the RDS master user (e.g. oscalmaster) and password.
+ * Terraform OSCAL_DATABASE_HOST / PORT / NAME / SSL / ENABLED still fill blanks only.
+ *
+ * @param {Object|null|undefined} formDatabaseConfig - Fields from the UI (same shape as databaseConfig)
+ * @returns {Object}
+ */
+function getResolvedDatabaseConfigForTest(formDatabaseConfig) {
+  const raw = loadConfig();
+  const clone = JSON.parse(JSON.stringify(raw));
+  resolvePassPointers(clone);
+  const base = { ...DEFAULT_CONFIG.databaseConfig, ...(clone.databaseConfig || {}) };
+  const f = formDatabaseConfig && typeof formDatabaseConfig === 'object' ? formDatabaseConfig : {};
+
+  const db = { ...base };
+
+  if (f.enabled === true || f.enabled === false) db.enabled = f.enabled;
+  if (f.host !== undefined && String(f.host).trim()) db.host = String(f.host).trim();
+  if (f.port !== undefined && f.port !== null && f.port !== '') {
+    const pn = Number(f.port);
+    if (!Number.isNaN(pn)) db.port = pn;
+  }
+  if (f.database !== undefined && String(f.database).trim()) db.database = String(f.database).trim();
+  if (f.user !== undefined) db.user = String(f.user || '').trim();
+  if (f.authMode === 'iam' || f.authMode === 'password') db.authMode = f.authMode;
+  if (f.sslMode === 'disable' || f.sslMode === 'prefer' || f.sslMode === 'require') db.sslMode = f.sslMode;
+  if (f.connectionTimeout !== undefined) {
+    const t = parseInt(String(f.connectionTimeout), 10);
+    if (!Number.isNaN(t)) db.connectionTimeout = t;
+  }
+  if (typeof f.password === 'string' && f.password.trim() !== '' && f.password.trim() !== '********') {
+    db.password = f.password.trim();
+  }
+
+  if ((!db.host || !String(db.host).trim()) && process.env.OSCAL_DATABASE_HOST?.trim()) {
+    db.host = String(process.env.OSCAL_DATABASE_HOST).trim();
+  }
+  if (process.env.OSCAL_DATABASE_PORT?.trim()) {
+    const p = parseInt(String(process.env.OSCAL_DATABASE_PORT).trim(), 10);
+    if (!Number.isNaN(p) && (!db.port || Number.isNaN(Number(db.port)))) db.port = p;
+  }
+  if ((!db.database || !String(db.database).trim()) && process.env.OSCAL_DATABASE_NAME?.trim()) {
+    db.database = String(process.env.OSCAL_DATABASE_NAME).trim();
+  }
+  if ((!db.user || !String(db.user).trim()) && process.env.OSCAL_DATABASE_USER?.trim()) {
+    db.user = String(process.env.OSCAL_DATABASE_USER).trim();
+  }
+  if (process.env.OSCAL_DATABASE_SSL === 'require') {
+    if (!db.sslMode || db.sslMode === 'disable') db.sslMode = 'require';
+  }
+  if (process.env.OSCAL_DATABASE_ENABLED === '1') {
+    db.enabled = true;
+  }
+
+  if (db.authMode === 'iam' && (!db.sslMode || db.sslMode === 'disable')) {
+    db.sslMode = 'require';
+  }
+
+  return db;
 }
 
 /**
@@ -565,6 +632,7 @@ function configExists() {
 export {
   loadConfig,
   getResolvedConfig,
+  getResolvedDatabaseConfigForTest,
   prepareConfigWithPassPointers,
   saveConfig,
   updateConfig,
