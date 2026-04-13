@@ -11,9 +11,12 @@ import './ExportButtons.css';
 import { validateSSP, getValidatorStatus } from '../services/oscalValidator';
 import ValidationStatus from './ValidationStatus';
 import { useAuth } from '../contexts/AuthContext';
+import { formatExportApiBody } from '../utils/exportErrorMessage';
 
-function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, onExportPDF, loading, systemInfo, controls }) {
+function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, onExportPDF, loading, exportingType = null, systemInfo, controls }) {
   const { user } = useAuth();
+  /** Per-button loading: only the active export shows spinner (exportingType: 'oscal' | 'sar' | 'excel' | 'ccm' | 'pdf' | null). */
+  const isExporting = exportingType != null;
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [validatorReady, setValidatorReady] = useState(false);
@@ -61,7 +64,14 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate SSP for validation');
+        let msg = 'Failed to generate SSP for validation';
+        try {
+          const j = await response.json();
+          msg = formatExportApiBody(j, msg);
+        } catch {
+          /* keep default */
+        }
+        throw new Error(msg);
       }
 
       // Backend returns SSP directly (not wrapped in { ssp: ... })
@@ -203,7 +213,7 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
           <button
             className={`btn validation-btn ${validatorReady ? 'btn-info' : 'btn-warning'}`}
             onClick={handleValidate}
-            disabled={validating || loading}
+            disabled={validating || isExporting}
             title={validatorReady ? 'Validate with selected options' : 'Docker not available - validation disabled'}
           >
             {validating ? (
@@ -229,10 +239,10 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
           <button
             className="btn btn-primary export-btn"
             onClick={handleOSCALExport}
-            disabled={loading}
+            disabled={exportingType === 'oscal'}
             title="OSCAL JSON: Standards-compliant format for automated processing and integration with other OSCAL tools"
           >
-            {loading ? (
+            {exportingType === 'oscal' ? (
               <>
                 <span className="spinner"></span>
                 Generating...
@@ -248,10 +258,10 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
           <button
             className="btn btn-info export-btn"
             onClick={() => onExportSAR(validationOptions)}
-            disabled={loading}
+            disabled={exportingType === 'sar'}
             title="OSCAL SAR: Security Assessment Results with assessment objectives and methods per NIST SP 800-53"
           >
-            {loading ? (
+            {exportingType === 'sar' ? (
               <>
                 <span className="spinner"></span>
                 Generating...
@@ -267,10 +277,10 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
           <button
             className="btn btn-success export-btn"
             onClick={onExportExcel}
-            disabled={loading}
+            disabled={exportingType === 'excel'}
             title="Excel SSP: Easy-to-read spreadsheet format for manual review and distribution"
           >
-            {loading ? (
+            {exportingType === 'excel' ? (
               <>
                 <span className="spinner"></span>
                 Generating...
@@ -286,10 +296,10 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
           <button
             className="btn btn-danger export-btn"
             onClick={onExportPDF}
-            disabled={loading}
+            disabled={exportingType === 'pdf'}
             title="PDF Report: Professional, print-ready compliance report with system information, control implementation details, and assessment summary"
           >
-            {loading ? (
+            {exportingType === 'pdf' ? (
               <>
                 <span className="spinner"></span>
                 Generating...

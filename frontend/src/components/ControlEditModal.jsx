@@ -10,7 +10,7 @@ import React, { useState, useEffect } from 'react';
 import ControlSuggestions from './ControlSuggestions';
 import './ControlEditModal.css';
 
-function ControlEditModal({ control, onClose, onSave, allControls = [], organizationName = 'Organization' }) {
+function ControlEditModal({ control, onClose, onSave, allControls = [], organizationName = 'Organization', databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
   const [editedControl, setEditedControl] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [activeTab, setActiveTab] = useState('implementation');
@@ -18,7 +18,9 @@ function ControlEditModal({ control, onClose, onSave, allControls = [], organiza
 
   useEffect(() => {
     if (control) {
-      setEditedControl({ ...control });
+      const adobe = Array.isArray(control.adobeTeamResponsible) ? control.adobeTeamResponsible : [];
+      const adobeNormalized = [adobe[0] ?? '', adobe[1] ?? '', adobe[2] ?? ''];
+      setEditedControl({ ...control, adobeTeamResponsible: adobeNormalized });
       setHasChanges(false);
     }
   }, [control]);
@@ -212,20 +214,51 @@ function ControlEditModal({ control, onClose, onSave, allControls = [], organiza
 
             {activeTab === 'responsibility' && (
               <div className="tab-pane">
-                <div className="form-group">
-                  <label>Responsible Party</label>
-                  <select
-                    value={editedControl.responsibleParty || ''}
-                    onChange={(e) => handleChange('responsibleParty', e.target.value)}
-                    className="form-control"
-                  >
-                    <option value="">Select...</option>
-                    <option value="Not Applicable">Not Applicable</option>
-                    <option value="Inherited from Service Provider">Inherited from Service Provider</option>
-                    <option value={`Implemented by ${organizationName}`}>Implemented by {organizationName}</option>
-                    <option value="Shared">Shared</option>
-                    <option value="Consumer Responsibility">Consumer Responsibility</option>
-                  </select>
+                <div className="form-row form-row-responsible-party">
+                  <div className="form-group form-group-responsible-party">
+                    <label>Responsible Party</label>
+                    <select
+                      value={editedControl.responsibleParty || ''}
+                      onChange={(e) => handleChange('responsibleParty', e.target.value)}
+                      className="form-control"
+                    >
+                      <option value="">Select...</option>
+                      <option value="Not Applicable">Not Applicable</option>
+                      <option value="Inherited from Service Provider">Inherited from Service Provider</option>
+                      <option value={`Implemented by ${organizationName}`}>Implemented by {organizationName}</option>
+                      <option value="Shared">Shared</option>
+                      <option value="Consumer Responsibility">Consumer Responsibility</option>
+                    </select>
+                  </div>
+                  {databaseIntegrationEnabled && editedControl.responsibleParty && (editedControl.responsibleParty === `Implemented by ${organizationName}` || editedControl.responsibleParty.toLowerCase().includes('implemented by adobe')) && (
+                    <>
+                      {[0, 1, 2].map((slotIndex) => {
+                        const arr = Array.isArray(editedControl.adobeTeamResponsible) ? editedControl.adobeTeamResponsible : [];
+                        const value = arr[slotIndex] ?? '';
+                        return (
+                          <div key={slotIndex} className="form-group form-group-adobe-slot">
+                            <label>T{slotIndex + 1}</label>
+                            <select
+                              className="form-control"
+                              value={value}
+                              onChange={(e) => {
+                                const newVal = e.target.value;
+                                const prev = Array.isArray(editedControl.adobeTeamResponsible) ? editedControl.adobeTeamResponsible : [];
+                                const newArr = [prev[0] ?? '', prev[1] ?? '', prev[2] ?? ''];
+                                newArr[slotIndex] = newVal;
+                                handleChange('adobeTeamResponsible', newArr);
+                              }}
+                            >
+                              <option value="">—</option>
+                              {adobeTeamOptions.map((opt) => (
+                                <option key={String(opt.id) + opt.label} value={opt.label}>{opt.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
 
                 {editedControl.responsibleParty === 'Consumer Responsibility' && (

@@ -181,7 +181,7 @@ If Blue (or Green) was rolled back to an old version and **config and users were
 
 ### Option 1: Restore from deploy backup
 
-The deploy script (`scripts/deploy_from_dockerhub.sh`) creates a backup tarball in `backups/dockerhub-deploy-YYYYMMDD-HHMMSS/` each time it runs. Use the restore script to put the latest backup back into the Blue data volume:
+The deploy script (`scripts/install_from_dockerhub.sh`) creates a backup tarball in `backups/dockerhub-deploy-YYYYMMDD-HHMMSS/` each time it runs. Use the restore script to put the latest backup back into the Blue data volume:
 
 ```bash
 cd /path/to/OSCAL_Reports_Blue   # or your Blue deployment root

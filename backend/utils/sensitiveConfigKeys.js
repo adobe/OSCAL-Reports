@@ -20,7 +20,8 @@ export const SENSITIVE_CONFIG_KEYS = [
   { path: 'ssoConfig.oauth.providers.azure.clientSecret', passEntry: 'OSCAL/sso-oauth-azure-client-secret' },
   { path: 'ssoConfig.oauth.providers.google.clientSecret', passEntry: 'OSCAL/sso-oauth-google-client-secret' },
   { path: 'ssoConfig.oauth.providers.okta.clientSecret', passEntry: 'OSCAL/sso-oauth-okta-client-secret' },
-  { path: 'ssoConfig.oauth.providers.github.clientSecret', passEntry: 'OSCAL/sso-oauth-github-client-secret' }
+  { path: 'ssoConfig.oauth.providers.github.clientSecret', passEntry: 'OSCAL/sso-oauth-github-client-secret' },
+  { path: 'databaseConfig.password', passEntry: 'OSCAL/database-password' }
 ];
 
 const MASK = '********';

@@ -7,9 +7,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import axios from 'axios';
 import buildInfo from '../utils/buildInfo';
 import { useAuth } from '../contexts/AuthContext';
+import { exportErrorMessage } from '../utils/exportErrorMessage';
 import ControlEditModal from './ControlEditModal';
 import './MultiReportComparison.css';
 
@@ -38,20 +40,29 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   const [editingControl, setEditingControl] = useState(null);
   const [baselineControls, setBaselineControls] = useState(null); // Editable baseline controls
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [databaseIntegrationEnabled, setDatabaseIntegrationEnabled] = useState(false);
+  const [adobeTeamOptions, setAdobeTeamOptions] = useState([]);
 
-  // Load published SOA URL from server settings
+  // Load published SOA URL and Database Integration / Adobe Team options from server settings
   useEffect(() => {
-    const fetchPublishedUrl = async () => {
+    const fetchSettings = async () => {
       try {
         const response = await axios.get('/api/settings', getAuthConfig());
         const serverSettings = response.data;
         setPublishedSoaUrl(serverSettings.publishedSoaUrl || '');
-        console.log('✅ Loaded Published URL from server:', serverSettings.publishedSoaUrl);
+        const dbEnabled = !!(serverSettings.databaseConfig?.enabled);
+        setDatabaseIntegrationEnabled(dbEnabled);
+        if (dbEnabled) {
+          const optsRes = await axios.get('/api/database/adobe-team-options', getAuthConfig()).catch(() => ({ data: { options: [] } }));
+          setAdobeTeamOptions(Array.isArray(optsRes.data?.options) ? optsRes.data.options : []);
+        } else {
+          setAdobeTeamOptions([]);
+        }
       } catch (error) {
-        console.error('❌ Failed to load Published URL from server:', error);
+        console.error('❌ Failed to load settings:', error);
       }
     };
-    fetchPublishedUrl();
+    fetchSettings();
   }, [getAuthConfig]);
 
   const handleFileUpload = async (reportKey, file) => {
@@ -187,9 +198,15 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   const handleControlClick = (controlId) => {
     if (baselineControls && baselineControls[controlId]) {
       setEditingControl(baselineControls[controlId]);
-    } else {
-      console.warn('Control not found in baseline:', controlId);
+      return;
     }
+    // Fallback: find control in comparison result (handles ID mismatch or baselineControls not yet set)
+    const row = comparisonResult?.controls?.find(c => c.id === controlId);
+    if (row?.baseline) {
+      setEditingControl({ ...row.baseline, id: row.id, title: row.title });
+      return;
+    }
+    console.warn('Control not found in baseline:', controlId);
   };
 
   const handleControlSave = (updatedControl) => {
@@ -247,7 +264,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       console.log('✅ Default report exported successfully');
     } catch (err) {
       console.error('❌ Export failed:', err);
-      setError(`Export failed: ${err.response?.data?.error || err.message}`);
+      setError(`Export failed: ${await exportErrorMessage(err, err?.message || 'Unknown error')}`);
     } finally {
       setLoading(false);
     }
@@ -267,7 +284,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
             ⚙️ Settings
           </button>
           <div className="header-content">
-            <h1>Keekar's OSCAL SOA/SSP/CCM Generator</h1>
+            <h1>Keekar's OSCAL SOA/SSP/CCM Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
             <p>Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix from OSCAL Catalogues</p>
           </div>
         </header>
@@ -470,15 +487,18 @@ function MultiReportComparison({ onBack, onShowSettings }) {
           </div>
         </div>
 
-        {/* Control Edit Modal */}
-        {editingControl && (
+        {/* Control Edit Modal - portaled to document.body so it appears above comparison view */}
+        {editingControl && ReactDOM.createPortal(
           <ControlEditModal
             control={editingControl}
             onClose={() => setEditingControl(null)}
             onSave={handleControlSave}
             allControls={baselineControls ? Object.values(baselineControls) : []}
             organizationName={reports.baseline?.['system-security-plan']?.['system-characteristics']?.organization || 'Organization'}
-          />
+            databaseIntegrationEnabled={databaseIntegrationEnabled}
+            adobeTeamOptions={adobeTeamOptions}
+          />,
+          document.body
         )}
 
         <footer className="app-footer">
@@ -506,7 +526,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
           ⚙️ Settings
         </button>
         <div className="header-content">
-          <h1>Keekar's OSCAL SOA/SSP/CCM Generator</h1>
+          <h1>Keekar's OSCAL SOA/SSP/CCM Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
           <p>Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix from OSCAL Catalogues</p>
         </div>
       </header>

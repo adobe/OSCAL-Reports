@@ -188,6 +188,15 @@ export async function generatePDFReport(controls, systemInfo, metadata) {
           doc.moveDown(0.2);
         }
         
+        // Adobe Team Responsible (DB-only field; not in OSCAL)
+        if (control.adobeTeamResponsible && Array.isArray(control.adobeTeamResponsible)) {
+          const adobeTeam = control.adobeTeamResponsible.filter(Boolean);
+          if (adobeTeam.length > 0) {
+            doc.fontSize(8).fillColor('#64748b').text(`Adobe Team Responsible: ${adobeTeam.join(', ')}`);
+            doc.moveDown(0.2);
+          }
+        }
+        
         // Consumer Guidance
         if (control.consumerGuidance) {
           doc.fontSize(8).fillColor('#1e293b').text('Consumer Guidance:', { bold: true });

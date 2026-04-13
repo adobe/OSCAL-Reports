@@ -11,7 +11,8 @@
 # - Documentation structure
 # - Deployment validation (optional)
 #
-# Usage: ./test_cases/scripts/run-all-tests.sh [--skip-deployment]
+# Usage: ./test_cases/scripts/run-all-tests.sh [--skip-deployment] [--ec2-pass-sync-only]
+#   --ec2-pass-sync-only  Run only mocked ec2_automation Pass ↔ Secrets Manager sync tests (for CI); exits 0/1.
 #
 # Version: 1.6.5
 # Author: Mukesh Kesharwani
@@ -32,10 +33,15 @@ NC='\033[0m'
 
 # Parse arguments
 SKIP_DEPLOYMENT=false
+EC2_PASS_SYNC_ONLY=false
 for arg in "$@"; do
     case $arg in
         --skip-deployment)
             SKIP_DEPLOYMENT=true
+            shift
+            ;;
+        --ec2-pass-sync-only)
+            EC2_PASS_SYNC_ONLY=true
             shift
             ;;
     esac
@@ -516,15 +522,15 @@ run_deployment_tests() {
     
     # Check deployment script exists
     run_check "Deployment Script Exists" \
-        "test -f scripts/deploy_from_dockerhub.sh"
+        "test -f scripts/install_from_dockerhub.sh"
     
     # Check deployment script is executable
     run_check "Deployment Script Executable" \
-        "test -x scripts/deploy_from_dockerhub.sh"
+        "test -x scripts/install_from_dockerhub.sh"
     
     # Check deployment script syntax
     run_check "Deployment Script Syntax" \
-        "bash -n scripts/deploy_from_dockerhub.sh"
+        "bash -n scripts/install_from_dockerhub.sh"
     
     # Check Docker image architecture support
     if command -v docker &> /dev/null; then
@@ -558,6 +564,8 @@ main() {
     run_integration_tests || true
     run_e2e_tests || true
     run_security_validation || true
+    run_check "ec2_automation Pass ↔ Secrets Manager sync" \
+        "run_ec2_automation_pass_sync_tests"
     check_version_consistency || true
     check_documentation_structure || true
     validate_v165_features || true
@@ -620,6 +628,456 @@ main() {
         exit 0
     fi
 }
+
+
+###############################################################################
+# ec2_automation Pass ↔ Secrets Manager sync (mocked; heredoc below)
+###############################################################################
+
+get_pass_sync_embedded_script() {
+    cat <<'OSCAL_PASS_SYNC_SUITE_EOF'
+set -euo pipefail
+REPO_ROOT="${PROJECT_ROOT}"
+
+LIB="$REPO_ROOT/scripts/lib/ec2-automation-pass-sync.sh"
+[ -f "$LIB" ] || { echo "missing $LIB"; exit 1; }
+
+REAL_JQ="$(command -v jq)" || { echo "jq required on PATH"; exit 1; }
+# Save host PATH for mktemp/grep/assertions; individual tests shrink PATH when exercising missing-tool branches.
+_TOOL_BASE_PATH="$PATH"
+
+WORKDIR=""
+failures=0
+
+cleanup() {
+  if [ -n "${WORKDIR:-}" ] && [ -d "$WORKDIR" ]; then
+    rm -rf "$WORKDIR"
+  fi
+}
+trap cleanup EXIT
+
+die() {
+  echo "FAIL: $*"
+  failures=$((failures + 1))
+}
+
+assert_file_contains() {
+  local f="$1"
+  local needle="$2"
+  if [ ! -f "$f" ] || ! PATH="$_TOOL_BASE_PATH" grep -qF "$needle" "$f"; then
+    die "expected log/file $f to contain: $needle (got: $(PATH="$_TOOL_BASE_PATH" cat "$f" 2>/dev/null || echo '<missing>'))"
+  fi
+}
+
+assert_file_not_contains() {
+  local f="$1"
+  local needle="$2"
+  if [ -f "$f" ] && PATH="$_TOOL_BASE_PATH" grep -qF "$needle" "$f"; then
+    die "expected log/file $f NOT to contain: $needle"
+  fi
+}
+
+setup_workdir() {
+  WORKDIR=$(PATH="$_TOOL_BASE_PATH" mktemp -d)
+  mkdir -p "$WORKDIR/bin" "$WORKDIR/data" "$WORKDIR/store"
+  # Mocks in bin first; /bin and /usr/bin for coreutils/jq realpath only (avoid a host aws shadowing "missing aws" tests).
+  export PATH="$WORKDIR/bin:/bin:/usr/bin"
+  export CONFIG_PATH="$WORKDIR/data/config.json"
+  touch "$CONFIG_PATH"
+  export DATA_DIR="$WORKDIR/data"
+  export PASSWORD_STORE_DIR="$WORKDIR/store"
+  mkdir -p "$PASSWORD_STORE_DIR"
+  export PASS_SECRETS_SYNC_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:test"
+  export PASS_SYNC_TEST_AWS_LOG="$WORKDIR/aws.log"
+  export PASS_SYNC_TEST_GET_FILE="$WORKDIR/get.json"
+  export PASS_SYNC_TEST_PUT_CAPTURE="$WORKDIR/put_body.json"
+  unset PASS_SYNC_TEST_GET_EXIT PASS_SYNC_TEST_PUT_EXIT PASS_SYNC_TEST_CAS_GET1 PASS_SYNC_TEST_CAS_GET2 PASS_SYNC_TEST_EPOCH 2>/dev/null || true
+  : >"$PASS_SYNC_TEST_AWS_LOG"
+  export TELEMETRY_LOG="$WORKDIR/telemetry.jsonl"
+  : >"$TELEMETRY_LOG"
+
+  otel_log() {
+    local severity="$1"
+    local message="$2"
+    shift 2
+    local outcome="${1:-}"
+    local extra="${2:-}"
+    printf '{"severity":"%s","body":"%s","outcome":"%s","extra":%s}\n' "$severity" "${message//\"/\\\"}" "$outcome" "${extra:-{}}" >>"$TELEMETRY_LOG"
+  }
+
+  write_mock_aws() {
+    cat >"$WORKDIR/bin/aws" <<'MOCKAWS'
+#!/bin/sh
+set -e
+: "${PASS_SYNC_TEST_AWS_LOG:?}"
+{
+  printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ") aws"
+  printf '%s\n' "$*"
+} >>"$PASS_SYNC_TEST_AWS_LOG"
+is_get=false
+is_put=false
+for a in "$@"; do
+  case "$a" in
+    get-secret-value) is_get=true ;;
+    put-secret-value) is_put=true ;;
+  esac
+done
+if "$is_get"; then
+  exitval="${PASS_SYNC_TEST_GET_EXIT:-0}"
+  if [ "$exitval" != "0" ]; then
+    exit "$exitval"
+  fi
+  cat "${PASS_SYNC_TEST_GET_FILE:?}"
+  exit 0
+fi
+if "$is_put"; then
+  cap="${PASS_SYNC_TEST_PUT_CAPTURE:-/dev/null}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --secret-string)
+        printf '%s' "$2" >"$cap"
+        shift 2
+        ;;
+      *) shift ;;
+    esac
+  done
+  exit "${PASS_SYNC_TEST_PUT_EXIT:-0}"
+fi
+exit 1
+MOCKAWS
+    chmod +x "$WORKDIR/bin/aws"
+  }
+
+  write_mock_pass() {
+    cat >"$WORKDIR/bin/pass" <<'MOCKPASS'
+#!/bin/sh
+set -e
+store="${PASSWORD_STORE_DIR:?}"
+cmd="${1:-}"
+shift || true
+if [ "$cmd" = "show" ]; then
+  k="${1:-}"
+  [ -n "$k" ] || exit 1
+  f="${store}/${k}.gpg"
+  if [ -f "$f" ]; then cat "$f"; exit 0; fi
+  exit 1
+fi
+if [ "$cmd" = "insert" ]; then
+  while [ $# -gt 0 ]; do
+    case "$1" in -m | -f) shift ;;
+    *) break ;;
+    esac
+  done
+  k="${1:-}"
+  [ -n "$k" ] || exit 1
+  d="$(dirname "${store}/${k}")"
+  mkdir -p "$d"
+  cat >"${store}/${k}.gpg"
+  exit 0
+fi
+exit 1
+MOCKPASS
+    chmod +x "$WORKDIR/bin/pass"
+  }
+
+  write_mock_jq() {
+    ln -sf "$REAL_JQ" "$WORKDIR/bin/jq"
+  }
+}
+
+# Helper: write AWS get-secret-value JSON (SecretString = JSON bundle with entries + _meta)
+write_get_bundle() {
+  local entries_json="$1"
+  local version="${2:-vid-a}"
+  jq -n \
+    --argjson ent "$entries_json" \
+    --arg vid "$version" \
+    '{SecretString: ({entries: $ent, _meta: {keys: {}}} | tojson), VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
+}
+
+source_lib() {
+  # shellcheck source=../../scripts/lib/ec2-automation-pass-sync.sh disable=SC1091
+  . "$LIB"
+}
+
+# --- tests ---
+
+test_disabled_flag_skips_aws() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  write_get_bundle '{}' "v1"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=false
+  pass_secrets_sync_run
+  if [ -s "$PASS_SYNC_TEST_AWS_LOG" ] && grep -q get-secret-value "$PASS_SYNC_TEST_AWS_LOG"; then
+    die "disabled: aws should not run get-secret-value"
+  fi
+}
+
+test_empty_arn_skips_even_if_enabled() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SECRETS_SYNC_SECRET_ARN=""
+  pass_secrets_sync_run
+  if grep -q get-secret-value "$PASS_SYNC_TEST_AWS_LOG" 2>/dev/null; then
+    die "empty arn: should not call aws"
+  fi
+}
+
+test_missing_aws_logs_and_skips() {
+  setup_workdir
+  write_mock_jq
+  write_mock_pass
+  rm -f "$WORKDIR/bin/aws"
+  export PATH="$WORKDIR/bin:/bin"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "missing aws or jq"
+}
+
+test_missing_pass_logs_and_skips() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  rm -f "$WORKDIR/bin/pass"
+  write_get_bundle '{}' "v1"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "pass not installed"
+}
+
+test_min_interval_skips_before_elapsed() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  jq -n '{last_run: 5000}' >"$DATA_DIR/.pass-secrets-sync-state"
+  write_get_bundle '{}' "v1"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  export PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS=100000
+  export PASS_SYNC_TEST_EPOCH=5100
+  pass_secrets_sync_run
+  if grep -q get-secret-value "$PASS_SYNC_TEST_AWS_LOG"; then
+    die "min interval: should not call aws when elapsed is less than min"
+  fi
+}
+
+test_get_failure_logs_get_failed() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  export PASS_SYNC_TEST_GET_EXIT=1
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SYNC_TEST_EPOCH=2000000
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "GetSecretValue failed"
+}
+
+test_bad_json_shape_logs_bad_json() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  jq -n '{SecretString: ({foo: 1} | tojson), VersionId: "v"}' >"$PASS_SYNC_TEST_GET_FILE"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SYNC_TEST_EPOCH=2000000
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "invalid JSON shape"
+}
+
+test_pull_from_aws_into_pass() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  bundle=$(jq -n --arg v 'from-aws-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  jq -n --arg s "$bundle" --arg vid 'vid-1' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SYNC_TEST_EPOCH=3000000
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "updated pass from AWS only"
+  local got
+  got=$(cat "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg")
+  if [ "$got" != "from-aws-secret" ]; then
+    die "pull: expected pass file content from-aws-secret, got $got"
+  fi
+  assert_file_contains "$TELEMETRY_LOG" '"outcome":"success"'
+}
+
+test_put_local_wins_calls_put() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
+  jq -n --arg s "$empty_bundle" --arg vid 'vid-same' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
+  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
+  echo "local-only-secret" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  touch -d '2000-01-01' "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg" 2>/dev/null || touch "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SYNC_TEST_EPOCH=4000000
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "PutSecretValue succeeded"
+  if [ ! -f "$PASS_SYNC_TEST_PUT_CAPTURE" ]; then
+    die "put: capture file missing"
+  fi
+  put_body=$(cat "$PASS_SYNC_TEST_PUT_CAPTURE")
+  if ! echo "$put_body" | jq -e '.entries["OSCAL/smtp-password"] == "local-only-secret"' >/dev/null; then
+    die "put body missing expected entry: $put_body"
+  fi
+}
+
+test_put_failure_logs_put_false() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
+  jq -n --arg s "$empty_bundle" --arg vid 'vid-same' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
+  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
+  echo "local-secret" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  export PASS_SYNC_TEST_PUT_EXIT=1
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SYNC_TEST_EPOCH=5000000
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "PutSecretValue failed"
+}
+
+test_cas_version_skips_put_when_version_changes() {
+  setup_workdir
+  write_mock_jq
+  write_mock_pass
+  empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
+  jq -n --arg s "$empty_bundle" --arg vid 'vid-1' '{SecretString: $s, VersionId: $vid}' >"$WORKDIR/get1.json"
+  jq -n --arg s "$empty_bundle" --arg vid 'vid-2' '{SecretString: $s, VersionId: $vid}' >"$WORKDIR/get2.json"
+  export PASS_SYNC_TEST_CAS_GET1="$WORKDIR/get1.json"
+  export PASS_SYNC_TEST_CAS_GET2="$WORKDIR/get2.json"
+  cat >"$WORKDIR/bin/aws" <<'EOS'
+#!/bin/sh
+set -e
+: "${PASS_SYNC_TEST_AWS_LOG:?}"
+{
+  printf '%s
+' "$(date -u +"%Y-%m-%dT%H:%M:%SZ") aws"
+  printf '%s
+' "$*"
+} >>"$PASS_SYNC_TEST_AWS_LOG"
+is_get=false
+for a in "$@"; do
+  case "$a" in get-secret-value) is_get=true ;; esac
+done
+if "$is_get"; then
+  n=$(awk 'BEGIN{c=0} /get-secret-value/{c++} END{print c+0}' "$PASS_SYNC_TEST_AWS_LOG")
+  if [ "$n" = "1" ]; then cat "${PASS_SYNC_TEST_CAS_GET1:?}"; else cat "${PASS_SYNC_TEST_CAS_GET2:?}"; fi
+  exit 0
+fi
+is_put=false
+for a in "$@"; do
+  case "$a" in put-secret-value) is_put=true ;; esac
+done
+if "$is_put"; then exit 0; fi
+exit 1
+EOS
+  chmod +x "$WORKDIR/bin/aws"
+  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
+  echo "local" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  source_lib
+  PASS_SECRETS_SYNC_ENABLED=true
+  PASS_SYNC_TEST_EPOCH=6000000
+  pass_secrets_sync_run
+  assert_file_contains "$TELEMETRY_LOG" "cas_version"
+}
+
+test_pass_secrets_sync_run_under_set_e_does_not_abort() {
+  setup_workdir
+  write_mock_aws
+  write_mock_jq
+  write_mock_pass
+  export PASS_SYNC_TEST_GET_EXIT=1
+  source_lib
+  export PASS_SECRETS_SYNC_ENABLED=true
+  export PASS_SYNC_TEST_EPOCH=7000000
+  set +e
+  (
+    set -e
+    pass_secrets_sync_run
+    echo OK_AFTER_SYNC >"$WORKDIR/after.marker"
+  )
+  ec=$?
+  set -e
+  if [ "$ec" != 0 ]; then
+    die "set -e subshell should exit 0 when sync skips on get failure, got $ec"
+  fi
+  if [ ! -f "$WORKDIR/after.marker" ]; then
+    die "expected sync to return without aborting set -e subshell"
+  fi
+}
+
+echo "Running ec2-automation-pass-sync tests..."
+test_disabled_flag_skips_aws
+test_empty_arn_skips_even_if_enabled
+test_missing_aws_logs_and_skips
+test_missing_pass_logs_and_skips
+test_min_interval_skips_before_elapsed
+test_get_failure_logs_get_failed
+test_bad_json_shape_logs_bad_json
+test_pull_from_aws_into_pass
+test_put_local_wins_calls_put
+test_put_failure_logs_put_false
+test_cas_version_skips_put_when_version_changes
+test_pass_secrets_sync_run_under_set_e_does_not_abort
+
+if [ "$failures" -gt 0 ]; then
+  echo "$failures test(s) failed"
+  exit 1
+fi
+echo "All ec2-automation-pass-sync tests passed."
+OSCAL_PASS_SYNC_SUITE_EOF
+}
+
+run_ec2_automation_pass_sync_tests() {
+    local _psf _ec
+    _psf=$(mktemp) || return 1
+    if ! get_pass_sync_embedded_script >"$_psf"; then
+        rm -f "$_psf"
+        return 1
+    fi
+    PROJECT_ROOT="$PROJECT_ROOT" bash "$_psf"
+    _ec=$?
+    rm -f "$_psf"
+    return "$_ec"
+}
+
+
+if [ "$EC2_PASS_SYNC_ONLY" = true ]; then
+    cd "$PROJECT_ROOT" || exit 1
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "jq required on PATH"
+        exit 1
+    fi
+    if [ ! -f "$PROJECT_ROOT/scripts/lib/ec2-automation-pass-sync.sh" ]; then
+        echo "missing scripts/lib/ec2-automation-pass-sync.sh"
+        exit 1
+    fi
+    print_section "ec2_automation Pass ↔ Secrets Manager sync (--ec2-pass-sync-only)"
+    run_ec2_automation_pass_sync_tests
+    exit $?
+fi
 
 # Run main function
 main

@@ -4,6 +4,10 @@
 # Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
 # Application and cron run as service account svc_ams-oscal (not root). Pass is installed and initialized for that user for secrets.
 #
+# Green/Blue are Auto Scaling Group members: Terraform outputs oscal_*_public_ip / oscal_*_private_ip point at the current instance.
+# After an ASG replacement, re-run this script (or use --green-only / --blue-only with the new IP from terraform output). Optional SSM
+# (oscal_ssm_release_s3_prefix) can sync prebuilt artifacts from S3 on a schedule; it does not replace this script for full builds.
+#
 # Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; AWS CLI (for ec2_automation env).
 #
 # Usage:
@@ -27,6 +31,11 @@
 #   SSH_USER             SSH user: ec2-user (RHEL). Default: ec2-user
 #   TERRAFORM_DIR        Terraform env dir (default: terraform/envs/aws4403). For AWS4379 Sandbox set
 #                        TERRAFORM_DIR=$PWD/terraform/envs/aws4379 and AWS_PASS_ENTRY="AWS/AWS4379 Sandbox".
+#   DEPLOY_BLUE_AUTO_UPDATE  Default 1: Blue gets the same ec2_automation cron as Green (S3 backup + Pass/SM sync; GitHub pull off by default). Set 0 for Blue manual-only (no cron).
+#   DEPLOY_ENABLE_GITHUB_UPDATE  Set to 1 so ec2_automation.env gets ENABLE_GITHUB_UPDATE=true (cron can git pull from GitHub). Default is off so deploys are not overwritten by old/main code.
+#   PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS  Optional; default 21600 (4 runs/day) written to ec2_automation.env.
+#   DEPLOY_RDS_BOOTSTRAP_SKIP   Set to 1 to skip copying/running scripts/lib/rds-bootstrap-on-instance.sh (default: run when Terraform has RDS).
+#   DEPLOY_RDS_BOOTSTRAP_FORCE  Set to 1 to remove /opt/oscal/data/.rds-bootstrap-done on the instance and re-run SQL grants (use rarely).
 
 set -e
 
@@ -87,6 +96,15 @@ get_s3_bucket() {
   tf_output -raw s3_logs_bucket_name || return 1
 }
 
+# Secrets Manager ARN for Pass vault bundle sync (ec2_automation); empty if not in state or disabled in TF.
+get_pass_sync_secret_arn() {
+  local tfdir="$1"
+  if [ ! -d "$tfdir" ] || [ ! -f "$tfdir/terraform.tfstate" ]; then
+    return 1
+  fi
+  tf_output -raw oscal_pass_secrets_sync_secret_arn 2>/dev/null || return 1
+}
+
 # Get instance IPs from Terraform output (optional)
 get_terraform_ips() {
   local tfdir="$1"
@@ -103,6 +121,77 @@ get_terraform_ips() {
   return 1
 }
 
+# When Terraform defines RDS (rds_endpoint + rds_master_secret_arn), ensure IAM DB user, marker, and systemd
+# drop-in 50-oscal-rds-env.conf match current outputs. Fixes instances that predated RDS or missed user_data.
+maybe_apply_rds_bootstrap() {
+  local ip="$1"
+  local key="$2"
+  [ "${DEPLOY_RDS_BOOTSTRAP_SKIP:-0}" = "1" ] && return 0
+
+  local rds_host rds_port rds_db master_user secret_arn iam_user aws_reg force
+  rds_host=$(tf_output -raw rds_endpoint 2>/dev/null || true)
+  rds_host=$(printf '%s' "$rds_host" | tr -d '\r\n')
+  secret_arn=$(tf_output -raw rds_master_secret_arn 2>/dev/null || true)
+  secret_arn=$(printf '%s' "$secret_arn" | tr -d '\r\n')
+  if [ -z "$rds_host" ] || [ "$rds_host" = "null" ] || [ -z "$secret_arn" ] || [ "$secret_arn" = "null" ]; then
+    return 0
+  fi
+
+  rds_port=$(tf_output -raw rds_port 2>/dev/null || true)
+  rds_port=$(printf '%s' "$rds_port" | tr -d '\r\n')
+  if [ -z "$rds_port" ] || [ "$rds_port" = "null" ]; then
+    rds_port="5432"
+  fi
+
+  rds_db=$(tf_output -raw rds_database_name 2>/dev/null || true)
+  rds_db=$(printf '%s' "$rds_db" | tr -d '\r\n')
+  if [ -z "$rds_db" ] || [ "$rds_db" = "null" ]; then
+    print_warning "RDS outputs present but rds_database_name is empty; skipping RDS bootstrap."
+    return 0
+  fi
+
+  master_user=$(tf_output -raw rds_master_username 2>/dev/null || true)
+  master_user=$(printf '%s' "$master_user" | tr -d '\r\n')
+  if [ -z "$master_user" ] || [ "$master_user" = "null" ]; then
+    master_user="oscalmaster"
+  fi
+
+  iam_user=$(tf_output -raw rds_iam_app_username 2>/dev/null || true)
+  iam_user=$(printf '%s' "$iam_user" | tr -d '\r\n')
+  if [ -z "$iam_user" ] || [ "$iam_user" = "null" ]; then
+    iam_user="oscal_app"
+  fi
+
+  aws_reg=$(tf_output -raw aws_region 2>/dev/null || true)
+  aws_reg=$(printf '%s' "$aws_reg" | tr -d '\r\n')
+  if [ -z "$aws_reg" ] || [ "$aws_reg" = "null" ]; then
+    aws_reg="${AWS_DEFAULT_REGION:-us-east-1}"
+  fi
+
+  local script_local="$REPO_ROOT/scripts/lib/rds-bootstrap-on-instance.sh"
+  if [ ! -f "$script_local" ]; then
+    print_error "Missing $script_local"
+    return 1
+  fi
+
+  force="false"
+  if [ "${DEPLOY_RDS_BOOTSTRAP_FORCE:-0}" = "1" ]; then
+    force="true"
+  fi
+
+  print_info "RDS in Terraform state: applying IAM DB user + systemd OSCAL_DATABASE_* on instance..."
+  scp -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$script_local" "${SSH_USER}@${ip}:/tmp/rds-bootstrap-on-instance.sh"
+
+  q() { printf '%q' "$1"; }
+  if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=120 "${SSH_USER}@${ip}" \
+    "sudo env AWS_DEFAULT_REGION=$(q "$aws_reg") RDS_HOST=$(q "$rds_host") RDS_PORT=$(q "$rds_port") DB_NAME=$(q "$rds_db") MASTER_USER=$(q "$master_user") SECRET_ARN=$(q "$secret_arn") IAM_USER=$(q "$iam_user") FORCE=$(q "$force") bash /tmp/rds-bootstrap-on-instance.sh"; then
+    print_error "RDS bootstrap failed on ${ip}. Check IAM (Secrets Manager + rds-db:connect), SG RDS access, and terraform outputs."
+    return 1
+  fi
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -f /tmp/rds-bootstrap-on-instance.sh" 2>/dev/null || true
+  print_success "RDS bootstrap step completed (SQL idempotent via marker; drop-in refreshed)"
+}
+
 deploy_one() {
   local ip="$1"
   local role="$2"
@@ -113,7 +202,7 @@ deploy_one() {
   [ "$role" = "green" ] && port="3019" || port="3020"
   print_info "Deploying to $role at $ip (port $port)..."
 
-  # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass (same logic as scripts/debug/install-pass-svc-oscal.sh).
+  # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass (inline in this deploy step).
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$SSH_USER" << 'REMOTEPASS' || true
 set -e
 REMOTE_SSH_USER="${1:-ec2-user}"
@@ -194,6 +283,10 @@ REMOTEPASS
   if [ -f "$REPO_ROOT/scripts/ec2_automation.sh" ]; then
     scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/ec2_automation.sh" "${SSH_USER}@${ip}:${REMOTE_APP}/../scripts/ec2_automation.sh"
     ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/ec2_automation.sh"
+    if [ -f "$REPO_ROOT/scripts/lib/ec2-automation-pass-sync.sh" ]; then
+      ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "mkdir -p /opt/oscal/scripts/lib"
+      scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/lib/ec2-automation-pass-sync.sh" "${SSH_USER}@${ip}:/opt/oscal/scripts/lib/ec2-automation-pass-sync.sh"
+    fi
     # Copy optional helper scripts to /opt/oscal/scripts (same destination as ec2_automation.sh)
     for _src in "scripts/debug/update-pass-credential.sh" "scripts/sync-consolidation-script.sh" "scripts/consolidate-users.sh"; do
       if [ -f "$REPO_ROOT/$_src" ]; then
@@ -206,9 +299,12 @@ REMOTEPASS
       ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/reactivate-admin.sh"
     fi
     if [ -n "$s3_bucket" ]; then
-      # Blue: disable auto git pull/restart from cron so manual deploys are not overwritten (optional; set DEPLOY_BLUE_AUTO_UPDATE=1 to enable)
-      github_update="true"
-      if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-0}" != "1" ]; then
+      # GitHub auto-update from cron is off by default; set DEPLOY_ENABLE_GITHUB_UPDATE=1 to enable on both roles.
+      github_update="false"
+      if [ "${DEPLOY_ENABLE_GITHUB_UPDATE:-0}" = "1" ]; then
+        github_update="true"
+      fi
+      if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-1}" != "1" ]; then
         github_update="false"
       fi
       ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "cat > /opt/oscal/scripts/ec2_automation.env << ENVEOF
@@ -217,9 +313,12 @@ S3_CONFIG_PREFIX=config/$role
 S3_LOGS_PREFIX=logs/$role
 DEPLOYMENT_ROLE=$role
 ENABLE_GITHUB_UPDATE=$github_update
+PASS_SECRETS_SYNC_ENABLED=${PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE:-false}
+PASS_SECRETS_SYNC_SECRET_ARN=${PASS_SYNC_SECRET_ARN:-}
+PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS=${PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS:-21600}
 ENVEOF"
-      if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-0}" != "1" ]; then
-        # Blue: remove existing ec2_automation cron so code is not updated from GitHub; ENABLE_GITHUB_UPDATE=false in env for consistency
+      if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-1}" != "1" ]; then
+        # Blue: remove ec2_automation cron (manual deploy only); ENABLE_GITHUB_UPDATE=false in env for consistency
         ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
           remaining=\$(sudo crontab -u $SVC_USER -l 2>/dev/null | grep -v ec2_automation.sh || true)
           if [ -n \"\$remaining\" ]; then
@@ -228,7 +327,7 @@ ENVEOF"
             sudo crontab -u $SVC_USER -r 2>/dev/null || true
           fi
         "
-        print_success "ec2_automation.sh and env installed on Blue; cron job removed (no auto update from GitHub). Set DEPLOY_BLUE_AUTO_UPDATE=1 to install cron on Blue."
+        print_success "ec2_automation.sh and env installed on Blue; cron removed (DEPLOY_BLUE_AUTO_UPDATE=0). Default is 1 for cron on both instances."
       else
         ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
           command -v crontab >/dev/null 2>&1 || { sudo dnf install -y cronie 2>/dev/null || sudo yum install -y cronie 2>/dev/null; sudo systemctl enable crond --now 2>/dev/null; }
@@ -277,6 +376,8 @@ ENVEOF"
     "$REPO_ROOT/" "${SSH_USER}@${ip}:${REMOTE_APP}/"
   # Remove orphan config dir if present (from older deploys); app uses CONFIG_PATH/USERS_PATH=/opt/oscal/data only
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -rf ${REMOTE_APP}/config" 2>/dev/null || true
+
+  maybe_apply_rds_bootstrap "$ip" "$key"
 
   # On instance: ensure Node/npm (Amazon Linux may not have it if user_data not run yet), then npm install, build, restart
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
@@ -488,6 +589,15 @@ resolve_ssh_key
 # S3 bucket for ec2_automation.env on instances (backup target; config/users live on EBS)
 S3_BUCKET=$(get_s3_bucket "$TERRAFORM_DIR" || true)
 
+PASS_SYNC_SECRET_ARN=$(get_pass_sync_secret_arn "$TERRAFORM_DIR" || true)
+PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE=true
+if [ -z "${PASS_SYNC_SECRET_ARN}" ] || [ "${PASS_SYNC_SECRET_ARN}" = "null" ]; then
+  PASS_SYNC_SECRET_ARN=""
+  PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE=false
+  print_warning "Terraform output oscal_pass_secrets_sync_secret_arn missing or null; ec2_automation.env sets PASS_SECRETS_SYNC_ENABLED=false (apply Terraform with oscal_pass_secrets_sync_enabled or check state)."
+fi
+export PASS_SYNC_SECRET_ARN PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE
+
 # IPs and ALB for EC2-local deployment.log, cross-instance curls, and ALB checks (Terraform outputs)
 DEPLOY_LOG_REMOTE="/opt/oscal/app/logs/deployment.log"
 GREEN_PRIVATE=$(tf_output -raw oscal_green_private_ip 2>/dev/null || true)
@@ -605,14 +715,14 @@ if [ "${PASS_MISSING_ANY:-0}" = "1" ]; then
     case "${response:-n}" in
       [yY]|[yY][eE][sS]) ;;
       *) print_error "Deployment aborted. Install and initialize Pass first, then re-run deploy."
-        echo "  Run: ./scripts/debug/install-pass-svc-oscal.sh"
-        echo "  Then add secrets (e.g. Okta): sudo -u $SVC_USER pass insert OSCAL/sso-oauth-okta-client-secret"
+        echo "  Re-run ./scripts/deploy-to-ec2.sh after fixing Pass on the instance, or add secrets manually:"
+        echo "  sudo -u $SVC_USER pass insert OSCAL/sso-oauth-okta-client-secret"
         exit 1
         ;;
     esac
   else
     print_error "Deployment completed but Pass is not available. Secrets will be stored in config.json."
-    echo "  To use Pass for secrets, run: ./scripts/debug/install-pass-svc-oscal.sh"
+    echo "  To use Pass for secrets, re-run deploy after fixing Pass on the instance (see docs/EC2_WEB_HOSTING_BEST_PRACTICES.md)."
   fi
 fi
 
@@ -633,13 +743,9 @@ if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
   done < "$DEPLOY_RESULTS_FILE"
 fi
 echo ""
-# Post-deploy: pass vault check (option 1)
-print_info "Pass vault status (secrets in vault vs config):"
-if [ -x "$REPO_ROOT/scripts/debug/check-pass-vault-on-ec2.sh" ]; then
-  "$REPO_ROOT/scripts/debug/check-pass-vault-on-ec2.sh" 2>/dev/null || true
-else
-  echo "  (run ./scripts/debug/check-pass-vault-on-ec2.sh for details)"
-fi
+# Post-deploy: pass vault reminder (compare config _pass pointers vs vault on each instance)
+print_info "Pass vault: on each instance run: sudo -u $SVC_USER env HOME=$SVC_HOME pass ls"
+print_info "Ensure config.json _pass entries exist in the vault (see docs/EC2_WEB_HOSTING_BEST_PRACTICES.md)."
 echo ""
 # Fail script if any instance failed health check (ok_ssh counts as success -- SG blocks public app ports by design)
 # Use wc -l so HEALTH_FAIL is always a single integer (grep -c in a subshell can yield newlines on some systems)
