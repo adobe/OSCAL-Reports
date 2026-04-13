@@ -19,10 +19,10 @@
     "lint:fix": "npx eslint . --ext .js --fix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.1008.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1008.0",
-    "@aws-sdk/client-lambda": "^3.1008.0",
-    "@aws-sdk/rds-signer": "^3.1029.0",
+    "@aws-sdk/client-bedrock": "^3.1030.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1030.0",
+    "@aws-sdk/client-lambda": "^3.1030.0",
+    "@aws-sdk/rds-signer": "^3.1030.0",
     "@oscal/oscal-deep-diff": "^1.0.0",
     "@smithy/node-http-handler": "^4.4.16",
     "ajv": "^8.18.0",
@@ -31,7 +31,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csurf": "^1.11.0",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
