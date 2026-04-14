@@ -10,8 +10,9 @@
  */
 
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import cors from 'cors';
-import axios from 'axios';
+import axios from './utils/safeAxios.js';
 import https from 'https';
 import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,7 +21,10 @@ import { generatePDFReport } from './pdfExport.js';
 import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
-import { loadConfig, getResolvedConfig, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir } from './configManager.js';
+import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir, applyDatabaseEnvOverrides } from './configManager.js';
+import { testConnection, connectPgClient, ensureAdobeTeamsTable, getAdobeTeamOptions } from './database/dbClient.js';
+import { syncExportToDatabase } from './database/exportSync.js';
+import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
 import { isPassPointer, passShow } from './utils/passResolver.js';
 import { MASK } from './utils/sensitiveConfigKeys.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
@@ -60,7 +64,8 @@ import {
   autoCleanupDeactivatedUsers,
   getDaysSinceDeactivation,
   changePassword,
-  generatePassword
+  generatePassword,
+  getLegacyPasswordHashMigrationStats,
 } from './auth/userManager.js';
 import { generateDefaultPasswordFromEnv } from './auth/passwordGenerator.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
@@ -92,6 +97,7 @@ import session from 'express-session';
 import csrf from 'csurf';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
 import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
+import { validateExportGenerationLimits } from './utils/exportLimits.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -103,6 +109,36 @@ const serverTimeout = 240000; // 240 seconds
 // Trust proxy headers when behind reverse proxy (SQUID, Nginx, etc.)
 // This ensures correct IP address detection and proper header handling
 app.set('trust proxy', true);
+
+/** Throttle GET /api/system/volume-status (sync fs + exec) before optionalAuth and handler. */
+const volumeStatusRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: true },
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Volume status checks are rate limited. Try again later.',
+    });
+  },
+});
+
+/** Throttle POST /api/auth/okta/exchange-token before Okta/network and session work. */
+const oktaExchangeTokenRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: true },
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many sign-in attempts. Try again in a few minutes.',
+    });
+  },
+});
 
 // Configure CORS to allow authentication headers through reverse proxy
 app.use(cors({
@@ -225,7 +261,7 @@ app.get('/health', (req, res) => {
  * Authentication optional - shows public info if not authenticated,
  * detailed info if authenticated as Platform Admin
  */
-app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
+app.get('/api/system/volume-status', volumeStatusRateLimiter, optionalAuth, async (req, res) => {
   try {
     const fs = await import('fs');
     const path = await import('path');
@@ -874,7 +910,24 @@ loadOktaStateFromFile();
 setInterval(cleanupOktaState, 60 * 1000);
 
 /**
- * Fetch Okta OIDC discovery document and return { authorization_endpoint, token_endpoint, userinfo_endpoint }.
+ * Normalize Okta OIDC discovery JSON for callers (authorize, token exchange, SSO test).
+ */
+function normalizeOktaDiscoveryDoc(data, discoveryUrl) {
+  const scopes = Array.isArray(data.scopes_supported) ? data.scopes_supported : [];
+  const claims = Array.isArray(data.claims_supported) ? data.claims_supported : [];
+  return {
+    authorization_endpoint: data.authorization_endpoint,
+    token_endpoint: data.token_endpoint,
+    userinfo_endpoint: data.userinfo_endpoint,
+    issuer: typeof data.issuer === 'string' ? data.issuer : '',
+    scopes_supported: scopes,
+    claims_supported: claims,
+    discovery_url: discoveryUrl,
+  };
+}
+
+/**
+ * Fetch Okta OIDC discovery document. Returns endpoints plus issuer, scopes_supported, claims_supported, discovery_url.
  * Tries: oauth2/{authServerId}/.well-known, then .well-known, then oauth2/default/.well-known.
  */
 async function fetchOktaDiscovery(domain, authServerId) {
@@ -889,11 +942,7 @@ async function fetchOktaDiscovery(domain, authServerId) {
     try {
       const res = await axios.get(url, { timeout: 8000, validateStatus: () => true });
       if (res.status === 200 && res.data?.authorization_endpoint) {
-        return {
-          authorization_endpoint: res.data.authorization_endpoint,
-          token_endpoint: res.data.token_endpoint,
-          userinfo_endpoint: res.data.userinfo_endpoint
-        };
+        return normalizeOktaDiscoveryDoc(res.data, url);
       }
     } catch (_) {
       // continue to next URL
@@ -904,17 +953,74 @@ async function fetchOktaDiscovery(domain, authServerId) {
     try {
       const res = await axios.get(fallback, { timeout: 8000, validateStatus: () => true });
       if (res.status === 200 && res.data?.authorization_endpoint) {
-        return {
-          authorization_endpoint: res.data.authorization_endpoint,
-          token_endpoint: res.data.token_endpoint,
-          userinfo_endpoint: res.data.userinfo_endpoint
-        };
+        return normalizeOktaDiscoveryDoc(res.data, fallback);
       }
     } catch (_) {
       // ignore
     }
   }
   return null;
+}
+
+/**
+ * POST authorization_code grant to Okta token URL. Sends client_secret in the body first (common default).
+ * If Okta responds with invalid_client / invalid client secret (not invalid_grant), retries per RFC 6749 §2.3.1
+ * using HTTP Basic (client_id:client_secret), which some org policies require.
+ * @returns {Promise<{ response: object, retriedWithBasic: boolean }>}
+ */
+async function postOktaAuthorizationCodeToken(
+  tokenUrl,
+  { clientId, clientSecret, code, redirectUri, codeVerifier }
+) {
+  const formHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
+  const axiosOpts = { headers: formHeaders, timeout: 10000, validateStatus: () => true };
+
+  const bodyPost = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    client_secret: clientSecret,
+  });
+  if (codeVerifier) {
+    bodyPost.set('code_verifier', codeVerifier);
+  }
+
+  let response = await axios.post(tokenUrl, bodyPost.toString(), axiosOpts);
+  if (response.data?.access_token) {
+    return { response, retriedWithBasic: false };
+  }
+
+  const err = response.data?.error;
+  const desc = typeof response.data?.error_description === 'string' ? response.data.error_description : '';
+  const descLc = desc.toLowerCase();
+  const isInvalidGrant = err === 'invalid_grant';
+  const shouldTryBasic =
+    (response.status === 401 || response.status === 400) &&
+    !isInvalidGrant &&
+    (err === 'invalid_client' || (descLc.includes('client secret') && descLc.includes('invalid')));
+
+  if (!shouldTryBasic) {
+    return { response, retriedWithBasic: false };
+  }
+
+  const bodyBasic = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  });
+  if (codeVerifier) {
+    bodyBasic.set('code_verifier', codeVerifier);
+  }
+  response = await axios.post(tokenUrl, bodyBasic.toString(), {
+    headers: {
+      ...formHeaders,
+      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`, 'utf8').toString('base64')}`,
+    },
+    timeout: 10000,
+    validateStatus: () => true,
+  });
+  return { response, retriedWithBasic: true };
 }
 
 /**
@@ -952,6 +1058,87 @@ function getEffectiveOktaClientSecret(okta) {
   return fromConfig || fromEnv;
 }
 
+/** Strip trailing '/' characters in linear time (avoids polynomial ReDoS from /\/+$/ on untrusted strings). */
+function stripTrailingSlashes(str) {
+  if (str == null || typeof str !== 'string') return '';
+  let end = str.length;
+  while (end > 0 && str.charCodeAt(end - 1) === 47) end -= 1;
+  return end === str.length ? str : str.slice(0, end);
+}
+
+/**
+ * Resolve Okta OIDC redirect_uri: SSO Redirect URI, env OSCAL_OKTA_REDIRECT_URI, then request-derived
+ * (X-Forwarded-Host / Referer). Matches authorize flow so token-endpoint probes use the same URI as real sign-in.
+ */
+function resolveOktaRedirectUri(req, okta) {
+  if (!req || !okta) return '';
+  const envRedirect = stripTrailingSlashes((process.env.OSCAL_OKTA_REDIRECT_URI || '').trim());
+  const configuredRedirect = (okta.redirectUri && typeof okta.redirectUri === 'string')
+    ? stripTrailingSlashes(okta.redirectUri.trim())
+    : '';
+  const forwardedHost = String(req.get('X-Forwarded-Host') || '')
+    .split(',')[0]
+    .trim();
+  const forwardedProto = String(req.get('X-Forwarded-Proto') || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  const backendHost = (req.get('host') || '').toLowerCase();
+  const useForwarded =
+    forwardedHost &&
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9](:\d+)?$/.test(forwardedHost) &&
+    (backendHost.startsWith('localhost:') || backendHost.startsWith('127.0.0.1:'));
+  let proto = useForwarded && (forwardedProto === 'https' || forwardedProto === 'http') ? forwardedProto : req.protocol;
+  let hostForCallback = useForwarded ? forwardedHost : req.get('host');
+  if ((!hostForCallback || backendHost === 'localhost:3020' || backendHost.startsWith('127.0.0.1:')) && !useForwarded) {
+    const ref = (req.get('Referer') || '').trim();
+    if (ref) {
+      try {
+        const u = new URL(ref);
+        if (u.host && u.protocol) {
+          hostForCallback = u.host;
+          proto = u.protocol.replace(':', '') || proto;
+        }
+      } catch (_) { /* ignore */ }
+    }
+  }
+  if (hostForCallback && !hostForCallback.includes(':')) {
+    if (forwardedProto === 'https') {
+      proto = 'https';
+    } else {
+      const ref = (req.get('Referer') || '').trim();
+      if (ref.toLowerCase().startsWith('https://')) {
+        try {
+          const ru = new URL(ref);
+          if (ru.host === hostForCallback || hostForCallback.startsWith(ru.hostname)) {
+            proto = 'https';
+          }
+        } catch (_) { /* ignore */ }
+      }
+    }
+  }
+  const requestOrigin =
+    proto && hostForCallback ? `${proto}://${hostForCallback}/auth/okta/callback` : '';
+  let redirectUri = '';
+  if (configuredRedirect) {
+    try {
+      const u = new URL(configuredRedirect);
+      if (u.protocol === 'http:' || u.protocol === 'https:') {
+        redirectUri = configuredRedirect;
+      }
+    } catch (_) { /* invalid URL — fall through */ }
+  }
+  if (!redirectUri && envRedirect) {
+    try {
+      const u = new URL(envRedirect);
+      if (u.protocol === 'http:' || u.protocol === 'https:') redirectUri = envRedirect;
+    } catch (_) { /* ignore */ }
+  }
+  if (!redirectUri) redirectUri = requestOrigin;
+  if (!redirectUri) redirectUri = configuredRedirect;
+  return stripTrailingSlashes(redirectUri || '');
+}
+
 /**
  * Start Okta OIDC login: redirect browser to Okta authorization URL
  * Uses OIDC discovery when possible so the correct authorize URL is used (avoids 404).
@@ -962,94 +1149,25 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
     const oauth = config.ssoConfig?.oauth;
     const okta = oauth?.providers?.okta;
     if (!oauth?.enabled || !okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim()) {
-      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      const back = stripTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
     // Client secret: config (pass-resolved) or env OSCAL_OKTA_CLIENT_SECRET (for EC2 when pass not set up)
     const clientSecret = getEffectiveOktaClientSecret(okta);
     if (!clientSecret) {
-      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      const back = stripTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
-    // Redirect URI: platform setting (config.json / SSO) first — no hardcoded URLs; same config deploys everywhere.
-    // Then env override for ops; then request-derived fallback when redirect URI left blank in Settings.
-    const envRedirect = (process.env.OSCAL_OKTA_REDIRECT_URI || '').trim().replace(/\/+$/, '');
-    const configuredRedirect = (okta.redirectUri || '').trim().replace(/\/+$/, '');
-    const forwardedHost = String(req.get('X-Forwarded-Host') || '')
-      .split(',')[0]
-      .trim();
-    const forwardedProto = String(req.get('X-Forwarded-Proto') || '')
-      .split(',')[0]
-      .trim()
-      .toLowerCase();
-    const backendHost = (req.get('host') || '').toLowerCase();
-    // When /api is proxied from Vite (3021), backend sees Host localhost:3020 — use forwarded host so Okta gets e.g. keekar.3utilities.com:3021
-    const useForwarded =
-      forwardedHost &&
-      /^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9](:\d+)?$/.test(forwardedHost) &&
-      (backendHost.startsWith('localhost:') || backendHost.startsWith('127.0.0.1:'));
-    let proto = useForwarded && (forwardedProto === 'https' || forwardedProto === 'http') ? forwardedProto : req.protocol;
-    let hostForCallback = useForwarded ? forwardedHost : req.get('host');
-    // Proxy did not forward host — infer from Referer so redirect_uri is not localhost:3020 (Okta will reject)
-    if ((!hostForCallback || backendHost === 'localhost:3020' || backendHost.startsWith('127.0.0.1:')) && !useForwarded) {
-      const ref = (req.get('Referer') || '').trim();
-      if (ref) {
-        try {
-          const u = new URL(ref);
-          if (u.host && u.protocol) {
-            hostForCallback = u.host;
-            proto = u.protocol.replace(':', '') || proto;
-          }
-        } catch (_) { /* ignore */ }
-      }
-    }
-    // Public URL behind TLS terminator: Node often sees http (proxy→backend). Referer shows real browser scheme.
-    // Okta Sign-in redirect URIs are usually https://host/... without port — must match exactly.
-    if (hostForCallback && !hostForCallback.includes(':')) {
-      if (forwardedProto === 'https') {
-        proto = 'https';
-      } else {
-        const ref = (req.get('Referer') || '').trim();
-        if (ref.toLowerCase().startsWith('https://')) {
-          try {
-            const ru = new URL(ref);
-            if (ru.host === hostForCallback || hostForCallback.startsWith(ru.hostname)) {
-              proto = 'https';
-            }
-          } catch (_) { /* ignore */ }
-        }
-      }
-    }
-    const requestOrigin =
-      proto && hostForCallback ? `${proto}://${hostForCallback}/auth/okta/callback` : '';
-    // Prefer Settings → SSO → Okta Redirect URI (persisted in config) so Okta always gets the exact registered URI.
-    let redirectUri = '';
-    if (configuredRedirect) {
-      try {
-        const u = new URL(configuredRedirect);
-        if (u.protocol === 'http:' || u.protocol === 'https:') {
-          redirectUri = configuredRedirect;
-        }
-      } catch (_) { /* invalid URL — fall through */ }
-    }
-    if (!redirectUri && envRedirect) {
-      try {
-        const u = new URL(envRedirect);
-        if (u.protocol === 'http:' || u.protocol === 'https:') redirectUri = envRedirect;
-      } catch (_) { /* ignore */ }
-    }
-    if (!redirectUri) redirectUri = requestOrigin;
-    if (!redirectUri) redirectUri = configuredRedirect; // last resort untrusted shape
-    redirectUri = (redirectUri || '').replace(/\/+$/, '');
+    let redirectUri = resolveOktaRedirectUri(req, okta);
     if (!redirectUri) {
-      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      const back = stripTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
     // PKCE: required when Okta has "Require PKCE" enabled; harmless when not required
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = computeCodeChallenge(codeVerifier);
     const state = createSignedOktaState(redirectUri, clientSecret, codeVerifier);
-    const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//, ''));
     const authServerId = (okta.authServerId || '').trim();
     // Use only scopes configured in Okta (do not auto-add 'groups' — many Auth Servers don't have that scope; groups claim can be "Always" in Okta)
     const scope = (okta.scope || 'openid profile email').trim();
@@ -1092,7 +1210,7 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
  * Exchange Okta authorization code for tokens and create app session
  * No auth required (called from frontend callback with code from Okta).
  */
-app.post('/api/auth/okta/exchange-token', async (req, res) => {
+app.post('/api/auth/okta/exchange-token', oktaExchangeTokenRateLimiter, async (req, res) => {
   try {
     const { code, state } = req.body;
     if (!code || !state) {
@@ -1121,9 +1239,9 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
     }
     // Must match redirect_uri sent to Okta at authorize (state carries the chosen URI)
-    const redirectUri = (stateData.redirectUri || (okta.redirectUri || '').trim()).replace(/\/+$/, '');
+    const redirectUri = stripTrailingSlashes(stateData.redirectUri || (okta.redirectUri || '').trim());
     const codeVerifier = stateData.codeVerifier || '';
-    const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//, ''));
     const authServerId = (okta.authServerId || '').trim();
     let tokenUrl;
     let userinfoUrl;
@@ -1146,21 +1264,13 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
       tokenUrl = `https://${domain}/${oauth2Path}/token`;
       userinfoUrl = `https://${domain}/${oauth2Path}/userinfo`;
     }
-    const tokenBody = {
-      grant_type: 'authorization_code',
+    const { response: tokenRes } = await postOktaAuthorizationCodeToken(tokenUrl, {
+      clientId: okta.clientId,
+      clientSecret,
       code,
-      redirect_uri: redirectUri,
-      client_id: okta.clientId,
-      client_secret: clientSecret
-    };
-    if (codeVerifier) {
-      tokenBody.code_verifier = codeVerifier;
-    }
-    const tokenRes = await axios.post(
-      tokenUrl,
-      new URLSearchParams(tokenBody).toString(),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
-    );
+      redirectUri,
+      codeVerifier,
+    });
     const accessToken = tokenRes.data?.access_token;
     if (!accessToken) {
       const oktaError = tokenRes.data?.error_description || tokenRes.data?.error || '';
@@ -1172,7 +1282,7 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
         oktaError: oktaError || '(none in body)',
         status: tokenRes.status,
         redirectUriMatch: redirectUri,
-        clientSecretConfigured: hasSecret
+        clientSecretConfigured: hasSecret,
       });
       return res.status(401).json({
         success: false,
@@ -1358,6 +1468,28 @@ app.get('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (re
     res.status(500).json({ 
       error: 'Failed to get users',
       message: error.message 
+    });
+  }
+});
+
+/**
+ * Legacy password hash migration stats (PBKDF2 migration gate).
+ * GET /api/users/legacy-password-hash-stats
+ * Platform Admin only — counts users still on pre-PBKDF2 SHA-256 stored hashes.
+ */
+app.get('/api/users/legacy-password-hash-stats', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+  try {
+    const stats = await getLegacyPasswordHashMigrationStats();
+    res.json({
+      success: true,
+      legacyPasswordHashCount: stats.legacyPasswordHashCount,
+      legacyUsernames: stats.legacyUsernames,
+    });
+  } catch (error) {
+    console.error('❌ Legacy password hash stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load migration stats',
     });
   }
 });
@@ -1886,7 +2018,7 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
     // Normalize Okta domain: hostname only (no https:// or trailing slash) so it works like backend expects
     const okta = ssoConfig?.oauth?.providers?.okta;
     if (okta?.domain && typeof okta.domain === 'string') {
-      okta.domain = okta.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim() || okta.domain;
+      okta.domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//i, '')).trim() || okta.domain;
     }
     const existingRaw = loadConfig();
     const currentConfig = { ...existingRaw, ssoConfig };
@@ -1928,7 +2060,11 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
 
 /**
  * Test SSO connection
- * For Okta: full validation (all fields, redirect URI if provided, Okta discovery).
+ * For Okta: required fields, OIDC discovery, Authorization Server metadata (issuer, scopes_supported,
+ * claims_supported, endpoints for the resolved Authorization Server ID), group-to-role readiness vs
+ * discovery + configured scope, redirect URI, secret resolution, then a token-endpoint probe (invalid code).
+ * invalid_grant ⇒ Client ID + Secret accepted; invalid_client / 401 ⇒ wrong credentials. Response
+ * includes `checks[]` with per-step pass/fail and detail text.
  */
 app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
@@ -1952,22 +2088,29 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       return;
     }
 
-    const providerName = provider.toLowerCase().replace(' ', '');
-    const prov = config.providers?.[providerName];
+    const providerSlug = provider.toLowerCase().replace(/\s+/g, '');
+    // UI sends "Azure AD" → "azuread"; stored config key is "azure"
+    const provKey = providerSlug === 'azuread' ? 'azure' : providerSlug;
+    const prov = config.providers?.[provKey];
 
-    if (providerName === 'okta' && prov) {
+    if (provKey === 'okta' && prov) {
+      const checks = [];
+      const pushCheck = (id, label, passed, detail) => {
+        checks.push({ id, label, passed: !!passed, detail: String(detail || '') });
+      };
+
       const errors = [];
-      let domain = (prov.domain && typeof prov.domain === 'string') ? prov.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim() : '';
+      let domain = (prov.domain && typeof prov.domain === 'string') ? stripTrailingSlashes(prov.domain.replace(/^https?:\/\//i, '')).trim() : '';
       if (!domain) {
         errors.push('Missing Okta Domain (e.g. your-domain.okta.com)');
       } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(domain) || !domain.includes('.')) {
         errors.push('Okta Domain must be a valid hostname (e.g. your-domain.okta.com)');
       }
-      const redirectUri = (prov.redirectUri && typeof prov.redirectUri === 'string') ? prov.redirectUri.trim() : '';
-      if (redirectUri) {
+      const redirectFormRaw = (prov.redirectUri && typeof prov.redirectUri === 'string') ? prov.redirectUri.trim() : '';
+      if (redirectFormRaw) {
         try {
-          const urlValidation = await validateUrl(redirectUri, {
-            allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
+          const urlValidation = await validateUrl(redirectFormRaw, {
+            allowPrivateIPs: true,
             allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
           });
           if (!urlValidation.valid) {
@@ -1985,29 +2128,284 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       }
       const clientId = (prov.clientId && typeof prov.clientId === 'string') ? prov.clientId.trim() : '';
       if (!clientId) errors.push('Missing Client ID');
-      // Secret may be literal string or Pass pointer { _pass: "entry" }; discovery test does not need the secret value
       const clientSecretStr = (prov.clientSecret && typeof prov.clientSecret === 'string') ? prov.clientSecret.trim() : '';
       const passPointer = prov.clientSecret && typeof prov.clientSecret === 'object' && prov.clientSecret._pass && typeof prov.clientSecret._pass === 'string' && prov.clientSecret._pass.trim();
       if (!clientSecretStr && !passPointer) errors.push('Missing Client Secret (enter value or save with Pass vault entry)');
 
       if (errors.length > 0) {
-        res.json({ success: false, error: errors.join('; ') });
-        return;
+        pushCheck('required_fields', 'Required Okta settings (domain, Client ID, Client Secret, etc.)', false, errors.join('; '));
+        return res.json({
+          success: false,
+          error: errors.join('; '),
+          checks,
+        });
       }
 
+      pushCheck(
+        'client_id',
+        'Client ID present',
+        true,
+        `Client ID is set (${clientId.length} characters). Wrong values are detected at the token endpoint step below.`,
+      );
+
       const discovery = await fetchOktaDiscovery(domain, authServerId || undefined);
+      const discoveryDetail = discovery
+        ? (discovery.token_endpoint && discovery.authorization_endpoint
+            ? `Reached OIDC metadata for ${domain}; authorization and token endpoints are present.`
+            : `Reached OIDC metadata for ${domain}.`)
+        : `Could not load OIDC discovery for "${domain}"${authServerId ? ` (authorization server: ${authServerId})` : ''}. Check the domain, network access, and Authorization Server ID.`;
+      pushCheck('oidc_discovery', 'Okta connectivity (OIDC discovery)', !!discovery, discoveryDetail);
       if (!discovery) {
-        res.json({
+        return res.json({
           success: false,
-          error: 'Okta discovery failed: invalid domain or Authorization Server ID, or could not reach Okta discovery endpoint.',
+          error: 'Okta OIDC discovery failed — see checks for details.',
+          checks,
         });
-        return;
       }
-      const msg = discovery.token_endpoint && discovery.authorization_endpoint
-        ? 'Okta configuration is valid; discovery succeeded (authorization and token endpoints found).'
-        : 'Okta discovery succeeded.';
-      res.json({ success: true, message: msg });
-      return;
+
+      const asLabel = authServerId
+        ? `custom Authorization Server "${authServerId}"`
+        : 'org default (tried /.well-known/openid-configuration then /oauth2/default/.well-known)';
+      const issuerLine = discovery.issuer ? `Issuer: ${discovery.issuer}` : 'Issuer: (not returned in discovery document)';
+      const discUrlLine = discovery.discovery_url ? `Discovery URL used: ${discovery.discovery_url}` : '';
+      const scopes = Array.isArray(discovery.scopes_supported) ? discovery.scopes_supported : [];
+      const claims = Array.isArray(discovery.claims_supported) ? discovery.claims_supported : [];
+      const scopesPreview = scopes.length
+        ? scopes.slice(0, 40).join(', ') + (scopes.length > 40 ? ` … (+${scopes.length - 40} more)` : '')
+        : '(none listed in discovery)';
+      const claimsPreview = claims.length
+        ? claims.slice(0, 40).join(', ') + (claims.length > 40 ? ` … (+${claims.length - 40} more)` : '')
+        : '(none listed in discovery)';
+      const metadataDetail = [
+        `Authorization Server ID in this form: ${authServerId ? `"${authServerId}" (${asLabel})` : `(blank) — ${asLabel}`}.`,
+        discUrlLine,
+        issuerLine,
+        `authorization_endpoint: ${discovery.authorization_endpoint || '(missing)'}`,
+        `token_endpoint: ${discovery.token_endpoint || '(missing)'}`,
+        `userinfo_endpoint: ${discovery.userinfo_endpoint || '(missing)'}`,
+        `scopes_supported (${scopes.length}): ${scopesPreview}`,
+        `claims_supported (${claims.length}): ${claimsPreview}`,
+        'Role mapping uses merged groups from /userinfo, then JWT claim groups on access_token, then on id_token.',
+      ].filter(Boolean).join(' ');
+      pushCheck('authorization_server_metadata', 'Authorization Server (discovery data for this ID)', true, metadataDetail);
+
+      const gtr = config.groupToRoleMapping && typeof config.groupToRoleMapping === 'object' && !Array.isArray(config.groupToRoleMapping)
+        ? config.groupToRoleMapping
+        : {};
+      const mappingEntries = Object.entries(gtr).filter(([k, v]) => (k || '').trim() && (v != null && String(v).trim() !== ''));
+      const configuredScope = (prov.scope && typeof prov.scope === 'string' ? prov.scope : 'openid profile email').trim();
+      const scopeTokens = configuredScope.split(/\s+/).filter(Boolean);
+      const requestGroupsScope = scopeTokens.some((t) => (t || '').toLowerCase() === 'groups');
+      const serverListsGroupsScope = scopes.includes('groups');
+      const serverListsGroupsClaim = claims.includes('groups');
+      const validAppRoles = new Set([ROLES.PLATFORM_ADMIN, ROLES.ASSESSOR, ROLES.USER]);
+      const badRoleEntries = mappingEntries.filter(([, v]) => !validAppRoles.has(String(v).trim()));
+      const syncRoleFromGroups = config.syncRoleFromGroups !== false;
+
+      let groupsPassed = true;
+      const gParts = [];
+      if (mappingEntries.length === 0) {
+        gParts.push('No group-to-role mappings in this form — Okta groups will not assign an app role until you add entries (group name must match IdP membership; comparison is case-insensitive).');
+      } else {
+        gParts.push(`Mappings (${mappingEntries.length}): ${mappingEntries.map(([k, v]) => `"${k}"→${String(v).trim()}`).join('; ')}.`);
+        if (badRoleEntries.length > 0) {
+          groupsPassed = false;
+          gParts.push(`Failed: each mapped role must be exactly "${ROLES.PLATFORM_ADMIN}", "${ROLES.ASSESSOR}", or "${ROLES.USER}". Fix: ${badRoleEntries.map(([k]) => k).join(', ')}.`);
+        }
+        gParts.push(`Okta Scope in this form: "${configuredScope || 'openid profile email'}".`);
+        if (!requestGroupsScope) {
+          gParts.push('The scope string does not request the OAuth scope "groups".');
+          if (serverListsGroupsScope) {
+            groupsPassed = false;
+            gParts.push('Failed: this Authorization Server advertises the "groups" scope in discovery but the app is not requesting it — add groups to the Scope field (and ensure the Okta app is allowed that scope) so access/id tokens can carry group membership.');
+          }
+        } else {
+          gParts.push('The scope string includes "groups" (required when your server issues group membership via that scope).');
+        }
+        if (scopes.length > 0 && !serverListsGroupsScope) {
+          gParts.push('Discovery scopes_supported does not list "groups". If you rely on a custom Authorization Server, confirm in Okta (Security → API → Authorization Servers) that a "groups" scope exists, or use an ID/access token claim configured to "Always" include groups (tokens may still contain groups even when discovery omits the scope).');
+        }
+        if (claims.length > 0 && !serverListsGroupsClaim) {
+          gParts.push('Discovery claims_supported does not list "groups" — Okta may still add a groups claim to tokens depending on Authorization Server claim rules; inspect a real token if mapping still fails.');
+        }
+        if (!syncRoleFromGroups) {
+          gParts.push('Note: "Sync role from Okta groups on every login" is disabled in this form — existing users may keep an old role until you enable sync or update roles manually.');
+        }
+      }
+      pushCheck('groups_for_role_mapping', 'Group-to-role mapping vs Authorization Server / scopes', groupsPassed, gParts.join(' '));
+
+      const ensureHost = (url, host) => {
+        try {
+          const u = new URL(url);
+          u.host = host;
+          return u.toString();
+        } catch (_) {
+          return url;
+        }
+      };
+
+      let secretForProbe = clientSecretStr;
+      if (!secretForProbe && passPointer) {
+        secretForProbe = (passShow(String(passPointer)) || '').trim();
+      }
+      if (!secretForProbe) {
+        const ro = getResolvedConfig()?.ssoConfig?.oauth?.providers?.okta;
+        secretForProbe = getEffectiveOktaClientSecret(ro);
+      }
+      const secretDetail = secretForProbe
+        ? 'A client secret value is available (form entry, Pass store lookup on this server, saved SSO config, or OSCAL_OKTA_CLIENT_SECRET).'
+        : 'No client secret value is available. Enter the secret in the form, ensure the Pass entry resolves on this server, save SSO settings with a stored secret, or set OSCAL_OKTA_CLIENT_SECRET for this host.';
+      pushCheck('client_secret_value', 'Client Secret available for server-side validation', !!secretForProbe, secretDetail);
+
+      const redirectForProbeRaw = redirectFormRaw || resolveOktaRedirectUri(req, prov);
+      const redirectSource = redirectFormRaw
+        ? 'SSO form (Redirect URI field)'
+        : (redirectForProbeRaw ? 'Inferred from this HTTP request or OSCAL_OKTA_REDIRECT_URI' : '');
+
+      let redirectOk = false;
+      let redirectDetail = '';
+      if (!redirectForProbeRaw) {
+        redirectDetail = 'No redirect URI in the form and none could be inferred from this request or OSCAL_OKTA_REDIRECT_URI. Set Redirect URI in SSO so it exactly matches a Sign-in redirect URI in your Okta app.';
+      } else {
+        try {
+          const urlValidation = await validateUrl(redirectForProbeRaw, {
+            allowPrivateIPs: true,
+            allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
+          });
+          if (!urlValidation.valid) {
+            redirectDetail = `Invalid or blocked redirect URI (${redirectSource}): ${urlValidation.error || 'validation failed'}`;
+          } else if (process.env.NODE_ENV === 'production' && !urlValidation.url.startsWith('https://')) {
+            redirectDetail = 'Redirect URI must use HTTPS in production.';
+          } else {
+            redirectOk = true;
+            redirectDetail = `Redirect URI is valid (${redirectSource}): ${stripTrailingSlashes(urlValidation.url)}`;
+          }
+        } catch (e) {
+          redirectDetail = `Redirect URI validation failed: ${e.message || String(e)}`;
+        }
+      }
+      pushCheck('redirect_uri', 'Redirect URI (must match Okta application)', redirectOk, redirectDetail);
+
+      const canProbeToken = !!(secretForProbe && redirectOk && discovery.token_endpoint);
+      if (!canProbeToken) {
+        let skipReason = '';
+        if (!discovery.token_endpoint) {
+          skipReason = 'Discovery response did not include a token_endpoint URL.';
+        } else if (!secretForProbe) {
+          skipReason = 'Skipped because no Client Secret value was available.';
+        } else if (!redirectOk) {
+          skipReason = 'Skipped because the redirect URI is missing or invalid.';
+        }
+        pushCheck(
+          'token_endpoint_credentials',
+          'Client ID and Client Secret accepted by Okta (token endpoint)',
+          false,
+          skipReason,
+        );
+        return res.json({
+          success: false,
+          error: 'Okta test did not complete credential validation — fix the failed checks above and retry.',
+          checks,
+        });
+      }
+
+      const tokenUrl = ensureHost(discovery.token_endpoint, domain);
+      const redirectNormalized = stripTrailingSlashes(redirectForProbeRaw);
+      try {
+        const { response: probeRes } = await postOktaAuthorizationCodeToken(tokenUrl, {
+          clientId,
+          clientSecret: secretForProbe,
+          code: '__oscal_invalid_probe_code__',
+          redirectUri: redirectNormalized,
+          codeVerifier: '',
+        });
+        const e = probeRes.data?.error;
+        const descRaw = typeof probeRes.data?.error_description === 'string' ? probeRes.data.error_description : '';
+        const descLc = descRaw.toLowerCase();
+        if (e === 'invalid_grant') {
+          if (descLc.includes('pkce') || descLc.includes('code_verifier')) {
+            pushCheck(
+              'token_endpoint_credentials',
+              'Client ID and Client Secret accepted by Okta (token endpoint)',
+              false,
+              'Okta returned a PKCE-related error instead of a simple invalid_grant for the fake code. This app may require PKCE; the probe cannot confirm confidential-client credentials. Complete a real browser sign-in to validate, or adjust the Okta app policy if appropriate.',
+            );
+            return res.json({
+              success: false,
+              error: 'Credential probe could not complete due to PKCE or code_verifier requirements.',
+              checks,
+            });
+          }
+          if (descLc.includes('redirect') || descLc.includes('redirect_uri')) {
+            pushCheck(
+              'token_endpoint_credentials',
+              'Client ID and Client Secret accepted by Okta (token endpoint)',
+              false,
+              `Okta rejected the redirect_uri used in the probe (it must exactly match a registered Sign-in redirect URI): ${descRaw || e}`.trim(),
+            );
+            return res.json({
+              success: false,
+              error: 'Redirect URI does not match the Okta application.',
+              checks,
+            });
+          }
+          pushCheck(
+            'token_endpoint_credentials',
+            'Client ID and Client Secret accepted by Okta (token endpoint)',
+            true,
+            'Passed: Okta returned invalid_grant for the probe authorization code (expected). The token endpoint therefore accepted this Client ID and Client Secret. (A wrong Client ID or Client Secret typically yields invalid_client or HTTP 401 instead.)',
+          );
+          const allPassed = checks.every((c) => c.passed);
+          if (!allPassed) {
+            return res.json({
+              success: false,
+              error: 'Client credentials are valid, but one or more checks failed (often group-to-role / scope). Review the failed lines below.',
+              checks,
+            });
+          }
+          return res.json({
+            success: true,
+            message: 'All Okta checks passed: discovery, Authorization Server metadata, group-to-role readiness, redirect URI, secret availability, and Client ID + Client Secret verified at the token endpoint.',
+            checks,
+          });
+        }
+        if (probeRes.status === 401 || e === 'invalid_client' || (descLc.includes('client secret') && descLc.includes('invalid'))) {
+          pushCheck(
+            'token_endpoint_credentials',
+            'Client ID and Client Secret accepted by Okta (token endpoint)',
+            false,
+            `Failed: Okta rejected client authentication (${descRaw || e || 'invalid_client'}). Verify the Client ID matches the Okta application and the Client Secret is current (rotate the secret in Okta if needed). Okta often uses the same error for a wrong Client ID and a wrong Client Secret.`,
+          );
+          return res.json({
+            success: false,
+            error: 'Client ID or Client Secret was rejected by Okta at the token endpoint.',
+            checks,
+          });
+        }
+        pushCheck(
+          'token_endpoint_credentials',
+          'Client ID and Client Secret accepted by Okta (token endpoint)',
+          false,
+          `Failed: unexpected token endpoint response (HTTP ${probeRes.status}${e ? `, error: ${e}` : ''}). ${descRaw}`.trim(),
+        );
+        return res.json({
+          success: false,
+          error: 'Okta token endpoint returned an unexpected error during the credential check.',
+          checks,
+        });
+      } catch (probeErr) {
+        pushCheck(
+          'token_endpoint_credentials',
+          'Client ID and Client Secret accepted by Okta (token endpoint)',
+          false,
+          `Failed: could not reach Okta token endpoint: ${probeErr.message || String(probeErr)}`,
+        );
+        return res.json({
+          success: false,
+          error: 'Could not complete credential check against the Okta token endpoint.',
+          checks,
+        });
+      }
     }
 
     // Other OAuth providers: minimal presence check
@@ -2320,7 +2718,7 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
     if (!urlValidation.valid) {
       return res.status(400).json({ error: 'Invalid or blocked URL', details: urlValidation.error });
     }
-    const axios = (await import('axios')).default;
+    const axios = (await import('./utils/safeAxios.js')).default;
     const resp = await axios.get(urlValidation.url, {
       responseType: 'json',
       timeout: 30000,
@@ -2355,6 +2753,26 @@ app.get('/api/settings', optionalAuth, (req, res) => {
             config.aiConfig[key] = (resolved && resolved.trim()) ? MASK : '';
           } catch {
             config.aiConfig[key] = '';
+          }
+        }
+      }
+    }
+    // Merge OSCAL_DATABASE_* env (e.g. Terraform EC2) so GUI reflects IAM / host without editing config.json
+    applyDatabaseEnvOverrides(config);
+    // Mask database password for client (IAM mode does not use a static password)
+    if (config.databaseConfig) {
+      if (config.databaseConfig.authMode === 'iam') {
+        config.databaseConfig.password = '';
+      } else {
+        const v = config.databaseConfig.password;
+        if (typeof v === 'string' && v.trim()) {
+          config.databaseConfig.password = MASK;
+        } else if (isPassPointer(v)) {
+          try {
+            const resolved = passShow(v._pass);
+            config.databaseConfig.password = (resolved && resolved.trim()) ? MASK : '';
+          } catch {
+            config.databaseConfig.password = '';
           }
         }
       }
@@ -2414,6 +2832,11 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
       aiConfig: {
         ...existingConfig.aiConfig,
         ...incomingConfig.aiConfig
+      },
+      // Ensure databaseConfig structure is properly merged
+      databaseConfig: {
+        ...existingConfig.databaseConfig,
+        ...incomingConfig.databaseConfig
       },
       // Explicitly include publishedSoaUrl from request (GitHub URL, /api/published-soa/filename.json, or empty)
       publishedSoaUrl: incomingConfig.publishedSoaUrl !== undefined
@@ -2486,6 +2909,105 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
     res.status(500).json({ 
       error: 'Failed to save settings',
       details: error.message 
+    });
+  }
+});
+
+// Database integration: test connection (Platform Admin only)
+app.post('/api/database/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
+  let dbConfig;
+  let fromForm = false;
+  try {
+    const formDb = req.body?.databaseConfig;
+    if (formDb !== undefined && formDb !== null && typeof formDb === 'object') {
+      fromForm = true;
+      dbConfig = getResolvedDatabaseConfigForTest(formDb);
+    } else {
+      const config = getResolvedConfig();
+      dbConfig = config.databaseConfig;
+    }
+    if (!dbConfig.host || !dbConfig.database) {
+      return res.status(400).json({
+        success: false,
+        error: 'Host and database name are required.'
+      });
+    }
+    if (!fromForm && (!dbConfig || !dbConfig.enabled)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Database integration is not enabled. Send the current form as databaseConfig in the request body to test before saving, or enable integration and save.'
+      });
+    }
+    await testConnection(dbConfig, { allowFormPreview: fromForm });
+    console.log('Database connection test succeeded');
+    return res.json({ success: true });
+  } catch (error) {
+    console.log('Database connection test failed:', error.message);
+    let clientMessage = error.message || 'Connection failed';
+    const pwFail = /password authentication failed/i.test(clientMessage);
+    if (pwFail && dbConfig?.authMode === 'password') {
+      const u = String(dbConfig.user || '').toLowerCase();
+      if (u === 'oscal_app') {
+        clientMessage +=
+          ' User oscal_app is for IAM database authentication only (no PostgreSQL password). Use "AWS RDS IAM database authentication" or test with the RDS master user (default oscalmaster) and its Secrets Manager password.';
+      } else {
+        clientMessage +=
+          ' Confirm database user and password (RDS master password is in Secrets Manager when manage_master_user_password is enabled). For RDS, set SSL mode to Require.';
+      }
+    } else if (pwFail && dbConfig?.authMode === 'iam') {
+      clientMessage +=
+        ' With IAM auth, confirm the instance/task role includes rds-db:connect for this RDS DB resource and database user, that the IAM database user was created (Terraform user_data bootstrap), and that the auth token region matches RDS (hostname ….{region}.rds.amazonaws.com or set OSCAL_DATABASE_RDS_REGION on the server).';
+    } else if (/no encryption|no pg_hba\.conf entry/i.test(clientMessage)) {
+      clientMessage +=
+        ' RDS expects TLS: set SSL mode to "Require" (IAM auth always uses encryption after a current backend deploy).';
+    }
+    return res.status(500).json({
+      success: false,
+      error: clientMessage
+    });
+  }
+});
+
+// Adobe Team Responsible dropdown options (from DB lookup table). Returns empty when DB integration disabled.
+app.get('/api/database/adobe-team-options', optionalAuth, async (req, res) => {
+  try {
+    const config = getResolvedConfig();
+    const dbConfig = config?.databaseConfig;
+    if (!dbConfig || !dbConfig.enabled) {
+      return res.json({ options: [] });
+    }
+    const client = await connectPgClient(dbConfig);
+    try {
+      await ensureAdobeTeamsTable(client);
+      const options = await getAdobeTeamOptions(client);
+      return res.json({ options });
+    } finally {
+      await client.end().catch(() => {});
+    }
+  } catch (err) {
+    console.error('Adobe team options fetch failed:', err.message);
+    return res.status(503).json({
+      options: [],
+      error: 'Database unavailable or options could not be loaded.'
+    });
+  }
+});
+
+// Merge extended_data (e.g. adobeTeamResponsible) into controls after SSP extract when DB integration is on
+app.post('/api/database/merge-control-extended-data', authenticate, async (req, res) => {
+  try {
+    const { controls, systemInfo } = req.body || {};
+    if (!Array.isArray(controls)) {
+      return res.status(400).json({ error: 'controls array is required' });
+    }
+    const result = await mergeControlsFromExtendedData(controls, systemInfo && typeof systemInfo === 'object' ? systemInfo : {});
+    return res.json({ controls: result.controls, merged: result.merged });
+  } catch (err) {
+    console.error('merge-control-extended-data failed:', err.message);
+    return res.status(503).json({
+      merged: false,
+      controls: req.body?.controls || [],
+      error: 'Database merge failed'
     });
   }
 });
@@ -3598,27 +4120,10 @@ function filterOSCALImplementedRequirement(implementedReq) {
 app.post('/api/generate-ssp', async (req, res) => {
   try {
     const { metadata, controls, systemInfo, validationOptions = {} } = req.body;
-    
-    // SECURITY: API4:2023 - Unrestricted Resource Consumption Prevention
-    // Limit number of controls to prevent DoS attacks
-    if (controls && controls.length > 1000) {
-      return res.status(400).json({
-        error: 'Request too large',
-        message: 'Maximum 1000 controls per SSP generation request',
-        limit: 1000,
-        received: controls.length
-      });
-    }
-    
-    // SECURITY: Limit metadata size to prevent memory exhaustion
-    const metadataSize = JSON.stringify(metadata || {}).length;
-    if (metadataSize > 100000) { // 100KB
-      return res.status(400).json({
-        error: 'Metadata too large',
-        message: 'Metadata must be less than 100KB',
-        limit: '100KB',
-        received: `${Math.round(metadataSize / 1024)}KB`
-      });
+
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
     }
     
     // Debug: Log first control to see what structure we're receiving
@@ -3640,6 +4145,23 @@ app.post('/api/generate-ssp', async (req, res) => {
       console.log('Title:', metadata.title);
       console.log('Version:', metadata.version);
       console.log('=================================');
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on export: ${syncResult.controlsCount} controls, system synced`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
     }
 
     // Build SSP metadata - preserve catalog metadata and enhance with SSP-specific data
@@ -3869,6 +4391,7 @@ app.post('/api/generate-ssp', async (req, res) => {
             // Conditionally exclude custom props if "No Additional Properties" validation is enabled
             const customFieldsMapping = {
               'responsibleParty': 'responsible-party',
+              'adobeTeamResponsible': 'adobe-team-responsible',
               'controlOwner': 'control-owner',
               'consumerGuidance': 'consumer-guidance',
               'implementationDate': 'implementation-date',
@@ -4018,29 +4541,29 @@ app.post('/api/generate-ssp', async (req, res) => {
 app.post('/api/generate-sar', async (req, res) => {
   try {
     const { metadata, controls, assessmentInfo = {}, validationOptions = {} } = req.body;
-    
-    // SECURITY: API4:2023 - Unrestricted Resource Consumption Prevention
-    // Limit number of controls to prevent DoS attacks
-    if (controls && controls.length > 1000) {
-      return res.status(400).json({
-        error: 'Request too large',
-        message: 'Maximum 1000 controls per SAR generation request',
-        limit: 1000,
-        received: controls.length
-      });
+
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
     }
-    
-    // SECURITY: Limit metadata size to prevent memory exhaustion
-    const metadataSize = JSON.stringify(metadata || {}).length;
-    if (metadataSize > 100000) { // 100KB
-      return res.status(400).json({
-        error: 'Metadata too large',
-        message: 'Metadata must be less than 100KB',
-        limit: '100KB',
-        received: `${Math.round(metadataSize / 1024)}KB`
-      });
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], assessmentInfo);
+      if (!syncResult.skipped) {
+        console.log(`Database sync on SAR export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
     }
-    
+
     // SECURITY AUDIT LOG: OWASP A09 - Security Logging and Monitoring
     // Log SAR generation for audit trail and compliance
     console.log({
@@ -4126,6 +4649,28 @@ app.post('/api/generate-ccm', async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
 
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on CCM export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
+    }
+
     const workbook = await generateCCMExport(controls, systemInfo);
 
     // Generate buffer
@@ -4148,6 +4693,28 @@ app.post('/api/generate-pdf', async (req, res) => {
   try {
     const { controls, systemInfo, metadata } = req.body;
 
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on PDF export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
+    }
+
     const pdfBuffer = await generatePDFReport(controls, systemInfo, metadata);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -4166,6 +4733,28 @@ app.post('/api/generate-pdf', async (req, res) => {
 app.post('/api/generate-excel', async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
+
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json(limitErr.body);
+    }
+
+    // Database Integration: sync export data when enabled; fail export if DB unreachable
+    try {
+      const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
+      if (!syncResult.skipped) {
+        console.log(`Database sync on Excel export: ${syncResult.controlsCount} controls`);
+      }
+    } catch (syncErr) {
+      if (syncErr.code === 'DATABASE_UNAVAILABLE') {
+        return res.status(503).json({
+          error: 'Database update is not possible',
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database integration is enabled but the database is not reachable. Disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.'
+        });
+      }
+      throw syncErr;
+    }
 
     const workbook = new ExcelJS.Workbook();
     
@@ -4256,7 +4845,12 @@ app.post('/api/generate-excel', async (req, res) => {
 app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
   try {
     const { controls, systemInfo, metadata } = req.body;
-    
+
+    const limitErr = validateExportGenerationLimits(controls, metadata);
+    if (limitErr) {
+      return res.status(limitErr.status).json({ success: false, ...limitErr.body });
+    }
+
     const jobId = createJob(
       JOB_TYPE.PDF_EXPORT,
       { controls, systemInfo, metadata },
@@ -4291,7 +4885,12 @@ app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
 app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
-    
+
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json({ success: false, ...limitErr.body });
+    }
+
     const jobId = createJob(
       JOB_TYPE.EXCEL_EXPORT,
       { controls, systemInfo },
@@ -4326,7 +4925,12 @@ app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
 app.post('/api/jobs/ccm', optionalAuth, async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
-    
+
+    const limitErr = validateExportGenerationLimits(controls, undefined);
+    if (limitErr) {
+      return res.status(limitErr.status).json({ success: false, ...limitErr.body });
+    }
+
     const jobId = createJob(
       JOB_TYPE.CCM_EXPORT,
       { controls, systemInfo },
@@ -5638,9 +6242,10 @@ app.post('/api/validate-oscal', async (req, res) => {
   }
 });
 
-// Serve React app for all other routes (SPA fallback)
-app.get('*', (req, res) => {
-  res.sendFile('index.html', { root: 'public' });
+// Serve React app for any unmatched GET (SPA fallback). Use middleware to avoid path-to-regexp v8 catch-all syntax.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Track timers for cleanup

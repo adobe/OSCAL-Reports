@@ -34,3 +34,34 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
+
+# Private subnets for RDS only (no IGW route). RDS is not internet-reachable; EC2 reaches RDS via private IP in-VPC.
+resource "aws_subnet" "private_rds" {
+  count = var.create_rds_postgres ? 2 : 0
+
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, 10 + count.index)
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name = "${var.project_name}-private-rds-${count.index + 1}"
+  }
+}
+
+resource "aws_route_table" "private_rds" {
+  count = var.create_rds_postgres ? 1 : 0
+
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-private-rds-rt"
+  }
+}
+
+resource "aws_route_table_association" "private_rds" {
+  count = var.create_rds_postgres ? 2 : 0
+
+  subnet_id      = aws_subnet.private_rds[count.index].id
+  route_table_id = aws_route_table.private_rds[0].id
+}

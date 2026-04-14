@@ -100,12 +100,44 @@ For TrueNAS Blue-Green deployments you can use:
 
 | Method | Script | Speed | Use Case |
 |--------|--------|-------|----------|
-| **Pull-based** | `deploy_from_dockerhub.sh` | 1–3 min | Production, standard updates, automatic rollback |
-| **Build-based** | `retired/truenas-build/build_on_truenas.sh` | 10–15 min | Development, custom builds (retired; see retired/truenas-build/README.md) |
+| **Pull-based** | `install_from_dockerhub.sh` | 1–3 min | Production, standard updates, automatic rollback |
+| **Build-based** | `docker build` (root `Dockerfile`) | 10–15 min | Development, custom builds, or when Docker Hub is unavailable |
 
 **Pull-based** (recommended for production): Pulls pre-built image from Docker Hub, backs up data, runs health check, auto-rollback on failure. Requires Docker Hub access.
 
-**Build-based**: Clones repo and builds image locally. Use when you need custom code, specific branch, or when Docker Hub is unavailable. No automatic rollback.
+**Build-based**: Build the image locally from this repository’s root `Dockerfile`. Use when you need custom code, a specific branch, or when Docker Hub is unavailable. No automatic rollback from this path unless you manage images yourself.
+
+### Local build and publish
+
+You can build the image on your laptop (Docker Desktop) and push it to Docker Hub so others can pull it, without using GitHub Actions. This is useful when the CI workflow fails or you prefer to publish from your machine. The script uses **Docker Buildx** to build for **both linux/amd64 and linux/arm64** (multi-platform), so the published image works on Intel/AMD servers and Apple Silicon, matching the GitHub workflow.
+
+**Prerequisites**
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and ensure `docker` (and Buildx) is available.
+2. Log in to Docker Hub: run `docker login` and enter your Docker Hub username and password (or access token).
+
+**Steps**
+
+1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.7.12`), then pushes that tag and also `latest`:
+
+   ```bash
+   DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
+   ```
+
+2. To use an explicit tag (e.g. a specific version or `latest` only):
+
+   ```bash
+   ./scripts/build-and-push-dockerhub.sh v1.7.12
+   ```
+
+3. If your Docker Hub username is not `keekar`, set it in the environment:
+
+   ```bash
+   export DOCKERHUB_USERNAME=your_username
+   ./scripts/build-and-push-dockerhub.sh
+   ```
+
+The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.7.12`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
 
 ---
 
@@ -189,7 +221,7 @@ For TrueNAS Blue-Green deployments, we provide an automated deployment script th
 cd /path/to/OSCAL_Blue  # or OSCAL_Green
 
 # Run the deployment script
-./scripts/deploy_from_dockerhub.sh
+./scripts/install_from_dockerhub.sh
 
 # The script will:
 # 1. Detect Blue/Green instance automatically
@@ -203,13 +235,13 @@ cd /path/to/OSCAL_Blue  # or OSCAL_Green
 
 ```bash
 # Force deployment (override lock file)
-./scripts/deploy_from_dockerhub.sh --force
+./scripts/install_from_dockerhub.sh --force
 
 # Skip API backup (use volume backup only)
-./scripts/deploy_from_dockerhub.sh --skip-backup
+./scripts/install_from_dockerhub.sh --skip-backup
 
 # Combine options
-./scripts/deploy_from_dockerhub.sh --force --skip-backup
+./scripts/install_from_dockerhub.sh --force --skip-backup
 ```
 
 ### Deployment Process
@@ -232,7 +264,7 @@ The script follows this workflow:
 
 ### Comparison with Build Script
 
-| Feature | `retired/truenas-build/build_on_truenas.sh` | `deploy_from_dockerhub.sh` |
+| Feature | Local `docker build` (root `Dockerfile`) | `install_from_dockerhub.sh` |
 |---------|---------------------|---------------------------|
 | **Speed** | 10-15 minutes | 1-3 minutes |
 | **Internet** | Git clone only | Docker Hub pull required |
@@ -245,19 +277,19 @@ The script follows this workflow:
 
 ### When to Use Each Script
 
-**Use `deploy_from_dockerhub.sh` when:**
+**Use `install_from_dockerhub.sh` when:**
 - ✅ Deploying to production TrueNAS
 - ✅ Need fast, reliable updates
 - ✅ Want automatic rollback protection
 - ✅ Using scheduled cron deployments
 - ✅ Docker Hub is accessible
 
-**Use the TrueNAS build script (retired/truenas-build/build_on_truenas.sh) when:**
+**Use a local `docker build` (repo root) when:**
 - ✅ Developing or testing custom changes
-- ✅ Building from specific Git branch
+- ✅ Building from a specific Git branch or fork
 - ✅ Docker Hub is unavailable
-- ✅ Need source code modifications
-- ✅ First-time setup with custom configuration
+- ✅ You need source-level modifications before image build
+- ✅ First-time setup with a custom image tag or compose overlay
 
 ### Automated Scheduling
 
@@ -268,10 +300,10 @@ Schedule monthly deployments using cron:
 crontab -e
 
 # Green: Deploy on 1st, 3rd, 5th Sunday at 2 AM
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
 
 # Blue: Deploy on 2nd, 4th Sunday at 2 AM
-0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/deploy_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
+0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
 ```
 
 ### Backup Management
@@ -314,7 +346,7 @@ docker rm oscal-report-generator-blue
 
 # Start from backup image
 docker tag oscal-report-generator:blue-backup-20250128-140530 oscal-report-generator:blue
-./scripts/deploy_from_dockerhub.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 ### Troubleshooting Deployment Script
@@ -328,18 +360,18 @@ ping -c 3 hub.docker.com
 # Check Docker Hub status
 curl -s https://status.docker.com/api/v2/status.json | jq
 
-# Alternative: Build from source
-./retired/truenas-build/build_on_truenas.sh
+# Alternative: build image from source (repo root)
+docker build -t oscal-report-generator:local .
 ```
 
 **Issue: Lock file exists**
 
 ```bash
 # Check if deployment is actually running
-ps aux | grep deploy_from_dockerhub
+ps aux | grep install_from_dockerhub
 
 # Force deployment if safe
-./scripts/deploy_from_dockerhub.sh --force
+./scripts/install_from_dockerhub.sh --force
 
 # Or manually remove stale lock
 rm -f /tmp/oscal-deploy-blue.lock  # or green.lock
@@ -815,6 +847,12 @@ docker pull --platform linux/amd64 keekar/oscal_reports:latest
 docker pull --platform linux/arm64 keekar/oscal_reports:latest
 ```
 
+#### Issue: Some Tags Work, Others Don't (e.g. 1.7 / 1.7.8 work; v1.7.12 / latest don't)
+
+**Cause**: Tags built with the **GitHub workflow** are **multi-platform** (linux/amd64 and linux/arm64), so they run on both Intel/AMD and Apple Silicon. Tags built with a **local script** using plain `docker build` are **single-platform** (e.g. arm64 only when built on a Mac M1/M4). When you pull a single-platform image on a different architecture (e.g. amd64 server), it can fail or use slow emulation.
+
+**Solution**: Use the updated **`scripts/build-and-push-dockerhub.sh`**, which uses **Docker Buildx** to build for both `linux/amd64` and `linux/arm64`, matching the GitHub workflow. Rebuild and push the failing tag (e.g. `./scripts/build-and-push-dockerhub.sh v1.7.12`); the new image will work on both architectures. See [Local build and publish](#local-build-and-publish) in this guide.
+
 #### Issue: Container Won't Start
 
 **Problem**: Container exits immediately
@@ -1029,7 +1067,7 @@ curl http://localhost:3020/health       # Check health
 
 ## Related Documentation
 
-- [TrueNAS (retired)](../retired/truenas-build/TRUENAS.md)
+- [TrueNAS / Blue-Green](./DEPLOYMENT.md) (Docker Hub + `install_from_dockerhub.sh`)
 - [Cloud Deployment](./CLOUD_DEPLOYMENT.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Deployment Guide](./DEPLOYMENT.md)
@@ -1064,6 +1102,6 @@ This project is licensed under the **GNU General Public License v3.0** (GPL-3.0)
 
 ---
 
-**Last Updated**: January 2026  
+**Last Updated**: April 2026  
 **Maintained By**: Mukesh Kesharwani  
-**Version**: 1.7.10
+**Version**: 1.7.12
