@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import axios from 'axios';
+import axios from '../utils/safeAxios.js';
 import './CCMUpload.css';
 
 function CCMUpload({ onImportComplete, onSkip, catalogueUrl }) {

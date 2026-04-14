@@ -1,5 +1,5 @@
 # S3 bucket for logs, config, and users
-# Best practice (docs/IMAGE_FACTORY.md): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
+# Best practice (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
 # Terraform forces lowercase to satisfy S3 and avoid InvalidBucketName.
 # Security: Every S3 bucket in this project MUST have aws_s3_bucket_public_access_block (PCL rule custom-s3-pab-check).
 

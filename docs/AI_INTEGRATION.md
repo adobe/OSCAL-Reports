@@ -1,4 +1,19 @@
-# AI Integration Architecture & Security Design
+# AI integration: architecture, security, and configuration
+
+**Consolidated guide:** security and architecture for AI features, plus supported models (Mistral, Gemma), Bedrock/Mistral configuration, token limits, and troubleshooting.
+
+---
+
+## Table of contents
+
+- [AI Integration Architecture & Security Design](#ai-integration-architecture-security-design)
+- [AI Models and Configuration](#ai-models-and-configuration)
+
+---
+
+<a id="ai-integration-architecture-security-design"></a>
+
+## AI Integration Architecture & Security Design
 
 **Date:** 2026-01-23  
 **Status:** Production-Ready  
@@ -6,15 +21,15 @@
 
 ---
 
-## Executive Summary
+### Executive Summary
 
 This document describes the architectural decision to allow private IP addresses for AI Integration in both development and production environments. This is a **deliberate design choice** based on the application's architecture, not a security compromise.
 
 ---
 
-## Architecture Overview
+### Architecture Overview
 
-### AI Service Deployment Model
+#### AI Service Deployment Model
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -36,7 +51,7 @@ This document describes the architectural decision to allow private IP addresses
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Design Rationale
+#### Design Rationale
 
 **Why private / on-prem AI backends (e.g. Ollama) are allowed:**
 
@@ -55,9 +70,9 @@ This document describes the architectural decision to allow private IP addresses
 
 ---
 
-## Security Configuration
+### Security Configuration
 
-### Current Settings
+#### Current Settings
 
 **File:** `backend/utils/securityConfig.js`
 
@@ -79,7 +94,7 @@ urlValidation: {
 }
 ```
 
-### What This Means
+#### What This Means
 
 | Network Type | Example | Allowed? | Reason |
 |--------------|---------|----------|--------|
@@ -96,9 +111,9 @@ urlValidation: {
 
 ---
 
-## SSRF Protection Layers
+### SSRF Protection Layers
 
-### Active Protections (Even with Private IPs Allowed)
+#### Active Protections (Even with Private IPs Allowed)
 
 1. **Cloud Metadata Blocking**
    - Blocks 169.254.169.254 (AWS, GCP, Azure metadata)
@@ -125,7 +140,7 @@ urlValidation: {
    - Checks both hostname and final IP
    - Cannot be bypassed via DNS tricks
 
-### What We're NOT Protecting Against (By Design)
+#### What We're NOT Protecting Against (By Design)
 
 - ❌ Access to on-prem AI (e.g. Ollama) on private network → **INTENDED USE CASE**
 - ❌ Access to cloud AI (Mistral, Google AI) via configured URLs → **INTENDED USE CASE**
@@ -133,9 +148,9 @@ urlValidation: {
 
 ---
 
-## Supported AI Deployment Scenarios
+### Supported AI Deployment Scenarios
 
-### Scenario 1: AWS Bedrock (Production)
+#### Scenario 1: AWS Bedrock (Production)
 
 ```yaml
 Environment: Production
@@ -147,7 +162,7 @@ Status: ✅ Fully Supported
 
 **Use Case:** AWS-hosted models (Mistral, Gemma, etc.) via Bedrock; no URL validation applies.
 
-### Scenario 2: Mistral or Google AI Cloud API (Production)
+#### Scenario 2: Mistral or Google AI Cloud API (Production)
 
 ```yaml
 Environment: Production
@@ -158,7 +173,7 @@ Status: ✅ Fully Supported
 
 **Use Case:** Cloud-based AI inference without on-prem infrastructure.
 
-### Scenario 3: Ollama on Local Network (Production)
+#### Scenario 3: Ollama on Local Network (Production)
 
 ```yaml
 Environment: Production
@@ -170,7 +185,7 @@ Status: ✅ Fully Supported
 
 **Use Case:** On-prem AI server on internal network.
 
-### Scenario 4: Ollama on Localhost (Development)
+#### Scenario 4: Ollama on Localhost (Development)
 
 ```yaml
 Environment: Development
@@ -184,9 +199,9 @@ Status: ✅ Fully Supported
 
 ---
 
-## Security Risk Assessment
+### Security Risk Assessment
 
-### Threat Model
+#### Threat Model
 
 **Threat:** Malicious user attempts SSRF attack via AI Integration settings
 
@@ -213,7 +228,7 @@ Status: ✅ Fully Supported
    - **Result:** ❌ BLOCKED by credential detection
    - **Impact:** None
 
-### Risk Mitigation
+#### Risk Mitigation
 
 **Network-Level Controls:**
 
@@ -241,9 +256,9 @@ Status: ✅ Fully Supported
 
 ---
 
-## Comparison: Before vs. After
+### Comparison: Before vs. After
 
-### Before (Security Over Functionality)
+#### Before (Security Over Functionality)
 
 ```javascript
 // Development: Private IPs blocked by default
@@ -258,7 +273,7 @@ allowPrivateIPs: process.env.ALLOW_PRIVATE_IPS === 'true'
 - ❌ Breaks legitimate use cases
 - ❌ Not aligned with architectural design
 
-### After (Security AND Functionality)
+#### After (Security AND Functionality)
 
 ```javascript
 // Development: Private IPs allowed (design decision)
@@ -275,16 +290,16 @@ allowPrivateIPs: true
 
 ---
 
-## Production Deployment Checklist
+### Production Deployment Checklist
 
-### Network Security
+#### Network Security
 
 - [ ] If using on-prem AI (e.g. Ollama): server on isolated segment; firewall restricts access to app server only
 - [ ] On-prem AI has authentication enabled where supported; TLS/HTTPS if supported
 - [ ] If using AWS Bedrock: IAM roles and least-privilege; no URL exposure
 - [ ] Network monitoring in place
 
-### Application Security
+#### Application Security
 
 - [ ] Strong passwords for all Platform Admin accounts
 - [ ] Admin account audit logging enabled
@@ -292,7 +307,7 @@ allowPrivateIPs: true
 - [ ] CSRF_ENABLED=true (default, keep it)
 - [ ] Regular security updates applied
 
-### AI Service Security
+#### AI Service Security
 
 - [ ] AI backend (Ollama, Bedrock, or cloud API) is up to date and from trusted sources
 - [ ] Model inference logs are monitored where available
@@ -301,9 +316,9 @@ allowPrivateIPs: true
 
 ---
 
-## Configuration Reference
+### Configuration Reference
 
-### Environment Variables
+#### Environment Variables
 
 ```bash
 # No special environment variables needed!
@@ -314,7 +329,7 @@ allowPrivateIPs: true
 # ALLOW_LOCALHOST=false    # Would break local development
 ```
 
-### Application Configuration
+#### Application Configuration
 
 **File:** `config/app/config.json`
 
@@ -350,9 +365,9 @@ Example with **AWS Bedrock** (no URL):
 
 ---
 
-## Testing & Validation
+### Testing & Validation
 
-### Test Plan
+#### Test Plan
 
 1. **Test Private IP Access**
    ```bash
@@ -386,13 +401,13 @@ Example with **AWS Bedrock** (no URL):
 
 ---
 
-## Frequently Asked Questions
+### Frequently Asked Questions
 
-### Q: Is this a security vulnerability?
+#### Q: Is this a security vulnerability?
 
 **A:** No. This is an architectural design decision. The application supports multiple AI backends (Ollama, AWS Bedrock, Mistral, Google AI). Private network access for on-prem AI (e.g. Ollama) is an intended use case, not an attack vector. Bedrock uses the AWS SDK (no arbitrary URL).
 
-### Q: What if someone configures a malicious private IP (Ollama/URL-based)?
+#### Q: What if someone configures a malicious private IP (Ollama/URL-based)?
 
 **A:** 
 1. Only Platform Admins can configure AI settings (RBAC enforced)
@@ -400,11 +415,11 @@ Example with **AWS Bedrock** (no URL):
 3. On-prem AI (e.g. Ollama) should have its own authentication where supported
 4. Actions are logged for audit
 
-### Q: Why not use environment variables?
+#### Q: Why not use environment variables?
 
 **A:** Environment variables make it opt-in, which breaks the intended architecture. Every deployment would need to manually enable private IPs, which is error-prone and doesn't align with the design.
 
-### Q: What about SSRF attacks?
+#### Q: What about SSRF attacks?
 
 **A:** Multiple layers of SSRF protection remain active:
 - Cloud metadata blocked
@@ -413,13 +428,13 @@ Example with **AWS Bedrock** (no URL):
 - Malformed URLs blocked
 - Only Platform Admins can configure
 
-### Q: Can I disable private IP access?
+#### Q: Can I disable private IP access?
 
 **A:** Not easily, by design. If you don't want AI Integration with private IPs, don't enable AI Integration. The feature is designed around this architecture.
 
 ---
 
-## Related Documentation
+### Related Documentation
 
 - **Security:** `docs/SECURITY.md`
 - **Security Reference:** `docs/SECURITY_QUICK_REFERENCE.md`
@@ -429,7 +444,7 @@ Example with **AWS Bedrock** (no URL):
 
 ---
 
-## Revision History
+### Revision History
 
 | Date | Version | Changes |
 |------|---------|---------|
@@ -437,7 +452,7 @@ Example with **AWS Bedrock** (no URL):
 
 ---
 
-## Approval
+### Approval
 
 This architectural decision supports multiple AI backends: Ollama (including on private networks), AWS Bedrock, Mistral API, and Google AI. Private IP access for on-prem AI is an intended use case in both development and production.
 
@@ -449,3 +464,189 @@ This architectural decision supports multiple AI backends: Ollama (including on 
 **Document Owner:** Mukesh Kesharwani  
 **Last Updated:** 2026-03-09  
 **Status:** Approved ✅
+
+---
+
+<a id="ai-models-and-configuration"></a>
+
+## AI Models and Configuration
+
+**Unified guide for AI model support (Mistral, Gemma), configuration, token limits, and quick start.**
+
+---
+
+### Table of Contents
+
+- [Overview](#overview)
+- [Supported Models](#supported-models)
+- [Architecture and Routing](#architecture-and-routing)
+- [Configuration](#configuration)
+- [Max Tokens Configuration](#max-tokens-configuration)
+- [Gemma Quick Start](#gemma-quick-start)
+- [Gemma3 Support](#gemma3-support)
+- [Mistral vs Gemma Comparison](#mistral-vs-gemma-comparison)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+### Overview
+
+The OSCAL Reports application supports multiple AI model families (Mistral, Gemma) and **cloud backends**: **AWS Bedrock**, **Mistral API**, and **Google AI**. An intelligent router (`backend/aiModelRouter.js`) detects the model and provider from configuration and routes to the appropriate service (e.g. Bedrock, `mistralService`, `gemmaService`). **Ollama (self-hosted) has been removed**; use Bedrock or Mistral API for AI suggestions.
+
+---
+
+### Supported Models
+
+#### Mistral Family
+- **Service**: `backend/mistralService.js`
+- **Providers**: **AWS Bedrock**, **Mistral AI API** (cloud)
+- **Examples**: Bedrock model IDs (e.g. `mistral.mistral-large-2402-v1:0`); Mistral API model names
+
+#### Gemma Family
+- **Service**: `backend/gemmaService.js`; **Bedrock**: `backend/bedrockGemmaService.js`
+- **Providers**: **AWS Bedrock**, **Google AI API** (cloud)
+- **Detection**: Any model name containing "gemma" (e.g., `gemma2`, `gemma3`, `gemma-3-27b-it`)
+- **Examples**: Bedrock Gemma model IDs; Google AI model names
+
+---
+
+### Architecture and Routing
+
+```
+Control Suggestion Engine → AI Model Router → Mistral Service / Gemma Service
+```
+
+The router uses `aiConfig.model` (and `bedrockModelId` for AWS) to detect the family. No code change is needed to switch models—only configuration.
+
+**API Endpoints:**
+- `GET /api/ai/status` – Status for currently configured model (recommended)
+- `GET /api/mistral/status` – Mistral-specific
+- `GET /api/gemma/status` – Gemma-specific
+
+---
+
+### Configuration
+
+#### AWS Bedrock (recommended for production)
+```json
+{
+  "aiConfig": {
+    "enabled": true,
+    "provider": "aws-bedrock",
+    "awsRegion": "us-east-1",
+    "bedrockModelId": "mistral.mistral-large-2402-v1:0",
+    "timeout": 120000
+  }
+}
+```
+See `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_) for IAM and setup.
+
+#### Mistral API (Cloud)
+```json
+{
+  "aiConfig": {
+    "enabled": true,
+    "provider": "mistral-api",
+    "url": "https://api.mistral.ai/v1/chat/completions",
+    "model": "mistral-small-latest",
+    "apiToken": "your-mistral-api-key",
+    "timeout": 120000
+  }
+}
+```
+
+#### Google AI API (Cloud)
+```json
+{
+  "aiConfig": {
+    "enabled": true,
+    "provider": "google-ai",
+    "model": "gemma-2-9b-it",
+    "apiToken": "your-google-ai-api-key",
+    "timeout": 120000
+  }
+}
+```
+
+**Ollama (self-hosted) has been removed.** Use **AWS Bedrock** or **Mistral API** (see Quick Start above and [AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup)).
+
+---
+
+### Max Tokens Configuration
+
+Token limits are configurable in `config/app/config.json` under `aiConfig.maxTokens`:
+
+| Key | Default | Purpose |
+|-----|--------|---------|
+| `connectionTest` | 10 | AI connectivity test |
+| `controlGeneration` | 150 | Control implementation text (~250 chars) |
+| `general` | 512 | General AI operations |
+
+**Example:**
+```json
+{
+  "aiConfig": {
+    "maxTokens": {
+      "connectionTest": 10,
+      "controlGeneration": 150,
+      "general": 512
+    }
+  }
+}
+```
+
+- **Lower values**: Shorter responses, lower cost, faster.
+- **Higher values**: More detail; increase only if needed. Restart the app after changes.
+
+---
+
+### Quick Start by Provider
+
+**AWS Bedrock (production):** Configure IAM and region (see `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_)), set `provider` to `"aws-bedrock"` and `bedrockModelId` to your chosen model (e.g. `mistral.mistral-large-2402-v1:0` or a Gemma model ID). Restart and verify with `GET /api/ai/status`.
+
+**Mistral or Google AI (cloud):** Set `provider` to `"mistral-api"` or `"google-ai"`, add `apiToken` and `model`. Restart and verify with `GET /api/ai/status`.
+
+**Ollama is no longer supported.** Use **AWS Bedrock** or **Mistral API** for Gemma/Mistral models (see AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup and config above).
+
+---
+
+### Gemma3 Support
+
+Gemma3 is supported via the same pattern matching: any model name containing `"gemma"` (e.g. `gemma3`, `gemma3:27b`) is routed to the Gemma service. On **Bedrock** or **Google AI**, use the appropriate Gemma model ID or name in config.
+
+---
+
+### Mistral vs Gemma Comparison
+
+| Criterion | Recommendation |
+|-----------|----------------|
+| **Production balance** | AWS Bedrock (Mistral/Gemma) or Mistral 7B / Gemma2 9B |
+| **Speed** | Gemma 2B (fastest); Bedrock or cloud for managed scaling |
+| **Quality** | Gemma2 27B or Mixtral 8x7B (Ollama or Bedrock) |
+| **Cost-effective** | Bedrock pay-per-use; or local Ollama with Gemma2 / Mistral 7B |
+
+**Rough performance (100 controls):** Gemma 2B ~1.3 min, Mistral 7B ~2.2 min, Gemma2 27B ~5.3 min. **Resource usage:** Gemma 2B ~2.5 GB RAM; Gemma2 27B ~18.5 GB RAM.
+
+---
+
+### Troubleshooting
+
+- **Ollama – model not found**: Run `ollama pull <model>` and confirm with `ollama list`.
+- **Bedrock – access denied**: Check IAM role or credentials; region and `bedrockModelId`; see `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_).
+- **Wrong service**: Ensure `aiConfig.model` (and `bedrockModelId` for Bedrock) matches the intended family (gemma vs mistral); restart after config change.
+- **API key errors (Mistral/Google)**: Verify key, permissions, and billing.
+- **Responses cut off**: Increase the relevant `maxTokens` value in `aiConfig`.
+
+---
+
+### Related Documentation
+
+- [AI Architecture and Security](#ai-integration-architecture-security-design)
+- [Configuration and User Migration](CONFIG_AND_USER_MIGRATION.md)
+
+---
+
+*Last updated: April 2026*
+
+---
+

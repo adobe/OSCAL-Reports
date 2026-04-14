@@ -86,8 +86,8 @@
 - [OWASP Top 10 2025](https://owasp.org/Top10/)
 - [OWASP API Security Top 10](https://owasp.org/API-Security/)
 - [OWASP GenAI Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
-- [AI Architecture and Security](AI_ARCHITECTURE_SECURITY.md)
+- [AI integration – architecture and security](AI_INTEGRATION.md#ai-integration-architecture-security-design)
 
 ---
 
-*Last updated: April 2026*
+**Version:** 1.7.12 · **Last updated:** April 2026

@@ -8,7 +8,7 @@
  * @license GPL-3.0-or-later
  */
 
-import axios from 'axios';
+import axios from './utils/safeAxios.js';
 import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
