@@ -10,6 +10,7 @@
  */
 
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import axios from 'axios';
 import https from 'https';
@@ -63,7 +64,8 @@ import {
   autoCleanupDeactivatedUsers,
   getDaysSinceDeactivation,
   changePassword,
-  generatePassword
+  generatePassword,
+  getLegacyPasswordHashMigrationStats,
 } from './auth/userManager.js';
 import { generateDefaultPasswordFromEnv } from './auth/passwordGenerator.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
@@ -107,6 +109,36 @@ const serverTimeout = 240000; // 240 seconds
 // Trust proxy headers when behind reverse proxy (SQUID, Nginx, etc.)
 // This ensures correct IP address detection and proper header handling
 app.set('trust proxy', true);
+
+/** Throttle GET /api/system/volume-status (sync fs + exec) before optionalAuth and handler. */
+const volumeStatusRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: true },
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Volume status checks are rate limited. Try again later.',
+    });
+  },
+});
+
+/** Throttle POST /api/auth/okta/exchange-token before Okta/network and session work. */
+const oktaExchangeTokenRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: true },
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many sign-in attempts. Try again in a few minutes.',
+    });
+  },
+});
 
 // Configure CORS to allow authentication headers through reverse proxy
 app.use(cors({
@@ -229,7 +261,7 @@ app.get('/health', (req, res) => {
  * Authentication optional - shows public info if not authenticated,
  * detailed info if authenticated as Platform Admin
  */
-app.get('/api/system/volume-status', optionalAuth, async (req, res) => {
+app.get('/api/system/volume-status', volumeStatusRateLimiter, optionalAuth, async (req, res) => {
   try {
     const fs = await import('fs');
     const path = await import('path');
@@ -1026,15 +1058,23 @@ function getEffectiveOktaClientSecret(okta) {
   return fromConfig || fromEnv;
 }
 
+/** Strip trailing '/' characters in linear time (avoids polynomial ReDoS from /\/+$/ on untrusted strings). */
+function stripTrailingSlashes(str) {
+  if (str == null || typeof str !== 'string') return '';
+  let end = str.length;
+  while (end > 0 && str.charCodeAt(end - 1) === 47) end -= 1;
+  return end === str.length ? str : str.slice(0, end);
+}
+
 /**
  * Resolve Okta OIDC redirect_uri: SSO Redirect URI, env OSCAL_OKTA_REDIRECT_URI, then request-derived
  * (X-Forwarded-Host / Referer). Matches authorize flow so token-endpoint probes use the same URI as real sign-in.
  */
 function resolveOktaRedirectUri(req, okta) {
   if (!req || !okta) return '';
-  const envRedirect = (process.env.OSCAL_OKTA_REDIRECT_URI || '').trim().replace(/\/+$/, '');
+  const envRedirect = stripTrailingSlashes((process.env.OSCAL_OKTA_REDIRECT_URI || '').trim());
   const configuredRedirect = (okta.redirectUri && typeof okta.redirectUri === 'string')
-    ? okta.redirectUri.trim().replace(/\/+$/, '')
+    ? stripTrailingSlashes(okta.redirectUri.trim())
     : '';
   const forwardedHost = String(req.get('X-Forwarded-Host') || '')
     .split(',')[0]
@@ -1096,7 +1136,7 @@ function resolveOktaRedirectUri(req, okta) {
   }
   if (!redirectUri) redirectUri = requestOrigin;
   if (!redirectUri) redirectUri = configuredRedirect;
-  return (redirectUri || '').replace(/\/+$/, '');
+  return stripTrailingSlashes(redirectUri || '');
 }
 
 /**
@@ -1109,25 +1149,25 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
     const oauth = config.ssoConfig?.oauth;
     const okta = oauth?.providers?.okta;
     if (!oauth?.enabled || !okta?.enabled || !okta?.domain?.trim() || !okta?.clientId?.trim()) {
-      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      const back = stripTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
     // Client secret: config (pass-resolved) or env OSCAL_OKTA_CLIENT_SECRET (for EC2 when pass not set up)
     const clientSecret = getEffectiveOktaClientSecret(okta);
     if (!clientSecret) {
-      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      const back = stripTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
     let redirectUri = resolveOktaRedirectUri(req, okta);
     if (!redirectUri) {
-      const back = (req.get('Referer') || req.get('Origin') || '/').replace(/\/$/, '');
+      const back = stripTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
       return res.redirect(302, `${back}/?error=okta_not_configured`);
     }
     // PKCE: required when Okta has "Require PKCE" enabled; harmless when not required
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = computeCodeChallenge(codeVerifier);
     const state = createSignedOktaState(redirectUri, clientSecret, codeVerifier);
-    const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//, ''));
     const authServerId = (okta.authServerId || '').trim();
     // Use only scopes configured in Okta (do not auto-add 'groups' — many Auth Servers don't have that scope; groups claim can be "Always" in Okta)
     const scope = (okta.scope || 'openid profile email').trim();
@@ -1170,7 +1210,7 @@ app.get('/api/auth/okta/authorize', async (req, res) => {
  * Exchange Okta authorization code for tokens and create app session
  * No auth required (called from frontend callback with code from Okta).
  */
-app.post('/api/auth/okta/exchange-token', async (req, res) => {
+app.post('/api/auth/okta/exchange-token', oktaExchangeTokenRateLimiter, async (req, res) => {
   try {
     const { code, state } = req.body;
     if (!code || !state) {
@@ -1199,9 +1239,9 @@ app.post('/api/auth/okta/exchange-token', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid or expired state. Please try signing in again.' });
     }
     // Must match redirect_uri sent to Okta at authorize (state carries the chosen URI)
-    const redirectUri = (stateData.redirectUri || (okta.redirectUri || '').trim()).replace(/\/+$/, '');
+    const redirectUri = stripTrailingSlashes(stateData.redirectUri || (okta.redirectUri || '').trim());
     const codeVerifier = stateData.codeVerifier || '';
-    const domain = okta.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//, ''));
     const authServerId = (okta.authServerId || '').trim();
     let tokenUrl;
     let userinfoUrl;
@@ -1428,6 +1468,28 @@ app.get('/api/users', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (re
     res.status(500).json({ 
       error: 'Failed to get users',
       message: error.message 
+    });
+  }
+});
+
+/**
+ * Legacy password hash migration stats (PBKDF2 migration gate).
+ * GET /api/users/legacy-password-hash-stats
+ * Platform Admin only — counts users still on pre-PBKDF2 SHA-256 stored hashes.
+ */
+app.get('/api/users/legacy-password-hash-stats', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
+  try {
+    const stats = await getLegacyPasswordHashMigrationStats();
+    res.json({
+      success: true,
+      legacyPasswordHashCount: stats.legacyPasswordHashCount,
+      legacyUsernames: stats.legacyUsernames,
+    });
+  } catch (error) {
+    console.error('❌ Legacy password hash stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load migration stats',
     });
   }
 });
@@ -1956,7 +2018,7 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
     // Normalize Okta domain: hostname only (no https:// or trailing slash) so it works like backend expects
     const okta = ssoConfig?.oauth?.providers?.okta;
     if (okta?.domain && typeof okta.domain === 'string') {
-      okta.domain = okta.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim() || okta.domain;
+      okta.domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//i, '')).trim() || okta.domain;
     }
     const existingRaw = loadConfig();
     const currentConfig = { ...existingRaw, ssoConfig };
@@ -2038,7 +2100,7 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       };
 
       const errors = [];
-      let domain = (prov.domain && typeof prov.domain === 'string') ? prov.domain.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim() : '';
+      let domain = (prov.domain && typeof prov.domain === 'string') ? stripTrailingSlashes(prov.domain.replace(/^https?:\/\//i, '')).trim() : '';
       if (!domain) {
         errors.push('Missing Okta Domain (e.g. your-domain.okta.com)');
       } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(domain) || !domain.includes('.')) {
@@ -2216,7 +2278,7 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
             redirectDetail = 'Redirect URI must use HTTPS in production.';
           } else {
             redirectOk = true;
-            redirectDetail = `Redirect URI is valid (${redirectSource}): ${urlValidation.url.replace(/\/+$/, '')}`;
+            redirectDetail = `Redirect URI is valid (${redirectSource}): ${stripTrailingSlashes(urlValidation.url)}`;
           }
         } catch (e) {
           redirectDetail = `Redirect URI validation failed: ${e.message || String(e)}`;
@@ -2248,7 +2310,7 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       }
 
       const tokenUrl = ensureHost(discovery.token_endpoint, domain);
-      const redirectNormalized = redirectForProbeRaw.replace(/\/+$/, '');
+      const redirectNormalized = stripTrailingSlashes(redirectForProbeRaw);
       try {
         const { response: probeRes } = await postOktaAuthorizationCodeToken(tokenUrl, {
           clientId,

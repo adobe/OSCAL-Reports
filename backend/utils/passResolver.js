@@ -67,7 +67,17 @@ export function passShow(entry) {
     return normalizePassValue(lines[0]);
   } catch (err) {
     if (err.status !== 1 && err.code !== 'ENOENT') {
-      console.warn(`[pass] Failed to resolve entry "${entry}": ${err.message}`);
+      // Do not log err.message or entry in clear text — gpg/pass stderr may contain paths or hints.
+      console.warn('[pass] pass show failed', {
+        'service.name': 'oscal-report-generator',
+        'event.action': 'pass_show_failed',
+        'event.outcome': 'failure',
+        'event.category': 'configuration',
+        'error.type': err?.name || 'Error',
+        'error.code': err?.code,
+        exitStatus: err?.status,
+        entryLeaf: typeof entry === 'string' && entry ? (entry.split('/').pop() || entry) : 'unknown',
+      });
     }
     return '';
   }
@@ -150,10 +160,12 @@ export function passInsert(entry, value) {
         'service.name': 'oscal-report-generator',
         'event.action': 'pass_insert_failed',
         'event.outcome': 'failure',
-        entry,
-        error: err,
+        'event.category': 'configuration',
+        entryLeaf: typeof entry === 'string' && entry ? (entry.split('/').pop() || entry) : 'unknown',
+        exitCode: proc.status,
+        stderrLength: (proc.stderr || '').length,
         hasPasswordStoreDir: !!process.env.PASSWORD_STORE_DIR,
-        hasStoreDirInEnv: !!storeDir
+        hasStoreDirInEnv: !!storeDir,
       });
       return { success: false, error: err };
     }
@@ -163,9 +175,11 @@ export function passInsert(entry, value) {
       'service.name': 'oscal-report-generator',
       'event.action': 'pass_insert_error',
       'event.outcome': 'failure',
-      entry,
-      error: err.message,
-      hasPasswordStoreDir: !!process.env.PASSWORD_STORE_DIR
+      'event.category': 'configuration',
+      'error.type': err?.name || 'Error',
+      'error.code': err?.code,
+      entryLeaf: typeof entry === 'string' && entry ? (entry.split('/').pop() || entry) : 'unknown',
+      hasPasswordStoreDir: !!process.env.PASSWORD_STORE_DIR,
     });
     return { success: false, error: err.message };
   }
