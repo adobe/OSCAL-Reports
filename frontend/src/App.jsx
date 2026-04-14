@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import axios from './utils/safeAxios.js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import OktaCallback from './components/OktaCallback';
@@ -31,9 +31,11 @@ import IntegrityWarning from './components/IntegrityWarning';
 // import Footer from './components/Footer'; // REMOVED: Footer component completely removed from application
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
 import buildInfo from './utils/buildInfo';
+import { exportErrorMessage } from './utils/exportErrorMessage';
 import './App.css';
 
 function App() {
+  const { getAuthConfig } = useAuth();
   const [step, setStep] = useState(1); // 1: Load/New, 1.5: Catalog selection, 1.75: CCM Upload (optional), 2: System Info, 3: Controls
   const [catalogueUrl, setCatalogueUrl] = useState('');
   const [catalogue, setCatalogue] = useState(null);
@@ -51,6 +53,8 @@ function App() {
     status: 'under-development'
   });
   const [loading, setLoading] = useState(false);
+  /** Which export is in progress: 'oscal' | 'sar' | 'excel' | 'ccm' | 'pdf' | null. Used for per-button spinner only. */
+  const [exportingType, setExportingType] = useState(null);
   const [error, setError] = useState('');
   const [integrityWarning, setIntegrityWarning] = useState(null);
   const [lastSaveTime, setLastSaveTime] = useState(null);
@@ -63,7 +67,10 @@ function App() {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [showLoadPrompt, setShowLoadPrompt] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  
+  const [showDatabaseUnavailableModal, setShowDatabaseUnavailableModal] = useState(false);
+  const [databaseIntegrationEnabled, setDatabaseIntegrationEnabled] = useState(false);
+  const [adobeTeamOptions, setAdobeTeamOptions] = useState([]);
+
   // New states for revised workflow
   const [existingSSP, setExistingSSP] = useState(null);
   const [existingCatalogUrl, setExistingCatalogUrl] = useState(null);
@@ -81,6 +88,27 @@ function App() {
   }, []);
 
   // Helper function to sanitize date fields in controls
+  /** When Database Integration is enabled, merge adobeTeamResponsible (and related) from extended_data (DB wins). */
+  const maybeMergeDbControls = useCallback(async (controlsInput, systemInfoInput) => {
+    if (!Array.isArray(controlsInput) || controlsInput.length === 0) {
+      return controlsInput;
+    }
+    try {
+      const settingsRes = await axios.get('/api/settings', getAuthConfig());
+      if (!settingsRes.data?.databaseConfig?.enabled) {
+        return controlsInput;
+      }
+      const mergeRes = await axios.post(
+        '/api/database/merge-control-extended-data',
+        { controls: controlsInput, systemInfo: systemInfoInput || {} },
+        getAuthConfig()
+      );
+      return Array.isArray(mergeRes.data?.controls) ? mergeRes.data.controls : controlsInput;
+    } catch {
+      return controlsInput;
+    }
+  }, [getAuthConfig]);
+
   const sanitizeDateFields = useCallback((controlsArray) => {
     if (!Array.isArray(controlsArray)) return controlsArray;
     
@@ -123,6 +151,34 @@ function App() {
       timestamp: new Date().toLocaleTimeString()
     });
   }, [controls]);
+
+  // Fetch Database Integration enabled and Adobe Team options when on controls step
+  useEffect(() => {
+    if (step !== 3) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const settingsRes = await axios.get('/api/settings');
+        const enabled = !!(settingsRes.data?.databaseConfig?.enabled);
+        if (cancelled) return;
+        setDatabaseIntegrationEnabled(enabled);
+        if (enabled) {
+          const optsRes = await axios.get('/api/database/adobe-team-options').catch(() => ({ data: { options: [] } }));
+          if (!cancelled && Array.isArray(optsRes.data?.options)) {
+            setAdobeTeamOptions(optsRes.data.options);
+          }
+        } else {
+          setAdobeTeamOptions([]);
+        }
+      } catch {
+        if (!cancelled) {
+          setDatabaseIntegrationEnabled(false);
+          setAdobeTeamOptions([]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [step]);
 
   // Auto-save functionality
   const autoSave = useCallback(() => {
@@ -230,9 +286,12 @@ function App() {
         console.warn('⚠️ Integrity warning:', extractResponse.data.integrityWarning);
         setIntegrityWarning(extractResponse.data.integrityWarning);
       }
-      
-      setControls(sanitizeDateFields(extractResponse.data.controls));
-      setSystemInfo(extractResponse.data.systemInfo || systemInfo);
+
+      const extractedSi = extractResponse.data.systemInfo || systemInfo;
+      let nextControls = extractResponse.data.controls;
+      nextControls = await maybeMergeDbControls(nextControls, extractedSi);
+      setControls(sanitizeDateFields(nextControls));
+      setSystemInfo(extractedSi);
       setInitialClassification(extractResponse.data.classification);
       setComparisonStats(null); // No comparison needed
       console.log('✅ Moving to step 2');
@@ -280,10 +339,13 @@ function App() {
         console.warn('⚠️ Integrity warning:', compareResponse.data.integrityWarning);
         setIntegrityWarning(compareResponse.data.integrityWarning);
       }
-      
-      setControls(sanitizeDateFields(compareResponse.data.controls));
+
+      const comparedSi = compareResponse.data.systemInfo || systemInfo;
+      let comparedControls = compareResponse.data.controls;
+      comparedControls = await maybeMergeDbControls(comparedControls, comparedSi);
+      setControls(sanitizeDateFields(comparedControls));
       setComparisonStats(compareResponse.data.stats);
-      setSystemInfo(compareResponse.data.systemInfo || systemInfo);
+      setSystemInfo(comparedSi);
       console.log('✅ Moving to step 2');
       setStep(2); // Go to system info
     } catch (err) {
@@ -438,6 +500,7 @@ function App() {
   };
 
   const handleExportSSP = async (validationOptions = {}) => {
+    setExportingType('oscal');
     setLoading(true);
     setError('');
     
@@ -462,13 +525,21 @@ function App() {
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to generate SSP');
+      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
+        setExportingType(null);
+        setLoading(false);
+        setShowDatabaseUnavailableModal(true);
+        return;
+      }
+      setError(await exportErrorMessage(err, 'Failed to generate SSP'));
     } finally {
+      setExportingType(null);
       setLoading(false);
     }
   };
 
   const handleExportSAR = async (validationOptions = {}) => {
+    setExportingType('sar');
     setLoading(true);
     setError('');
     
@@ -498,13 +569,21 @@ function App() {
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to generate SAR');
+      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
+        setExportingType(null);
+        setLoading(false);
+        setShowDatabaseUnavailableModal(true);
+        return;
+      }
+      setError(await exportErrorMessage(err, 'Failed to generate SAR'));
     } finally {
+      setExportingType(null);
       setLoading(false);
     }
   };
 
   const handleExportExcel = async () => {
+    setExportingType('excel');
     setLoading(true);
     setError('');
     
@@ -523,8 +602,15 @@ function App() {
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError('Failed to generate Excel file');
+      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
+        setExportingType(null);
+        setLoading(false);
+        setShowDatabaseUnavailableModal(true);
+        return;
+      }
+      setError(await exportErrorMessage(err, 'Failed to generate Excel file'));
     } finally {
+      setExportingType(null);
       setLoading(false);
     }
   };
@@ -573,6 +659,7 @@ function App() {
   };
 
   const handleExportCCM = async () => {
+    setExportingType('ccm');
     setLoading(true);
     setError('');
     
@@ -591,13 +678,21 @@ function App() {
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError('Failed to generate Cloud Control Matrix');
+      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
+        setExportingType(null);
+        setLoading(false);
+        setShowDatabaseUnavailableModal(true);
+        return;
+      }
+      setError(await exportErrorMessage(err, 'Failed to generate Cloud Control Matrix'));
     } finally {
+      setExportingType(null);
       setLoading(false);
     }
   };
 
   const handleExportPDF = async () => {
+    setExportingType('pdf');
     setLoading(true);
     setError('');
     
@@ -620,8 +715,15 @@ function App() {
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError('Failed to generate PDF report');
+      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
+        setExportingType(null);
+        setLoading(false);
+        setShowDatabaseUnavailableModal(true);
+        return;
+      }
+      setError(await exportErrorMessage(err, 'Failed to generate PDF report'));
     } finally {
+      setExportingType(null);
       setLoading(false);
     }
   };
@@ -637,7 +739,7 @@ function App() {
           ⚙️ Settings
         </button>
         <div className="header-content">
-          <h1>Keekar's OSCAL SOA/SSP/CCM Generator</h1>
+          <h1>Keekar's OSCAL SOA/SSP/CCM Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
           <p>Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix from OSCAL Catalogues</p>
         </div>
       </header>
@@ -647,6 +749,34 @@ function App() {
         <div className="modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="modal-content settings-modal" onClick={(e) => e.stopPropagation()}>
             <SettingsWithTabs onClose={() => setShowSettings(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Database unavailable modal (export blocked when DB integration enabled but DB unreachable) */}
+      {showDatabaseUnavailableModal && (
+        <div className="modal-overlay" onClick={() => setShowDatabaseUnavailableModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, color: '#333' }}>Database update not possible</h3>
+            <p style={{ color: '#555', marginBottom: '1.5rem' }}>
+              Database integration is enabled but the database is not reachable. Either disable Database Integration in Platform Settings to export without saving to the database, or fix the connection and try again.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowDatabaseUnavailableModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => { setShowDatabaseUnavailableModal(false); setShowSettings(true); }}
+              >
+                Open Platform Settings
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -831,6 +961,8 @@ function App() {
                   controls={controls}
                   onControlUpdate={handleControlUpdate}
                   organizationName={systemInfo.organization || 'Organization'}
+                  databaseIntegrationEnabled={databaseIntegrationEnabled}
+                  adobeTeamOptions={adobeTeamOptions}
                 />
 
                 <ExportButtons
@@ -840,6 +972,7 @@ function App() {
                   onExportCCM={handleExportCCM}
                   onExportPDF={handleExportPDF}
                   loading={loading}
+                  exportingType={exportingType}
                   systemInfo={systemInfo}
                   controls={controls}
                 />
@@ -877,7 +1010,7 @@ function AppWithUseCases() {
       <div className="login-container">
         <div className="login-box">
           <div className="login-header">
-            <h1>🔐 Keekar's OSCAL Generator</h1>
+            <h1>🔐 Keekar's OSCAL Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
             <p>Loading...</p>
           </div>
         </div>

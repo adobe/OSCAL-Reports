@@ -1,15 +1,19 @@
 # ------------------------------------------------------------------------------
-# Adobe Image Factory – AMI best practices (docs/IMAGE_FACTORY.md)
+# Adobe Image Factory – AMI best practices (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform)
 # ------------------------------------------------------------------------------
-# - Default: Adobe Image Factory Amazon Linux 2023 (add AMI IDs below). When not in map, use native Amazon Linux 2023.
-# - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if in map; else native AL2023.
+# - AMS InfraSec tickets (e.g. SSAAU-169) expect the Image Factory flavor **Amazon Linux 2023 EMR**,
+#   not only generic AL2023 or the public Amazon-owned al2023-ami-* fallback.
+# - Default: Adobe Image Factory Amazon Linux 2023 / EMR (add AMI IDs below or use dynamic lookup).
+#   When not in map and no dynamic lookup, use native Amazon Linux 2023 (may not satisfy EMR tickets).
+# - use_image_factory_ami = true (default): Image Factory AMI if resolved; else native AL2023.
 # - use_image_factory_ami = false: native Amazon Linux 2023 only.
 # - Optional overrides: oscal_ami_id in terraform.tfvars.
+# - Discover candidates: terraform/scripts/list-emr-candidate-amis.sh (with AWS creds).
 # - S3 bucket naming (AMS): lowercase, e.g. ams-oscal-<account-id> (see s3.tf).
 # - References: Image Factory Wiki, UI (imagefactory.corp.adobe.com).
 # ------------------------------------------------------------------------------
 
-# First choice: Adobe Image Factory Amazon Linux 2023 by region. Used by OSCAL (Green/Blue).
+# First choice: Adobe Image Factory Amazon Linux 2023 (prefer **EMR** flavor per AMS security) by region.
 # Set image_factory_amazon_linux_ami_us_east_1 in terraform.tfvars, or add entries below; when an entry exists for aws_region, it is used; else native Amazon Linux 2023.
 locals {
   image_factory_amazon_linux_by_region = merge(

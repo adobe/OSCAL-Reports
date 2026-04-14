@@ -88,6 +88,20 @@ function getUsersPath() {
 // In-memory sessions (can be upgraded to Redis/database)
 const sessions = new Map();
 
+/** Max UTF-8 password length accepted for legacy SHA-256 verify path (DoS mitigation). */
+const LEGACY_PASSWORD_VERIFY_MAX_LENGTH = 1024;
+
+/**
+ * Legacy SHA-256 hex digests of fixed default dev passwords (same output as the
+ * former createHash('sha256').update(...).digest('hex') — avoids redundant hashing at runtime).
+ * Used only by isOldDefaultPassword for migration detection.
+ */
+const LEGACY_DEFAULT_PASSWORD_SHA256 = {
+  admin: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+  user: 'e606e38b0d8c19b24cf0ee3808183162ea7cd63ff7912dbb22b5e803286b4446',
+  assessor: 'a54dc8e10a38847ecc5a90753f23b80285a534c90cf5edb8f3a08d86ea93aa1e',
+};
+
 /**
  * FIPS 140-2 Compliant Password Hashing using PBKDF2
  * Uses PBKDF2 with SHA-256, random salt, and 100,000 iterations
@@ -148,9 +162,22 @@ function verifyPassword(password, storedHash) {
     return hashHex === storedHashValue;
   }
   
-  // Legacy SHA-256 format (for backward compatibility during migration)
-  const legacyHash = crypto.createHash('sha256').update(password).digest('hex');
-  return legacyHash === storedHash;
+  // Legacy SHA-256 format: verify-only for rows stored before PBKDF2 migration.
+  // On successful login, authenticateUser calls migratePasswordToPBKDF2 — see docs/SECURITY.md
+  // ("Password storage"). Remove this branch when legacyPasswordHashCount is zero everywhere.
+  if (typeof password !== 'string' || password.length > LEGACY_PASSWORD_VERIFY_MAX_LENGTH) {
+    return false;
+  }
+  const storedNorm = typeof storedHash === 'string' ? storedHash.trim().toLowerCase() : '';
+  if (!/^[0-9a-f]{64}$/.test(storedNorm)) {
+    return false;
+  }
+  const legacyHash = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(legacyHash, 'hex'), Buffer.from(storedNorm, 'hex'));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -297,18 +324,12 @@ async function saveUsers(users) {
  * Old passwords: admin123, user123, assessor123
  */
 function isOldDefaultPassword(username, passwordHash) {
-  const oldPasswords = {
-    'admin': 'admin123',
-    'user': 'user123',
-    'assessor': 'assessor123'
-  };
-  
-  if (oldPasswords[username]) {
-    // Check against legacy SHA-256 format
-    const legacyHash = crypto.createHash('sha256').update(oldPasswords[username]).digest('hex');
-    return passwordHash === legacyHash;
+  const expectedHex = LEGACY_DEFAULT_PASSWORD_SHA256[username];
+  if (!expectedHex) {
+    return false;
   }
-  return false;
+  const hashNorm = typeof passwordHash === 'string' ? passwordHash.trim().toLowerCase() : '';
+  return hashNorm === expectedHex;
 }
 
 /**
@@ -456,22 +477,34 @@ export async function initializeDefaultUsers() {
  */
 export async function authenticateUser(username, password) {
   const users = await loadUsers();
-  
+  const loginId = typeof username === 'string' ? username.trim() : '';
+  const loginIdLower = loginId.toLowerCase();
+
   if (process.env.NODE_ENV === 'development') {
-    console.log(`🔍 Authentication attempt for username: ${username}`);
+    console.log(`🔍 Authentication attempt for username: ${loginId}`);
     console.log(`   Total users loaded: ${users.length}`);
+    console.log(`   Users file: ${getUsersPath()}`);
   }
-  
-  // Find user by username or by email (same identifier users often type either)
-  const userByUsername = users.find(u => u.username === username)
-    || users.find(u => (u.email && u.email.toLowerCase() === String(username).toLowerCase()));
-  
+
+  // Find by exact username first
+  let userByUsername = users.find((u) => u.username === loginId);
+
+  // Same field often holds email: match email; if multiple accounts share an email, prefer active
+  if (!userByUsername && loginIdLower) {
+    const emailMatches = users.filter(
+      (u) => u.email && String(u.email).toLowerCase() === loginIdLower
+    );
+    userByUsername =
+      emailMatches.find((u) => u.isActive !== false) ||
+      emailMatches[0];
+  }
+
   if (!userByUsername) {
-    console.log(`❌ User not found: ${username}`);
+    console.log(`❌ User not found: ${loginId}`);
     return null;
   }
   
-  console.log(`✅ User found: ${username}`);
+  console.log(`✅ User found: ${userByUsername.username}`);
   console.log(`   User ID: ${userByUsername.id}`);
   console.log(`   Is Active: ${userByUsername.isActive}`);
   console.log(`   Role: ${userByUsername.role}`);
@@ -479,26 +512,26 @@ export async function authenticateUser(username, password) {
   
   // Verify password (supports both old and new formats)
   if (!verifyPassword(password, userByUsername.password)) {
-    console.log(`❌ Password mismatch for user: ${username}`);
+    console.log(`❌ Password mismatch for user: ${userByUsername.username}`);
     return null;
   }
   
   // Migrate legacy password to PBKDF2 if needed (during successful login)
   if (isLegacyPasswordHash(userByUsername.password)) {
-    console.log(`🔄 Migrating legacy password to FIPS 140-2 compliant format for user: ${username}`);
-    migratePasswordToPBKDF2(username, password);
+    console.log(`🔄 Migrating legacy password to FIPS 140-2 compliant format for user: ${userByUsername.username}`);
+    migratePasswordToPBKDF2(userByUsername.username, password);
   }
   
   // Check if active
   if (!userByUsername.isActive) {
-    console.log(`❌ User is inactive: ${username}`);
+    console.log(`❌ User is inactive: ${userByUsername.username}`);
     return null;
   }
   
-  console.log(`✅ All checks passed for user: ${username}`);
+  console.log(`✅ All checks passed for user: ${userByUsername.username}`);
   
-  // Update last login timestamp
-  const userIndex = users.findIndex(u => u.username === username);
+  // Update last login timestamp (match by id so email-as-login still updates the right row)
+  const userIndex = users.findIndex((u) => u.id === userByUsername.id);
   if (userIndex !== -1) {
     users[userIndex].lastLoginAt = new Date().toISOString();
     await saveUsers(users);
@@ -1025,6 +1058,26 @@ export async function getDaysSinceDeactivation(userId) {
 }
 
 /**
+ * Count users still on legacy SHA-256 password hashes (for migration tracking).
+ * Does not expose password material. Platform Admin only at HTTP layer.
+ *
+ * @returns {Promise<{ legacyPasswordHashCount: number, legacyUsernames: string[] }>}
+ */
+export async function getLegacyPasswordHashMigrationStats() {
+  const users = await loadUsers();
+  const legacyUsernames = [];
+  for (const u of users) {
+    if (u && typeof u.password === 'string' && isLegacyPasswordHash(u.password)) {
+      legacyUsernames.push(u.username);
+    }
+  }
+  return {
+    legacyPasswordHashCount: legacyUsernames.length,
+    legacyUsernames,
+  };
+}
+
+/**
  * Change user password
  * @param {string} userId - User ID
  * @param {string} oldPassword - Old password
@@ -1067,6 +1120,7 @@ export default {
   hardDeleteUser,
   autoCleanupDeactivatedUsers,
   getDaysSinceDeactivation,
-  changePassword
+  changePassword,
+  getLegacyPasswordHashMigrationStats,
 };
 

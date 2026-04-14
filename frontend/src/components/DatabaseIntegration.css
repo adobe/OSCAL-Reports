@@ -1,0 +1,230 @@
+/**
+ * Database Integration tab styles
+ */
+
+.database-integration-container {
+  padding: 1.5rem;
+  background: white;
+  border-radius: 8px;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.database-integration-container.embedded {
+  padding: 0;
+}
+
+.database-integration-loading {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+}
+
+.database-integration-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 1.5rem;
+}
+
+.database-integration-header h3 {
+  margin: 0 0 0.5rem 0;
+  color: #1976d2;
+}
+
+.database-integration-container .section-description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.database-integration-container .auth-user-iam-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #c62828;
+}
+
+.database-integration-container .read-only-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #856404;
+  font-size: 0.9rem;
+}
+
+.database-integration-container .message {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.database-integration-container .message.success {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+}
+
+.database-integration-container .message.warning {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  color: #856404;
+}
+
+.database-integration-container .message.error {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+
+.database-integration-container .config-group {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.database-integration-container .form-group {
+  margin-bottom: 1rem;
+}
+
+.database-integration-container .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.database-integration-container .form-group input[type="text"],
+.database-integration-container .form-group input[type="number"],
+.database-integration-container .form-group input[type="password"],
+.database-integration-container .form-group select {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.database-integration-container .form-group input:focus,
+.database-integration-container .form-group select:focus {
+  outline: none;
+  border-color: #1976d2;
+}
+
+.database-integration-container .form-group input:disabled,
+.database-integration-container .form-group select:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.database-integration-container .form-group small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.database-integration-container .form-group input[type="checkbox"] {
+  margin-right: 0.5rem;
+  width: auto;
+}
+
+.database-integration-container .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .database-integration-container .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.database-integration-container .btn-test {
+  background: #17a2b8;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  margin-left: 0.5rem;
+}
+
+.database-integration-container .btn-test:hover:not(:disabled) {
+  background: #138496;
+}
+
+.database-integration-container .btn-test:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.database-integration-container .config-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #dee2e6;
+}
+
+.database-integration-container .btn-primary {
+  background: #1976d2;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.database-integration-container .btn-primary:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.database-integration-container .btn-primary:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.database-integration-container .verification-status {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 2px solid;
+}
+
+.database-integration-container .verification-status.verified {
+  background: #d4edda;
+  border-color: #28a745;
+}
+
+.database-integration-container .verification-status.warning {
+  background: #fff3cd;
+  border-color: #ffc107;
+}
+
+.database-integration-container .verification-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.database-integration-container .verification-details {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.database-integration-container .last-saved-indicator {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 1rem;
+}

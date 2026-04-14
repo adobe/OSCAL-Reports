@@ -8,6 +8,7 @@ import Settings from './Settings';
 import SSOIntegration from './SSOIntegration';
 import MessagingConfiguration from './MessagingConfiguration';
 import AIIntegration from './AIIntegration';
+import DatabaseIntegration from './DatabaseIntegration';
 import { useAuth } from '../contexts/AuthContext';
 import './SettingsWithTabs.css';
 
@@ -63,7 +64,7 @@ function SettingsWithTabs({ onClose }) {
           className={`settings-tab-btn ${activeTab === 'api-gateway' ? 'active' : ''}`}
           onClick={() => setActiveTab('api-gateway')}
         >
-          🌐 API Gateway
+          🌐 API Gateways and Information Catalogue Store
         </button>
         <button
           className={`settings-tab-btn ${activeTab === 'sso' ? 'active' : ''}`}
@@ -82,6 +83,12 @@ function SettingsWithTabs({ onClose }) {
           onClick={() => setActiveTab('ai')}
         >
           🤖 AI Integration
+        </button>
+        <button
+          className={`settings-tab-btn ${activeTab === 'database' ? 'active' : ''}`}
+          onClick={() => setActiveTab('database')}
+        >
+          🗄️ Database
         </button>
       </div>
 
@@ -103,6 +110,13 @@ function SettingsWithTabs({ onClose }) {
           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1, background: 'white' }}>
             <AIIntegration embedded={true} />
           </div>
+        )}
+        {activeTab === 'database' && (
+          <TabErrorBoundary>
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1, background: 'white' }}>
+              <DatabaseIntegration embedded={true} />
+            </div>
+          </TabErrorBoundary>
         )}
       </div>
     </div>

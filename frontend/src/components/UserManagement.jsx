@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from '../utils/safeAxios.js';
 import { useAuth, ROLES } from '../contexts/AuthContext';
 import './UserManagement.css';
 

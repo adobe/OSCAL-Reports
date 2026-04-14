@@ -196,6 +196,18 @@ resource "aws_security_group" "oscal" {
     cidr_blocks = [var.vpc_cidr]
     description = "OSCAL to VPC (app ports)"
   }
+
+  # PostgreSQL to RDS private subnets only (CIDRs avoid SG↔SG cycle; RDS has no public IP)
+  dynamic "egress" {
+    for_each = var.create_rds_postgres ? [1] : []
+    content {
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = aws_subnet.private_rds[*].cidr_block
+      description = "PostgreSQL to RDS private subnets only (not public internet)"
+    }
+  }
   egress {
     from_port   = 80
     to_port     = 80

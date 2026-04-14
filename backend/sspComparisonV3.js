@@ -1,3 +1,5 @@
+import { normalizeAdobeTeamResponsibleSlots } from './utils/adobeTeamResponsible.js';
+
 /**
  * SSP Comparison Module - Direct Catalog Comparison
  * 
@@ -41,7 +43,8 @@ export function compareWithExistingSSP(catalogControls, existingSSP, catalogData
           changeReason: 'New control added in catalog',
           status: 'not-assessed',
           implementation: '',
-          remarks: ''
+          remarks: '',
+          adobeTeamResponsible: normalizeAdobeTeamResponsibleSlots(catalogControl.adobeTeamResponsible)
         };
       }
       
@@ -90,6 +93,7 @@ export function compareWithExistingSSP(catalogControls, existingSSP, catalogData
         implementation: existingControl.implementation || '',
         remarks: existingControl.remarks || '',
         responsibleParty: existingControl.responsibleParty || '',
+        adobeTeamResponsible: normalizeAdobeTeamResponsibleSlots(existingControl.adobeTeamResponsible),
         controlOwner: existingControl.controlOwner || '',
         consumerGuidance: existingControl.consumerGuidance || '',
         implementationDate: existingControl.implementationDate || '',
@@ -218,6 +222,7 @@ export function extractControlsFromSSP(sspData) {
       let frameworks = '';
       let compensatingControls = '';
       let exceptions = '';
+      let adobeTeamResponsible = ['', '', ''];
       
       if (req.props && Array.isArray(req.props)) {
         req.props.forEach(prop => {
@@ -231,6 +236,8 @@ export function extractControlsFromSSP(sspData) {
             status = prop.value || 'not-assessed';
           } else if (prop.name === 'responsible-party') {
             responsibleParty = prop.value || '';
+          } else if (prop.name === 'adobe-team-responsible') {
+            adobeTeamResponsible = normalizeAdobeTeamResponsibleSlots(prop.value);
           } else if (prop.name === 'control-owner') {
             controlOwner = prop.value || '';
           } else if (prop.name === 'consumer-guidance') {
@@ -298,6 +305,9 @@ export function extractControlsFromSSP(sspData) {
         implementation: req.implementation || req.description || '',
         remarks: req.remarks || '',
         responsibleParty: responsibleParty || req.responsibleParty || req['responsible-roles']?.[0] || '',
+        adobeTeamResponsible: normalizeAdobeTeamResponsibleSlots(
+          adobeTeamResponsible.some((x) => String(x).trim()) ? adobeTeamResponsible : req.adobeTeamResponsible
+        ),
         controlOwner: controlOwner || req.controlOwner || '',
         consumerGuidance: consumerGuidance || req.consumerGuidance || '',
         implementationDate: implementationDate || req.implementationDate || '',
