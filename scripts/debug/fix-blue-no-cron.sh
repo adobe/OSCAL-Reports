@@ -43,4 +43,4 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SSH_USER}@
   fi
 "
 
-echo "Done. Blue will no longer run ec2_automation from cron. Future deploys with deploy-to-ec2.sh will keep cron removed on Blue unless you set DEPLOY_BLUE_AUTO_UPDATE=1."
+echo "Done. Blue will no longer run ec2_automation from cron. Future deploys default to cron on Blue; use DEPLOY_BLUE_AUTO_UPDATE=0 before deploy to keep Blue manual-only."

@@ -1,5 +1,5 @@
 # OSCAL on AWS - Terraform (AI via AWS Bedrock)
-# See docs/diagrams/generate-diagram.html and docs/AWS_COST_ESTIMATE.md
+# See docs/diagrams/generate-diagram.html and docs/AWS_OPERATIONS.md#aws-ec2-cost-estimate-for-oscal-report-generator-ollama
 
 terraform {
   required_version = ">= 1.0"
@@ -38,13 +38,15 @@ provider "aws" {
 
   default_tags {
     tags = merge(var.common_tags, {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-      Stack      = var.project_name # Single tag to filter all stack resources in any account
+      Project       = var.project_name
+      Environment   = var.environment
+      ManagedBy     = "terraform"
+      Stack           = var.project_name # Single tag to filter all stack resources in any account
+      "Service ID"    = var.adobe_service_id_tag # Adobe CMDB / cost allocation (e.g. 602844)
     })
   }
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 data "aws_availability_zones" "available" { state = "available" }

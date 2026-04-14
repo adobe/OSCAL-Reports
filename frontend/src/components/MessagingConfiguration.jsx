@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
 import './MessagingConfiguration.css';
 
@@ -16,6 +16,7 @@ function MessagingConfiguration({ embedded = false }) {
   const { canManageUsers, getAuthConfig } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState('');
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [lastSaved, setLastSaved] = useState(null);
@@ -145,7 +146,7 @@ function MessagingConfiguration({ embedded = false }) {
 
   const handleTestEmail = async () => {
     try {
-      setSaving(true);
+      setTesting(true);
       const response = await axios.post('/api/messaging/test-email', 
         { emailConfig: messagingConfig.email },
         getAuthConfig()
@@ -158,13 +159,13 @@ function MessagingConfiguration({ embedded = false }) {
     } catch (error) {
       setMessage('❌ Email test failed: ' + (error.response?.data?.error || error.message));
     } finally {
-      setSaving(false);
+      setTesting(false);
     }
   };
 
   const handleTestSlack = async () => {
     try {
-      setSaving(true);
+      setTesting(true);
       const response = await axios.post('/api/messaging/test-slack',
         { slackConfig: messagingConfig.slack },
         getAuthConfig()
@@ -177,7 +178,7 @@ function MessagingConfiguration({ embedded = false }) {
     } catch (error) {
       setMessage('❌ Slack test failed: ' + (error.response?.data?.error || error.message));
     } finally {
-      setSaving(false);
+      setTesting(false);
     }
   };
 
@@ -193,7 +194,7 @@ function MessagingConfiguration({ embedded = false }) {
         <div className="messaging-config-header">
           <h2>📧 Messaging Configuration</h2>
           <p className="section-description">
-            Configure Email or Slack to automatically send user credentials when new users are created.
+            Configure Email or Slack to automatically send user credentials when new users are created. Use <strong>Test</strong> with the values in this form (nothing is saved until you click Save Configuration).
           </p>
         </div>
       )}
@@ -202,7 +203,7 @@ function MessagingConfiguration({ embedded = false }) {
         <div className="messaging-config-header" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #e0e0e0', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: '0 0 0.5rem 0', color: '#1976d2' }}>📧 Messaging Configuration</h3>
           <p className="section-description" style={{ margin: 0, fontSize: '0.9rem' }}>
-            Configure Email or Slack to automatically send user credentials when new users are created.
+            Configure Email or Slack to automatically send user credentials when new users are created. Use <strong>Test</strong> with the values in this form (nothing is saved until you click Save Configuration).
           </p>
         </div>
       )}
@@ -313,7 +314,7 @@ function MessagingConfiguration({ embedded = false }) {
             </label>
           </div>
 
-          {messagingConfig.email.enabled && (
+          {(messagingConfig.email.enabled || canEdit) && (
             <>
               <div className="form-row">
                 <div className="form-group">
@@ -467,9 +468,9 @@ function MessagingConfiguration({ embedded = false }) {
                   type="button"
                   className="btn-test"
                   onClick={handleTestEmail}
-                  disabled={saving}
+                  disabled={saving || testing}
                 >
-                  🧪 Test Email Configuration
+                  {testing ? '⏳ Testing…' : '🧪 Test Email Configuration'}
                 </button>
               )}
             </>
@@ -500,7 +501,7 @@ function MessagingConfiguration({ embedded = false }) {
             </label>
           </div>
 
-          {messagingConfig.slack.enabled && (
+          {(messagingConfig.slack.enabled || canEdit) && (
             <>
               <div className="form-group">
                 <label>Slack Webhook URL *</label>
@@ -548,9 +549,9 @@ function MessagingConfiguration({ embedded = false }) {
                   type="button"
                   className="btn-test"
                   onClick={handleTestSlack}
-                  disabled={saving}
+                  disabled={saving || testing}
                 >
-                  🧪 Test Slack Configuration
+                  {testing ? '⏳ Testing…' : '🧪 Test Slack Configuration'}
                 </button>
               )}
             </>
@@ -564,7 +565,7 @@ function MessagingConfiguration({ embedded = false }) {
             type="button"
             className="btn-primary"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || testing}
           >
             {saving ? '💾 Saving...' : '💾 Save Configuration'}
           </button>
@@ -572,7 +573,7 @@ function MessagingConfiguration({ embedded = false }) {
             type="button"
             className="btn-secondary"
             onClick={loadMessagingConfig}
-            disabled={saving}
+            disabled={saving || testing}
           >
             🔄 Reset
           </button>

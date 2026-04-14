@@ -25,6 +25,13 @@ variable "project_name" {
   default     = "AMS-oscal-reports"
 }
 
+# Applied on all resources via provider default_tags (merge with common_tags).
+variable "adobe_service_id_tag" {
+  description = "Value for AWS default tag key \"Service ID\" (Adobe CMDB / chargeback). Propagates to resources created by this stack."
+  type        = string
+  default     = "602844"
+}
+
 # Networking
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
@@ -74,15 +81,15 @@ variable "key_name" {
   default     = null
 }
 
-# Image Factory best practices: docs/IMAGE_FACTORY.md – prefer Image Factory, fallback to native Amazon Linux.
+# Image Factory best practices: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – prefer Image Factory, fallback to native Amazon Linux.
 variable "oscal_ami_id" {
-  description = "AMI ID for OSCAL instances. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/IMAGE_FACTORY.md."
+  description = "AMI ID for OSCAL instances. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform."
   type        = string
   default     = null
 }
 
 variable "use_image_factory_ami" {
-  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 if in map; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/IMAGE_FACTORY.md."
+  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 (use EMR flavor for AMS InfraSec, e.g. SSAAU-169) if resolved; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform."
   type        = bool
   default     = true
 }
@@ -95,14 +102,14 @@ variable "image_factory_owner_id" {
 }
 
 variable "image_factory_ami_name_pattern" {
-  description = "Optional: AMI name filter for dynamic lookup (e.g. 'Adobe*Amazon*Linux*'). Used with image_factory_owner_id when use_image_factory_ami = true. Leave null to use static map in image_factory_ami.tf."
+  description = "Optional: AMI name filter for dynamic lookup (e.g. '*Amazon*Linux*2023*EMR*' if names include EMR). Used with image_factory_owner_id when use_image_factory_ami = true. Leave null to use static map in image_factory_ami.tf."
   type        = string
   default     = null
 }
 
 # Optional: set Image Factory Amazon Linux 2023 AMI per region from tfvars (no need to edit image_factory_ami.tf).
 variable "image_factory_amazon_linux_ami_us_east_1" {
-  description = "Optional: Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1. When set, used for Green and Blue. Get from Image Factory UI. Leave null to use static map in image_factory_ami.tf or native AL2023."
+  description = "Optional: Adobe Image Factory Amazon Linux 2023 **EMR** (or approved AL2023) AMI ID for us-east-1. When set, used for Green and Blue. Get latest from Image Factory UI EMR flavor; optional CLI: terraform/scripts/list-emr-candidate-amis.sh. Leave null to use static map in image_factory_ami.tf or native AL2023."
   type        = string
   default     = null
 }
@@ -132,7 +139,38 @@ variable "run_oscal_via_docker" {
   default     = false
 }
 
-# S3 (best practice: docs/IMAGE_FACTORY.md – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
+# Persistent EBS + ASG (see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
+variable "oscal_persistent_ebs_enabled" {
+  description = "When true and run_oscal_via_docker is false, provision dedicated gp3 volumes and mount at /opt/oscal on boot (Auto Scaling launch template user_data). Ignored for Docker mode."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_data_volume_size_gb" {
+  description = "Size (GiB) of each OSCAL persistent data volume (Green and Blue)."
+  type        = number
+  default     = 50
+}
+
+variable "oscal_asg_health_check_grace_period" {
+  description = "Seconds after instance launch before ELB health checks count for ASG (allow volume mount, Node install, service start)."
+  type        = number
+  default     = 420
+}
+
+variable "oscal_ssm_post_boot_association_enabled" {
+  description = "When true, create an SSM State Manager association (periodic) to run a lightweight post-boot script on instances tagged OSCAL_SSM_TARGET=true."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_ssm_release_s3_prefix" {
+  description = "Optional object prefix inside s3_logs_bucket_name for SSM post-boot sync (e.g. releases/current). When set, instance role gains s3:GetObject on that prefix and the SSM document runs aws s3 sync into /opt/oscal/app (no --delete). Leave null to skip."
+  type        = string
+  default     = null
+}
+
+# S3 (best practice: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
   description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, config, users."
   type        = string
@@ -190,6 +228,109 @@ variable "alb_port_justification" {
   description = "Free-form description for Adobe:PortJustification tag on the ALB. Required for AMS PCL: resources with port exposure must have Adobe:PublicPorts and Adobe:PortJustification. ELB tag values allow only letters, numbers, spaces, and _.:/=+-@ (no parentheses). Example: \"OSCAL Report Generator production access for AMS Gov Cloud\"."
   type        = string
   default     = "OSCAL Report Generator web access HTTPS and HTTP"
+}
+
+# --- Optional RDS PostgreSQL (Database Integration) ---
+variable "create_rds_postgres" {
+  description = "When true, provisions Amazon RDS PostgreSQL in the VPC, enables IAM DB auth, and EC2 user_data bootstraps the app IAM user and OSCAL_DATABASE_* systemd environment variables."
+  type        = bool
+  default     = true
+}
+
+variable "rds_engine_version" {
+  description = "PostgreSQL major.minor for RDS (e.g. 16.6). Check AWS for supported versions in your region."
+  type        = string
+  default     = "16.6"
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class (e.g. db.t4g.micro for Graviton)"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_allocated_storage" {
+  description = "Initial allocated storage (GB) for RDS"
+  type        = number
+  default     = 20
+}
+
+variable "rds_max_allocated_storage" {
+  description = "Max storage for autoscaling (GB); set 0 to disable autoscaling"
+  type        = number
+  default     = 100
+}
+
+variable "rds_database_name" {
+  description = "Initial database name on RDS (used by OSCAL Database Integration)"
+  type        = string
+  default     = "oscal"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,62}$", var.rds_database_name))
+    error_message = "rds_database_name must start with a letter and be valid for PostgreSQL/RDS."
+  }
+}
+
+variable "rds_master_username" {
+  description = "Master username for RDS (Secrets Manager holds password). Not the IAM app user."
+  type        = string
+  default     = "oscalmaster"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,15}$", var.rds_master_username))
+    error_message = "rds_master_username must be 1–16 alphanumeric characters (RDS constraint)."
+  }
+}
+
+variable "rds_iam_app_username" {
+  description = "PostgreSQL role name for IAM database authentication (must match OSCAL_DATABASE_USER on EC2)"
+  type        = string
+  default     = "oscal_app"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{0,62}$", var.rds_iam_app_username))
+    error_message = "rds_iam_app_username must be a valid PostgreSQL identifier (lowercase recommended)."
+  }
+}
+
+variable "rds_backup_retention_period" {
+  description = "RDS backup retention in days"
+  type        = number
+  default     = 7
+}
+
+variable "rds_skip_final_snapshot" {
+  description = "When true, no final snapshot on destroy (dev/stage). Set false for production."
+  type        = bool
+  default     = true
+}
+
+variable "rds_deletion_protection" {
+  description = "Enable RDS deletion protection (recommended for production)"
+  type        = bool
+  default     = false
+}
+
+# Optional: extra IPv4 CIDR blocks allowed to connect to RDS on 5432 (in addition to the OSCAL EC2 security group).
+# Use only for VPC-internal ranges (e.g. private subnets for a bastion or corporate CIDRs routed into the VPC).
+# Do not set to broad public ranges; RDS is not publicly accessible and should not be exposed to the internet.
+variable "rds_additional_ingress_ipv4_cidr_blocks" {
+  description = "Additional IPv4 CIDR blocks permitted to reach RDS PostgreSQL (port 5432). Empty = OSCAL instances only (via security group). Each block must be reachable only inside your network design (typically RFC1918 inside the VPC)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !contains(var.rds_additional_ingress_ipv4_cidr_blocks, "0.0.0.0/0")
+    error_message = "rds_additional_ingress_ipv4_cidr_blocks must not contain 0.0.0.0/0 (no open internet to RDS)."
+  }
+}
+
+# Pass vault ↔ Secrets Manager (ec2_automation); single bundle secret + instance IAM
+variable "oscal_pass_secrets_sync_enabled" {
+  description = "When true, create aws_secretsmanager_secret for OSCAL Pass sync and grant EC2 instance role Get/Put/Describe on it. Set false to skip secret creation (e.g. account not ready)."
+  type        = bool
+  default     = true
 }
 
 # Tags

@@ -18,6 +18,26 @@
   margin-bottom: 0.25rem;
   font-size: 1.8rem;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Beta Release badge next to app title */
+.beta-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.5em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+  vertical-align: middle;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .app-header p {

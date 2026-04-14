@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "OSCAL Report Generator - Best Practices Validation Rules",
   "version": "1.0.0",
-  "lastUpdated": "2026-01-22",
+  "lastUpdated": "2026-04-14",
   "description": "Comprehensive best practices and coding standards for the OSCAL Report Generator project",
   
   "categories": {
@@ -154,6 +154,17 @@
           "message": "Certificate validation is disabled (rejectUnauthorized: false). This should only be used in development.",
           "autoFix": false,
           "mitigation": "Use proper SSL certificates in production or conditionally disable based on NODE_ENV"
+        },
+        {
+          "id": "BP-SEC-011",
+          "name": "Backend must use safeAxios (CWE-113 / outbound header CRLF)",
+          "severity": "error",
+          "pattern": "from ['\"]axios['\"]",
+          "exclude": ["test_cases/", "node_modules/", "backend/utils/safeAxios.js", "frontend/", "*.md", "docs/", "scripts/build-consolidated-docs.py"],
+          "message": "Do not import the axios package directly in backend code. Use: import axios from './utils/safeAxios.js' (correct relative path) so outbound headers are validated for CR/LF before the adapter runs (CodeQL / CWE-113 hardening).",
+          "autoFix": false,
+          "mitigation": "See backend/utils/safeAxios.js and docs/BEST_PRACTICES.md section 'Outbound HTTP (Axios)'.",
+          "references": ["https://cwe.mitre.org/data/definitions/113.html"]
         }
       ]
     },

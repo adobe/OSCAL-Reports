@@ -19,6 +19,7 @@ This directory contains the unified test script for the OSCAL Report Generator.
 - ✅ v1.6.5 Features (CSRF exemption, Bearer tokens, AI integration)
 - ✅ Test Coverage (>75% requirement)
 - ✅ Deployment Validation (script checks, optional Docker tests)
+- ✅ ec2_automation Pass ↔ Secrets Manager sync (mocked `aws`/`pass`; `scripts/lib/ec2-automation-pass-sync.sh`)
 
 **Usage:**
 
@@ -28,6 +29,9 @@ This directory contains the unified test script for the OSCAL Report Generator.
 
 # Skip deployment tests (faster)
 ./test_cases/scripts/run-all-tests.sh --skip-deployment
+
+# CI / quick check: only Pass ↔ Secrets Manager sync tests (no Node prerequisites beyond jq)
+./test_cases/scripts/run-all-tests.sh --ec2-pass-sync-only
 ```
 
 **Exit Codes:**
@@ -40,8 +44,9 @@ This directory contains the unified test script for the OSCAL Report Generator.
 
 ## Consolidated Approach
 
-This unified script replaces three separate scripts:
+This unified script replaces separate scripts, including:
 - ❌ `test-v1.6.5-changes.sh` (removed)
+- ❌ `test-ec2-automation-pass-sync.sh` (merged into `run-all-tests.sh`)
 - ❌ `test-deployment-script.sh` (removed)
 - ❌ `validate_best_practices.sh` (removed)
 
@@ -160,5 +165,5 @@ npm run test:coverage
 
 ---
 
-**Last Updated:** March 2026  
+**Last Updated:** April 2026  
 **Maintainer:** Mukesh Kesharwani <mukesh.kesharwani@adobe.com>

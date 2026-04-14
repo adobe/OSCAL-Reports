@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
+import axios from '../utils/safeAxios.js';
 import './Login.css';
 
 const Login = () => {
@@ -73,7 +73,7 @@ const Login = () => {
     <div className="login-container">
       <div className="login-box">
         <div className="login-header">
-          <h1>🔐 Keekar's OSCAL Generator</h1>
+          <h1>🔐 Keekar's OSCAL Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
           <p>Please sign in to continue</p>
         </div>
 

@@ -18,7 +18,7 @@ key_name = null
 # instance_type          = "t4g.small"
 # instance_architecture  = "arm64"
 
-# S3 (best practice from docs/IMAGE_FACTORY.md): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
+# S3 (best practice from docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
 # Subfolders: logs, config, users. Terraform lowercases the value.
 s3_logs_bucket_name = "ams-oscal-432417415905"
 
@@ -51,7 +51,7 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # alb_port_justification = "OSCAL Report Generator production access for AMS Gov Cloud"
 
 # ------------------------------------------------------------------------------
-# Image Factory / AMI (docs/IMAGE_FACTORY.md): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023
+# Image Factory / AMI (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023
 # ------------------------------------------------------------------------------
 # - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if AMI set below or in image_factory_ami.tf; else native AL2023.
 # - use_image_factory_ami = false: use only native Amazon Linux 2023 (e.g. sandbox without Image Factory access).
@@ -63,7 +63,23 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # oscal_ami_id          = null
 # instance_architecture = "arm64"   # default for t4g (Graviton); use "x86_64" for t3a (AMD)
 
+# ------------------------------------------------------------------------------
+# RDS PostgreSQL (Database Integration; IAM DB auth). Enabled by default (variables.tf). To skip RDS and private subnets:
+# create_rds_postgres = false
+# ------------------------------------------------------------------------------
+# rds_instance_class  = "db.t4g.micro"
+# rds_skip_final_snapshot = true  # set false + rds_deletion_protection = true for production
+
 # Optional tags
 common_tags = {
   Team = "Compliance"
 }
+
+# ------------------------------------------------------------------------------
+# Resilience: persistent EBS + ASG + SSM (direct-run only; see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock)
+# ------------------------------------------------------------------------------
+# oscal_persistent_ebs_enabled      = true   # extra gp3 per Green/Blue, mounted at /opt/oscal
+# oscal_data_volume_size_gb         = 50
+# oscal_asg_health_check_grace_period = 420  # seconds before ELB health affects ASG (tune if flapping)
+# oscal_ssm_post_boot_association_enabled = true   # periodic SSM document on tag OSCAL_SSM_TARGET=true
+# oscal_ssm_release_s3_prefix       = null  # e.g. "releases/current" inside s3_logs_bucket_name for SSM sync

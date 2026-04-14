@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
 import './SSOIntegration.css';
 
@@ -280,29 +280,42 @@ function SSOIntegration({ onClose, embedded = false }) {
       return;
     }
 
-    // For OAuth/Okta: require OAuth enabled, provider enabled, and minimal config
-    if (activeTab === 'oauth') {
-      const providerKey = provider.toLowerCase().replace(' ', '');
-      const providerConfig = oauthConfig.providers?.[providerKey];
-      if (!oauthConfig.enabled || !providerConfig?.enabled) {
-        setMessage(`⚠️ Please enable "OAuth / OIDC" above and enable "${provider}" first.`);
+    if (activeTab === 'saml' && provider === 'SAML') {
+      const idpEntity = typeof samlConfig.idpEntityId === 'string' ? samlConfig.idpEntityId.trim() : '';
+      const idpSso = typeof samlConfig.idpSsoUrl === 'string' ? samlConfig.idpSsoUrl.trim() : '';
+      const spEntity = typeof samlConfig.spEntityId === 'string' ? samlConfig.spEntityId.trim() : '';
+      if (!idpEntity || !idpSso || !spEntity) {
+        setMessage('⚠️ Enter IdP Entity ID, IdP SSO URL, and SP Entity ID to test SAML (nothing is saved until you click Save).');
         scrollMessageIntoView();
         setTimeout(() => setMessage(''), 6000);
         return;
       }
-      if (providerKey === 'okta') {
+    }
+
+    // OAuth: validate current form fields (enable toggles are not required to run a test)
+    if (activeTab === 'oauth') {
+      const providerSlug = provider.toLowerCase().replace(/\s+/g, '');
+      const oauthKey = providerSlug === 'azuread' ? 'azure' : providerSlug;
+      const providerConfig = oauthConfig.providers?.[oauthKey];
+      if (oauthKey === 'okta') {
         const hasDomain = !!safeStr(providerConfig?.domain);
         const hasClientId = !!safeStr(providerConfig?.clientId);
         const hasClientSecret = hasOidcClientSecret(providerConfig?.clientSecret);
         if (!hasDomain || !hasClientId || !hasClientSecret) {
-          setMessage('⚠️ Please enter Okta Domain, Client ID, and Client Secret to test the connection.');
+          setMessage('⚠️ Enter Okta Domain, Client ID, and Client Secret (or Pass vault entry) to test the connection.');
           scrollMessageIntoView();
           setTimeout(() => setMessage(''), 6000);
           return;
         }
+      } else if (!safeStr(providerConfig?.clientId)) {
+        setMessage(`⚠️ Enter Client ID for ${provider} to test (secret optional for this check).`);
+        scrollMessageIntoView();
+        setTimeout(() => setMessage(''), 6000);
+        return;
       }
     }
 
+    let dismissAfterMs = 5000;
     try {
       setTesting(true);
       setMessage(`🔄 Testing ${provider} connection...`);
@@ -314,7 +327,19 @@ function SSOIntegration({ onClose, embedded = false }) {
         getAuthConfig()
       );
 
-      if (response.data.success) {
+      const slug = provider.toLowerCase().replace(/\s+/g, '');
+      const isOkta = slug === 'okta';
+      const checks = response.data.checks;
+      if (isOkta && Array.isArray(checks) && checks.length > 0) {
+        dismissAfterMs = 16000;
+        const header = response.data.success
+          ? '✅ Okta test — all steps passed'
+          : '❌ Okta test — one or more steps failed';
+        const lines = checks.map((c) => `${c.passed ? '✅' : '❌'} ${c.label}\n   ${c.detail || (c.passed ? 'OK' : 'Failed')}`);
+        const footer = response.data.error ? `\n${response.data.error}` : '';
+        const successNote = response.data.success && response.data.message ? `\n${response.data.message}` : '';
+        setMessage(`${header}\n\n${lines.join('\n\n')}${successNote}${footer}`);
+      } else if (response.data.success) {
         setMessage(response.data.message ? `✅ ${response.data.message}` : `✅ ${provider} connection test successful!`);
       } else {
         setMessage(`❌ ${provider} connection test failed: ${response.data.error || 'Unknown error'}`);
@@ -323,7 +348,7 @@ function SSOIntegration({ onClose, embedded = false }) {
       setMessage(`❌ Test failed: ${err.response?.data?.error || err.response?.data?.message || err.message}`);
     } finally {
       setTesting(false);
-      setTimeout(() => setMessage(''), 5000);
+      setTimeout(() => setMessage(''), dismissAfterMs);
     }
     scrollMessageIntoView();
   };
@@ -458,7 +483,9 @@ function SSOIntegration({ onClose, embedded = false }) {
 
       <div ref={messageContainerRef} style={{ minHeight: message ? undefined : 0 }}>
         {message && (
-          <div className={`sso-message ${message.includes('✅') ? 'success' : message.includes('🔄') ? 'info' : 'error'}`}>
+          <div
+            className={`sso-message ${message.startsWith('🔄') ? 'info' : message.startsWith('✅') ? 'success' : 'error'} ${message.includes('\n\n') ? 'preformatted' : ''}`}
+          >
             {message}
           </div>
         )}
@@ -516,12 +543,12 @@ function SSOIntegration({ onClose, embedded = false }) {
                       placeholder="https://your-idp.com/metadata.xml"
                       value={samlConfig.idpMetadataUrl}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, idpMetadataUrl: e.target.value })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <button
                       className="btn-secondary"
                       onClick={handleFetchMetadata}
-                      disabled={!canEdit || !samlConfig.enabled || !samlConfig.idpMetadataUrl}
+                      disabled={!canEdit || !(samlConfig.idpMetadataUrl || '').trim()}
                     >
                       📥 Fetch Metadata
                     </button>
@@ -538,7 +565,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       placeholder="https://your-idp.com/entityid"
                       value={samlConfig.idpEntityId}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, idpEntityId: e.target.value })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -550,7 +577,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       placeholder="https://your-idp.com/sso"
                       value={samlConfig.idpSsoUrl}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, idpSsoUrl: e.target.value })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -563,7 +590,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                     placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDdTCCAl2gAwIBAgILBAAAAAABFUtaw5QwDQYJKoZIhvcNAQEFBQAwVzELMAkG...&#10;-----END CERTIFICATE-----"
                     value={samlConfig.idpCertificate}
                     onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, idpCertificate: e.target.value })}
-                    disabled={!canEdit || !samlConfig.enabled}
+                    disabled={!canEdit}
                   />
                   <small>Public certificate from your IdP for signature verification</small>
                 </div>
@@ -581,7 +608,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                     placeholder="https://your-app.com/saml/metadata"
                     value={samlConfig.spEntityId}
                     onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, spEntityId: e.target.value })}
-                    disabled={!canEdit || !samlConfig.enabled}
+                    disabled={!canEdit}
                   />
                   <small>Unique identifier for this application (your app URL)</small>
                 </div>
@@ -595,7 +622,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       placeholder="https://your-app.com/auth/saml/acs"
                       value={samlConfig.spAcsUrl}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, spAcsUrl: e.target.value })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -607,7 +634,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       placeholder="https://your-app.com/auth/saml/slo"
                       value={samlConfig.spSloUrl}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, spSloUrl: e.target.value })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -637,7 +664,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           email: e.target.value
                         }
                       })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -659,7 +686,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           role: e.target.value
                         }
                       })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -682,7 +709,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                         ...samlConfig,
                         roleMapping: { ...safeSamlRoleMapping, [appRole]: e.target.value }
                       })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 ))}
@@ -698,7 +725,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="checkbox"
                       checked={samlConfig.signRequests}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, signRequests: e.target.checked })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span>Sign SAML requests</span>
                   </label>
@@ -708,7 +735,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="checkbox"
                       checked={samlConfig.wantAssertionsSigned}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, wantAssertionsSigned: e.target.checked })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span>Require signed SAML assertions</span>
                   </label>
@@ -718,7 +745,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                       type="checkbox"
                       checked={!samlConfig.allowUnencryptedAssertions}
                       onChange={(e) => canEdit && setSamlConfig({ ...samlConfig, allowUnencryptedAssertions: !e.target.checked })}
-                      disabled={!canEdit || !samlConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span>Require encrypted assertions</span>
                   </label>
@@ -729,7 +756,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-primary"
                   onClick={() => handleTestConnection('SAML')}
-                  disabled={!canEdit || !samlConfig.enabled || testing}
+                  disabled={!canEdit || testing}
                 >
                   🔍 Test SAML Connection
                 </button>
@@ -777,7 +804,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           okta: { ...oktaProvider, enabled: e.target.checked }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span className="toggle-slider"></span>
                     <span className="toggle-label">{oktaProvider.enabled ? 'Enabled' : 'Disabled'}</span>
@@ -800,7 +827,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           okta: { ...oktaProvider, domain: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                   <div className="form-group">
@@ -817,7 +844,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           okta: { ...oktaProvider, redirectUri: e.target.value.trim() }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                      disabled={!canEdit}
                     />
                     <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
                       Must match the Sign-in redirect URI in your Okta app and the URL where users access this app (e.g. https://oscal.amsgovcloud.com.au/auth/okta/callback). Leave blank to use current browser origin.
@@ -839,7 +866,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           okta: { ...oktaProvider, authServerId: e.target.value.trim() }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                      disabled={!canEdit}
                     />
                     <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
                       Use <strong>default</strong> if your Okta app uses a Custom Authorization Server. Leave blank for the legacy org server.
@@ -859,7 +886,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           okta: { ...oktaProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -877,7 +904,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                         okta: { ...oktaProvider, clientSecret: e.target.value }
                       }
                     })}
-                    disabled={!canEdit || !oauthConfig.enabled || !oktaProvider.enabled}
+                    disabled={!canEdit}
                   />
                 </div>
 
@@ -890,7 +917,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                         type="checkbox"
                         checked={oauthConfig.jitProvisioning === true}
                         onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, jitProvisioning: e.target.checked })}
-                        disabled={!canEdit || !oauthConfig.enabled}
+                        disabled={!canEdit}
                       />
                       <span className="toggle-slider"></span>
                       <span>Enable JIT provisioning (create user if not in users.json)</span>
@@ -903,7 +930,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                         className="form-control"
                         value={oauthConfig.jitDefaultRole || 'User'}
                         onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, jitDefaultRole: e.target.value })}
-                        disabled={!canEdit || !oauthConfig.enabled}
+                        disabled={!canEdit}
                       >
                         <option value="User">User</option>
                         <option value="Assessor">Assessor</option>
@@ -916,7 +943,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           type="checkbox"
                           checked={oauthConfig.syncRoleFromGroups !== false}
                           onChange={(e) => canEdit && setOauthConfig({ ...oauthConfig, syncRoleFromGroups: e.target.checked })}
-                          disabled={!canEdit || !oauthConfig.enabled}
+                          disabled={!canEdit}
                         />
                         <span className="toggle-slider"></span>
                         <span>Sync role from Okta groups on every login</span>
@@ -943,7 +970,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                             if (v) next[v] = appRole;
                             setOauthConfig({ ...oauthConfig, groupToRoleMapping: next });
                           }}
-                          disabled={!canEdit || !oauthConfig.enabled}
+                          disabled={!canEdit}
                           style={{ flex: 1 }}
                         />
                         <select
@@ -953,7 +980,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                             ...oauthConfig,
                             groupToRoleMapping: { ...safeGroupToRoleMapping, [groupName]: e.target.value }
                           })}
-                          disabled={!canEdit || !oauthConfig.enabled}
+                          disabled={!canEdit}
                           style={{ width: '160px' }}
                         >
                           <option value="User">User</option>
@@ -967,7 +994,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                             ...oauthConfig,
                             groupToRoleMapping: Object.fromEntries(Object.entries(safeGroupToRoleMapping).filter(([k]) => k !== groupName))
                           })}
-                          disabled={!canEdit || !oauthConfig.enabled}
+                          disabled={!canEdit}
                         >
                           Remove
                         </button>
@@ -994,14 +1021,14 @@ function SSOIntegration({ onClose, embedded = false }) {
                             }
                           }
                         }}
-                        disabled={!canEdit || !oauthConfig.enabled}
+                        disabled={!canEdit}
                       />
                       <select
                         className="form-control"
                         id="new-group-role"
                         defaultValue="User"
                         style={{ width: '140px' }}
-                        disabled={!canEdit || !oauthConfig.enabled}
+                        disabled={!canEdit}
                       >
                         <option value="User">User</option>
                         <option value="Assessor">Assessor</option>
@@ -1023,7 +1050,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                             if (input) input.value = '';
                           }
                         }}
-                        disabled={!canEdit || !oauthConfig.enabled}
+                        disabled={!canEdit}
                       >
                         Add mapping
                       </button>
@@ -1034,13 +1061,11 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('Okta')}
-                  disabled={testing}
+                  disabled={!canEdit || testing}
                   title={
-                    !oauthConfig.enabled || !oktaProvider.enabled
-                      ? 'Enable OAuth and Okta above first'
-                      : (!safeStr(oktaProvider.domain) || !safeStr(oktaProvider.clientId) || !hasOidcClientSecret(oktaProvider.clientSecret))
-                        ? 'Enter Okta Domain, Client ID, and Client Secret (or Pass vault entry) to test'
-                        : 'Test connection to Okta (validates all fields and Okta discovery)'
+                    (!safeStr(oktaProvider.domain) || !safeStr(oktaProvider.clientId) || !hasOidcClientSecret(oktaProvider.clientSecret))
+                      ? 'Enter Okta Domain, Client ID, and Client Secret (or Pass vault entry) to test'
+                      : 'Test using values in this form; Save SSO configuration when you want to persist'
                   }
                 >
                   {testing ? '⏳ Testing...' : '🔍 Test Okta Connection'}
@@ -1065,7 +1090,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           azure: { ...azureProvider, enabled: e.target.checked }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span className="toggle-slider"></span>
                     <span className="toggle-label">{azureProvider.enabled ? 'Enabled' : 'Disabled'}</span>
@@ -1087,7 +1112,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           azure: { ...azureProvider, tenantId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -1105,7 +1130,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           azure: { ...azureProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -1123,7 +1148,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           azure: { ...azureProvider, clientSecret: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -1143,7 +1168,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('Azure AD')}
-                  disabled={!canEdit || !oauthConfig.enabled || !azureProvider.enabled || testing}
+                  disabled={!canEdit || testing}
                 >
                   🔍 Test Azure AD Connection
                 </button>
@@ -1167,7 +1192,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           google: { ...googleProvider, enabled: e.target.checked }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span className="toggle-slider"></span>
                     <span className="toggle-label">{googleProvider.enabled ? 'Enabled' : 'Disabled'}</span>
@@ -1189,7 +1214,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           google: { ...googleProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !googleProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -1207,7 +1232,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           google: { ...googleProvider, clientSecret: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !googleProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -1227,7 +1252,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('Google')}
-                  disabled={!canEdit || !oauthConfig.enabled || !googleProvider.enabled || testing}
+                  disabled={!canEdit || testing}
                 >
                   🔍 Test Google Connection
                 </button>
@@ -1251,7 +1276,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           github: { ...githubProvider, enabled: e.target.checked }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled}
+                      disabled={!canEdit}
                     />
                     <span className="toggle-slider"></span>
                     <span className="toggle-label">{githubProvider.enabled ? 'Enabled' : 'Disabled'}</span>
@@ -1273,7 +1298,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           github: { ...githubProvider, clientId: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !githubProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -1291,7 +1316,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                           github: { ...githubProvider, clientSecret: e.target.value }
                         }
                       })}
-                      disabled={!canEdit || !oauthConfig.enabled || !githubProvider.enabled}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -1299,7 +1324,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <button
                   className="btn-test"
                   onClick={() => handleTestConnection('GitHub')}
-                  disabled={!canEdit || !oauthConfig.enabled || !githubProvider.enabled || testing}
+                  disabled={!canEdit || testing}
                 >
                   🔍 Test GitHub Connection
                 </button>
@@ -1314,7 +1339,7 @@ function SSOIntegration({ onClose, embedded = false }) {
           <button
             className="btn-primary btn-large"
             onClick={handleSaveConfiguration}
-            disabled={saving}
+            disabled={saving || testing}
           >
             {saving ? '⏳ Saving...' : '💾 Save SSO Configuration'}
           </button>

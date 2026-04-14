@@ -30,6 +30,8 @@ Defines security vulnerability detection patterns.
 - RegEx (ReDoS)
 - Dependencies
 
+**Related (Node backend):** `best_practices.json` includes **BP-SEC-011** — do not import `axios` directly under `backend/`; use `backend/utils/safeAxios.js` (CWE-113 / CodeQL-aligned outbound header hardening).
+
 ### learnings.json (auto-generated)
 Tracks project-specific security learnings and patterns discovered over time.
 
@@ -92,5 +94,5 @@ See [docs/VALIDATION_SYSTEM.md](../docs/VALIDATION_SYSTEM.md) for complete docum
 
 ---
 
-Last Updated: March 2026  
-Version: 1.7.10
+Last Updated: April 2026  
+Version: 1.7.12

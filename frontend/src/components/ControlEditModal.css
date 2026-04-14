@@ -163,6 +163,20 @@ select.form-control {
   gap: 1rem;
 }
 
+/* Responsible Party row: Responsible Party (wider) + T1, T2, T3 (narrower) in one row */
+.form-row-responsible-party {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+.form-row-responsible-party .form-group-responsible-party,
+.form-row-responsible-party .form-group-adobe-slot {
+  flex: 1 1 0;
+  min-width: 110px;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -233,6 +247,15 @@ select.form-control {
   .form-row {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .form-row-responsible-party {
+    flex-direction: column;
+  }
+  .form-row-responsible-party .form-group-responsible-party,
+  .form-row-responsible-party .form-group-adobe-slot {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .modal-footer {

@@ -23,7 +23,7 @@
 ssh mkesharw@NAS01
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 git pull origin main
-./retired/truenas-build/build_on_truenas.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 ---
@@ -131,7 +131,7 @@ cat credentials.txt
 ```bash
 docker logs oscal-report-generator-green
 docker stop oscal-report-generator-green && docker rm oscal-report-generator-green
-./retired/truenas-build/build_on_truenas.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 ### Can't access UI
