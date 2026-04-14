@@ -421,6 +421,31 @@ logAIInteraction({
 
 ---
 
+## 🌐 Outbound HTTP (Axios) — CodeQL / CWE alignment (2026-04)
+
+CodeQL and similar analyzers flag unsafe composition of outbound HTTP requests (including **CWE-113**: CRLF in HTTP headers / header-injection gadgets). The backend mitigates this on the **Axios** path with a shared wrapper.
+
+### Use `safeAxios` in the Node backend
+
+| Rule | Detail |
+|------|--------|
+| **Import** | In `backend/`, use `import axios from './utils/safeAxios.js'` (adjust relative path). **Do not** add `import … from 'axios'` except inside `backend/utils/safeAxios.js`. |
+| **Behavior** | `safeAxios` runs a request interceptor that rejects `\r` and `\n` in merged outbound header **names** and **values**, and validates `auth` username/password fields, before the HTTP adapter runs. |
+| **Tests** | `test_cases/backend/unit/safeAxios.test.js` — extend when changing interceptor behavior. |
+| **SSRF** | Unchanged: user- or attacker-controlled URLs must still use **`validateUrl()`** from `backend/utils/urlValidator.js` before any request (`BP-SEC-006` / API7). `safeAxios` does not replace URL validation. |
+
+### Code review checklist (outbound HTTP)
+
+- [ ] No new direct `axios` package import under `backend/` (except `safeAxios.js`).
+- [ ] No dynamic header values from untrusted input without normalization; never allow raw CRLF in header material.
+- [ ] Server-side requests to URLs influenced by users/config use `validateUrl()` and timeouts as already documented.
+
+### Frontend note
+
+React and other **browser** code may continue to use `axios` from `'axios'` for same-origin calls to this app’s API. The **CWE-113** hardening applies to **server-side** Axios in `backend/`.
+
+---
+
 ## 🎯 Next Steps
 
 ### **Immediate Actions**
@@ -443,8 +468,7 @@ logAIInteraction({
 - [KACI_BEST_PRACTICES_ANALYSIS.md](../KACI_BEST_PRACTICES_ANALYSIS.md) - Full analysis
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [DEPLOYMENT.md](./DEPLOYMENT.md) - Deployment guide
-- [AWS_TERRAFORM.md](./AWS_TERRAFORM.md) - Terraform for OSCAL on AWS
-- [IMAGE_FACTORY.md](./IMAGE_FACTORY.md) - Image Factory AMI usage
+- [AWS_OPERATIONS.md](./AWS_OPERATIONS.md) - Terraform, Image Factory, Bedrock, EC2, costs (consolidated)
 
 ### **EC2 instance preference (AWS Terraform)**
 
@@ -453,7 +477,7 @@ Preferred order for OSCAL Green/Blue EC2 instances:
 1. **Graviton (t4g)** – preferred: better price/performance, ARM64. Set `instance_type = "t4g.small"` and `instance_architecture = "arm64"` (defaults in `terraform/variables.tf`).
 2. **AMD (t3a)** – fallback: x86_64. Set `instance_type = "t3a.small"` and `instance_architecture = "x86_64"`.
 
-Use Graviton (t4g) unless your AMI or workload requires x86_64; then use t3a. See [IMAGE_FACTORY.md](IMAGE_FACTORY.md) and [AWS_TERRAFORM.md](AWS_TERRAFORM.md).
+Use Graviton (t4g) unless your AMI or workload requires x86_64; then use t3a. See [AWS_OPERATIONS.md](AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform) and [AWS_OPERATIONS.md – Terraform](AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock).
 
 ### **External Standards**
 - [Semantic Versioning](https://semver.org/)
@@ -495,6 +519,7 @@ For questions or issues related to these implementations:
 - **Errors**: Consistent error response format with timestamps
 - **Documentation**: JSDoc for functions, file headers for all files
 - **Versioning**: Use bump_version.sh script, never manual edits
+- **Outbound HTTP (backend)**: Use `backend/utils/safeAxios.js` instead of importing `axios` directly (CWE-113 / CodeQL); use `validateUrl()` for any user-controlled URL (SSRF)
 
 #### **When Adding New Features**
 - [ ] Follow existing module patterns
@@ -522,6 +547,7 @@ For questions or issues related to these implementations:
 - [ ] No XSS vulnerabilities
 - [ ] Sensitive data not logged
 - [ ] Proper authentication/authorization
+- [ ] Backend outbound HTTP uses `safeAxios`; user-controlled URLs use `validateUrl()` (SSRF)
 
 **Documentation**
 - [ ] JSDoc added for public functions
@@ -2489,7 +2515,7 @@ These best practices from KACI are already successfully implemented in OSCAL Rep
 ### 11. **Docker Multi-Stage Builds** ✅
 - **KACI Practice:** Optimized container images
 - **OSCAL Status:** ✅ **FULLY IMPLEMENTED**
-- **Location:** root `Dockerfile` (canonical). Former `config/build/Dockerfile` archived in `retired/truenas-build/config-build/`.
+- **Location:** root `Dockerfile` (canonical). Legacy `config/build/` copies were removed; build only from the repository root.
 - **Evidence:** Multi-stage builds for production optimization
 
 ### 12. **Environment-Based Configuration** ✅
@@ -3761,7 +3787,7 @@ All 10 recommendations from the KACI-Parental_Control best practices comparison 
 
 #### 2. Color-Coded Terminal Output ✅
 **Status:** COMPLETE  
-**Files:** `setup.sh`, `retired/truenas-build/build_on_truenas.sh`
+**Files:** `setup.sh`, `scripts/install_from_dockerhub.sh`
 
 **Functions Added:**
 ```bash
@@ -3976,7 +4002,7 @@ print_info()     # Blue ℹ
 
 **Files Modified:** 3
 - `setup.sh` (completely rewritten, ~950 lines)
-- `retired/truenas-build/build_on_truenas.sh` (added color coding; retired)
+- `scripts/install_from_dockerhub.sh` (Docker Hub pull-based deploy)
 - `BEST_PRACTICES_OSCAL_REPORTS.md` (added 4 new sections, ~500 lines added)
 - `frontend/src/App.jsx` (integrated Footer component)
 
@@ -4318,7 +4344,7 @@ print_info() { echo "${BLUE}ℹ${NC}  $1"; }
 **Recommendation:**
 Add color coding to all shell scripts:
 - `setup.sh`
-- `retired/truenas-build/build_on_truenas.sh`
+- `scripts/install_from_dockerhub.sh`
 - `scripts/reactivate-admin.sh`
 
 **Benefits:**
@@ -4938,6 +4964,7 @@ export default {
  */
 
 import React, { useState, useEffect } from 'react';
+// Frontend: axios from 'axios' is OK for same-origin API calls. In backend/ always use ./utils/safeAxios.js.
 import axios from 'axios';
 import './ComponentName.css';
 

@@ -18,7 +18,7 @@ key_name = null
 # instance_type          = "t4g.small"
 # instance_architecture  = "arm64"
 
-# S3 (best practice from docs/IMAGE_FACTORY.md): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
+# S3 (best practice from docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
 # Subfolders: logs, config, users. Terraform lowercases the value.
 s3_logs_bucket_name = "ams-oscal-432417415905"
 
@@ -51,7 +51,7 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # alb_port_justification = "OSCAL Report Generator production access for AMS Gov Cloud"
 
 # ------------------------------------------------------------------------------
-# Image Factory / AMI (docs/IMAGE_FACTORY.md): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023
+# Image Factory / AMI (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): default = Image Factory Amazon Linux 2023 (when in map), else native Amazon Linux 2023
 # ------------------------------------------------------------------------------
 # - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if AMI set below or in image_factory_ami.tf; else native AL2023.
 # - use_image_factory_ami = false: use only native Amazon Linux 2023 (e.g. sandbox without Image Factory access).
@@ -76,7 +76,7 @@ common_tags = {
 }
 
 # ------------------------------------------------------------------------------
-# Resilience: persistent EBS + ASG + SSM (direct-run only; see docs/AWS_TERRAFORM.md)
+# Resilience: persistent EBS + ASG + SSM (direct-run only; see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock)
 # ------------------------------------------------------------------------------
 # oscal_persistent_ebs_enabled      = true   # extra gp3 per Green/Blue, mounted at /opt/oscal
 # oscal_data_volume_size_gb         = 50

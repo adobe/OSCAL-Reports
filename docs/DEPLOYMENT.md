@@ -1,7 +1,7 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7+  
-**Last Updated**: March 2026  
+**Version**: 1.7.12  
+**Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
 ---
@@ -261,16 +261,16 @@ cd /mnt/pool1/Documents/KACI-Apps
 # Clone Blue instance (Port 3020)
 git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
-# TrueNAS build script is in retired/truenas-build/ (can be removed after 6 months when stable)
-chmod +x retired/truenas-build/build_on_truenas.sh
-./retired/truenas-build/build_on_truenas.sh
+# Pull-based deploy from Docker Hub (see docs/DOCKER_HUB_GUIDE.md)
+chmod +x scripts/install_from_dockerhub.sh
+./scripts/install_from_dockerhub.sh
 
 # Clone Green instance (Port 3019)
 cd /mnt/pool1/Documents/KACI-Apps
 git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
-chmod +x retired/truenas-build/build_on_truenas.sh
-./retired/truenas-build/build_on_truenas.sh
+chmod +x scripts/install_from_dockerhub.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 ### Blue-Green Deployment Strategy
@@ -295,23 +295,23 @@ Month 1:
   Week 5 (5th Sun) → Deploy to Green (if exists)
 ```
 
-### What the TrueNAS build script does
+### What `scripts/install_from_dockerhub.sh` does
 
-The script lives in **retired/truenas-build/build_on_truenas.sh** (retired from repo root; see [retired/truenas-build/README.md](../retired/truenas-build/README.md)).
+Canonical path: **`scripts/install_from_dockerhub.sh`** at the repo root. See [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) for flags, image names, and troubleshooting.
 
-The automated build script:
+The script typically:
 
-1. **Detects Instance**: Identifies Blue or Green from directory name
-2. **Config Persistence**: Verifies config volume is mounted correctly
-3. **Version Check**: Compares local, running, and GitHub versions
-4. **Smart Build**: Only rebuilds if version changed
-5. **Zero Downtime**: Gracefully stops container, rebuilds, starts
-6. **Verification**: Checks container is running and healthy
+1. **Pulls** the pre-built image from Docker Hub (with backup / rollback behavior documented in the guide)
+2. **Preserves config** under `config/` mounted into the container
+3. **Deploys** the Blue or Green instance for your checkout directory
+4. **Verifies** the container is running (see script output and `docker ps`)
+
+To build **from source** instead (no Docker Hub), use `docker build` from the repo root `Dockerfile` (see [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md)).
 
 ```bash
 # Manual deployment
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-./retired/truenas-build/build_on_truenas.sh
+./scripts/install_from_dockerhub.sh
 
 # What happens:
 # ✓ Config persistence verified
@@ -343,7 +343,7 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 **Volume Mount**:
 ```bash
-# In retired/truenas-build/build_on_truenas.sh:
+# Typical bind mount (see root docker-compose.yml and install script):
 -v "${SCRIPT_DIR}/config:/app/config"
 ```
 
@@ -365,10 +365,10 @@ crontab -e
 
 # Add these lines for monthly staggered updates:
 # Green: 1st, 3rd, and 5th Sunday at 2 AM
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./retired/truenas-build/build_on_truenas.sh >> /var/log/oscal-green-deploy.log 2>&1
+0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
 
 # Blue: 2nd and 4th Sunday at 2 AM
-0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./retired/truenas-build/build_on_truenas.sh >> /var/log/oscal-blue-deploy.log 2>&1
+0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
 ```
 
 ### Cron Syntax Explained
@@ -404,10 +404,7 @@ systemctl status cron  # or 'crond' on some systems
 ```bash
 # Force rebuild regardless of version
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-FORCE_BUILD=true ./retired/truenas-build/build_on_truenas.sh
-
-# Or (if implemented)
-./retired/truenas-build/build_on_truenas.sh --force
+./scripts/install_from_dockerhub.sh --force
 ```
 
 ### Removing Green (or Blue) to free resources
@@ -421,7 +418,7 @@ docker rm oscal-report-generator-green
 docker rmi oscal-report-generator:green 2>/dev/null || true
 ```
 
-The **data-green** directory (config/users) is left in place unless you delete it manually. To bring Green back later, run `./retired/truenas-build/build_on_truenas.sh` again from the Green directory.
+The **data-green** directory (config/users) is left in place unless you delete it manually. To bring Green back later, run `./scripts/install_from_dockerhub.sh` again from the Green directory.
 
 For **Blue**, use the same steps with container name `oscal-report-generator-blue` and port 3020.
 
@@ -542,7 +539,7 @@ lsof -i :3019
 docker stop oscal-report-generator-green
 docker rm oscal-report-generator-green
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-./retired/truenas-build/build_on_truenas.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 #### Issue: Config not persisting
@@ -585,10 +582,10 @@ grep CRON /var/log/syslog | grep oscal
 
 # Test script manually
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-./retired/truenas-build/build_on_truenas.sh
+./scripts/install_from_dockerhub.sh
 
 # Ensure script is executable
-chmod +x retired/truenas-build/build_on_truenas.sh
+chmod +x scripts/install_from_dockerhub.sh
 ```
 
 #### Issue: Wrong version deployed
@@ -603,7 +600,7 @@ git remote -v
 # Force update from GitHub
 git fetch origin
 git reset --hard origin/main
-./retired/truenas-build/build_on_truenas.sh
+./scripts/install_from_dockerhub.sh
 ```
 
 ### Health Checks
@@ -675,7 +672,7 @@ du -sh /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-*
 - **Best Practices**: See `docs/BEST_PRACTICES.md`
 - **Testing Guide**: See `test_cases/TESTING_GUIDE.md`
 - **Validation System**: See `docs/VALIDATION_SYSTEM.md`
-- **Dual Repo Setup**: See `docs/DUAL_REPO_SETUP.md`
+- **Dual Repo Setup**: See [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md#dual-repository-setup-guide)
 - **Version History**: See `docs/VERSION_NOTES.md`
 
 ---
@@ -690,6 +687,6 @@ For issues or questions:
 
 ---
 
-**Last Updated**: January 22, 2026  
+**Last Updated**: April 14, 2026  
 **Maintainer**: Mukesh Kesharwani <mkesharw@adobe.com>  
 **License**: GPL-3.0-or-later

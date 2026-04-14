@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import axios from 'axios';
+import axios from '../utils/safeAxios.js';
 import buildInfo from '../utils/buildInfo';
 import { useAuth } from '../contexts/AuthContext';
 import { exportErrorMessage } from '../utils/exportErrorMessage';

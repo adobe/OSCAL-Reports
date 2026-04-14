@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Adobe Image Factory – AMI best practices (docs/IMAGE_FACTORY.md)
+# Adobe Image Factory – AMI best practices (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform)
 # ------------------------------------------------------------------------------
 # - AMS InfraSec tickets (e.g. SSAAU-169) expect the Image Factory flavor **Amazon Linux 2023 EMR**,
 #   not only generic AL2023 or the public Amazon-owned al2023-ami-* fallback.
