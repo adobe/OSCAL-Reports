@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.7.13] - 2026-04-14
+
+### Changed
+- chore: promote merge to Pre_Prod and main (personal)
 ## [1.7.12] - 2026-04-14
 
 ### Changed
