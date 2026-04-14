@@ -1,74 +1,66 @@
 # 📚 OSCAL Report Generator Documentation
 
-**Organized documentation for development, deployment, and maintenance**
+**Organized documentation for development, deployment, and maintenance.**
 
 ---
 
-## 📖 Quick Navigation
+## 📖 Quick navigation
 
-### 🚀 Getting Started
+### 🚀 Getting started
 
 | Document | Description | For |
 |----------|-------------|-----|
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, TrueNAS, Local) | **Start Here** |
-| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image documentation (pull, run, TrueNAS, CI/CD) | Docker Users |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, local, cloud overview) | **Start here** |
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image (pull, run, CI/CD, troubleshooting) | Docker users |
 
 ---
 
-### 🏗️ Architecture & Development
+### 🏗️ Architecture & development
 
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
-| [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) | AI integration security design |
-| [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md) | AI models (Mistral, Gemma), config, and token limits |
-| [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md) | Step-by-step AWS setup for Bedrock AI integration (IAM, model access, config) |
+| [AI_INTEGRATION.md](AI_INTEGRATION.md) | **Consolidated:** AI security/architecture, models (Mistral, Gemma), Bedrock/Mistral config, token limits, troubleshooting |
 | [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
-| [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) | Optional PostgreSQL/RDS: Platform Settings → Database, export sync, extended_data table; includes list of fields stored (not in OSCAL schema) |
+| [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) | Optional PostgreSQL/RDS, export sync, `extended_data` fields |
 
 ---
 
-### 🔧 Development Workflow
+### 🔧 Git, release, and workflow
 
 | Document | Description |
 |----------|-------------|
-| [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md) | Version bumping, workflow, and release checklist |
-| [BRANCHING_STRATEGY.md](BRANCHING_STRATEGY.md) | Git branching (Dev/QA/Pre_Prod → main; all three allowed to target main) |
-| [DUAL_REPO_SETUP.md](DUAL_REPO_SETUP.md) | Managing Adobe + Personal repositories |
-| [GITHUB_ACCOUNT_GUIDE.md](GITHUB_ACCOUNT_GUIDE.md) | Switching between GitHub accounts |
-| [PR_SUBMISSION_CHECKLIST.md](PR_SUBMISSION_CHECKLIST.md) | Pull request submission guide |
+| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Dev/QA/Pre_Prod → main), dual remotes (Adobe + personal), GitHub accounts, PR checklist |
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
-| [CHANGELOG.md](CHANGELOG.md) | Version history and changes |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ---
 
-### 🐳 Docker & Deployment
+### ☁️ AWS & cloud
 
 | Document | Description |
 |----------|-------------|
-| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Complete Docker Hub guide (pull, run, TrueNAS, CI/CD, credentials, troubleshooting) |
-| [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platform deployment (Azure, AWS, GCP) |
-| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Local dev (USERS_PATH, .env) and deployment: config migration, user consolidation (Blue/Green) |
-| [AWS_COST_ESTIMATE.md](AWS_COST_ESTIMATE.md) | AWS EC2 cost estimate |
-| [AWS_TERRAFORM.md](AWS_TERRAFORM.md) | Terraform for OSCAL on AWS (ALB, Green/Blue; AI via AWS Bedrock) |
-| [EC2_WEB_HOSTING_BEST_PRACTICES.md](EC2_WEB_HOSTING_BEST_PRACTICES.md) | EC2 web hosting best practices: directory layout, deploy, cron, Blue/Green, troubleshooting, scripts |
-| [IMAGE_FACTORY.md](IMAGE_FACTORY.md) | Adobe Image Factory Amazon Linux 2023 AMIs for Terraform (AMS deployments) |
+| [AWS_OPERATIONS.md](AWS_OPERATIONS.md) | **Consolidated:** Terraform (ALB, Green/Blue, S3, RDS), Image Factory AMIs, Amazon Bedrock setup, EC2 hosting practices, cost estimates |
+| [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platforms (Azure, AWS, GCP) |
 
 ---
 
-### 🖥️ TrueNAS (retired)
-
-TrueNAS build–specific scripts and docs have been moved to **[retired/truenas-build/](../retired/truenas-build/)** so they are not mixed with core solution files. They may be removed after 6 months once the project is stable. For TrueNAS deployment, see [DEPLOYMENT.md](DEPLOYMENT.md) (Docker Hub image + Custom App).
-
----
-
-### 👥 User Documentation
+### 🐳 Docker & migration
 
 | Document | Description |
 |----------|-------------|
-| [USER_GUIDE.md](USER_GUIDE.md) | Complete user guide for application features |
-| [OSCAL_SAR.md](OSCAL_SAR.md) | OSCAL Security Assessment Results (SAR) guide |
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub guide (same as above quick link) |
+| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Local dev paths, config migration, user consolidation (Blue/Green) |
+
+---
+
+### 👥 User documentation
+
+| Document | Description |
+|----------|-------------|
+| [USER_GUIDE.md](USER_GUIDE.md) | Application features |
+| [OSCAL_SAR.md](OSCAL_SAR.md) | OSCAL Security Assessment Results (SAR) |
 
 ---
 
@@ -76,86 +68,90 @@ TrueNAS build–specific scripts and docs have been moved to **[retired/truenas-
 
 | Document | Description |
 |----------|-------------|
-| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO (Okta): amsgovcloud.com.au, keekar.3utilities.com, local; groups/role mapping |
+| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO (Okta): flows, groups, role mapping |
 
 ---
 
-### 🔒 Security & Quality
+### 🔒 Security & quality
 
 | Document | Description |
 |----------|-------------|
-| [SECURITY.md](SECURITY.md) | OWASP compliance, security features, and vulnerability history |
+| [SECURITY.md](SECURITY.md) | OWASP alignment, security features, vulnerability notes |
 | [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA processes and testing |
 
 ---
 
-## 📊 Documentation Statistics
+### 📐 Diagrams
 
-- **Total Documents:** 23 (consolidated from 48+ in Feb 2026)
-- **Categories:** 8
-- **Last Update:** 2026-03
-
----
-
-## 🎯 Quick Links by Role
-
-### 👨‍💻 **Developer**
-Start with: [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [VERSION_AND_RELEASE.md](VERSION_AND_RELEASE.md)
-
-### 🚀 **DevOps/Deployment**
-Start with: [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md)
-
-### 👤 **End User**
-Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md)
-
-### 🔐 **Security Reviewer / Assessor**
-Start with: [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [AI_ARCHITECTURE_SECURITY.md](AI_ARCHITECTURE_SECURITY.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
-
-### ✅ **QA/Tester**
-Start with: [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)
+| Document | Description |
+|----------|-------------|
+| [diagrams/README.md](diagrams/README.md) | Architecture diagrams and generators |
 
 ---
 
-## 📝 Documentation Guidelines
+## 📊 Documentation statistics
 
-### Creating New Documentation
-
-1. **Location:** All docs go in `/docs/` folder
-2. **Naming:** Use `DESCRIPTIVE_NAME.md` (UPPERCASE for major docs)
-3. **Format:** Include table of contents, clear headings
-4. **Updates:** Update this README index when adding new docs
-
-### What NOT to Document
-
-- ❌ Session logs or temporary troubleshooting files
-- ❌ One-time migration guides (remove after completion)
-- ❌ Duplicate content across multiple files
-- ❌ Test results or execution summaries
-
-### Documentation Lifecycle
-
-- **Active:** Current, maintained documentation
-- **Archive:** Move to `/docs/archive/` if historical but valuable
-- **Remove:** Delete temporary, outdated, or superseded docs
+- **Core guides in `docs/`:** consolidated where topics overlapped (Git/release, AI, AWS).
+- **Categories:** Getting started, architecture, Git/release, AWS/cloud, Docker, users, SSO, security/QA.
 
 ---
 
-## 🔄 Recent Cleanup (2026-02-10)
+## 🎯 Quick links by role
 
-**Removed 27 files; added 5 consolidated docs:**
-- One-time/outdated: IMMEDIATE_ACTION_REQUIRED, KODIAK_CSRF_RESPONSE, SECURITY_FIX_SUMMARY, SECURITY_FINDINGS_IMPLEMENTATION_SUMMARY, TEST_UPDATES_V1.6.5, GEMMA_IMPLEMENTATION_SUMMARY, VERSION_CONTROL_SETUP_SUMMARY, DOCKER_HUB_DEPLOYMENT_IMPLEMENTATION, DEPLOYMENT_TESTING_GUIDE
-- Consolidated: AI (6→1), TrueNAS (3→1), Security (3→1), Version/Release (3→1), Config/User migration (2→1)
-- Deployment comparison merged into DOCKER_HUB_GUIDE
+### 👨‍💻 Developer
 
-**Result:** ~50% fewer .md files; single entry points per topic
+[ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md)
+
+### 🚀 DevOps / deployment
+
+[DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [AWS_OPERATIONS.md](AWS_OPERATIONS.md)
+
+### 👤 End user
+
+[USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md)
+
+### 🔐 Security reviewer / assessor
+
+[USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [AI_INTEGRATION.md](AI_INTEGRATION.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
+
+### ✅ QA / tester
+
+[QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ---
 
-## 🆘 Need Help?
+## 📝 Documentation guidelines
 
-- **Issue:** Create a GitHub issue
-- **Questions:** Check relevant doc first, then ask team
-- **Updates:** Submit PR with documentation changes
+1. **Location:** All permanent docs live under `/docs/` (see repository rules for `logs/` vs `docs/`).
+2. **Naming:** `DESCRIPTIVE_NAME.md` (UPPERCASE for major guides).
+3. **Format:** Table of contents and clear headings for long guides.
+4. **Index:** Update this file when adding a **new** top-level guide.
+
+### What not to add
+
+- Session logs or one-off troubleshooting dumps in `docs/`
+- Duplicate content—extend an existing guide or add a section with a link from this index
+
+---
+
+## 🔄 Consolidation (2026-04)
+
+The following former files are merged (edit the **consolidated** doc only):
+
+| Former files | Now |
+|--------------|-----|
+| `VERSION_AND_RELEASE.md`, `BRANCHING_STRATEGY.md`, `DUAL_REPO_SETUP.md`, `GITHUB_ACCOUNT_GUIDE.md`, `PR_SUBMISSION_CHECKLIST.md` | [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) |
+| `AI_ARCHITECTURE_SECURITY.md`, `AI_MODELS_AND_CONFIG.md` | [AI_INTEGRATION.md](AI_INTEGRATION.md) |
+| `AWS_TERRAFORM.md`, `IMAGE_FACTORY.md`, `AWS_BEDROCK_SETUP.md`, `EC2_WEB_HOSTING_BEST_PRACTICES.md`, `AWS_COST_ESTIMATE.md` | [AWS_OPERATIONS.md](AWS_OPERATIONS.md) |
+
+To regenerate merged files from historical sources (only if those sources exist in a branch), use `python3 scripts/build-consolidated-docs.py`.
+
+---
+
+## 🆘 Need help?
+
+- **Issue:** Open a GitHub issue on the repository you use (Adobe or personal remote).
+- **Updates:** Submit a PR with documentation changes.
 
 ---
 

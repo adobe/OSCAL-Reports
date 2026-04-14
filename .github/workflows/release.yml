@@ -12,39 +12,40 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       
       - name: 📝 Extract version from tag
         id: version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
       
-      - name: 📝 Extract changelog for this version
+      - name: 📝 Write release notes file for this version
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          
-          # Extract the section for this version from CHANGELOG.md (docs/ or root)
+          NOTES="${RUNNER_TEMP}/release-notes.md"
           if [ -f docs/CHANGELOG.md ]; then
-            CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" docs/CHANGELOG.md | sed '$d')
-            echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGELOG" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            sed -n "/## \\[${VERSION}\\]/,/## \\[/p" docs/CHANGELOG.md | sed '$d' > "$NOTES"
           elif [ -f CHANGELOG.md ]; then
-            CHANGELOG=$(sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | sed '$d')
-            echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGELOG" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            sed -n "/## \\[${VERSION}\\]/,/## \\[/p" CHANGELOG.md | sed '$d' > "$NOTES"
           else
-            echo "changelog=Release $VERSION" >> $GITHUB_OUTPUT
+            echo "Release ${VERSION}" > "$NOTES"
           fi
+          if [ ! -s "$NOTES" ]; then
+            echo "Release ${VERSION}" > "$NOTES"
+          fi
+          echo "path=$NOTES" >> "$GITHUB_OUTPUT"
       
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
@@ -62,6 +63,7 @@ jobs:
           tar --exclude=backend/node_modules \
               --exclude=backend/test_cases \
               -czf oscal-backend-${{ steps.version.outputs.version }}.tar.gz \
+              -- \
               backend/*.js \
               backend/auth \
               backend/utils \
@@ -70,15 +72,21 @@ jobs:
           
           # Create frontend archive
           tar -czf oscal-frontend-${{ steps.version.outputs.version }}.tar.gz \
+            -- \
             frontend/dist
           
-          # Create full release archive (include root .md and .sh only if they exist)
-          ROOT_EXTRAS=$(find . -maxdepth 1 \( -name '*.md' -o -name '*.sh' \) 2>/dev/null | tr '\n' ' ')
+          # Create full release archive (include root .md and .sh only if they exist).
+          # Use -print0 + array so paths are not word-split or mis-parsed as tar options.
+          extras=()
+          while IFS= read -r -d '' f; do
+            extras+=("${f#./}")
+          done < <(find . -maxdepth 1 \( -name '*.md' -o -name '*.sh' \) -print0 2>/dev/null || true)
           tar --exclude=backend/node_modules \
               --exclude=backend/test_cases \
               --exclude=frontend/node_modules \
               --exclude=frontend/test_cases \
               -czf oscal-report-generator-${{ steps.version.outputs.version }}.tar.gz \
+              -- \
               backend/*.js \
               backend/auth \
               backend/utils \
@@ -86,21 +94,19 @@ jobs:
               backend/package-lock.json \
               frontend/dist \
               docs \
-              $ROOT_EXTRAS
+              "${extras[@]}"
       
       - name: 🎉 Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ steps.version.outputs.version }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          body_path: ${{ steps.changelog.outputs.path }}
           draft: false
           prerelease: false
           files: |
             oscal-backend-${{ steps.version.outputs.version }}.tar.gz
             oscal-frontend-${{ steps.version.outputs.version }}.tar.gz
             oscal-report-generator-${{ steps.version.outputs.version }}.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: 📢 Release notification
         run: |

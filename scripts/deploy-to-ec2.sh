@@ -345,7 +345,7 @@ ENVEOF"
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "command -v rsync >/dev/null 2>&1 || { sudo dnf install -y rsync 2>/dev/null || sudo yum install -y rsync 2>/dev/null; }"
 
   # Rsync app code only; exclude repo config/ so config/users live only in /opt/oscal/data (no duplicate under app).
-  # Exclude dev/infra-only paths not needed on EC2 (terraform, tests, Docker, hooks, retired, local data).
+  # Exclude dev/infra-only paths not needed on EC2 (terraform, tests, Docker, hooks, local data).
   rsync -avz --delete \
     --exclude 'node_modules' \
     --exclude '.git' \
@@ -354,10 +354,8 @@ ENVEOF"
     --exclude '.validation' \
     --exclude '.github' \
     --exclude 'config' \
-    --exclude 'retired' \
     --exclude 'terraform' \
     --exclude 'test_cases' \
-    --exclude 'retired' \
     --exclude 'logs' \
     --exclude 'data/debug-state' \
     --exclude 'data/jobs' \
@@ -722,7 +720,7 @@ if [ "${PASS_MISSING_ANY:-0}" = "1" ]; then
     esac
   else
     print_error "Deployment completed but Pass is not available. Secrets will be stored in config.json."
-    echo "  To use Pass for secrets, re-run deploy after fixing Pass on the instance (see docs/EC2_WEB_HOSTING_BEST_PRACTICES.md)."
+    echo "  To use Pass for secrets, re-run deploy after fixing Pass on the instance (see docs/AWS_OPERATIONS.md#ec2-web-hosting-best-practices)."
   fi
 fi
 
@@ -745,7 +743,7 @@ fi
 echo ""
 # Post-deploy: pass vault reminder (compare config _pass pointers vs vault on each instance)
 print_info "Pass vault: on each instance run: sudo -u $SVC_USER env HOME=$SVC_HOME pass ls"
-print_info "Ensure config.json _pass entries exist in the vault (see docs/EC2_WEB_HOSTING_BEST_PRACTICES.md)."
+print_info "Ensure config.json _pass entries exist in the vault (see docs/AWS_OPERATIONS.md#ec2-web-hosting-best-practices)."
 echo ""
 # Fail script if any instance failed health check (ok_ssh counts as success -- SG blocks public app ports by design)
 # Use wc -l so HEALTH_FAIL is always a single integer (grep -c in a subshell can yield newlines on some systems)

@@ -1,5 +1,5 @@
 # OSCAL on AWS - Terraform (AI via AWS Bedrock)
-# See docs/diagrams/generate-diagram.html and docs/AWS_COST_ESTIMATE.md
+# See docs/diagrams/generate-diagram.html and docs/AWS_OPERATIONS.md#aws-ec2-cost-estimate-for-oscal-report-generator-ollama
 
 terraform {
   required_version = ">= 1.0"
