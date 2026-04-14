@@ -101,11 +101,11 @@ For TrueNAS Blue-Green deployments you can use:
 | Method | Script | Speed | Use Case |
 |--------|--------|-------|----------|
 | **Pull-based** | `install_from_dockerhub.sh` | 1–3 min | Production, standard updates, automatic rollback |
-| **Build-based** | `retired/truenas-build/build_on_truenas.sh` | 10–15 min | Development, custom builds (retired; see retired/truenas-build/README.md) |
+| **Build-based** | `docker build` (root `Dockerfile`) | 10–15 min | Development, custom builds, or when Docker Hub is unavailable |
 
 **Pull-based** (recommended for production): Pulls pre-built image from Docker Hub, backs up data, runs health check, auto-rollback on failure. Requires Docker Hub access.
 
-**Build-based**: Clones repo and builds image locally. Use when you need custom code, specific branch, or when Docker Hub is unavailable. No automatic rollback.
+**Build-based**: Build the image locally from this repository’s root `Dockerfile`. Use when you need custom code, a specific branch, or when Docker Hub is unavailable. No automatic rollback from this path unless you manage images yourself.
 
 ### Local build and publish
 
@@ -264,7 +264,7 @@ The script follows this workflow:
 
 ### Comparison with Build Script
 
-| Feature | `retired/truenas-build/build_on_truenas.sh` | `install_from_dockerhub.sh` |
+| Feature | Local `docker build` (root `Dockerfile`) | `install_from_dockerhub.sh` |
 |---------|---------------------|---------------------------|
 | **Speed** | 10-15 minutes | 1-3 minutes |
 | **Internet** | Git clone only | Docker Hub pull required |
@@ -284,12 +284,12 @@ The script follows this workflow:
 - ✅ Using scheduled cron deployments
 - ✅ Docker Hub is accessible
 
-**Use the TrueNAS build script (retired/truenas-build/build_on_truenas.sh) when:**
+**Use a local `docker build` (repo root) when:**
 - ✅ Developing or testing custom changes
-- ✅ Building from specific Git branch
+- ✅ Building from a specific Git branch or fork
 - ✅ Docker Hub is unavailable
-- ✅ Need source code modifications
-- ✅ First-time setup with custom configuration
+- ✅ You need source-level modifications before image build
+- ✅ First-time setup with a custom image tag or compose overlay
 
 ### Automated Scheduling
 
@@ -360,8 +360,8 @@ ping -c 3 hub.docker.com
 # Check Docker Hub status
 curl -s https://status.docker.com/api/v2/status.json | jq
 
-# Alternative: Build from source
-./retired/truenas-build/build_on_truenas.sh
+# Alternative: build image from source (repo root)
+docker build -t oscal-report-generator:local .
 ```
 
 **Issue: Lock file exists**
@@ -1067,7 +1067,7 @@ curl http://localhost:3020/health       # Check health
 
 ## Related Documentation
 
-- [TrueNAS (retired)](../retired/truenas-build/TRUENAS.md)
+- [TrueNAS / Blue-Green](./DEPLOYMENT.md) (Docker Hub + `install_from_dockerhub.sh`)
 - [Cloud Deployment](./CLOUD_DEPLOYMENT.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Deployment Guide](./DEPLOYMENT.md)
@@ -1102,6 +1102,6 @@ This project is licensed under the **GNU General Public License v3.0** (GPL-3.0)
 
 ---
 
-**Last Updated**: January 2026  
+**Last Updated**: April 2026  
 **Maintained By**: Mukesh Kesharwani  
 **Version**: 1.7.12

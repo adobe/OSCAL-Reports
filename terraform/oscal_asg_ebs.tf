@@ -1,6 +1,6 @@
 # OSCAL Green/Blue: Auto Scaling Groups + Launch Templates + optional persistent gp3 volumes.
 # Replaces standalone aws_instance (resilience: ASG replaces terminated/unhealthy instances).
-# See docs/AWS_TERRAFORM.md.
+# See docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock.
 
 # -----------------------------------------------------------------------------
 # Persistent data volumes (same AZ as each ASG subnet)

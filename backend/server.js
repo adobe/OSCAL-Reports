@@ -12,7 +12,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
-import axios from 'axios';
+import axios from './utils/safeAxios.js';
 import https from 'https';
 import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
@@ -2718,7 +2718,7 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
     if (!urlValidation.valid) {
       return res.status(400).json({ error: 'Invalid or blocked URL', details: urlValidation.error });
     }
-    const axios = (await import('axios')).default;
+    const axios = (await import('./utils/safeAxios.js')).default;
     const resp = await axios.get(urlValidation.url, {
       responseType: 'json',
       timeout: 30000,

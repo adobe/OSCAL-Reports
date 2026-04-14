@@ -45,7 +45,7 @@ common_tags = {
 # Optional: override default tag "Service ID" (Adobe CMDB / chargeback). Default is 602844 via variables.tf.
 # adobe_service_id_tag = "602844"
 
-# Resilience (direct-run): ASG + optional gp3 at /opt/oscal + SSM (see docs/AWS_TERRAFORM.md)
+# Resilience (direct-run): ASG + optional gp3 at /opt/oscal + SSM (see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock)
 # oscal_persistent_ebs_enabled = true
 # oscal_data_volume_size_gb    = 50
 # oscal_asg_health_check_grace_period = 420
