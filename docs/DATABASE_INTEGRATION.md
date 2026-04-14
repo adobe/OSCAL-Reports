@@ -37,7 +37,7 @@ The official OSCAL JSON Schema defines **128 types** and **566 direct property f
 
 Configuration is stored in `config.json` under `databaseConfig`. The password is masked in the UI and can be stored in pass (see [DEPLOYMENT.md](DEPLOYMENT.md) sensitive settings).
 
-**AWS RDS IAM database authentication:** In Platform Settings → Database, choose **AWS RDS IAM database authentication** to use short-lived tokens from the EC2/task IAM role (no static database password in config). Requires SSL mode **Require** and a PostgreSQL user granted `rds_iam` on RDS. When deploying with Terraform, set `create_rds_postgres = true` so RDS, the IAM app user, and `OSCAL_DATABASE_*` systemd environment variables are provisioned on EC2 (see [AWS_TERRAFORM.md](AWS_TERRAFORM.md)).
+**AWS RDS IAM database authentication:** In Platform Settings → Database, choose **AWS RDS IAM database authentication** to use short-lived tokens from the EC2/task IAM role (no static database password in config). Requires SSL mode **Require** and a PostgreSQL user granted `rds_iam` on RDS. When deploying with Terraform, set `create_rds_postgres = true` so RDS, the IAM app user, and `OSCAL_DATABASE_*` systemd environment variables are provisioned on EC2 (see [AWS_OPERATIONS.md](AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock)).
 
 ---
 
@@ -158,4 +158,4 @@ Counts below are derived from `backend/oscal-schema.json` (OSCAL unified JSON Sc
 
 ---
 
-**Version:** 1.7.x · **Last updated:** March 2026
+**Version:** 1.7.12 · **Last updated:** April 2026

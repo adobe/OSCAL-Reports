@@ -78,7 +78,7 @@ gh pr create --base main --head Pre_Prod --title "Release v1.x.x"
 
 ## 🔗 Full Documentation
 
-See `docs/BRANCHING_STRATEGY.md` for complete details.
+See [docs/GIT_AND_RELEASE.md](../docs/GIT_AND_RELEASE.md) (branching strategy section) for complete details.
 
 ---
 
