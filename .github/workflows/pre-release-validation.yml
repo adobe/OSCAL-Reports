@@ -262,7 +262,7 @@ jobs:
           REQUIRED_DOCS=(
             "README.md"
             "docs/CHANGELOG.md"
-            "docs/BRANCHING_STRATEGY.md"
+            "docs/GIT_AND_RELEASE.md"
             "docs/DEPLOYMENT.md"
           )
           

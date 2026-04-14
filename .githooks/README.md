@@ -86,8 +86,7 @@ git push --no-verify
 ## Documentation
 
 For complete documentation, see:
-- [VERSION_AND_RELEASE.md](../docs/VERSION_AND_RELEASE.md)
-- [BRANCHING_STRATEGY.md](../docs/BRANCHING_STRATEGY.md)
+- [GIT_AND_RELEASE.md](../docs/GIT_AND_RELEASE.md) (version, branching, dual remotes, PRs)
 
 ## Adding New Hooks
 
@@ -100,4 +99,4 @@ To add a new hook:
 
 ---
 
-**Last Updated:** March 2026
+**Last Updated:** April 2026

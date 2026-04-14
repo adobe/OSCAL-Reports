@@ -230,11 +230,12 @@ cd /mnt/pool/OSCAL_Blue  # or OSCAL_Green
 
 ### For Custom Builds or Development
 
-**Use the build script when you need source code modifications:**
+**Build from source when you need image changes not on Docker Hub:**
 
 ```bash
-cd /path/to/OSCAL_Blue
-./retired/truenas-build/build_on_truenas.sh
+cd /path/to/OSCAL-Reports
+docker build -t oscal-report-generator:local .
+# Then run or compose using that tag (see docs/DOCKER_HUB_GUIDE.md)
 ```
 
 ### Legacy: One-Time Upgrade to Volume Persistence
@@ -474,4 +475,4 @@ If you encounter issues:
 
 **Author:** Mukesh Kesharwani  
 **Version:** 1.7.12  
-**Last Updated:** March 2026
+**Last Updated:** April 2026

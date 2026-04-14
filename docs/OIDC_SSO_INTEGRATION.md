@@ -261,6 +261,12 @@ When you click **Sign in with Okta**, Chrome may show a red **"Dangerous site"**
 
 ---
 
+## Server-side HTTP (Axios)
+
+Any **backend** OIDC-related HTTP client code that uses **Axios** must import **`backend/utils/safeAxios.js`** (not the `axios` package directly) so merged outbound headers are validated for CR/LF (**CWE-113**). Do not log full authorization headers or client secrets in structured logs. See **docs/BEST_PRACTICES.md** (*Outbound HTTP (Axios)*) and **.cursor/rules/security-standards.mdc**.
+
+---
+
 ## References
 
 - [Okta Admin Console](https://help.okta.com/en-us/content/topic/okta-admin-console.htm)

@@ -2,7 +2,7 @@
 
 This directory contains Terraform to provision the AWS architecture for the OSCAL Report Generator (ALB, Green/Blue OSCAL **Auto Scaling Groups**, S3). AI is provided via AWS Bedrock (no self-hosted Ollama).
 
-**Usage and variables:** See [docs/AWS_TERRAFORM.md](../docs/AWS_TERRAFORM.md).
+**Usage and variables:** See [docs/AWS_OPERATIONS.md](../docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock).
 
 ## Environments (default: aws4403)
 
@@ -35,7 +35,7 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 
 Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.example`) and state under `envs/<env>/`. **Every** shared root `*.tf` (including `rds.tf`, `oscal_asg_ebs.tf`, `oscal_ssm.tf`) must be **symlinked** into each env directory; `run-with-aws-pass.sh` defaults to `terraform/envs/aws4403`, so a missing symlink omits that file from the module and causes errors such as undeclared `aws_db_instance.oscal`.
 
-**Image Factory EMR (InfraSec):** To list candidate **Amazon Linux 2023 EMR** AMIs launchable in your account, run [scripts/list-emr-candidate-amis.sh](scripts/list-emr-candidate-amis.sh) with AWS credentials (see [docs/IMAGE_FACTORY.md](../docs/IMAGE_FACTORY.md) and [envs/aws4403/README.md](envs/aws4403/README.md) § SSAAU-169).
+**Image Factory EMR (InfraSec):** To list candidate **Amazon Linux 2023 EMR** AMIs launchable in your account, run [scripts/list-emr-candidate-amis.sh](scripts/list-emr-candidate-amis.sh) with AWS credentials (see [docs/AWS_OPERATIONS.md – Image Factory](../docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform) and [envs/aws4403/README.md](envs/aws4403/README.md) § SSAAU-169).
 
 **Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js; config/users live under **`/opt/oscal/data`** on the instance (persistent gp3 at **`/opt/oscal`** when enabled) with **ec2_automation** backups to S3. After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` in that env’s `terraform.tfvars`.
 

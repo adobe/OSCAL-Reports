@@ -162,6 +162,8 @@ git commit --no-verify
 }
 ```
 
+**Backend HTTP client (2026-04):** Rule **BP-SEC-011** flags `from 'axios'` / `from "axios"` outside allowed paths so new backend code keeps using `backend/utils/safeAxios.js` (CWE-113 / CodeQL-aligned). See `docs/BEST_PRACTICES.md` — *Outbound HTTP (Axios)*.
+
 ### security_rules.json Structure
 
 ```json

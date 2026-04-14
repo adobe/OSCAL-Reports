@@ -3,7 +3,7 @@
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
 **Version**: 2.1.0  
-**Last Updated**: March 2026
+**Last Updated**: April 2026
 
 ---
 
@@ -571,7 +571,7 @@ controlSuggestionEngine.js
 - ✅ IAM-based access control
 - ✅ Pay per use
 
-**Setup:** Configure in Settings → AI Integration: choose AWS Bedrock, set region and credentials (or use IAM role on EC2). See [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md).
+**Setup:** Configure in Settings → AI Integration: choose AWS Bedrock, set region and credentials (or use IAM role on EC2). See [AWS_OPERATIONS.md – Bedrock](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup).
 
 #### Option 2: Mistral AI API (Cloud)
 
@@ -683,7 +683,7 @@ controlSuggestionEngine.js
 **Solutions:**
 1. Increase `timeout` value in config (default: 30000ms)
 2. Check network connectivity
-3. For AI: Use AWS Bedrock or Mistral API (see AWS_BEDROCK_SETUP.md and AI_MODELS_AND_CONFIG.md)
+3. For AI: Use AWS Bedrock or Mistral API (see [AWS_OPERATIONS.md](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) and [AI_INTEGRATION.md](AI_INTEGRATION.md))
 
 ### Performance Considerations
 
@@ -799,7 +799,7 @@ After setup, test the integration:
 
 1. **Centralized Config Directory**
    - Runtime configs: `config/app/` (sensitive data)
-   - Build: root `Dockerfile` + `docker-compose.yml` (former `config/build/` archived in `retired/truenas-build/config-build/`)
+   - Build: root `Dockerfile` + `docker-compose.yml` (legacy `config/build/` layouts removed; build from repo root only)
    - Ready for encryption and access control
 
 2. **File Security**
@@ -859,7 +859,7 @@ cd ../backend && NODE_ENV=production node server.js
 ### Environment Variables
 - `NODE_ENV`: Set to `production` for production deployments
 - `PORT`: Backend server port (default: 3020)
-- **AI**: Configure via Settings → AI Integration or `config/app/config.json` (AWS Bedrock or Mistral API). See [AWS_BEDROCK_SETUP.md](AWS_BEDROCK_SETUP.md) and [AI_MODELS_AND_CONFIG.md](AI_MODELS_AND_CONFIG.md).
+- **AI**: Configure via Settings → AI Integration or `config/app/config.json` (AWS Bedrock or Mistral API). See [AWS_OPERATIONS.md – Bedrock](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) and [AI_INTEGRATION.md](AI_INTEGRATION.md).
 - `AWS_REGION`: AWS region for Bedrock (e.g., us-east-1)
 - `BUILD_TIMESTAMP`: Build timestamp for password generation
 - Frontend dev server port: 3021 (configured in `vite.config.js`)
@@ -942,13 +942,13 @@ OSCAL_Reports/
 │   ├── app/                          # Application runtime configs (SENSITIVE)
 │   │   ├── config.json.example       # Config template (SSO, AI, messaging)
 │   │   └── users.json.example        # Users template (PBKDF2 hashes)
-│   └── build/                        # README only; archived copies in retired/truenas-build/config-build/
+│   └── build/                        # README only (optional notes; canonical build is root Dockerfile)
 │
 ├── docs/                             # Documentation
 │   ├── ARCHITECTURE.md               # This file
 │   ├── DEPLOYMENT.md                 # Deployment guide
-│   ├── AWS_TERRAFORM.md              # Terraform (ALB, Green/Blue, S3)
-│   ├── BRANCHING_STRATEGY.md         # Git branching (Dev/QA/Pre_Prod → main)
+│   ├── AWS_OPERATIONS.md             # Terraform, Bedrock, EC2, costs (consolidated)
+│   ├── GIT_AND_RELEASE.md            # Git branching, dual remotes, PRs (consolidated)
 │   └── ...                           # See docs/README.md for full index
 │
 ├── scripts/                          # Deployment and utilities
@@ -968,8 +968,6 @@ OSCAL_Reports/
 ├── setup.sh                          # Setup script
 ├── docker-compose.yml                # Single service (AI via Bedrock/Mistral API)
 ├── Dockerfile                        # Production image
-├── retired/
-│   └── truenas-build/                # Retired TrueNAS assets
 └── README.md                         # Project overview and quick start
 ```
 
@@ -1010,7 +1008,7 @@ Integrated Mistral 7B for generating intelligent, context-aware implementation d
 - `backend/server.js` - Added `/api/mistral/status` endpoint
 - `config/app/config.json` - Added Mistral configuration
 - `setup.sh` - Environment and dependency setup
-- `retired/truenas-build/build_on_truenas.sh` - TrueNAS build (retired)
+- `scripts/install_from_dockerhub.sh` - Docker Hub pull-based deploy for TrueNAS / Blue-Green
 
 #### 2. **Automated Control Suggestions (Pattern Matching)**
 
@@ -1117,7 +1115,7 @@ config/
 │   ├── config.json   # Application settings (SSO, messaging, API gateways, Mistral)
 │   └── users.json    # User accounts and authentication data
 │
-└── build/            # README only (retired copies in retired/truenas-build/config-build/)
+└── build/            # README only (optional; canonical build is root Dockerfile)
 ```
 
 **Features:**
