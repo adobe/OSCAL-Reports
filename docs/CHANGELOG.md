@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.14] - 2026-04-15
+
+### Changed
+- Deploy: S3 `installer/` flow, optional OS updates on instances and before `deploy_one`, script layout under `scripts/`, docs and Terraform cleanup (personal Pre_Prod).
+
 ## [1.7.13] - 2026-04-14
 
 ### Changed

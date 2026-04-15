@@ -2,7 +2,7 @@
 # Copy to terraform.tfvars and set values (terraform.tfvars is gitignored)
 
 aws_region     = "us-east-1"
-aws_account_id = "432417415905"
+aws_account_id = "44000000033"
 environment    = "prod"
 project_name   = "oscal-reports"
 
@@ -12,7 +12,7 @@ vpc_cidr          = "10.0.0.0/16"
 default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Your IP(s) or VPN subnet, e.g. ["203.191.182.138/32", "130.248.32.17/32"]
 
 # EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
-# Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4379 --query 'KeyMaterial' --output text > oscal-aws4379.pem
+# Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4403 --query 'KeyMaterial' --output text > oscal-aws4403.pem
 key_name = null
 # Instance type: preferred Graviton (t4g) then AMD (t3a). Default t4g.small (arm64). For AMD use t3a.small with instance_architecture = "x86_64".
 # instance_type          = "t4g.small"
@@ -20,7 +20,7 @@ key_name = null
 
 # S3 (best practice from docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): lowercase, globally unique; AMS prefix ams-oscal-<account-id>
 # Subfolders: logs, config, users. Terraform lowercases the value.
-s3_logs_bucket_name = "ams-oscal-432417415905"
+s3_logs_bucket_name = "ams-oscal-442277170733"
 
 # ------------------------------------------------------------------------------
 # ALB HTTPS and custom domain (e.g. https://oscal.amsgovcloud.com.au/)
@@ -37,7 +37,7 @@ s3_logs_bucket_name = "ams-oscal-432417415905"
 # alb_ssl_certificate_arn = null   # ignored when create_alb_certificate = true
 
 # Optional: existing ACM certificate ARN (when create_alb_certificate = false)
-# alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:432417415905:certificate/..."
+# alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:442277170733:certificate/..."
 
 # Optional: Host-based routing for Blue and Green (same app at / on two hostnames)
 # Create CNAME records pointing blue.xxx and green.xxx to the ALB DNS (output alb_dns_name).

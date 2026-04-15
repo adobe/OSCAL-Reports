@@ -1,1 +1,0 @@
-../../oscal_pass_sync_secret.tf
