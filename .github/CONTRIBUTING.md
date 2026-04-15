@@ -270,7 +270,7 @@ git commit -m "feat(scope): description"
 
 ```bash
 # Use the version bump script
-./bump_version.sh patch "Brief description of changes"
+./scripts/bump_version.sh patch "Brief description of changes"
 ```
 
 ### 6. Push to GitHub

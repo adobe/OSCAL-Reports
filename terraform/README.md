@@ -4,17 +4,15 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 
 **Usage and variables:** See [docs/AWS_OPERATIONS.md](../docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock).
 
-## Environments (default: aws4403)
+## Environment (aws4403)
 
-**Default:** Scripts use **terraform/envs/aws4403** (account 442277170733) so you do not accidentally change AWS4379 Sandbox.
+**Default:** Scripts use **terraform/envs/aws4403** (account 442277170733).
 
 | Env        | Account       | Pass entry            | When to use |
 |------------|---------------|------------------------|-------------|
-| **aws4403** (default) | 442277170733  | AWS/AMS_4403-STG      | Normal runs; `./terraform/run-with-aws-pass.sh plan` and `./scripts/deploy-to-ec2.sh` use this unless overridden. |
-| **aws4379**           | 432417415905  | AWS/AWS4379 Sandbox   | Only when you need to change AWS4379 Sandbox. Set `TERRAFORM_DIR=$PWD/terraform/envs/aws4379` and `AWS_PASS_ENTRY="AWS/AWS4379 Sandbox"`. |
+| **aws4403** (default) | 442277170733  | AWS/AMS_4403-STG      | Normal runs; `./terraform/run-with-aws-pass.sh plan` and `./scripts/deploy-to-ec2.sh` use this unless `TERRAFORM_DIR` overrides. |
 
 - [envs/aws4403/README.md](envs/aws4403/README.md) – default env (AWS4403)
-- [envs/aws4379/README.md](envs/aws4379/README.md) – AWS4379 Sandbox (use only when intended)
 
 **Main files (shared by all envs via symlinks in envs/*):**
 
@@ -46,8 +44,6 @@ Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.
 ./run-with-aws-pass.sh apply
 ```
 
-For AWS4379 Sandbox: `AWS_PASS_ENTRY="AWS/AWS4379 Sandbox" TERRAFORM_DIR=$PWD/terraform/envs/aws4379 ./run-with-aws-pass.sh plan`
-
 **Tagging and stack lifecycle:** Every resource created by this Terraform stack is tagged via the provider `default_tags` with: `Project`, `Environment`, `ManagedBy`, `Stack`, **`Service ID`** (default `602844`; override with `adobe_service_id_tag` in `terraform.tfvars`), plus any `common_tags` you set in `terraform.tfvars` (e.g. `Team`, `Account`). In any AWS account you can:
 
 - **Find all stack resources:** In the console, use Tag Editor or Resource Groups and filter by `Stack = <project_name>` (e.g. `oscal-reports`) or by `Project` and `Environment`.
@@ -62,9 +58,9 @@ Use a separate Terraform working directory (and state) per account so one `apply
 ./run-with-aws-pass.sh import-key us-east-1
 ```
 
-Then set `key_name = "oscal-aws4403"` in `envs/aws4403/terraform.tfvars` and run `./run-with-aws-pass.sh apply`. For AWS4379 use `TERRAFORM_DIR=$PWD/terraform/envs/aws4379` and Pass entry `AWS/OSCAL-AWS4379-SSH`. Requires AWS CLI (`brew install awscli`).
+Then set `key_name = "oscal-aws4403"` in `envs/aws4403/terraform.tfvars` and run `./run-with-aws-pass.sh apply`. Requires AWS CLI (`brew install awscli`).
 
-**SSH key in Pass:** Store the EC2 SSH key in pass (e.g. `AWS/OSCAL-AWS4403-SSH` for aws4403 or `AWS/OSCAL-AWS4379-SSH` for aws4379). Deploy script uses it when `AWS_PASS_SSH_ENTRY` is set or default.
+**SSH key in Pass:** Store the EC2 SSH key in pass (e.g. `AWS/OSCAL-AWS4403-SSH`). Deploy script uses it when `AWS_PASS_SSH_ENTRY` is set or default.
 
 ## Troubleshooting
 
@@ -75,7 +71,7 @@ If `terraform apply` fails with `DependencyViolation: resource sg-xxx has a depe
 1. **Find what uses the SG** (replace `sg-0c7ef7d9fd21a63d6` and `us-east-1` with the SG ID and your region):
 
    ```bash
-   ./scripts/terraform-find-sg-dependencies.sh sg-0c7ef7d9fd21a63d6 us-east-1
+   ./scripts/debug/terraform-find-sg-dependencies.sh sg-0c7ef7d9fd21a63d6 us-east-1
    ```
 
    Or manually:
