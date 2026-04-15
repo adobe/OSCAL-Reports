@@ -24,7 +24,8 @@ Open **http://localhost:3021**. Backend API: **http://localhost:3020**.
 - **Auth:** Session-based; users in `config/app/users.json` (PBKDF2). Optional OIDC/SSO e.g. Okta (see [docs/OIDC_SSO_INTEGRATION.md](docs/OIDC_SSO_INTEGRATION.md)).
 - **Database (optional):** PostgreSQL or AWS RDS for storing custom/organisational fields. Configure in **Settings → Database**; export data is synced when enabled (see [docs/DATABASE_INTEGRATION.md](docs/DATABASE_INTEGRATION.md)).
 - **Branching:** Development / Quality_Test / Pre_Prod → main. PRs to **main** allowed from any of these three branches (see [docs/GIT_AND_RELEASE.md](docs/GIT_AND_RELEASE.md#branching-strategy)).
-- **AWS (Terraform):** ALB, Green/Blue EC2 instances, S3 (logs, config, users). All resources tagged (Project, Environment, Stack) for easy add/remove per account. See [terraform/README.md](terraform/README.md) and [docs/AWS_OPERATIONS.md](docs/AWS_OPERATIONS.md).
+- **AWS (Terraform):** ALB, Green/Blue EC2 (ASG + EBS), S3 (`installer/` app snapshot, `config/` & `logs/` per role). Resources tagged (Project, Environment, Stack). See [terraform/README.md](terraform/README.md) and [docs/AWS_OPERATIONS.md](docs/AWS_OPERATIONS.md).
+- **EC2 / S3 deploy:** Application bits are **`s3://<logs-bucket>/installer/`** (not rsync from the laptop by default). **`./scripts/deploy-to-ec2.sh --update-s3`** uploads the repo to that prefix (with excludes for `.cursor`, `terraform/`, `docs/`, etc.); **`./scripts/deploy-to-ec2.sh`**, **`--blue`**, or **`--both`** only pull from S3 on the instances, run **`dnf upgrade -y`** or **`yum update -y`** first, then install/build/restart. AWS credentials for upload come from **Pass** (same entry shape as `terraform/run-with-aws-pass.sh`). Cron on instances: **`scripts/ec2_automation.sh`** (S3 backup; optional installer sync / OS updates via `ec2_automation.env`). Details: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/AWS_OPERATIONS.md](docs/AWS_OPERATIONS.md#ec2-web-hosting-best-practices).
 
 ---
 
@@ -49,9 +50,12 @@ OSCAL_Reports/
 │   └── app/                 # Runtime config (gitignored in practice)
 │       ├── config.json.example
 │       └── users.json.example
-├── scripts/                 # Deploy, EC2, debug
-│   ├── deploy-to-ec2.sh     # Deploy to Green/Blue
-│   └── debug/               # SSH, EC2 helpers
+├── scripts/                 # Deploy, EC2 automation, SSH, debug
+│   ├── deploy-to-ec2.sh     # S3 installer/ + SSH deploy (Green/Blue; see header in script)
+│   ├── ec2_automation.sh    # Cron: S3 backup, optional installer pull / OS updates
+│   ├── ssh-ec2.sh           # SSH to Green or Blue via Terraform outputs
+│   ├── lib/                 # Shared helpers (e.g. Pass + Terraform paths)
+│   └── debug/               # e.g. alb-target-health.sh, EC2 diagnostics
 ├── terraform/               # AWS (ALB, Green/Blue, S3)
 │   ├── envs/                # Per-account (e.g. aws4403)
 │   └── ...
@@ -97,4 +101,4 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.12 · **Last updated:** April 2026
+**Version:** 1.7.13 (see root `package.json`) · **Last updated:** April 2026
