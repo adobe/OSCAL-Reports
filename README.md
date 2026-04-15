@@ -101,4 +101,4 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.13 (see root `package.json`) · **Last updated:** April 2026
+**Version:** 1.7.14 (see root `package.json`) · **Last updated:** April 2026
