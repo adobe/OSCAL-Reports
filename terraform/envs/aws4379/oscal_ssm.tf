@@ -1,1 +1,0 @@
-../../oscal_ssm.tf

@@ -3,8 +3,8 @@
 # Use when Terraform fails with DependencyViolation deleting an SG.
 # Requires: AWS CLI, credentials configured (e.g. via Pass or AWS_PROFILE).
 #
-# Usage: ./scripts/terraform-find-sg-dependencies.sh SG_ID [REGION]
-# Example: ./scripts/terraform-find-sg-dependencies.sh sg-0c7ef7d9fd21a63d6 us-east-1
+# Usage: ./scripts/debug/terraform-find-sg-dependencies.sh SG_ID [REGION]
+# Example: ./scripts/debug/terraform-find-sg-dependencies.sh sg-0c7ef7d9fd21a63d6 us-east-1
 
 set -e
 
