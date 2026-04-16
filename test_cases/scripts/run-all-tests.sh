@@ -79,30 +79,36 @@ print_section() {
     echo ""
 }
 
+# run_check "Display name" command [args...]
+# Runs the command with argv expansion (no eval). Captures output to a secure temp file.
 run_check() {
     local check_name="$1"
-    local check_command="$2"
-    
+    shift
+    local tmpfile
+    tmpfile="$(mktemp)" || {
+        echo -e "${RED}✗ FAILED${NC} - $check_name (mktemp failed)"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+        return 1
+    }
+    # shellcheck disable=SC2064
+    trap 'rm -f "$tmpfile"' RETURN
+
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
     echo -e "${YELLOW}▶${NC} $check_name"
-    
-    # Run command and capture output
-    if eval "$check_command" > /tmp/test_output_$$.log 2>&1; then
+
+    if "$@" >"$tmpfile" 2>&1; then
         echo -e "${GREEN}✓ PASSED${NC} - $check_name"
         PASSED_CHECKS=$((PASSED_CHECKS + 1))
-        rm -f /tmp/test_output_$$.log
         return 0
-    else
-        echo -e "${RED}✗ FAILED${NC} - $check_name"
-        FAILED_CHECKS=$((FAILED_CHECKS + 1))
-        # Show last few lines of error for debugging
-        if [ -f /tmp/test_output_$$.log ]; then
-            echo -e "${CYAN}  Error details:${NC}"
-            tail -5 /tmp/test_output_$$.log | sed 's/^/    /'
-            rm -f /tmp/test_output_$$.log
-        fi
-        return 1
     fi
+
+    echo -e "${RED}✗ FAILED${NC} - $check_name"
+    FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    if [ -f "$tmpfile" ]; then
+        echo -e "${CYAN}  Error details:${NC}"
+        tail -5 "$tmpfile" | sed 's/^/    /'
+    fi
+    return 1
 }
 
 log_finding() {
@@ -200,27 +206,27 @@ run_unit_tests() {
     
     # Authentication tests
     run_check "Authentication Tests" \
-        "npm test -- --testPathPattern='auth.test.js' --silent"
+        npm test -- --testPathPattern='auth.test.js' --silent
     
     # RBAC tests
     run_check "Role-Based Access Control Tests" \
-        "npm test -- --testPathPattern='roles.test.js' --silent"
+        npm test -- --testPathPattern='roles.test.js' --silent
     
     # Async handlers
     run_check "Async Handler Tests" \
-        "npm test -- --testPathPattern='async-handlers.test.js' --silent"
+        npm test -- --testPathPattern='async-handlers.test.js' --silent
     
     # URL Validator (base)
     run_check "URL Validator (Base)" \
-        "npm test -- --testPathPattern='urlValidator.test.js' --silent"
+        npm test -- --testPathPattern='urlValidator.test.js' --silent
     
     # URL Validator (v1.6.5 options)
     run_check "URL Validator (AI Integration Options)" \
-        "npm test -- --testPathPattern='urlValidator-options.test.js' --silent"
+        npm test -- --testPathPattern='urlValidator-options.test.js' --silent
     
     # Security Configuration
     run_check "Security Configuration Tests" \
-        "npm test -- --testPathPattern='securityConfig.test.js' --silent"
+        npm test -- --testPathPattern='securityConfig.test.js' --silent
     
     cd .. || exit
 }
@@ -236,15 +242,15 @@ run_integration_tests() {
     
     # General API tests
     run_check "General API Integration Tests" \
-        "npm test -- --testPathPattern='integration/api.test.js' --silent"
+        npm test -- --testPathPattern='integration/api.test.js' --silent
     
     # Settings API tests
     run_check "Settings API Tests" \
-        "npm test -- --testPathPattern='settings-api.test.js' --silent"
+        npm test -- --testPathPattern='settings-api.test.js' --silent
     
     # CSRF & API security (v1.6.5)
     run_check "CSRF & API Security Tests (v1.6.5)" \
-        "npm test -- --testPathPattern='csrf-api.test.js' --silent"
+        npm test -- --testPathPattern='csrf-api.test.js' --silent
     
     cd .. || exit
 }
@@ -260,7 +266,7 @@ run_e2e_tests() {
     
     # Complete security workflows
     run_check "Complete Security Workflow Tests" \
-        "npm test -- --testPathPattern='security-flow.test.js' --silent"
+        npm test -- --testPathPattern='security-flow.test.js' --silent
     
     cd .. || exit
 }
@@ -447,27 +453,27 @@ validate_v165_features() {
     
     # CSRF exemption configuration
     run_check "CSRF Exemption Configuration" \
-        "grep -q \"'/api/'\" backend/utils/securityConfig.js"
+        grep -q "'/api/'" backend/utils/securityConfig.js
     
     # Bearer token authentication
     run_check "Bearer Token Authentication" \
-        "grep -q 'Bearer' backend/server.js"
+        grep -q 'Bearer' backend/server.js
     
     # SSRF protection utility
     run_check "SSRF Protection Utility" \
-        "grep -q 'validateUrl' backend/utils/urlValidator.js"
+        grep -q 'validateUrl' backend/utils/urlValidator.js
     
     # AI integration options
     run_check "AI Integration URL Options" \
-        "grep -q 'allowPrivateIPs\|allowLocalhost' backend/utils/urlValidator.js"
+        grep -q 'allowPrivateIPs\|allowLocalhost' backend/utils/urlValidator.js
     
     # Security documentation
     run_check "Security Fixes Documentation" \
-        "test -f docs/SECURITY.md"
+        test -f docs/SECURITY.md
     
     # CHANGELOG update
     run_check "CHANGELOG Updated for v1.6.5" \
-        "grep -q '1.6.5' docs/CHANGELOG.md"
+        grep -q '1.6.5' docs/CHANGELOG.md
 }
 
 ###############################################################################
@@ -480,10 +486,18 @@ check_test_coverage() {
     cd backend || exit
     
     echo "Generating test coverage report..."
-    npm run test:coverage > /tmp/coverage-output.txt 2>&1 || true
+    local covfile
+    covfile="$(mktemp)" || {
+        cd .. || exit
+        return 1
+    }
+    # shellcheck disable=SC2064
+    trap 'rm -f "$covfile"' RETURN
+    npm run test:coverage >"$covfile" 2>&1 || true
     
     # Extract coverage percentages
-    local coverage=$(grep -A 5 "All files" /tmp/coverage-output.txt | tail -1 | awk '{print $4}' | sed 's/%//')
+    local coverage
+    coverage=$(grep -A 5 "All files" "$covfile" | tail -1 | awk '{print $4}' | sed 's/%//')
     
     # Check if coverage is a valid number
     if [ -n "$coverage" ] && [[ "$coverage" =~ ^[0-9]+\.?[0-9]*$ ]] && [ "$coverage" != "0" ]; then
@@ -522,20 +536,20 @@ run_deployment_tests() {
     
     # Check deployment script exists
     run_check "Deployment Script Exists" \
-        "test -f scripts/install_from_dockerhub.sh"
+        test -f scripts/install_from_dockerhub.sh
     
     # Check deployment script is executable
     run_check "Deployment Script Executable" \
-        "test -x scripts/install_from_dockerhub.sh"
+        test -x scripts/install_from_dockerhub.sh
     
     # Check deployment script syntax
     run_check "Deployment Script Syntax" \
-        "bash -n scripts/install_from_dockerhub.sh"
+        bash -n scripts/install_from_dockerhub.sh
     
     # Check Docker image architecture support
     if command -v docker &> /dev/null; then
         run_check "Docker Multi-Architecture Support" \
-            "docker manifest inspect keekar/oscal_reports:latest > /dev/null 2>&1"
+            docker manifest inspect keekar/oscal_reports:latest
     fi
     
     echo -e "${BLUE}ℹ${NC}  Full deployment testing requires separate environment"
@@ -565,7 +579,7 @@ main() {
     run_e2e_tests || true
     run_security_validation || true
     run_check "ec2_automation Pass ↔ Secrets Manager sync" \
-        "run_ec2_automation_pass_sync_tests"
+        run_ec2_automation_pass_sync_tests
     check_version_consistency || true
     check_documentation_structure || true
     validate_v165_features || true
