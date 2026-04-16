@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
 # SSH wrapper to connect to OSCAL EC2 instances (Green, Blue).
-# Uses: Pass for SSH key (AWS/OSCAL-AWS4379-SSH); Terraform run-with-aws-pass.sh for IPs.
+# Uses: Pass for SSH key (default AWS/OSCAL-AWS4403-SSH via ec2-common); Terraform run-with-aws-pass.sh for IPs.
 #
 # Usage from your laptop (run from repo root):
-#   ./scripts/debug/ssh-ec2.sh green     # SSH to OSCAL Green (port 3019)
-#   ./scripts/debug/ssh-ec2.sh blue       # SSH to OSCAL Blue (port 3020)
-#   ./scripts/debug/ssh-ec2.sh list       # Show IPs and example ssh commands (no connect)
-#   ./scripts/debug/ssh-ec2.sh            # Show usage and list
+#   ./scripts/ssh-ec2.sh green     # SSH to OSCAL Green (port 3019)
+#   ./scripts/ssh-ec2.sh blue       # SSH to OSCAL Blue (port 3020)
+#   ./scripts/ssh-ec2.sh list       # Show IPs and example ssh commands (no connect)
+#   ./scripts/ssh-ec2.sh            # Show usage and list
 #
-# Env: SSH_USER=ec2-user (default), AWS_PASS_SSH_ENTRY=AWS/OSCAL-AWS4379-SSH, TERRAFORM_DIR
+# Env: SSH_USER=ec2-user (default), AWS_PASS_SSH_ENTRY (default AWS/OSCAL-AWS4403-SSH), TERRAFORM_DIR
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Prefer AWS4403 state for Terraform IPs unless TERRAFORM_DIR is already set (matches deploy-to-ec2 default).
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+export TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
+RUN_WITH_AWS_PASS="${RUN_WITH_AWS_PASS:-$REPO_ROOT/terraform/run-with-aws-pass.sh}"
 # shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
 
 resolve_ssh_key
-[ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ] && { echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable. Run Terraform apply first." >&2; exit 1; }
+[ ! -x "$RUN_WITH_AWS_PASS" ] && {
+  echo "Error: $RUN_WITH_AWS_PASS not found or not executable (chmod +x terraform/run-with-aws-pass.sh)." >&2
+  exit 1
+}
 
 do_list() {
   local green blue

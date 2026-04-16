@@ -144,7 +144,7 @@ The following former files are merged (edit the **consolidated** doc only):
 | `AI_ARCHITECTURE_SECURITY.md`, `AI_MODELS_AND_CONFIG.md` | [AI_INTEGRATION.md](AI_INTEGRATION.md) |
 | `AWS_TERRAFORM.md`, `IMAGE_FACTORY.md`, `AWS_BEDROCK_SETUP.md`, `EC2_WEB_HOSTING_BEST_PRACTICES.md`, `AWS_COST_ESTIMATE.md` | [AWS_OPERATIONS.md](AWS_OPERATIONS.md) |
 
-To regenerate merged files from historical sources (only if those sources exist in a branch), use `python3 scripts/build-consolidated-docs.py`.
+To regenerate merged files from historical sources (only if those sources exist in a branch), use `python3 scripts/debug/build-consolidated-docs.py`.
 
 ---
 

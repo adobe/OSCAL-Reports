@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Build consolidated docs under docs/ from existing sources.
-Run from repo root: python3 scripts/build-consolidated-docs.py
+Run from repo root: python3 scripts/debug/build-consolidated-docs.py
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-DOCS = Path(__file__).resolve().parent.parent / "docs"
+DOCS = Path(__file__).resolve().parent.parent.parent / "docs"
 
 
 def github_slug(title: str) -> str:
