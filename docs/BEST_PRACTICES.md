@@ -54,7 +54,7 @@ This document details the implementation of best practices derived from the KACI
 
 #### 1. **Automated Version Bumping Script** ✅
 
-**File Created:** `bump_version.sh`
+**File Created:** `scripts/bump_version.sh`
 
 **Features:**
 - Updates all 3 `package.json` files simultaneously (root, backend, frontend)
@@ -67,13 +67,13 @@ This document details the implementation of best practices derived from the KACI
 **Usage:**
 ```bash
 # Bump patch version (1.2.7 → 1.2.8)
-./bump_version.sh patch "Fix OSCAL export validation error"
+./scripts/bump_version.sh patch "Fix OSCAL export validation error"
 
 # Bump minor version (1.2.7 → 1.3.0)
-./bump_version.sh minor "Add new AI provider support"
+./scripts/bump_version.sh minor "Add new AI provider support"
 
 # Bump major version (1.2.7 → 2.0.0)
-./bump_version.sh major "Breaking: Change API response format"
+./scripts/bump_version.sh major "Breaking: Change API response format"
 ```
 
 **Benefits:**
@@ -86,7 +86,7 @@ This document details the implementation of best practices derived from the KACI
 **Testing:**
 ```bash
 # Test the script (will prompt for confirmation)
-./bump_version.sh patch "Test version bump"
+./scripts/bump_version.sh patch "Test version bump"
 ```
 
 ---
@@ -122,11 +122,11 @@ Changed files:
   - frontend/src/App.jsx
 
 Please run the version bump script:
-  ./bump_version.sh [major|minor|patch] "description of changes"
+  ./scripts/bump_version.sh [major|minor|patch] "description of changes"
 
 Examples:
-  ./bump_version.sh patch "Fix OSCAL export validation error"
-  ./bump_version.sh minor "Add new AI provider support"
+  ./scripts/bump_version.sh patch "Fix OSCAL export validation error"
+  ./scripts/bump_version.sh minor "Add new AI provider support"
 
 To bypass this check (not recommended):
   git commit --no-verify
@@ -356,7 +356,7 @@ grep -r "<select.*multiple" frontend/src/components/
 
 ## 🧪 Testing Checklist
 
-- [ ] **Version Script:** Run `./bump_version.sh patch "Test"` and verify all 3 package.json files update
+- [ ] **Version Script:** Run `./scripts/bump_version.sh patch "Test"` and verify all 3 package.json files update
 - [ ] **Pre-Commit Hook:** Try committing code without version bump (should fail)
 - [ ] **Atomic Writes:** Verify config saves create .backup files
 - [ ] **AI Logging:** Generate AI suggestion and check log format
@@ -372,7 +372,7 @@ grep -r "<select.*multiple" frontend/src/components/
 2. Test changes locally
 3. Run version bump script:
    ```bash
-   ./bump_version.sh patch "Brief description of changes"
+   ./scripts/bump_version.sh patch "Brief description of changes"
    ```
 4. Review the changes:
    ```bash
@@ -518,7 +518,7 @@ For questions or issues related to these implementations:
 - **Validation**: Always sanitize OSCAL strings with sanitizeOSCALString()
 - **Errors**: Consistent error response format with timestamps
 - **Documentation**: JSDoc for functions, file headers for all files
-- **Versioning**: Use bump_version.sh script, never manual edits
+- **Versioning**: Use scripts/bump_version.sh, never manual edits
 - **Outbound HTTP (backend)**: Use `backend/utils/safeAxios.js` instead of importing `axios` directly (CWE-113 / CodeQL); use `validateUrl()` for any user-controlled URL (SSRF)
 
 #### **When Adding New Features**
@@ -573,7 +573,7 @@ For questions or issues related to these implementations:
 - ❌ **Don't** bypass authentication on API endpoints
 - ❌ **Don't** use synchronous file operations in request handlers
 - ❌ **Don't** hardcode ports, URLs, or credentials
-- ❌ **Don't** manually edit package.json versions (use bump_version.sh)
+- ❌ **Don't** manually edit package.json versions (use scripts/bump_version.sh)
 - ❌ **Don't** forget to use atomic writes for config/user files
 
 #### **When Stuck or Uncertain**
@@ -676,9 +676,9 @@ For questions or issues related to these implementations:
 
 ```bash
 # Version Management
-./bump_version.sh patch "Brief description"
-./bump_version.sh minor "Add new feature"
-./bump_version.sh major "Breaking change"
+./scripts/bump_version.sh patch "Brief description"
+./scripts/bump_version.sh minor "Add new feature"
+./scripts/bump_version.sh major "Breaking change"
 
 # Setup & Verification
 ./setup.sh install    # First-time setup
@@ -737,7 +737,7 @@ Project Structure:
 │   └── BEST_PRACTICES_IMPLEMENTATION.md  # This file
 ├── logs/
 │   └── ai-telemetry-*.jsonl    # AI interaction logs
-├── bump_version.sh             # Version management
+├── scripts/bump_version.sh     # Version management
 ├── setup.sh                    # Multi-mode installer
 └── .git/hooks/
     └── pre-commit              # Version enforcement
@@ -962,7 +962,7 @@ VERSION_CHANGED=$(git diff --cached --name-only | grep -E '^(VERSION|info\.xml)'
 
 if [ -n "$CODE_CHANGED" ] && [ -z "$VERSION_CHANGED" ]; then
     echo "⚠️  CODE CHANGED BUT VERSION NOT BUMPED!"
-    echo "Run: ./bump_version.sh [major|minor|patch] 'changelog'"
+    echo "Run: ./scripts/bump_version.sh [major|minor|patch] 'changelog'"
     exit 1
 fi
 ```
@@ -976,7 +976,7 @@ fi
 
 ### ✅ **Semantic Versioning with Automated Bumping**
 
-**Script:** `bump_version.sh major|minor|patch "changelog message"`
+**Script:** `scripts/bump_version.sh major|minor|patch "changelog message"`
 
 **Key Features:**
 - Updates VERSION file, info.xml, parental_control.xml, index.html
@@ -1982,7 +1982,7 @@ When a critical vulnerability is discovered:
 
 4. **Bump Version (Patch)**
    ```bash
-   ./bump_version.sh patch "Security: Fix CVE-XXXX in <package>"
+   ./scripts/bump_version.sh patch "Security: Fix CVE-XXXX in <package>"
    ```
 
 5. **Deploy ASAP**
@@ -2585,11 +2585,11 @@ These practices exist but need enhancement:
 These practices should be implemented:
 
 ### 1. **Automated Version Bumping Script** 🔴
-- **KACI Practice:** `bump_version.sh major|minor|patch "message"`
+- **KACI Practice:** `scripts/bump_version.sh major|minor|patch "message"`
 - **OSCAL Status:** 🔴 **MISSING**
 - **Current:** Manual version updates in 3 package.json files
 - **Gap:** Error-prone, time-consuming, inconsistent
-- **Recommendation:** Create `bump_version.sh` script
+- **Recommendation:** Create `scripts/bump_version.sh` script
 - **Benefits:**
   - Single command updates all version references
   - Automatically updates CHANGELOG.md
@@ -2600,7 +2600,7 @@ These practices should be implemented:
 **Implementation Details:**
 ```bash
 #!/bin/bash
-# bump_version.sh [major|minor|patch] "changelog message"
+# scripts/bump_version.sh [major|minor|patch] "changelog message"
 # Updates: package.json (root, backend, frontend), CHANGELOG.md
 ```
 
@@ -2762,7 +2762,7 @@ These practices are specific to KACI's pfSense/PHP environment:
 **Estimated Effort:** 2-3 days
 
 1. ✅ **Automated Version Bumping Script**
-   - Create `bump_version.sh`
+   - Create `scripts/bump_version.sh`
    - Update root, backend, frontend package.json
    - Append to CHANGELOG.md
    - Test with all version types (major, minor, patch)
@@ -2902,7 +2902,7 @@ Before implementing any of these, I'd like your input:
 
 ### **Phase 1 (High Priority)** - Should we implement?
 
-1. **Automated Version Bumping Script** (`bump_version.sh`)
+1. **Automated Version Bumping Script** (`scripts/bump_version.sh`)
    - ✅ Pros: Saves time, prevents errors, enforces consistency
    - ⚠️ Cons: Requires bash/shell scripting, one-time setup
    - **Implement?** [YES / NO / MODIFY]
@@ -3142,7 +3142,7 @@ The following items are NOT fully implemented but are acceptable:
 
 3. **Bump version** for this release:
    ```bash
-   ./bump_version.sh minor "Implement remaining KACI best practices: job queue, verification template, state inspection, AI fallback"
+   ./scripts/bump_version.sh minor "Implement remaining KACI best practices: job queue, verification template, state inspection, AI fallback"
    ```
 
 ---
@@ -3634,7 +3634,7 @@ async function exportPDF(controls, systemInfo, metadata) {
 
 ```bash
 # Bump version
-./bump_version.sh minor "Implement remaining KACI best practices: async job queue, verification template, state inspection, dual-method AI fallback"
+./scripts/bump_version.sh minor "Implement remaining KACI best practices: async job queue, verification template, state inspection, dual-method AI fallback"
 
 # This will:
 # - Update version: 1.2.7 → 1.3.0

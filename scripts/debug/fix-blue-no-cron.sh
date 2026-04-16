@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-off: set ENABLE_GITHUB_UPDATE=false on Blue and remove the ec2_automation cron job.
+# One-off: set ENABLE_S3_INSTALLER_UPDATE=false on Blue and remove the ec2_automation cron job.
 # Use this to fix the current Blue instance without a full deploy.
 # Uses same SSH key as deploy-to-ec2.sh (Pass or SSH_KEY_FILE). Run from repo root.
 #
@@ -9,8 +9,8 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/ec2-common.sh disable=SC1091
-source "$SCRIPT_DIR/lib/ec2-common.sh"
+# shellcheck source=../lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/../lib/ec2-common.sh"
 SSH_USER="${SSH_USER:-ec2-user}"
 SVC_USER="svc_ams-oscal"
 
@@ -18,18 +18,19 @@ resolve_ssh_key
 BLUE_IP="${1:-$(get_terraform_oscal_ip blue)}"
 [ -z "$BLUE_IP" ] && { echo "Could not get Blue IP. Run from repo root after terraform apply or pass IP: $0 <blue_ip>"; exit 1; }
 
-echo "Fixing Blue at $BLUE_IP: set ENABLE_GITHUB_UPDATE=false and remove ec2_automation cron..."
+echo "Fixing Blue at $BLUE_IP: set ENABLE_S3_INSTALLER_UPDATE=false and remove ec2_automation cron..."
 
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SSH_USER}@${BLUE_IP}" "
   set -e
   ENV_FILE=/opt/oscal/scripts/ec2_automation.env
   if [ -f \"\$ENV_FILE\" ]; then
-    if grep -q '^ENABLE_GITHUB_UPDATE=' \"\$ENV_FILE\" 2>/dev/null; then
-      sudo sed -i 's/^ENABLE_GITHUB_UPDATE=.*/ENABLE_GITHUB_UPDATE=false/' \"\$ENV_FILE\"
+    sudo sed -i '/^ENABLE_GITHUB_UPDATE=/d' \"\$ENV_FILE\" 2>/dev/null || true
+    if grep -q '^ENABLE_S3_INSTALLER_UPDATE=' \"\$ENV_FILE\" 2>/dev/null; then
+      sudo sed -i 's/^ENABLE_S3_INSTALLER_UPDATE=.*/ENABLE_S3_INSTALLER_UPDATE=false/' \"\$ENV_FILE\"
     else
-      echo 'ENABLE_GITHUB_UPDATE=false' | sudo tee -a \"\$ENV_FILE\" >/dev/null
+      echo 'ENABLE_S3_INSTALLER_UPDATE=false' | sudo tee -a \"\$ENV_FILE\" >/dev/null
     fi
-    echo 'Set ENABLE_GITHUB_UPDATE=false in ec2_automation.env'
+    echo 'Set ENABLE_S3_INSTALLER_UPDATE=false in ec2_automation.env (removed legacy ENABLE_GITHUB_UPDATE if present)'
   else
     echo 'Warning: ec2_automation.env not found; skipping env update'
   fi

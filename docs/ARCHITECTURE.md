@@ -953,7 +953,7 @@ OSCAL_Reports/
 │
 ├── scripts/                          # Deployment and utilities
 │   ├── deploy-to-ec2.sh              # Deploy to AWS Green/Blue
-│   ├── ec2_automation.sh             # Backup config/users to S3; optional GitHub update; Pass ↔ Secrets Manager sync
+│   ├── ec2_automation.sh             # Backup config/users to S3; optional S3 installer/ sync (every N cron runs); Pass ↔ Secrets Manager sync
 │   └── debug/                        # SSH, EC2 helpers
 │
 ├── terraform/                        # AWS infrastructure (Bedrock-only; no Ollama)
