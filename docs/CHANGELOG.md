@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.7.17] - 2026-04-16
+
+### Changed
+- Pre_Prod: merge Development (CI consolidation, Quality fixes, deploy script hardening)
 ## [1.7.16] - 2026-04-13
 
 ### Changed
