@@ -1,0 +1,44 @@
+# One-click: Actions → Run workflow → sync keekar2022 Quality → this repo Pre_Prod.
+# Runs only on AdobeManagedServices/OSCAL-Reports (skipped on personal fork).
+# Secrets (Adobe repo): PERSONAL_REPO_READ_TOKEN (contents:read on personal repo).
+# Optional: ADOBE_REPO_PUSH_TOKEN if branch protection blocks GITHUB_TOKEN pushes to Pre_Prod.
+
+name: Sync personal Quality to Pre_Prod
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sync-personal-quality-to-adobe-preprod
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Fast-forward Pre_Prod from personal Quality
+    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pre_Prod
+        uses: actions/checkout@v4
+        with:
+          ref: Pre_Prod
+          fetch-depth: 0
+          token: ${{ secrets.ADOBE_REPO_PUSH_TOKEN || github.token }}
+
+      - name: Configure git author
+        run: |
+          git config user.name "Mukesh Kesharwani"
+          git config user.email "mukesh.kesharwani@adobe.com"
+
+      - name: Fast-forward merge personal Quality
+        env:
+          PERSONAL_REPO_READ_TOKEN: ${{ secrets.PERSONAL_REPO_READ_TOKEN }}
+        run: |
+          chmod +x scripts/git/ff-sync-preprod-from-personal-quality.sh
+          ./scripts/git/ff-sync-preprod-from-personal-quality.sh
+
+      - name: Push Pre_Prod
+        run: git push origin Pre_Prod

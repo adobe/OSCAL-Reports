@@ -7,7 +7,7 @@ This directory contains custom Git hooks that enforce version control policies.
 To activate these hooks:
 
 ```bash
-./setup-git-hooks.sh
+./scripts/setup-git-hooks.sh
 ```
 
 Or manually:
@@ -37,7 +37,7 @@ chmod +x .githooks/*
 **If validation fails:**
 - Push is blocked
 - Error message shows current vs. expected version
-- Instructions provided to fix with `bump_version.sh`
+- Instructions provided to fix with `scripts/bump_version.sh`
 
 ## How to Bump Version
 
@@ -45,13 +45,13 @@ Before pushing to Pre_Prod or main:
 
 ```bash
 # Bug fix (1.6.4 → 1.6.5)
-./bump_version.sh patch "Fix: description"
+./scripts/bump_version.sh patch "Fix: description"
 
 # New feature (1.6.4 → 1.7.0)
-./bump_version.sh minor "Add: description"
+./scripts/bump_version.sh minor "Add: description"
 
 # Breaking change (1.6.4 → 2.0.0)
-./bump_version.sh major "Breaking: description"
+./scripts/bump_version.sh major "Breaking: description"
 ```
 
 ## Troubleshooting
@@ -64,7 +64,7 @@ git config core.hooksPath
 
 # Should output: .githooks
 # If not, run:
-./setup-git-hooks.sh
+./scripts/setup-git-hooks.sh
 ```
 
 ### Hook fails with "permission denied"
@@ -95,7 +95,7 @@ To add a new hook:
 1. Create hook file in this directory (e.g., `pre-commit`)
 2. Make it executable: `chmod +x .githooks/pre-commit`
 3. Add documentation here
-4. Update `setup-git-hooks.sh` if needed
+4. Update `scripts/setup-git-hooks.sh` if needed
 
 ---
 

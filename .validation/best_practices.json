@@ -67,7 +67,7 @@
           "name": "No hardcoded secrets",
           "severity": "critical",
           "pattern": "(password|secret|api_key|apikey|apitoken|private_key|access_token)\\s*=\\s*['\"][a-zA-Z0-9]{16,}['\"]",
-          "exclude": ["test_cases/", "*.test.js", "*.md", "setup.sh", "bump_version.sh", ".github/workflows/", "node_modules/"],
+          "exclude": ["test_cases/", "*.test.js", "*.md", "setup.sh", "scripts/bump_version.sh", ".github/workflows/", "node_modules/"],
           "message": "Hardcoded secrets detected! Use environment variables instead.",
           "autoFix": false
         },
@@ -160,7 +160,7 @@
           "name": "Backend must use safeAxios (CWE-113 / outbound header CRLF)",
           "severity": "error",
           "pattern": "from ['\"]axios['\"]",
-          "exclude": ["test_cases/", "node_modules/", "backend/utils/safeAxios.js", "frontend/", "*.md", "docs/", "scripts/build-consolidated-docs.py"],
+          "exclude": ["test_cases/", "node_modules/", "backend/utils/safeAxios.js", "frontend/", "*.md", "docs/", "scripts/debug/build-consolidated-docs.py"],
           "message": "Do not import the axios package directly in backend code. Use: import axios from './utils/safeAxios.js' (correct relative path) so outbound headers are validated for CR/LF before the adapter runs (CodeQL / CWE-113 hardening).",
           "autoFix": false,
           "mitigation": "See backend/utils/safeAxios.js and docs/BEST_PRACTICES.md section 'Outbound HTTP (Axios)'.",

@@ -6,10 +6,10 @@
 # Copyright (c) 2025 Mukesh Kesharwani
 # License: MIT
 #
-# Usage: ./bump_version.sh [major|minor|patch] "changelog message"
-#        ./bump_version.sh set VERSION "changelog message"
-# Example: ./bump_version.sh minor "Add new AI integration features"
-# Example: ./bump_version.sh set 1.7.12 "Release 1.7.12"
+# Usage: ./scripts/bump_version.sh [major|minor|patch] "changelog message"
+#        ./scripts/bump_version.sh set VERSION "changelog message"
+# Example: ./scripts/bump_version.sh minor "Add new AI integration features"
+# Example: ./scripts/bump_version.sh set 1.7.12 "Release 1.7.12"
 #
 # This script:
 # - Updates version in all 3 package.json files (root, backend, frontend)
@@ -18,6 +18,9 @@
 # - Optionally creates a git tag
 
 set -e  # Exit on error
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 # ============================================================================
 # COLOR DEFINITIONS
@@ -186,10 +189,10 @@ print_header "OSCAL Version Bumping Script"
 
 # Check arguments
 if [ $# -lt 2 ]; then
-  print_error "Usage: ./bump_version.sh [major|minor|patch] \"changelog message\""
-  print_error "        ./bump_version.sh set VERSION \"changelog message\""
-  print_info "Example: ./bump_version.sh minor \"Add new features\""
-  print_info "Example: ./bump_version.sh set 1.7.12 \"Release 1.7.12\""
+  print_error "Usage: ./scripts/bump_version.sh [major|minor|patch] \"changelog message\""
+  print_error "        ./scripts/bump_version.sh set VERSION \"changelog message\""
+  print_info "Example: ./scripts/bump_version.sh minor \"Add new features\""
+  print_info "Example: ./scripts/bump_version.sh set 1.7.12 \"Release 1.7.12\""
   exit 1
 fi
 
@@ -199,7 +202,7 @@ SET_VERSION=""
 
 if [ "$BUMP_TYPE" = "set" ]; then
   if [ $# -lt 3 ]; then
-    print_error "Usage: ./bump_version.sh set VERSION \"changelog message\""
+    print_error "Usage: ./scripts/bump_version.sh set VERSION \"changelog message\""
     exit 1
   fi
   SET_VERSION="$2"

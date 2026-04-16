@@ -9,16 +9,15 @@
 #   ./run-with-aws-pass.sh import-key [region]   import EC2 key from Pass (region defaults to us-east-1)
 #   ./run-with-aws-pass.sh remove-stale-ollama-state   remove Ollama-related entries from state (use same account as tfvars)
 #
-# Default: AWS4403 (account 442277170733). Set AWS_PASS_ENTRY and TERRAFORM_DIR to use AWS4379 Sandbox.
+# Default: AWS4403 (account 442277170733).
 # Optional: AWS_PASS_ENTRY – Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403).
-#   For AWS4379 Sandbox (432417415905): AWS_PASS_ENTRY="AWS/AWS4379 Sandbox" and TERRAFORM_DIR=$PWD/terraform/envs/aws4379.
-# Optional: TERRAFORM_DIR – Terraform working dir (default: terraform/envs/aws4403). Set to terraform/envs/aws4379 for AWS4379.
+# Optional: TERRAFORM_DIR – Terraform working dir (default: terraform/envs/aws4403).
 # Optional: SKIP_CURRENT_IP_ADD=1 – skip auto-adding current IP to default_allowed_cidr_blocks (e.g. in CI).
 # If plan/apply fails with ExpiredToken, refresh aws_session_token (and keys if needed) in the Pass entry, then retry.
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Default to aws4403 so we do not accidentally change AWS4379 Sandbox.
+# Default to aws4403 (single documented env).
 if [ -z "${TERRAFORM_DIR:-}" ]; then
   TERRAFORM_DIR="$(cd "$SCRIPT_DIR/envs/aws4403" && pwd)"
 fi
@@ -56,8 +55,8 @@ verify_aws_credentials() {
 
 import_ec2_key() {
   local region="${1:-us-east-1}"
-  local ssh_entry="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4379-SSH}"
-  local key_name="${EC2_KEY_NAME:-oscal-aws4379}"
+  local ssh_entry="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4403-SSH}"
+  local key_name="${EC2_KEY_NAME:-oscal-aws4403}"
   command -v aws >/dev/null 2>&1 || { echo "Error: AWS CLI (aws) is required. Install: brew install awscli" >&2; exit 1; }
   load_aws_credentials
   verify_aws_credentials
@@ -142,7 +141,7 @@ case "${1:-}" in
   remove-stale-ollama-state)
     load_aws_credentials
     verify_aws_credentials
-    exec "$SCRIPT_DIR/remove-stale-ollama-state.sh"
+    exec "$SCRIPT_DIR/../scripts/debug/remove-stale-ollama-state.sh"
     ;;
   apply)
     load_aws_credentials
