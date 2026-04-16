@@ -811,7 +811,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                   </label>
                 </div>
 
-                {/* Okta fields: two per row, order: Okta Domain, Redirect URI, Authorization Server ID, Client ID, Client Secret */}
+                {/* Okta fields: Domain, Redirect URI, Auth Server ID, Client ID, Client Secret, OIDC scope */}
                 <div className="form-row-2">
                   <div className="form-group">
                     <label>Okta Domain</label>
@@ -906,6 +906,26 @@ function SSOIntegration({ onClose, embedded = false }) {
                     })}
                     disabled={!canEdit}
                   />
+                </div>
+                <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                  <label>OIDC scope (space-separated)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="openid profile email"
+                    value={typeof oktaProvider.scope === 'string' ? oktaProvider.scope : 'openid profile email'}
+                    onChange={(e) => canEdit && setOauthConfig({
+                      ...oauthConfig,
+                      providers: {
+                        ...oauthConfig.providers,
+                        okta: { ...oktaProvider, scope: e.target.value }
+                      }
+                    })}
+                    disabled={!canEdit}
+                  />
+                  <small style={{ display: 'block', marginTop: '0.25rem', color: '#666' }}>
+                    Sent to Okta on sign-in (<code>/authorize</code>). Default is <code>openid profile email</code> (works on most org servers). Add <strong>groups</strong> only after that scope exists on <strong>your</strong> Authorization Server and is allowed for this app — otherwise Okta returns &quot;One or more scopes are not configured for the authorization server resource.&quot; If you use token <strong>claims</strong> for groups without a <code>groups</code> scope, leave scopes as shown and configure claims in Okta Admin.
+                  </small>
                 </div>
 
                 <div className="config-group" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
