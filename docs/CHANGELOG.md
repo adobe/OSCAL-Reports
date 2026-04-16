@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.16] - 2026-04-13
+
+### Changed
+- Adobe Pre_Prod: merge Development (workflows, deploy/terraform/scripts, UseCases and run-all-tests fixes) and CI preflight for personal-repo sync.
+
 ## [1.7.14] - 2026-04-15
 
 ### Changed
