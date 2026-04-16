@@ -8,7 +8,8 @@ PERSONAL_REPO_FULL_NAME="${PERSONAL_REPO_FULL_NAME:-keekar2022/OSCAL-Reports}"
 PERSONAL_BRANCH="${PERSONAL_BRANCH:-Quality}"
 
 if [ -z "${PERSONAL_REPO_READ_TOKEN:-}" ]; then
-	echo "PERSONAL_REPO_READ_TOKEN is required" >&2
+	echo "PERSONAL_REPO_READ_TOKEN is required (GitHub Actions secret or local: export before running)." >&2
+	echo "Example: export PERSONAL_REPO_READ_TOKEN='…'  # read token for keekar2022/OSCAL-Reports branch Quality" >&2
 	exit 1
 fi
 
