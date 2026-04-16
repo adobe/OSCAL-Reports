@@ -1,7 +1,10 @@
 #!/bin/bash
+# GitHub Account Switcher — switch between personal and Adobe GitHub accounts.
+# Run: ./scripts/switch-github-account.sh
 
-# GitHub Account Switcher
-# Easily switch between personal and Adobe GitHub accounts
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT" || true
 
 echo "╔═══════════════════════════════════════════════════════════════╗"
 echo "║              GitHub Account Switcher                          ║"

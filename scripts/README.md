@@ -2,6 +2,10 @@
 
 This directory contains upgrade and consolidation scripts for Blue-Green deployments.
 
+**Repeated-use helpers** at repo [`scripts/`](.): [`ssh-ec2.sh`](ssh-ec2.sh) (SSH to Green/Blue via Terraform IPs), [`restart-local-dev.sh`](restart-local-dev.sh) (local npm dev restart). Shared EC2/Pass/Terraform helpers: [`lib/ec2-common.sh`](lib/ec2-common.sh).
+
+**Debug and one-off tools** under [`scripts/debug/`](debug/): Okta diagnosis (`diagnose-okta-on-ec2.sh`), ALB/import fixes, Let's Encrypt → ACM import (`letsencrypt-acm-import.sh`), Terraform SG dependency lookup (`terraform-find-sg-dependencies.sh`), `remove-stale-ollama-state.sh` (Ollama state cleanup; also `terraform/run-with-aws-pass.sh remove-stale-ollama-state`), consolidated docs builder (`build-consolidated-docs.py`), and related utilities.
+
 ## 📋 Available Scripts
 
 ### 1. `build-and-push-dockerhub.sh`
