@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
 # Deploy OSCAL Report Generator to EC2 instances (direct run, no Docker).
-# Syncs code to /opt/oscal/app, runs npm install + frontend build, installs ec2_automation.sh and scripts (e.g. reactivate-admin.sh) to /opt/oscal/scripts, restarts oscal-reporter.
-# Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
+# deploy_one runs dnf upgrade -y or yum update -y on the instance first, then application steps (S3 sync, npm build, etc.).
+# Default / --blue / --both / --*-only: each instance runs aws s3 sync from s3://<bucket>/installer/ (no upload from this laptop).
+# Use --update-s3 to upload this repo to installer/ (same excludes as legacy rsync), then exit without SSH. After that, a normal deploy
+# pulls that snapshot into /opt/oscal/app, npm install/build, copies scripts from the synced tree to /opt/oscal/scripts, restarts oscal-reporter.
+# Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount). logs/ in the bucket is for
+# runtime log backup (logs/green, logs/blue), not application code—installer/ holds deployable bits.
+# Reliability: On each instance, ec2-user runs aws s3 sync; files previously owned by svc_ams-oscal could not be overwritten without
+# chown ec2-user:oscal on /opt/oscal/app first (see INSTALLERSYNC). Default deploy updates GREEN only—use --both or --blue so Blue pulls
+# installer/ too (existing S3 objects only unless you ran --update-s3 first). Confirm bucket: terraform output -raw s3_logs_bucket_name.
 # Application and cron run as service account svc_ams-oscal (not root). Pass is installed and initialized for that user for secrets.
 #
 # Green/Blue are Auto Scaling Group members: Terraform outputs oscal_*_public_ip / oscal_*_private_ip point at the current instance.
 # After an ASG replacement, re-run this script (or use --green-only / --blue-only with the new IP from terraform output). Optional SSM
 # (oscal_ssm_release_s3_prefix) can sync prebuilt artifacts from S3 on a schedule; it does not replace this script for full builds.
 #
-# Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; AWS CLI (for ec2_automation env).
+# Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; Terraform outputs readable (run-with-aws-pass.sh).
+# For --update-s3 only: AWS CLI + Pass (or env) with operator IAM s3:PutObject, s3:DeleteObject, s3:ListBucket on s3://<logs-bucket>/installer/*.
+# Instances use their IAM role to read installer/* (no laptop upload on a normal deploy).
 #
 # Usage:
-#   ./scripts/deploy-to-ec2.sh              # Default: deploy to green only (IPs from Terraform)
+#   ./scripts/deploy-to-ec2.sh              # Deploy green only: EC2 pulls existing s3://<bucket>/installer/ (no laptop upload)
+#   ./scripts/deploy-to-ec2.sh --update-s3  # Upload this repo to installer/ only; no SSH / no EC2 deploy (alias: -updateS3)
 #   ./scripts/deploy-to-ec2.sh --both       # Deploy to both green and blue
 #   ./scripts/deploy-to-ec2.sh --blue       # Deploy to blue only
 #   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4   # Deploy to green at given IP
@@ -25,17 +35,20 @@
 # Terraform: All terraform commands (output, apply) use terraform/run-with-aws-pass.sh.
 #
 # Environment:
-#   AWS_PASS_ENTRY       Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403). For AWS4379: AWS/AWS4379 Sandbox.
-#   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4403-SSH). For AWS4379: AWS/OSCAL-AWS4379-SSH.
+#   AWS_PASS_ENTRY       Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403).
+#   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4403-SSH).
 #   SSH_KEY_FILE         If set, use this key file instead of Pass
 #   SSH_USER             SSH user: ec2-user (RHEL). Default: ec2-user
-#   TERRAFORM_DIR        Terraform env dir (default: terraform/envs/aws4403). For AWS4379 Sandbox set
-#                        TERRAFORM_DIR=$PWD/terraform/envs/aws4379 and AWS_PASS_ENTRY="AWS/AWS4379 Sandbox".
-#   DEPLOY_BLUE_AUTO_UPDATE  Default 1: Blue gets the same ec2_automation cron as Green (S3 backup + Pass/SM sync; GitHub pull off by default). Set 0 for Blue manual-only (no cron).
-#   DEPLOY_ENABLE_GITHUB_UPDATE  Set to 1 so ec2_automation.env gets ENABLE_GITHUB_UPDATE=true (cron can git pull from GitHub). Default is off so deploys are not overwritten by old/main code.
+#   TERRAFORM_DIR        Terraform env dir (default: terraform/envs/aws4403). Override if your state lives elsewhere.
+#   DEPLOY_BLUE_AUTO_UPDATE  Default 1: Blue gets the same ec2_automation cron as Green (S3 backup + Pass/SM sync + optional S3 installer sync). Set 0 for Blue manual-only (no cron).
+#   DEPLOY_ENABLE_S3_INSTALLER_UPDATE  Default 1: ec2_automation.env gets ENABLE_S3_INSTALLER_UPDATE=true so cron can sync app from s3://<bucket>/installer/ every S3_CODE_UPDATE_EVERY_N_CYCLES runs (default 100 ≈ 1000 min). Set 0 to disable scheduled code sync (S3 backup still runs).
 #   PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS  Optional; default 21600 (4 runs/day) written to ec2_automation.env.
+#   S3_CODE_UPDATE_EVERY_N_CYCLES  Optional; default 100 written to ec2_automation.env (installer sync every N ec2_automation cron runs).
+#   DEPLOY_ENABLE_OS_PACKAGE_UPDATE  Set to 1 so ec2_automation.env gets ENABLE_OS_PACKAGE_UPDATE=true (dnf upgrade -y or yum update -y from configured repos, throttled). Default 0.
+#   OS_PACKAGE_UPDATE_EVERY_N_CYCLES  Optional; default 144 written to ec2_automation.env (OS update at most once per N cron runs ≈ 24h at 10-min cron).
 #   DEPLOY_RDS_BOOTSTRAP_SKIP   Set to 1 to skip copying/running scripts/lib/rds-bootstrap-on-instance.sh (default: run when Terraform has RDS).
 #   DEPLOY_RDS_BOOTSTRAP_FORCE  Set to 1 to remove /opt/oscal/data/.rds-bootstrap-done on the instance and re-run SQL grants (use rarely).
+#   DEPLOY_LOCAL_CONFIG_SEED    Set to 1 to allow copying config/app/*.json from the laptop when S3 config/<role>/ restore failed (default: off).
 
 set -e
 
@@ -57,22 +70,134 @@ print_warning() { echo -e "${YELLOW}⚠${NC}  $1"; }
 print_info() { echo -e "${CYAN}ℹ${NC}  $1"; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Default to aws4403 so we do not accidentally deploy to or change AWS4379 Sandbox.
+
+# Default to aws4403.
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
 export TERRAFORM_DIR
 SSH_USER="${SSH_USER:-ec2-user}"
 PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4403-SSH}"
 REMOTE_APP="/opt/oscal/app"
+# S3 prefix for deployable repo snapshot (Terraform: aws_s3_object folder_installer; IAM: installer/* read on instances).
+INSTALLER_PREFIX="installer"
+
+# Excludes for aws s3 sync (local→installer/ when using --update-s3, and S3→EC2); align with former rsync excludes in deploy_one.
+# Keep in sync with .deployignore where practical (AWS CLI has no negated patterns like !README.md).
+DEPLOY_S3_SYNC_EXCLUDES=(
+  'node_modules/**'
+  '.git/**'
+  '.cursor/**'
+  '.githooks/**'
+  '.validation/**'
+  '.github/**'
+  'config/**'
+  'terraform/**'
+  'test_cases/**'
+  'docs/**'
+  'credentials.txt'
+  'logs/**'
+  'data/debug-state/**'
+  'data/jobs/**'
+  'scripts/bump_version.sh'
+  'docker-compose.yml'
+  'docker-entrypoint.sh'
+  'Dockerfile'
+  'scripts/setup-git-hooks.sh'
+  'scripts/switch-github-account.sh'
+  'backend/node_modules/**'
+  'frontend/node_modules/**'
+  'frontend/dist/**'
+  'backend/public/**'
+  '*.log'
+)
+
+# Load AWS credentials from Pass (same entry shape as terraform/run-with-aws-pass.sh). For S3 upload from laptop.
+load_deploy_aws_credentials() {
+  local entry="${AWS_PASS_ENTRY:-AWS/AMS_4403-STG}"
+  if ! command -v pass >/dev/null 2>&1; then
+    print_error "pass(1) is required to read AWS credentials from $entry (same as terraform/run-with-aws-pass.sh)."
+    return 1
+  fi
+  if ! pass show "$entry" >/dev/null 2>&1; then
+    print_error "Cannot read Pass entry $entry for AWS credentials."
+    return 1
+  fi
+  local line key val
+  while IFS= read -r line; do
+    if [[ $line =~ ^(aws_[a-z_]+)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+      case "$key" in
+        aws_access_key_id)     export AWS_ACCESS_KEY_ID="$val" ;;
+        aws_secret_access_key) export AWS_SECRET_ACCESS_KEY="$val" ;;
+        aws_session_token)     export AWS_SESSION_TOKEN="$val" ;;
+      esac
+    fi
+  done < <(pass show "$entry")
+  if ! command -v aws >/dev/null 2>&1; then
+    print_error "AWS CLI (aws) is required for s3 sync."
+    return 1
+  fi
+  if ! aws sts get-caller-identity >/dev/null 2>&1; then
+    print_error "AWS credentials from Pass entry '$entry' failed STS check (see terraform/run-with-aws-pass.sh)."
+    return 1
+  fi
+  return 0
+}
+
+# Upload repo root to s3://bucket/installer/ (requires load_deploy_aws_credentials and AWS CLI).
+sync_repo_to_s3_installer() {
+  local bucket="$1"
+  local region="$2"
+  local x
+  local -a exargs=()
+  print_info "Syncing repo to s3://${bucket}/${INSTALLER_PREFIX}/ (region ${region})..."
+  for x in "${DEPLOY_S3_SYNC_EXCLUDES[@]}"; do
+    exargs+=(--exclude "$x")
+  done
+  aws s3 sync "$REPO_ROOT/" "s3://${bucket}/${INSTALLER_PREFIX}/" --region "$region" --delete "${exargs[@]}"
+  write_installer_manifest_to_s3 "$bucket" "$region"
+  print_success "Uploaded repo to s3://${bucket}/${INSTALLER_PREFIX}/"
+}
+
+# Write s3://bucket/installer/.installer-build.json after laptop→S3 sync (git SHA, time, version) for post-sync verification on EC2.
+write_installer_manifest_to_s3() {
+  local bucket="$1"
+  local region="$2"
+  local tmp sha ts pkg_ver
+  tmp=$(mktemp)
+  sha=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  pkg_ver="unknown"
+  if [ -f "$REPO_ROOT/package.json" ] && command -v jq >/dev/null 2>&1; then
+    pkg_ver=$(jq -r '.version // "unknown"' "$REPO_ROOT/package.json" 2>/dev/null || echo "unknown")
+  elif [ -f "$REPO_ROOT/package.json" ]; then
+    pkg_ver=$(grep -m1 '"version"' "$REPO_ROOT/package.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || echo "unknown")
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq -n \
+      --arg sha "$sha" \
+      --arg ts "$ts" \
+      --arg ver "$pkg_ver" \
+      '{git_sha: $sha, built_at: $ts, package_version: $ver, installer_schema: 1}' > "$tmp"
+  else
+    printf '{"git_sha":"%s","built_at":"%s","package_version":"%s","installer_schema":1}\n' "$sha" "$ts" "$pkg_ver" > "$tmp"
+  fi
+  aws s3 cp "$tmp" "s3://${bucket}/${INSTALLER_PREFIX}/.installer-build.json" --region "$region"
+  rm -f "$tmp"
+  print_info "Wrote s3://${bucket}/${INSTALLER_PREFIX}/.installer-build.json for instance-side verify after pull."
+}
 
 # Resolve SSH key into SSH_KEY (from file or from Pass). Call from main; do not use in subshell.
+# When the key is a temp file from Pass, SSH_KEY_IS_TEMP=1 so EXIT cleanup can remove it (trap set after DEPLOY_RESULTS_FILE).
 resolve_ssh_key() {
+  SSH_KEY_IS_TEMP=0
   if [ -n "$SSH_KEY_FILE" ] && [ -f "$SSH_KEY_FILE" ]; then
     SSH_KEY="$SSH_KEY_FILE"
     return
   fi
   if command -v pass >/dev/null 2>&1 && pass show "$PASS_ENTRY" >/dev/null 2>&1; then
     SSH_KEY=$(mktemp)
-    trap 'rm -f "$SSH_KEY"' EXIT
+    SSH_KEY_IS_TEMP=1
     pass show "$PASS_ENTRY" > "$SSH_KEY"
     chmod 600 "$SSH_KEY"
     return
@@ -202,6 +327,23 @@ deploy_one() {
   [ "$role" = "green" ] && port="3019" || port="3020"
   print_info "Deploying to $role at $ip (port $port)..."
 
+  # Refresh installed OS packages from configured repos before app sync/build (AL2023: dnf; else yum). Deploy aborts if this fails.
+  print_info "Updating OS packages on instance (dnf upgrade -y or yum update -y) before application deploy..."
+  if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=120 "${SSH_USER}@${ip}" \
+    'set -eo pipefail
+     export PATH="/usr/local/bin:/usr/bin:/bin"
+     if command -v dnf >/dev/null 2>&1; then
+       sudo dnf upgrade -y
+     elif command -v yum >/dev/null 2>&1; then
+       sudo yum update -y
+     else
+       echo "Neither dnf nor yum found; cannot update OS packages." >&2
+       exit 1
+     fi'; then
+    print_error "OS package update failed on ${role} at ${ip} (check repos, disk, and sudo). Application deploy was not started."
+    return 1
+  fi
+
   # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass (inline in this deploy step).
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$SSH_USER" << 'REMOTEPASS' || true
 set -e
@@ -260,65 +402,175 @@ REMOTEPASS
   fi
   print_success "Service account $SVC_USER and Pass vault ensured"
 
-  # Directory layout: /opt/oscal/app = app code only; /opt/oscal/data = config.json + users.json (canonical on EC2); /opt/oscal/scripts = ec2_automation. Repo config/ is excluded from rsync so only /opt/oscal/data is used.
+  # Directory layout: /opt/oscal/app = app code only; /opt/oscal/data = config.json + users.json (canonical on EC2); /opt/oscal/scripts = ec2_automation. Repo config/ is excluded from S3 installer sync so only /opt/oscal/data is used.
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo mkdir -p /opt/oscal/app /opt/oscal/scripts /opt/oscal/data && sudo chown -R ${SSH_USER}:${SVC_GROUP} /opt/oscal && sudo chmod -R g+rX,g+w /opt/oscal" || true
 
-  # Prefer last backed-up config/users from S3; fall back to repo then leave as-is if both missing
+  # Prefer last backed-up config/users from S3; optional local seed only when DEPLOY_LOCAL_CONFIG_SEED=1
   if [ -n "$s3_bucket" ]; then
     print_info "Copying config.json and users.json from s3://${s3_bucket}/config/${role}/ to /opt/oscal/data/..."
     if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "command -v aws >/dev/null 2>&1 && aws s3 cp s3://${s3_bucket}/config/${role}/config.json /opt/oscal/data/config.json --quiet 2>/dev/null && aws s3 cp s3://${s3_bucket}/config/${role}/users.json /opt/oscal/data/users.json --quiet 2>/dev/null"; then
       print_success "Restored config.json and users.json from S3 (last backup)"
     else
-      print_warning "S3 restore skipped or failed (bucket: $s3_bucket, role: $role); will use repo seed if local missing"
+      print_warning "S3 restore skipped or failed (bucket: $s3_bucket, role: $role). Set DEPLOY_LOCAL_CONFIG_SEED=1 to seed from laptop config/app/ if needed."
     fi
   fi
   need_seed=$(ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "[ -f /opt/oscal/data/config.json ] && [ -f /opt/oscal/data/users.json ] && echo no || echo yes" 2>/dev/null) || need_seed="yes"
-  if [ "$need_seed" = "yes" ] && [ -f "$REPO_ROOT/config/app/config.json" ] && [ -f "$REPO_ROOT/config/app/users.json" ]; then
+  if [ "$need_seed" = "yes" ] && [ "${DEPLOY_LOCAL_CONFIG_SEED:-0}" = "1" ] && [ -f "$REPO_ROOT/config/app/config.json" ] && [ -f "$REPO_ROOT/config/app/users.json" ]; then
     scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/config/app/config.json" "$REPO_ROOT/config/app/users.json" "${SSH_USER}@${ip}:/tmp/" 2>/dev/null && \
     ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "mv -f /tmp/config.json /tmp/users.json /opt/oscal/data/" 2>/dev/null && \
-    print_success "Seeded /opt/oscal/data/config.json and users.json from repo (were missing after S3)"
+    print_success "Seeded /opt/oscal/data/config.json and users.json from repo (DEPLOY_LOCAL_CONFIG_SEED=1)"
+  elif [ "$need_seed" = "yes" ]; then
+    if [ -n "$s3_bucket" ]; then
+      print_warning "config.json/users.json still missing on instance; upload to s3://${s3_bucket}/config/${role}/ or set DEPLOY_LOCAL_CONFIG_SEED=1 with local config/app files."
+    else
+      print_warning "config.json/users.json still missing on instance; set DEPLOY_LOCAL_CONFIG_SEED=1 with local config/app files or configure S3 restore."
+    fi
   fi
 
-  # Deploy ec2_automation.sh and env; cron runs as svc_ams-oscal. Also copy helper scripts to same destination (/opt/oscal/scripts).
-  if [ -f "$REPO_ROOT/scripts/ec2_automation.sh" ]; then
-    scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/ec2_automation.sh" "${SSH_USER}@${ip}:${REMOTE_APP}/../scripts/ec2_automation.sh"
-    ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/ec2_automation.sh"
-    if [ -f "$REPO_ROOT/scripts/lib/ec2-automation-pass-sync.sh" ]; then
-      ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "mkdir -p /opt/oscal/scripts/lib"
-      scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/lib/ec2-automation-pass-sync.sh" "${SSH_USER}@${ip}:/opt/oscal/scripts/lib/ec2-automation-pass-sync.sh"
+  if [ -z "$s3_bucket" ]; then
+    print_error "S3 bucket unknown (Terraform output s3_logs_bucket_name); cannot deploy from installer/."
+    return 1
+  fi
+
+  print_info "Syncing s3://${s3_bucket}/${INSTALLER_PREFIX}/ to ${REMOTE_APP}/ on instance..."
+  # ec2-user must own app tree before aws s3 sync: after prior deploy files are svc_ams-oscal:oscal (group often r-x only) and sync cannot overwrite (H1).
+  _installer_sync_rc=0
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$REMOTE_APP" "$SSH_USER" "$SVC_GROUP" <<'INSTALLERSYNC' || _installer_sync_rc=$?
+set -eo pipefail
+BUCKET="$1"
+REGION="$2"
+APP="$3"
+CHOWN_USER="$4"
+CHOWN_GROUP="$5"
+export AWS_DEFAULT_REGION="$REGION"
+sudo chown -R "${CHOWN_USER}:${CHOWN_GROUP}" "${APP}"
+sudo mkdir -p "${APP}/logs"
+SYNC_LOG="${APP}/logs/deployment.log"
+sudo touch "$SYNC_LOG" 2>/dev/null || true
+sudo chown "${CHOWN_USER}:${CHOWN_GROUP}" "$SYNC_LOG" 2>/dev/null || sudo chmod 666 "$SYNC_LOG" 2>/dev/null || true
+aws s3 sync "s3://${BUCKET}/installer/" "${APP}/" --delete --region "$REGION" \
+  --exclude 'node_modules/**' \
+  --exclude '.git/**' \
+  --exclude '.cursor/**' \
+  --exclude '.githooks/**' \
+  --exclude '.validation/**' \
+  --exclude '.github/**' \
+  --exclude 'config/**' \
+  --exclude 'terraform/**' \
+  --exclude 'test_cases/**' \
+  --exclude 'docs/**' \
+  --exclude 'credentials.txt' \
+  --exclude 'logs/**' \
+  --exclude 'data/debug-state/**' \
+  --exclude 'data/jobs/**' \
+  --exclude 'scripts/bump_version.sh' \
+  --exclude 'docker-compose.yml' \
+  --exclude 'docker-entrypoint.sh' \
+  --exclude 'Dockerfile' \
+  --exclude 'scripts/setup-git-hooks.sh' \
+  --exclude 'scripts/switch-github-account.sh' \
+  --exclude 'backend/node_modules/**' \
+  --exclude 'frontend/node_modules/**' \
+  --exclude 'frontend/dist/**' \
+  --exclude 'backend/public/**' \
+  --exclude '*.log' \
+  2>&1 | tee -a "$SYNC_LOG"
+MANIFEST_KEY="installer/.installer-build.json"
+MANIFEST_URI="s3://${BUCKET}/${MANIFEST_KEY}"
+if aws s3api head-object --bucket "$BUCKET" --key "$MANIFEST_KEY" --region "$REGION" >/dev/null 2>&1; then
+  MF="${APP}/.installer-build.json"
+  # aws s3 sync can leave a stale .installer-build.json on disk (mtime/size heuristics vs S3, clock skew) while the
+  # object in S3 was just replaced—sha256 then mismatched disk vs aws s3 cp. Always re-copy the manifest after sync.
+  aws s3 cp "$MANIFEST_URI" "$MF" --region "$REGION"
+  if [ ! -f "$MF" ]; then
+    echo "installer verify failed: .installer-build.json missing on disk after sync (expected ${MANIFEST_URI})" >&2
+    exit 1
+  fi
+  DISK_SHA=$(sha256sum "$MF" | awk '{print $1}')
+  S3_SHA=$(aws s3 cp "$MANIFEST_URI" - --region "$REGION" | sha256sum | awk '{print $1}')
+  if [ "$DISK_SHA" != "$S3_SHA" ]; then
+    echo "installer verify failed: .installer-build.json sha256 mismatch (disk=${DISK_SHA} s3_pipe=${S3_SHA})" >&2
+    exit 1
+  fi
+  {
+    echo "=== $(date -Iseconds) installer manifest verify OK (sha256 ${DISK_SHA}) ==="
+  } >>"$SYNC_LOG" 2>/dev/null || true
+else
+  {
+    echo "=== $(date -Iseconds) installer manifest missing on S3 (${MANIFEST_URI}); skipping sha verify (re-upload from laptop with current deploy script) ==="
+  } >>"$SYNC_LOG" 2>/dev/null || true
+fi
+INSTALLERSYNC
+  if [ "${_installer_sync_rc}" -ne 0 ]; then
+    print_error "S3 sync from installer/ failed on ${role} (exit ${_installer_sync_rc}). Check instance: sudo chown, aws CLI, IAM installer/*."
+    return 1
+  fi
+  print_success "Application tree synced from S3 to ${REMOTE_APP}/ (manifest sha256 verified when installer/.installer-build.json exists on S3)"
+
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -rf ${REMOTE_APP}/config" 2>/dev/null || true
+
+  # Install /opt/oscal/scripts from synced app tree (no SCP from laptop for these).
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
+    APP='${REMOTE_APP}'
+    test -f \"\$APP/scripts/ec2_automation.sh\"
+    sudo cp \"\$APP/scripts/ec2_automation.sh\" /opt/oscal/scripts/
+    sudo chmod +x /opt/oscal/scripts/ec2_automation.sh
+    if [ -f \"\$APP/scripts/lib/ec2-automation-pass-sync.sh\" ]; then
+      sudo mkdir -p /opt/oscal/scripts/lib
+      sudo cp \"\$APP/scripts/lib/ec2-automation-pass-sync.sh\" /opt/oscal/scripts/lib/
     fi
-    # Copy optional helper scripts to /opt/oscal/scripts (same destination as ec2_automation.sh)
-    for _src in "scripts/debug/update-pass-credential.sh" "scripts/sync-consolidation-script.sh" "scripts/consolidate-users.sh"; do
-      if [ -f "$REPO_ROOT/$_src" ]; then
-        scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/$_src" "${SSH_USER}@${ip}:/opt/oscal/scripts/$(basename "$_src")"
-        ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/$(basename "$_src")"
+    if [ -f \"\$APP/scripts/debug/update-pass-credential.sh\" ]; then
+      sudo mkdir -p /opt/oscal/scripts/debug
+      sudo cp \"\$APP/scripts/debug/update-pass-credential.sh\" /opt/oscal/scripts/debug/
+      sudo chmod +x /opt/oscal/scripts/debug/update-pass-credential.sh
+    fi
+    for f in sync-consolidation-script.sh consolidate-users.sh; do
+      if [ -f \"\$APP/scripts/\$f\" ]; then
+        sudo cp \"\$APP/scripts/\$f\" /opt/oscal/scripts/
+        sudo chmod +x \"/opt/oscal/scripts/\$f\"
       fi
     done
-    if [ -f "$REPO_ROOT/scripts/reactivate-admin.sh" ]; then
-      scp -i "$key" -o StrictHostKeyChecking=no "$REPO_ROOT/scripts/reactivate-admin.sh" "${SSH_USER}@${ip}:/opt/oscal/scripts/reactivate-admin.sh"
-      ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "chmod +x /opt/oscal/scripts/reactivate-admin.sh"
+    if [ -f \"\$APP/scripts/reactivate-admin.sh\" ]; then
+      sudo cp \"\$APP/scripts/reactivate-admin.sh\" /opt/oscal/scripts/
+      sudo chmod +x /opt/oscal/scripts/reactivate-admin.sh
     fi
+    sudo chown -R ${SSH_USER}:${SVC_GROUP} /opt/oscal
+  "
+
+  # ec2_automation.env and cron (same as before; files on disk now come from installer/).
+  if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "test -f /opt/oscal/scripts/ec2_automation.sh"; then
     if [ -n "$s3_bucket" ]; then
-      # GitHub auto-update from cron is off by default; set DEPLOY_ENABLE_GITHUB_UPDATE=1 to enable on both roles.
-      github_update="false"
-      if [ "${DEPLOY_ENABLE_GITHUB_UPDATE:-0}" = "1" ]; then
-        github_update="true"
+      # Cron can sync application code from S3 installer/ every N runs (see ec2_automation.sh). Set DEPLOY_ENABLE_S3_INSTALLER_UPDATE=0 to turn off.
+      s3_installer_update="true"
+      if [ "${DEPLOY_ENABLE_S3_INSTALLER_UPDATE:-1}" != "1" ]; then
+        s3_installer_update="false"
       fi
       if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-1}" != "1" ]; then
-        github_update="false"
+        s3_installer_update="false"
+      fi
+      os_pkg_update="false"
+      if [ "${DEPLOY_ENABLE_OS_PACKAGE_UPDATE:-0}" = "1" ]; then
+        os_pkg_update="true"
       fi
       ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "cat > /opt/oscal/scripts/ec2_automation.env << ENVEOF
 S3_BUCKET=$s3_bucket
 S3_CONFIG_PREFIX=config/$role
 S3_LOGS_PREFIX=logs/$role
 DEPLOYMENT_ROLE=$role
-ENABLE_GITHUB_UPDATE=$github_update
+AWS_DEFAULT_REGION=${AWS_DEPLOY_REGION:-us-east-1}
+S3_INSTALLER_PREFIX=${INSTALLER_PREFIX}
+S3_CODE_UPDATE_EVERY_N_CYCLES=${S3_CODE_UPDATE_EVERY_N_CYCLES:-100}
+ENABLE_S3_INSTALLER_UPDATE=$s3_installer_update
+ENABLE_OS_PACKAGE_UPDATE=$os_pkg_update
+OS_PACKAGE_UPDATE_EVERY_N_CYCLES=${OS_PACKAGE_UPDATE_EVERY_N_CYCLES:-144}
+S3_SYNC_CHOWN_USER=${SSH_USER}
+S3_SYNC_CHOWN_GROUP=${SVC_GROUP}
 PASS_SECRETS_SYNC_ENABLED=${PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE:-false}
 PASS_SECRETS_SYNC_SECRET_ARN=${PASS_SYNC_SECRET_ARN:-}
 PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS=${PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS:-21600}
 ENVEOF"
       if [ "$role" = "blue" ] && [ "${DEPLOY_BLUE_AUTO_UPDATE:-1}" != "1" ]; then
-        # Blue: remove ec2_automation cron (manual deploy only); ENABLE_GITHUB_UPDATE=false in env for consistency
+        # Blue: remove ec2_automation cron (manual deploy only); ENABLE_S3_INSTALLER_UPDATE=false in env for consistency
         ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "
           remaining=\$(sudo crontab -u $SVC_USER -l 2>/dev/null | grep -v ec2_automation.sh || true)
           if [ -n \"\$remaining\" ]; then
@@ -339,41 +591,10 @@ ENVEOF"
     else
       print_warning "S3 bucket not set; ec2_automation.sh installed but backup/cron skipped (no S3_BUCKET)."
     fi
+  else
+    print_error "ec2_automation.sh missing under ${REMOTE_APP}/scripts after S3 sync; upload with ./scripts/deploy-to-ec2.sh --update-s3"
+    return 1
   fi
-
-  # Ensure rsync on remote (Amazon Linux 2023 does not install it by default)
-  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "command -v rsync >/dev/null 2>&1 || { sudo dnf install -y rsync 2>/dev/null || sudo yum install -y rsync 2>/dev/null; }"
-
-  # Rsync app code only; exclude repo config/ so config/users live only in /opt/oscal/data (no duplicate under app).
-  # Exclude dev/infra-only paths not needed on EC2 (terraform, tests, Docker, hooks, local data).
-  rsync -avz --delete \
-    --exclude 'node_modules' \
-    --exclude '.git' \
-    --exclude '.cursor' \
-    --exclude '.githooks' \
-    --exclude '.validation' \
-    --exclude '.github' \
-    --exclude 'config' \
-    --exclude 'terraform' \
-    --exclude 'test_cases' \
-    --exclude 'logs' \
-    --exclude 'data/debug-state' \
-    --exclude 'data/jobs' \
-    --exclude 'bump_version.sh' \
-    --exclude 'docker-compose.yml' \
-    --exclude 'docker-entrypoint.sh' \
-    --exclude 'Dockerfile' \
-    --exclude 'setup-git-hooks.sh' \
-    --exclude 'switch-github-account.sh' \
-    --exclude 'backend/node_modules' \
-    --exclude 'frontend/node_modules' \
-    --exclude 'frontend/dist' \
-    --exclude 'backend/public' \
-    --exclude '*.log' \
-    -e "ssh -i $key -o StrictHostKeyChecking=accept-new" \
-    "$REPO_ROOT/" "${SSH_USER}@${ip}:${REMOTE_APP}/"
-  # Remove orphan config dir if present (from older deploys); app uses CONFIG_PATH/USERS_PATH=/opt/oscal/data only
-  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -rf ${REMOTE_APP}/config" 2>/dev/null || true
 
   maybe_apply_rds_bootstrap "$ip" "$key"
 
@@ -507,11 +728,16 @@ DEPLOYLOGLOCAL
 
 # --- main ---
 # Deploy target: green (default), blue, or both. With --green-only/--blue-only IP we also set the IP.
+UPDATE_S3_ONLY=0
 DEPLOY_TARGET="green"
 GREEN_ONLY_IP=""
 BLUE_ONLY_IP=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --update-s3|-updateS3)
+      UPDATE_S3_ONLY=1
+      shift
+      ;;
     --both)
       DEPLOY_TARGET="both"
       shift
@@ -533,13 +759,18 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--both | --blue | [--green-only IP] | [--blue-only IP]]"
-      echo "  No option: deploy to green only (IPs from Terraform)."
+      echo "Usage: $0 [--update-s3 | -updateS3] [--both | --blue | [--green-only IP] | [--blue-only IP]]"
+      echo "  Default: EC2 pulls existing s3://<bucket>/installer/ with aws s3 sync (no upload from this laptop)."
+      echo "  --update-s3 | -updateS3: upload this repo to installer/ (needs AWS_PASS_ENTRY + operator S3 write); no SSH / no EC2 deploy."
       echo "  --both:    deploy to both green and blue."
       echo "  --blue:    deploy to blue only."
+      echo "  (default): deploy to green only (IPs from Terraform). Use --both or --blue when Blue must match installer/ too."
       echo "  --green-only IP: deploy to green at given IP."
       echo "  --blue-only IP:  deploy to blue at given IP."
       echo "  SSH key: Pass entry $PASS_ENTRY or SSH_KEY_FILE=/path/to/key.pem"
+      echo "  --update-s3: operator IAM needs s3:PutObject/Delete/List on installer/*. Normal deploy: instances read installer/* via IAM only."
+      echo "  Instance sync: chown ec2-user:oscal on app dir before s3 sync (so prior svc_ams-oscal files can be replaced). Verify bucket:"
+      echo "    terraform output -raw s3_logs_bucket_name"
       exit 0
       ;;
     *)
@@ -547,6 +778,25 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+if [ "$UPDATE_S3_ONLY" = "1" ]; then
+  S3_BUCKET=$(get_s3_bucket "$TERRAFORM_DIR" || true)
+  if [ -z "$S3_BUCKET" ]; then
+    print_error "Could not read s3_logs_bucket_name from Terraform (is ${TERRAFORM_DIR}/terraform.tfstate present?)."
+    exit 1
+  fi
+  if ! load_deploy_aws_credentials; then
+    exit 1
+  fi
+  AWS_DEPLOY_REGION=$(tf_output -raw aws_region 2>/dev/null || echo "us-east-1")
+  AWS_DEPLOY_REGION=$(printf '%s' "$AWS_DEPLOY_REGION" | tr -d '\r\n')
+  if [ -z "$AWS_DEPLOY_REGION" ] || [ "$AWS_DEPLOY_REGION" = "null" ]; then
+    AWS_DEPLOY_REGION="us-east-1"
+  fi
+  sync_repo_to_s3_installer "$S3_BUCKET" "$AWS_DEPLOY_REGION"
+  print_info "S3-only mode: no EC2 deploy. Run without --update-s3 to deploy instances from installer/."
+  exit 0
+fi
 
 # Resolve IPs: from --green-only/--blue-only or from Terraform
 if [ -n "$GREEN_ONLY_IP" ]; then
@@ -564,7 +814,7 @@ if [ -z "$GREEN_IP" ] || [ -z "$BLUE_IP" ]; then
     print_info "Green: $GREEN_IP  Blue: $BLUE_IP"
   else
     print_error "Run from repo root after './terraform/run-with-aws-pass.sh apply' or use --green-only IP / --blue-only IP"
-    echo "  For AWS4379 Sandbox: set TERRAFORM_DIR=\$PWD/terraform/envs/aws4379 and AWS_PASS_ENTRY=\"AWS/AWS4379 Sandbox\"."
+    echo "  Set TERRAFORM_DIR to the directory that contains terraform.tfstate for your stack."
     exit 1
   fi
 fi
@@ -596,12 +846,27 @@ if [ -z "${PASS_SYNC_SECRET_ARN}" ] || [ "${PASS_SYNC_SECRET_ARN}" = "null" ]; t
 fi
 export PASS_SYNC_SECRET_ARN PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE
 
+if [ -z "$S3_BUCKET" ]; then
+  print_error "S3 bucket name missing (Terraform output s3_logs_bucket_name). Cannot deploy from installer/."
+  exit 1
+fi
+print_info "S3 installer bucket (Terraform s3_logs_bucket_name): ${S3_BUCKET} — confirm with: terraform output -raw s3_logs_bucket_name"
+print_info "Deploy uses existing s3://${S3_BUCKET}/${INSTALLER_PREFIX}/ on instances (no laptop upload). Run with --update-s3 first to refresh installer/ from this repo."
+AWS_DEPLOY_REGION=$(tf_output -raw aws_region 2>/dev/null || echo "us-east-1")
+AWS_DEPLOY_REGION=$(printf '%s' "$AWS_DEPLOY_REGION" | tr -d '\r\n')
+if [ -z "$AWS_DEPLOY_REGION" ] || [ "$AWS_DEPLOY_REGION" = "null" ]; then
+  AWS_DEPLOY_REGION="us-east-1"
+fi
+export AWS_DEPLOY_REGION
+
 # IPs and ALB for EC2-local deployment.log, cross-instance curls, and ALB checks (Terraform outputs)
 DEPLOY_LOG_REMOTE="/opt/oscal/app/logs/deployment.log"
-GREEN_PRIVATE=$(tf_output -raw oscal_green_private_ip 2>/dev/null || true)
-BLUE_PRIVATE=$(tf_output -raw oscal_blue_private_ip 2>/dev/null || true)
-GREEN_PUBLIC_TF=$(tf_output -raw oscal_green_public_ip 2>/dev/null || true)
-BLUE_PUBLIC_TF=$(tf_output -raw oscal_blue_public_ip 2>/dev/null || true)
+# Trim tf outputs so unquoted heredocs never expand newlines/$(...) inside IPs (avoids stray local command execution).
+tf_ip_trim() { printf '%s' "${1:-}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+GREEN_PRIVATE=$(tf_ip_trim "$(tf_output -raw oscal_green_private_ip 2>/dev/null || true)")
+BLUE_PRIVATE=$(tf_ip_trim "$(tf_output -raw oscal_blue_private_ip 2>/dev/null || true)")
+GREEN_PUBLIC_TF=$(tf_ip_trim "$(tf_output -raw oscal_green_public_ip 2>/dev/null || true)")
+BLUE_PUBLIC_TF=$(tf_ip_trim "$(tf_output -raw oscal_blue_public_ip 2>/dev/null || true)")
 [ -n "${GREEN_PUBLIC_TF:-}" ] && GREEN_PUBLIC="$GREEN_PUBLIC_TF" || GREEN_PUBLIC="${GREEN_IP:-}"
 [ -n "${BLUE_PUBLIC_TF:-}" ] && BLUE_PUBLIC="$BLUE_PUBLIC_TF" || BLUE_PUBLIC="${BLUE_IP:-}"
 ALB_DNS=$(tf_output -raw alb_dns_name 2>/dev/null || true)
@@ -610,7 +875,13 @@ ALB_USE_HTTPS=$(tf_output -raw alb_use_https 2>/dev/null || echo "true")
 
 # Results file for post-deploy summary and health status (option 2, 4)
 DEPLOY_RESULTS_FILE=$(mktemp)
-trap 'rm -f "$DEPLOY_RESULTS_FILE"' EXIT
+cleanup_deploy_exit() {
+  rm -f "$DEPLOY_RESULTS_FILE" 2>/dev/null || true
+  if [ "${SSH_KEY_IS_TEMP:-0}" = "1" ] && [ -n "${SSH_KEY:-}" ]; then
+    rm -f "$SSH_KEY" 2>/dev/null || true
+  fi
+}
+trap cleanup_deploy_exit EXIT
 
 PASS_MISSING_ANY=0
 if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
@@ -620,51 +891,58 @@ if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   deploy_one "$BLUE_IP" "blue" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
 fi
 
-# Cross-instance curls (private + public) logged on originating host; SG may block public-IP paths
-# shellcheck disable=SC2087 # here-doc must expand GREEN_/BLUE_ IPs on client before ssh
+# Cross-instance curls: pass IPs via bash -s and quoted heredoc so terraform values are never locally expanded (no $(...) injection).
 if [ -n "$GREEN_IP" ] && [ -n "$BLUE_IP" ]; then
   print_info "Cross-instance curl tests (append to deployment.log on each host)..."
-  # From Blue toward Green :3019 (heredoc unquoted so GREEN_* expand locally into remote script)
+  _cross_curl_any=0
   if [ -n "$GREEN_PRIVATE" ]; then
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash << EOF
+    _cross_curl_any=1
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash -s "$GREEN_PRIVATE" <<'CROSSCURL_B_TO_G_PRIV'
 LOG=/opt/oscal/app/logs/deployment.log
 sudo mkdir -p /opt/oscal/app/logs
+GP="$1"
 {
-  echo "=== \$(date -Iseconds) from-blue curl green-private:3019 ==="
-  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${GREEN_PRIVATE}:3019/health" || echo curl_fail
-} 2>&1 | sudo tee -a "\$LOG" >/dev/null
-EOF
+  echo "=== $(date -Iseconds) from-blue curl green-private:3019 ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${GP}:3019/health" || echo curl_fail
+} 2>&1 | sudo tee -a "$LOG" >/dev/null
+CROSSCURL_B_TO_G_PRIV
   fi
   if [ -n "$GREEN_PUBLIC" ]; then
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash << EOF
+    _cross_curl_any=1
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash -s "$GREEN_PUBLIC" <<'CROSSCURL_B_TO_G_PUB'
 LOG=/opt/oscal/app/logs/deployment.log
+GP="$1"
 {
-  echo "=== \$(date -Iseconds) from-blue curl green-public:3019 ==="
-  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${GREEN_PUBLIC}:3019/health" || echo curl_fail
-} 2>&1 | sudo tee -a "\$LOG" >/dev/null
-EOF
+  echo "=== $(date -Iseconds) from-blue curl green-public:3019 ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${GP}:3019/health" || echo curl_fail
+} 2>&1 | sudo tee -a "$LOG" >/dev/null
+CROSSCURL_B_TO_G_PUB
   fi
-  # From Green toward Blue :3020
   if [ -n "$BLUE_PRIVATE" ]; then
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash << EOF
+    _cross_curl_any=1
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash -s "$BLUE_PRIVATE" <<'CROSSCURL_G_TO_B_PRIV'
 LOG=/opt/oscal/app/logs/deployment.log
+BP="$1"
 {
-  echo "=== \$(date -Iseconds) from-green curl blue-private:3020 ==="
-  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${BLUE_PRIVATE}:3020/health" || echo curl_fail
-} 2>&1 | sudo tee -a "\$LOG" >/dev/null
-EOF
+  echo "=== $(date -Iseconds) from-green curl blue-private:3020 ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${BP}:3020/health" || echo curl_fail
+} 2>&1 | sudo tee -a "$LOG" >/dev/null
+CROSSCURL_G_TO_B_PRIV
   fi
   if [ -n "$BLUE_PUBLIC" ]; then
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash << EOF
+    _cross_curl_any=1
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash -s "$BLUE_PUBLIC" <<'CROSSCURL_G_TO_B_PUB'
 LOG=/opt/oscal/app/logs/deployment.log
+BP="$1"
 {
-  echo "=== \$(date -Iseconds) from-green curl blue-public:3020 ==="
-  curl -sS -w "\\nhttp_code:%{http_code}\\n" --connect-timeout 5 "http://${BLUE_PUBLIC}:3020/health" || echo curl_fail
-} 2>&1 | sudo tee -a "\$LOG" >/dev/null
-EOF
+  echo "=== $(date -Iseconds) from-green curl blue-public:3020 ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${BP}:3020/health" || echo curl_fail
+} 2>&1 | sudo tee -a "$LOG" >/dev/null
+CROSSCURL_G_TO_B_PUB
   fi
-elif [ -n "$GREEN_IP" ] && [ -n "$BLUE_IP" ]; then
-  print_warning "Cross-instance curls skipped (missing private/public IPs from terraform output)."
+  if [ "$_cross_curl_any" = "0" ]; then
+    print_warning "Cross-instance curls skipped (terraform outputs for instance private/public IPs are empty)."
+  fi
 fi
 
 # ALB /health from both hosts (HTTPS if ALB_USE_HTTPS true; ALB SG allows 443 only)
@@ -759,7 +1037,7 @@ if [ "$HEALTH_FAIL" -gt 0 ] 2>/dev/null; then
   print_error "One or more instances failed health check. Fix and re-run deploy or check: sudo systemctl status oscal-reporter.service"
   exit 1
 fi
-print_info "ALB default route goes to Blue (3020). If you get 502 Bad Gateway, wait 1–2 min for target health checks then retry the ALB URL."
+print_info "ALB default listener uses weighted forward (Green 3019 / Blue 3020). Unhealthy targets get no traffic; host-header rules may bias one color; stickiness can pin your browser. If you see 502, wait for target health then retry."
 
 # Apply Terraform so any drift (e.g. ALB idle_timeout) is applied. Does not destroy or replace Green/Blue instances.
 print_info "Running terraform apply -auto-approve via run-with-aws-pass.sh..."

@@ -98,7 +98,7 @@ cp terraform.tfvars.example terraform.tfvars
 
 Edit `terraform.tfvars` and set at least:
 
-- `s3_logs_bucket_name` – globally unique bucket name (e.g. `ams-oscal-432417415905`; bucket subfolders: logs, config, users)
+- `s3_logs_bucket_name` – globally unique bucket name (e.g. `ams-oscal-442277170733`; bucket subfolders: logs, config, users)
 - `key_name` – existing EC2 key pair name in AWS (same region), or `null` to launch without SSH key
 
 Optionally set `default_allowed_cidr_blocks`, `alb_ssl_certificate_arn`, and `alb_blue_hostname` / `alb_green_hostname` for host-based Blue/Green routing (see below). Use **per-account** tfvars under `terraform/envs/<env>/` when using multiple AWS accounts.
@@ -258,7 +258,7 @@ If your organisation does not authorize `acm:RequestCertificate`, you can establ
 4. **If direct instance URLs work (e.g. http://&lt;green-ip&gt;:3019) but the ALB URL does not:** The ALB allows port 80 only from `default_allowed_cidr_blocks`. Add your current public IP (run `curl -s ifconfig.me` to see it) as `"x.x.x.x/32"` in `default_allowed_cidr_blocks` in tfvars, then run `terraform apply` again. Also check in the AWS Console that the ALB target groups show the ASG-registered targets as **Healthy** (Targets tab); if they are Unhealthy, the ALB returns 503.
 5. **Add a certificate later:** When your organisation provides an ACM certificate (same account/region), set `alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT:certificate/CERT_ID"` in tfvars, keep `create_alb_certificate = false`, and run `terraform apply` again. Terraform will add the HTTPS listener (443) and HTTP→HTTPS redirect; no ACM request is made.
 
-**Let's Encrypt and import into ACM:** If you use Let's Encrypt (e.g. when ACM *request* is not allowed but ACM *import* is), run the script `scripts/letsencrypt-acm-import.sh` from the repo root. It uses **manual DNS-01** validation: you add the TXT record in Route53 yourself (Route53 may be in a different AWS account; the script prompts you with exact steps). The script then imports the issued cert into ACM and can update your env's `terraform.tfvars` with the new cert ARN. Prerequisites: `certbot` installed, AWS CLI credentials for the ALB account (Pass entry `AWS/AMS_4403-STG` or env). See the script header for usage and environment variables.
+**Let's Encrypt and import into ACM:** If you use Let's Encrypt (e.g. when ACM *request* is not allowed but ACM *import* is), run the script `scripts/debug/letsencrypt-acm-import.sh` from the repo root. It uses **manual DNS-01** validation: you add the TXT record in Route53 yourself (Route53 may be in a different AWS account; the script prompts you with exact steps). The script then imports the issued cert into ACM and can update your env's `terraform.tfvars` with the new cert ARN. Prerequisites: `certbot` installed, AWS CLI credentials for the ALB account (Pass entry `AWS/AMS_4403-STG` or env). See the script header for usage and environment variables.
 
 #### HTTPS setup (ACM and HTTP-to-HTTPS redirect)
 
@@ -295,7 +295,7 @@ Stage-account PCL (Policy Compliance Layer) may flag the ALB for **port 443** an
 
    Terraform will see the drift (ALB currently has the PCL-applied SG) and update the ALB back to `aws_security_group.alb.id`. No other resources need to change.
 
-2. If you use a different env, set `TERRAFORM_DIR` to that env (e.g. `terraform/envs/aws4379`) and use the matching Pass entry (e.g. `AWS_PASS_ENTRY="AWS/AWS4379 Sandbox"`).
+2. If you use a different Terraform working directory, set `TERRAFORM_DIR` to that directory and use the matching Pass entry for that account.
 
 **Reducing recurrence:** Prefer **/32** entries in `default_allowed_cidr_blocks` (e.g. known VPN egress IPs) to avoid "broad CIDR" quarantine. Replace any /24 or larger ranges with /32 or the smallest range you actually need, then run `terraform apply`.
 
@@ -476,7 +476,7 @@ For other regions, set `oscal_ami_id` and `ollama_ami_id` explicitly in `terrafo
 
 #### "Not authorized for images: [ami-xxxxxxxx]"
 
-The Image Factory AMI may be in a different AWS account. Your account (e.g. 432417415905) must have **launch permission** for that AMI (owner shares the AMI with your account in EC2 → AMI → Permissions).
+The Image Factory AMI may be in a different AWS account. Your account (e.g. 442277170733) must have **launch permission** for that AMI (owner shares the AMI with your account in EC2 → AMI → Permissions).
 
 **Fix:** Set **`use_image_factory_ami = false`** in `terraform.tfvars` to **skip Image Factory** and use **only native Amazon Linux 2023**. No Image Factory access is required. After the Image Factory AMI is shared with your account for your region, set `use_image_factory_ami = true` (default) again and apply; the template will prefer Image Factory and fall back to native Amazon Linux only if needed.
 
@@ -527,7 +527,7 @@ Terraform will use `data "aws_ami"` with `most_recent = true` and the given owne
 S3 bucket names **must be lowercase**. Use the AMS prefix, e.g. in `terraform.tfvars`:
 
 ```hcl
-s3_logs_bucket_name = "ams-oscal-432417415905"
+s3_logs_bucket_name = "ams-oscal-442277170733"
 ```
 
 (Terraform will lowercase the value if you use uppercase.)
@@ -555,7 +555,7 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 | Terraform variables | `use_image_factory_ami` (default **true** = Image Factory Amazon Linux 2023 when in map, else native AL2023); `oscal_ami_id`, `ollama_ami_id` (null = use preference order) |
 | Add Image Factory Amazon Linux | In `terraform.tfvars` set `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (from Image Factory UI), or add entries in `terraform/image_factory_ami.tf` in `image_factory_amazon_linux_by_region`. Both Green/Blue and Ollama use it. |
 | Replace Ollama instance for new AMI | Set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/run-install-ollama-on-instance.sh`. |
-| Bucket naming | Lowercase; AMS prefix `ams-oscal-<account-id>` (e.g. `ams-oscal-432417415905`). Terraform lowercases the value. |
+| Bucket naming | Lowercase; AMS prefix `ams-oscal-<account-id>` (e.g. `ams-oscal-442277170733`). Terraform lowercases the value. |
 
 ---
 
@@ -1151,7 +1151,7 @@ Use a **strict layout** so config is never confused with app code:
 
 - **Full deploy (both instances):**  
   `./scripts/deploy-to-ec2.sh`  
-  (SSH key from Pass entry `AWS/OSCAL-AWS4379-SSH` or `SSH_KEY_FILE=/path/to/key.pem`.)
+  (SSH key from Pass entry `AWS/OSCAL-AWS4403-SSH` or `SSH_KEY_FILE=/path/to/key.pem`.)
 - **Single instance:**  
   `./scripts/deploy-to-ec2.sh --green-only <green_ip>`  
   `./scripts/deploy-to-ec2.sh --blue-only <blue_ip>`  
@@ -1172,14 +1172,14 @@ Use a **strict layout** so config is never confused with app code:
 
 ### 5. Cron and ec2_automation (Green vs Blue)
 
-- **ec2_automation.sh** backs up config, users, and logs to S3 and (optionally) updates the app from GitHub and restarts the service.
+- **ec2_automation.sh** backs up config, users, and logs to S3 and (optionally) syncs application code from **`s3://<bucket>/installer/`** (same prefix as `deploy-to-ec2.sh`), then `npm install` / frontend build / service restart. There is **no** scheduled Git pull; updates come from whatever was last uploaded to `installer/`.
 - **Green:** By default deploy installs a **cron** for user `svc_ams-oscal` every 10 minutes:  
   `*/10 * * * * ... /opt/oscal/scripts/ec2_automation.sh ...`  
-  **`ENABLE_GITHUB_UPDATE` defaults to false** in `ec2_automation.sh` and in deploy-generated `ec2_automation.env`, so cron does **not** pull from GitHub unless you opt in (set `ENABLE_GITHUB_UPDATE=true` on the instance, or deploy with **`DEPLOY_ENABLE_GITHUB_UPDATE=1`**).
-- **Blue:** By default deploy installs the **same** cron on Blue (`DEPLOY_BLUE_AUTO_UPDATE` defaults to `1`) so S3 backup and Pass ↔ Secrets Manager sync run on both instances (still no GitHub pull unless `DEPLOY_ENABLE_GITHUB_UPDATE=1`). Set **`DEPLOY_BLUE_AUTO_UPDATE=0`** when running deploy if you want Blue **manual-only** (no cron; deploy removes the ec2_automation line from Blue’s crontab).
+  **`ENABLE_S3_INSTALLER_UPDATE` defaults to true** in deploy-generated `ec2_automation.env` (`DEPLOY_ENABLE_S3_INSTALLER_UPDATE` defaults to **1**). When enabled, a **counter** in `/opt/oscal/data/.ec2_automation_installer_cycle` advances each run; a full `aws s3 sync` from `installer/` runs only every **`S3_CODE_UPDATE_EVERY_N_CYCLES`** runs (default **100** → about **1000 minutes** at a 10-minute cron). Set **`DEPLOY_ENABLE_S3_INSTALLER_UPDATE=0`** when deploying (or `ENABLE_S3_INSTALLER_UPDATE=false` on the instance) to skip scheduled code sync while keeping S3 backup and Pass ↔ Secrets Manager sync.
+- **Blue:** By default deploy installs the **same** cron on Blue (`DEPLOY_BLUE_AUTO_UPDATE` defaults to `1`) so S3 backup, optional installer sync, and Pass ↔ Secrets Manager sync run on both instances. Set **`DEPLOY_BLUE_AUTO_UPDATE=0`** when running deploy if you want Blue **manual-only** (no cron; deploy removes the ec2_automation line from Blue’s crontab).
 - **ec2_automation.env** (per instance):  
-  `S3_BUCKET`, `S3_CONFIG_PREFIX`, `S3_LOGS_PREFIX`, `DEPLOYMENT_ROLE`, `ENABLE_GITHUB_UPDATE`, and (when Terraform provides it) `PASS_SECRETS_SYNC_ENABLED`, `PASS_SECRETS_SYNC_SECRET_ARN`, `PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS` for Pass vault sync to AWS Secrets Manager.  
-  Deploy overwrites this file on each run; use **`DEPLOY_ENABLE_GITHUB_UPDATE=1`** when deploying if you want GitHub pull-on-cron enabled again.
+  `S3_BUCKET`, `S3_CONFIG_PREFIX`, `S3_LOGS_PREFIX`, `DEPLOYMENT_ROLE`, `AWS_DEFAULT_REGION`, `S3_INSTALLER_PREFIX` (usually `installer`), `S3_CODE_UPDATE_EVERY_N_CYCLES`, `ENABLE_S3_INSTALLER_UPDATE`, `S3_SYNC_CHOWN_USER` / `S3_SYNC_CHOWN_GROUP` (for `aws s3 sync` as `ec2-user`), and (when Terraform provides it) `PASS_SECRETS_SYNC_ENABLED`, `PASS_SECRETS_SYNC_SECRET_ARN`, `PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS` for Pass vault sync to AWS Secrets Manager.  
+  Deploy overwrites this file on each run.
 
 ---
 
@@ -1199,10 +1199,10 @@ Use a **strict layout** so config is never confused with app code:
   - SSH and run:  
     `sudo systemctl status oscal-reporter.service`  
     `sudo journalctl -u oscal-reporter.service -n 50 --no-pager`  
-  - From repo root, SSH to the instance (e.g. `./scripts/debug/ssh-ec2.sh blue`) and inspect the same items: `systemctl`, `journalctl`, disk, `sudo crontab -u svc_ams-oscal -l`, `/opt/oscal/scripts/ec2_automation.env`, `/opt/oscal/app/logs/`, and `curl -sf http://127.0.0.1:3020/health` (Blue) or port `3019` (Green).
+  - From repo root, SSH to the instance (e.g. `./scripts/ssh-ec2.sh blue`) and inspect the same items: `systemctl`, `journalctl`, disk, `sudo crontab -u svc_ams-oscal -l`, `/opt/oscal/scripts/ec2_automation.env`, `/opt/oscal/app/logs/`, and `curl -sf http://127.0.0.1:3020/health` (Blue) or port `3019` (Green).
 - **Blue only – disable cron and fix env now (one-off):**  
   `./scripts/debug/fix-blue-no-cron.sh`  
-  (or with explicit IP). This sets `ENABLE_GITHUB_UPDATE=false` and removes the ec2_automation cron on Blue.
+  (or with explicit IP). This sets `ENABLE_S3_INSTALLER_UPDATE=false` and removes the ec2_automation cron on Blue.
 - **Backup/restore verification:**  
   On the instance: confirm `sudo crontab -u svc_ams-oscal -l` includes `ec2_automation.sh`, check `/opt/oscal/scripts/ec2_automation.env` for `S3_BUCKET`, and run `/opt/oscal/scripts/ec2_automation.sh` once and confirm S3 objects update under `config/<role>/`.
 - **Pass vault on instances:**  
@@ -1217,9 +1217,9 @@ Use a **strict layout** so config is never confused with app code:
 | Script | Purpose |
 |--------|--------|
 | `scripts/deploy-to-ec2.sh` | Full deploy to Green/Blue: code, config seed, cron, systemd, health check. |
-| `scripts/ec2_automation.sh` | Backup to S3; optional git pull + build + restart. Runs from cron on Green by default. |
+| `scripts/ec2_automation.sh` | Backup to S3; optional sync from `installer/` + build + restart (every N cron runs). Runs from cron on Green by default. |
 | `scripts/reactivate-admin.sh` | Reactivate admin user in `users.json`. Use repo path or pass path; works with `/opt/oscal/data/users.json`. |
-| `scripts/debug/fix-blue-no-cron.sh` | One-off: set ENABLE_GITHUB_UPDATE=false and remove ec2_automation cron on Blue. |
+| `scripts/debug/fix-blue-no-cron.sh` | One-off: set ENABLE_S3_INSTALLER_UPDATE=false and remove ec2_automation cron on Blue. |
 | `scripts/debug/diagnose-okta-on-ec2.sh` | Diagnose Okta SSO on EC2 (config paths, tokens). |
 | `scripts/debug/check-ollama-connectivity.sh` | Check connectivity from Green/Blue to Ollama NLB. |
 | `scripts/debug/restore-blue-config.sh` | Copy config/users from Green to Blue (e.g. after replacing Blue). |
@@ -1232,7 +1232,7 @@ Use a **strict layout** so config is never confused with app code:
   `./terraform/run-with-aws-pass.sh output`  
   `./terraform/run-with-aws-pass.sh apply -auto-approve`
 - **Instance type:** Prefer **Graviton (t4g.small)**, then **AMD (t3a.small)**. Defaults in `terraform/variables.tf` are t4g.small and arm64; see [Terraform on AWS](#aws-terraform-for-oscal-ai-via-bedrock).
-- **SSH key:** Stored in Pass entry `AWS/OSCAL-AWS4379-SSH` or provided as `SSH_KEY_FILE`. Same key is used for Green, Blue, and (if used) Ollama instances.
+- **SSH key:** Stored in Pass entry `AWS/OSCAL-AWS4403-SSH` or provided as `SSH_KEY_FILE`. Same key is used for Green, Blue, and (if used) Ollama instances.
 - **SSH user:** `ec2-user` (Amazon Linux 2023 / RHEL). Set `SSH_USER` if different.
 - **Deploy** uses this key to rsync and run remote commands; it does not use Session Manager.
 
@@ -1258,7 +1258,7 @@ Use a **strict layout** so config is never confused with app code:
 - [ ] Config and users only in `/opt/oscal/data`; no duplicate under `/opt/oscal/app`.
 - [ ] App and cron run as `svc_ams-oscal`; Pass vault used for secrets.
 - [ ] Deploy via `./scripts/deploy-to-ec2.sh`; Terraform via `run-with-aws-pass.sh`.
-- [ ] Green and Blue: cron every 10 min by default (S3 backup + Pass/SM sync; GitHub pull off unless `DEPLOY_ENABLE_GITHUB_UPDATE=1`). Blue manual-only: deploy with `DEPLOY_BLUE_AUTO_UPDATE=0`.
+- [ ] Green and Blue: cron every 10 min by default (S3 backup + Pass/SM sync; optional S3 `installer/` sync every 100 runs unless `DEPLOY_ENABLE_S3_INSTALLER_UPDATE=0`). Blue manual-only: deploy with `DEPLOY_BLUE_AUTO_UPDATE=0`.
 - [ ] Health verified after deploy; troubleshoot with SSH, `journalctl`, S3 backup paths, and Pass as needed.
 - [ ] ALB idle timeout ≥ 300 s; SSH key from Pass or `SSH_KEY_FILE`.
 

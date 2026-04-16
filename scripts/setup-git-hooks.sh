@@ -5,8 +5,12 @@
 # This script configures Git to use custom hooks from .githooks directory
 # These hooks ensure version consistency and proper versioning workflow
 #
+# Run from anywhere: ./scripts/setup-git-hooks.sh (repo root is detected).
 
 set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 # Colors
 GREEN='\033[0;32m'
@@ -55,7 +59,7 @@ for hook in .githooks/*; do
   if [ -f "$hook" ]; then
     hook_name=$(basename "$hook")
     echo -e "  ${GREEN}✓${NC} $hook_name"
-    
+
     # Show what each hook does
     case "$hook_name" in
       pre-push)
@@ -77,7 +81,7 @@ echo "  • Version is incremented before pushing to Pre_Prod or main"
 echo "  • All package.json files have consistent versions"
 echo "  • Changelog is kept up to date"
 echo ""
-echo -e "${BLUE}💡 TIP:${NC} Use ${GREEN}./bump_version.sh${NC} to automatically handle version updates"
+echo -e "${BLUE}💡 TIP:${NC} Use ${GREEN}./scripts/bump_version.sh${NC} to automatically handle version updates"
 echo ""
 
 exit 0

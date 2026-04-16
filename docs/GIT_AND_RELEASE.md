@@ -28,19 +28,19 @@
 
 ```bash
 # Bug fix: 1.6.4 → 1.6.5
-./bump_version.sh patch "Fix: description"
+./scripts/bump_version.sh patch "Fix: description"
 
 # New feature: 1.6.4 → 1.7.0
-./bump_version.sh minor "Add: description"
+./scripts/bump_version.sh minor "Add: description"
 
 # Breaking change: 1.6.4 → 2.0.0
-./bump_version.sh major "Breaking: description"
+./scripts/bump_version.sh major "Breaking: description"
 ```
 
 #### One-Time Setup
 
 ```bash
-./setup-git-hooks.sh
+./scripts/setup-git-hooks.sh
 git config core.hooksPath   # Should output: .githooks
 ```
 
@@ -56,7 +56,7 @@ Development → Quality_Test → Pre_Prod → main
 
 ### Components
 
-- **bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`.
+- **scripts/bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`.
 - **.githooks/pre-push** – Validates version increment and package consistency before push to Pre_Prod/main.
 - **.github/workflows/version-check.yml** – Validates on push/PR to Pre_Prod and main; auto-creates tags on Pre_Prod.
 
@@ -65,7 +65,7 @@ Development → Quality_Test → Pre_Prod → main
 ### Workflow
 
 1. **Develop** on Development or Quality_Test; merge to Pre_Prod via PR.
-2. **On Pre_Prod**: Run `./bump_version.sh [patch|minor|major] "message"` and push. Pre-push hook and GitHub Actions validate.
+2. **On Pre_Prod**: Run `./scripts/bump_version.sh [patch|minor|major] "message"` and push. Pre-push hook and GitHub Actions validate.
 3. **Release**: Create PR Pre_Prod → main. After merge, release workflow runs (tag, GitHub Release).
 
 ---
@@ -73,7 +73,7 @@ Development → Quality_Test → Pre_Prod → main
 ### Release Checklist (Condensed)
 
 #### Pre-Release
-- [ ] Version bumped with `bump_version.sh`
+- [ ] Version bumped with `scripts/bump_version.sh`
 - [ ] All `package.json` versions match
 - [ ] `docs/CHANGELOG.md` has entry for new version
 - [ ] Tests pass: `cd backend && npm run test`
@@ -89,16 +89,16 @@ Development → Quality_Test → Pre_Prod → main
 
 #### Common Pitfalls
 - **Tar:** Use `tar --exclude=... -czf archive.tar.gz files` (exclude before file args).
-- **Version mismatch:** Always use `bump_version.sh`, never edit version by hand in one place only.
+- **Version mismatch:** Always use `scripts/bump_version.sh`, never edit version by hand in one place only.
 - **Wrong PR base:** Only Pre_Prod → main; never feature branch → main.
 
 ---
 
 ### Troubleshooting
 
-- **"Version has NOT been incremented"** – Run `./bump_version.sh patch "message"` then push again.
-- **"Version mismatch"** – Run `./bump_version.sh patch "Sync versions"` to align all package.json files.
-- **"Version not in CHANGELOG"** – Use `bump_version.sh`; it updates CHANGELOG. If you edited versions manually, run bump again with a message.
+- **"Version has NOT been incremented"** – Run `./scripts/bump_version.sh patch "message"` then push again.
+- **"Version mismatch"** – Run `./scripts/bump_version.sh patch "Sync versions"` to align all package.json files.
+- **"Version not in CHANGELOG"** – Use `scripts/bump_version.sh`; it updates CHANGELOG. If you edited versions manually, run bump again with a message.
 - **Bypass hook (not recommended):** `git push --no-verify` – validation will still run on GitHub Actions.
 
 ---
@@ -504,9 +504,9 @@ The project uses an automated version control workflow to ensure consistency. Se
 
 ```bash
 # Before creating PR to Pre_Prod or main, bump the version
-./bump_version.sh patch "Fix: Your bug fix description"     # 1.6.4 → 1.6.5
-./bump_version.sh minor "Add: Your new feature description"  # 1.6.4 → 1.7.0
-./bump_version.sh major "Breaking: Breaking change"          # 1.6.4 → 2.0.0
+./scripts/bump_version.sh patch "Fix: Your bug fix description"     # 1.6.4 → 1.6.5
+./scripts/bump_version.sh minor "Add: Your new feature description"  # 1.6.4 → 1.7.0
+./scripts/bump_version.sh major "Breaking: Breaking change"          # 1.6.4 → 2.0.0
 
 # The script automatically:
 # - Updates all package.json files (root, backend, frontend)
@@ -517,7 +517,7 @@ The project uses an automated version control workflow to ensure consistency. Se
 
 #### Version Enforcement
 
-**Local Pre-Push Hook** (install with `./setup-git-hooks.sh`):
+**Local Pre-Push Hook** (install with `./scripts/setup-git-hooks.sh`):
 - ✅ Validates version has been incremented
 - ✅ Checks package.json consistency
 - ✅ Verifies changelog is updated
@@ -1073,7 +1073,7 @@ We've created an easy-to-use script for account switching:
 
 ```bash
 # Run the account switcher
-./switch-github-account.sh
+./scripts/switch-github-account.sh
 ```
 
 This will show you:
@@ -1254,7 +1254,7 @@ git remote show [remote-name]
 #### 4. Use Account Switcher Script
 ```bash
 # Use the helper script to avoid mistakes
-./switch-github-account.sh
+./scripts/switch-github-account.sh
 ```
 
 ---
@@ -1276,7 +1276,7 @@ git remote show [remote-name]
 ✅ **Personal repository is PRIVATE and secure**  
 ✅ **Both accounts configured and working**  
 ✅ **Easy account switching available**  
-✅ **Helper script created**: `./switch-github-account.sh`  
+✅ **Helper script created**: `./scripts/switch-github-account.sh`  
 ✅ **EMU restriction understood and documented**  
 
 Your personal repository is protected and only accessible to you (keekar2022 account). Use account switching to work with both repositories seamlessly.
@@ -1343,7 +1343,7 @@ Allowed: Development, Quality_Test, or Pre_Prod → main
 
 Before creating PR to Pre_Prod or main:
 
-- [ ] **Version bumped** using `./bump_version.sh`
+- [ ] **Version bumped** using `./scripts/bump_version.sh`
 - [ ] **All package.json files** have matching versions
 - [ ] **CHANGELOG.md** updated with version entry
 - [ ] **Tests passing** locally (`npm run test`)

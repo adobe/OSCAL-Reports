@@ -12,10 +12,10 @@
 #   - Domain must be oscal.amsgovcloud.com.au (or set DOMAIN)
 #
 # Usage:
-#   ./scripts/letsencrypt-acm-import.sh
-#   LETSENCRYPT_EMAIL=you@example.com ./scripts/letsencrypt-acm-import.sh
-#   DOMAIN=oscal.amsgovcloud.com.au TFVARS=terraform/envs/aws4403/terraform.tfvars ./scripts/letsencrypt-acm-import.sh
-#   SKIP_TFVARS_UPDATE=1 ./scripts/letsencrypt-acm-import.sh   # only print ARN, do not edit tfvars
+#   ./scripts/debug/letsencrypt-acm-import.sh
+#   LETSENCRYPT_EMAIL=you@example.com ./scripts/debug/letsencrypt-acm-import.sh
+#   DOMAIN=oscal.amsgovcloud.com.au TFVARS=terraform/envs/aws4403/terraform.tfvars ./scripts/debug/letsencrypt-acm-import.sh
+#   SKIP_TFVARS_UPDATE=1 ./scripts/debug/letsencrypt-acm-import.sh   # only print ARN, do not edit tfvars
 #
 # Environment:
 #   DOMAIN                  FQDN for the certificate (default: oscal.amsgovcloud.com.au)
@@ -31,7 +31,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOMAIN="${DOMAIN:-oscal.amsgovcloud.com.au}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"

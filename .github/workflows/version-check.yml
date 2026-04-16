@@ -143,9 +143,9 @@ jobs:
           echo "⚠️  You must bump the version before merging to Pre_Prod or main!"
           echo ""
           echo "To fix this, run:"
-          echo "  ./bump_version.sh patch \"Your changelog message\""
-          echo "  ./bump_version.sh minor \"Your changelog message\""
-          echo "  ./bump_version.sh major \"Your changelog message\""
+          echo "  ./scripts/bump_version.sh patch \"Your changelog message\""
+          echo "  ./scripts/bump_version.sh minor \"Your changelog message\""
+          echo "  ./scripts/bump_version.sh major \"Your changelog message\""
           echo ""
           exit 1
       
@@ -174,13 +174,13 @@ jobs:
               body += '### How to fix:\n\n';
               body += '```bash\n';
               body += '# For bug fixes (1.6.4 → 1.6.5)\n';
-              body += './bump_version.sh patch "Fix: your bug fix description"\n\n';
+              body += './scripts/bump_version.sh patch "Fix: your bug fix description"\n\n';
               body += '# For new features (1.6.4 → 1.7.0)\n';
-              body += './bump_version.sh minor "Add: your new feature description"\n\n';
+              body += './scripts/bump_version.sh minor "Add: your new feature description"\n\n';
               body += '# For breaking changes (1.6.4 → 2.0.0)\n';
-              body += './bump_version.sh major "Breaking: your breaking change description"\n';
+              body += './scripts/bump_version.sh major "Breaking: your breaking change description"\n';
               body += '```\n\n';
-              body += 'The `bump_version.sh` script will:\n';
+              body += 'The `scripts/bump_version.sh` script will:\n';
               body += '- ✅ Update `package.json` (root, backend, frontend)\n';
               body += '- ✅ Update `docs/CHANGELOG.md`\n';
               body += '- ✅ Update validation rules\n';
@@ -268,7 +268,7 @@ jobs:
             echo "⚠️  Version ${{ steps.changelog.outputs.version }} not found in CHANGELOG.md"
           fi
           echo ""
-          echo "💡 TIP: Use ./bump_version.sh to automatically update all files"
+          echo "💡 TIP: Use ./scripts/bump_version.sh to automatically update all files"
           echo ""
           echo "This is a warning, not a failure. The check will continue."
       
@@ -292,9 +292,9 @@ jobs:
             }
             
             body += '\n### Recommendation:\n\n';
-            body += 'Use the `bump_version.sh` script to ensure all files are updated consistently:\n\n';
+            body += 'Use the `scripts/bump_version.sh` script to ensure all files are updated consistently:\n\n';
             body += '```bash\n';
-            body += './bump_version.sh patch "Your changelog message"\n';
+            body += './scripts/bump_version.sh patch "Your changelog message"\n';
             body += '```\n\n';
             body += 'This will automatically update:\n';
             body += '- All `package.json` files\n';
@@ -342,7 +342,7 @@ jobs:
             echo "All package.json files must have the same version."
             echo ""
             echo "To fix this, run:"
-            echo "  ./bump_version.sh patch \"Sync versions\""
+            echo "  ./scripts/bump_version.sh patch \"Sync versions\""
             echo ""
             exit 1
           fi
