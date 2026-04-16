@@ -6,7 +6,7 @@
 #   git config core.hooksPath .githooks
 #   chmod +x .githooks/pre-push
 #
-# Or run: ./setup-git-hooks.sh
+# Or run: ./scripts/setup-git-hooks.sh
 #
 
 set -e
@@ -112,9 +112,9 @@ while read local_ref local_sha remote_ref remote_sha; do
     echo ""
     echo "To fix this, run one of:" >&2
     echo ""
-    echo "  ${GREEN}./bump_version.sh patch \"Bug fix description\"${NC}" >&2
-    echo "  ${GREEN}./bump_version.sh minor \"New feature description\"${NC}" >&2
-    echo "  ${GREEN}./bump_version.sh major \"Breaking change description\"${NC}" >&2
+    echo "  ${GREEN}./scripts/bump_version.sh patch \"Bug fix description\"${NC}" >&2
+    echo "  ${GREEN}./scripts/bump_version.sh minor \"New feature description\"${NC}" >&2
+    echo "  ${GREEN}./scripts/bump_version.sh major \"Breaking change description\"${NC}" >&2
     echo ""
     exit 1
   elif [ $result -eq 1 ]; then
@@ -147,7 +147,7 @@ while read local_ref local_sha remote_ref remote_sha; do
     print_error "All package.json files must have the same version" >&2
     echo ""
     echo "To fix this, run:" >&2
-    echo "  ${GREEN}./bump_version.sh patch \"Sync versions\"${NC}" >&2
+    echo "  ${GREEN}./scripts/bump_version.sh patch \"Sync versions\"${NC}" >&2
     echo ""
     exit 1
   fi
@@ -159,7 +159,7 @@ while read local_ref local_sha remote_ref remote_sha; do
     if ! grep -q "\[$current_version\]" docs/CHANGELOG.md; then
       echo ""
       print_warning "Version $current_version not found in docs/CHANGELOG.md"
-      print_info "Consider updating the changelog with ./bump_version.sh"
+      print_info "Consider updating the changelog with ./scripts/bump_version.sh"
       echo ""
     else
       print_success "Changelog contains version $current_version"

@@ -1,6 +1,6 @@
-# IAM: OSCAL instance profile (S3 config/users/logs, SSM)
+# IAM: OSCAL instance profile (S3 config/users/logs/installer read, SSM)
 
-# OSCAL instance profile: S3 read/write for config, users, and logs (ec2_automation backup to config/green|blue, logs/green|blue)
+# OSCAL instance profile: S3 read/write for config, users, logs; read-only installer/* (deploy-to-ec2 S3-first app sync)
 resource "aws_iam_role" "oscal_instance" {
   name_prefix = "${var.project_name}-oscal-"
 
@@ -18,7 +18,8 @@ resource "aws_iam_role" "oscal_instance" {
   })
 }
 
-# OSCAL instance: S3 read/write for config, users, and logs (ec2_automation backup to config/green|blue, logs/green|blue)
+# OSCAL instance: S3 read/write for config, users, and logs (ec2_automation backup to config/green|blue, logs/green|blue);
+# read-only on installer/* (deploy-to-ec2.sh S3-first app sync; instances must not Put/Delete golden installer objects).
 resource "aws_iam_role_policy" "oscal_s3_config" {
   name_prefix = "${var.project_name}-oscal-"
   role        = aws_iam_role.oscal_instance.id
@@ -43,6 +44,15 @@ resource "aws_iam_role_policy" "oscal_s3_config" {
           "${aws_s3_bucket.logs.arn}/users/*",
           "${aws_s3_bucket.logs.arn}/logs/*"
         ]
+      },
+      {
+        Sid    = "InstallerReadOnly"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ]
+        Resource = "${aws_s3_bucket.logs.arn}/installer/*"
       }
     ]
   })

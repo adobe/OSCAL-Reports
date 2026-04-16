@@ -38,7 +38,7 @@ jobs:
             echo "❌ ERROR: Version mismatch detected!"
             echo "All package.json files must have the same version."
             echo ""
-            echo "To fix: Run ./bump_version.sh patch \"Sync versions\""
+            echo "To fix: Run ./scripts/bump_version.sh patch \"Sync versions\""
             exit 1
           fi
           

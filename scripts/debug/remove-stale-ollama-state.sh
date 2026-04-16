@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Remove Ollama-related resources from Terraform state (they were removed from .tf files).
-# Run from repo root with credentials for the SAME account as your state (e.g. AWS/AWS4379 Sandbox for account 432417415905):
-#   ./terraform/run-with-aws-pass.sh -chdir=terraform state list
-#   ./terraform/remove-stale-ollama-state.sh
-# Or from terraform dir after loading creds: ./remove-stale-ollama-state.sh
+# Run with credentials for the SAME account as your state (e.g. via terraform/run-with-aws-pass.sh):
+#   ./terraform/run-with-aws-pass.sh remove-stale-ollama-state
+# Or from repo root after cd to env dir and loading creds:
+#   TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./scripts/debug/remove-stale-ollama-state.sh
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-if [ -n "${TERRAFORM_DIR:-}" ]; then
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [ -n "${TERRAFORM_DIR:-}" ] && [ -d "$TERRAFORM_DIR" ]; then
   cd "$TERRAFORM_DIR"
+else
+  cd "${REPO_ROOT}/terraform/envs/aws4403"
 fi
 
 echo "Listing state resources that contain 'ollama' or 'ollama_activity'..."
