@@ -189,7 +189,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
                     <th>Fresh Deployment</th>
                     <th>Update Existing</th>
                     <th>Analyse Changes</th>
-                    <th>Multi Reports Comparision</th>
+                    <th>Multi Reports Comparison</th>
                   </tr>
                 </thead>
                 <tbody>
