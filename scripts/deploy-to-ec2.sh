@@ -867,8 +867,16 @@ GREEN_PRIVATE=$(tf_ip_trim "$(tf_output -raw oscal_green_private_ip 2>/dev/null 
 BLUE_PRIVATE=$(tf_ip_trim "$(tf_output -raw oscal_blue_private_ip 2>/dev/null || true)")
 GREEN_PUBLIC_TF=$(tf_ip_trim "$(tf_output -raw oscal_green_public_ip 2>/dev/null || true)")
 BLUE_PUBLIC_TF=$(tf_ip_trim "$(tf_output -raw oscal_blue_public_ip 2>/dev/null || true)")
-[ -n "${GREEN_PUBLIC_TF:-}" ] && GREEN_PUBLIC="$GREEN_PUBLIC_TF" || GREEN_PUBLIC="${GREEN_IP:-}"
-[ -n "${BLUE_PUBLIC_TF:-}" ] && BLUE_PUBLIC="$BLUE_PUBLIC_TF" || BLUE_PUBLIC="${BLUE_IP:-}"
+if [ -n "${GREEN_PUBLIC_TF:-}" ]; then
+  GREEN_PUBLIC="$GREEN_PUBLIC_TF"
+else
+  GREEN_PUBLIC="${GREEN_IP:-}"
+fi
+if [ -n "${BLUE_PUBLIC_TF:-}" ]; then
+  BLUE_PUBLIC="$BLUE_PUBLIC_TF"
+else
+  BLUE_PUBLIC="${BLUE_IP:-}"
+fi
 ALB_DNS=$(tf_output -raw alb_dns_name 2>/dev/null || true)
 # ALB SG allows 443 only; use HTTPS when ALB exists
 ALB_USE_HTTPS=$(tf_output -raw alb_use_https 2>/dev/null || echo "true")

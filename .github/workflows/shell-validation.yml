@@ -1,9 +1,16 @@
+# Runs only on the personal fork for fast feedback (ShellCheck, hooks, pass-sync tests).
+# AdobeManagedServices/OSCAL-Reports: skipped — avoids duplicate minutes and waiting on Adobe
+# for checks that should fail first on personal Development / Quality.
+#
+# Consolidated: one job runs ShellCheck + hooks + best-practices + dry-run (single checkout);
+# ec2_automation tests stay parallel on a second runner.
 name: Shell Script Validation
 
 on:
   pull_request:
     branches:
       - Development
+      - Quality
       - Quality_Test
       - Pre_Prod
       - main
@@ -14,6 +21,7 @@ on:
   push:
     branches:
       - Development
+      - Quality
       - Quality_Test
       - Pre_Prod
     paths:
@@ -22,180 +30,75 @@ on:
       - '.githooks/**'
 
 jobs:
-  ###############################################################################
-  # ShellCheck - Shell Script Linting
-  ###############################################################################
-  shellcheck:
-    name: ShellCheck Validation
+  shell-gates:
+    name: ShellCheck, hooks, best practices, dry-run
     runs-on: ubuntu-latest
-    
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
-      
+
       - name: 🐚 Install ShellCheck
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
           shellcheck --version
-      
+
       - name: 🔍 Find all shell scripts
         id: find_scripts
         run: |
-          echo "Finding all .sh files..."
           find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*" | tee shell_scripts.txt
-          
-          SCRIPT_COUNT=$(wc -l < shell_scripts.txt)
-          echo "Found $SCRIPT_COUNT shell scripts"
-          echo "script_count=$SCRIPT_COUNT" >> $GITHUB_OUTPUT
-      
+          echo "script_count=$(wc -l < shell_scripts.txt)" >> $GITHUB_OUTPUT
+
       - name: 🔍 Run ShellCheck on all scripts
         run: |
-          echo "Running ShellCheck on all shell scripts..."
-          
           FAILED=0
           PASSED=0
-          
           while IFS= read -r script; do
             [ -n "$script" ] || continue
-            echo ""
             echo "Checking: $script"
-            if shellcheck "$script"; then
-              echo "✅ $script passed"
-              PASSED=$((PASSED + 1))
-            else
-              echo "❌ $script failed"
-              FAILED=$((FAILED + 1))
-            fi
+            if shellcheck "$script"; then PASSED=$((PASSED + 1)); else FAILED=$((FAILED + 1)); fi
           done < shell_scripts.txt
-          
-          echo ""
-          echo "================================"
-          echo "ShellCheck Results:"
-          echo "  Passed: $PASSED"
-          echo "  Failed: $FAILED"
-          echo "================================"
-          
-          if [ $FAILED -gt 0 ]; then
-            echo "❌ $FAILED script(s) failed ShellCheck validation"
-            exit 1
-          fi
-          
-          echo "✅ All shell scripts passed ShellCheck validation"
-      
+          echo "Passed: $PASSED  Failed: $FAILED"
+          [ "$FAILED" -eq 0 ] || exit 1
+
       - name: 🔍 Check bash in workflow files
         run: |
-          echo "Checking inline bash scripts in workflow files..."
-          
-          # Extract and check bash scripts from workflow files
           for workflow in .github/workflows/*.yml; do
-            echo "Checking workflow: $workflow"
-            
-            # Look for common shell errors in run: blocks
-            if grep -n "cd .* &&" "$workflow" | grep -v "cd .* && cd"; then
-              echo "⚠️  WARNING: Found 'cd && command' pattern in $workflow"
-              echo "   Consider using 'working_directory' parameter instead"
+            if grep -n "cd .* &&" "$workflow" 2>/dev/null | grep -v "cd .* && cd"; then
+              echo "⚠️ WARNING: cd && pattern in $workflow"
             fi
           done
-          
-          echo "✅ Workflow inline script check complete"
 
-  ###############################################################################
-  # Validate Git Hooks
-  ###############################################################################
-  git-hooks-validation:
-    name: Git Hooks Validation
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🔍 Check git hooks syntax
+      - name: 🔍 Git hooks syntax
         run: |
           if [ -d ".githooks" ]; then
-            echo "Validating git hooks..."
-            
             for hook in .githooks/*; do
-              [ -f "$hook" ] || continue
-              [ -x "$hook" ] || continue
-              # Only validate files that are shell scripts (shebang or .sh)
-              if ! head -n 1 "$hook" | grep -q '^#!.*sh'; then
-                echo "Skipping non-shell hook: $hook"
-                continue
-              fi
-              echo "Checking: $hook"
-              bash -n "$hook" || {
-                echo "❌ Syntax error in $hook"
-                exit 1
-              }
-              echo "✅ $hook syntax valid"
+              [ -f "$hook" ] && [ -x "$hook" ] || continue
+              head -n 1 "$hook" | grep -q '^#!.*sh' || continue
+              bash -n "$hook" || exit 1
             done
-          else
-            echo "ℹ️  No .githooks directory found"
           fi
 
-  ###############################################################################
-  # Validate Shell Script Best Practices
-  ###############################################################################
-  shell-best-practices:
-    name: Shell Best Practices Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🔍 Check for common shell script issues
+      - name: 🔍 Shell best practices (warnings)
         run: |
-          echo "Checking for common shell script issues..."
-          
-          ISSUES=0
-          
-          # Check for missing shebang
-          echo "Checking for shebangs..."
           for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
             [ -n "$script" ] || continue
-            if ! head -n 1 "$script" | grep -q "^#!"; then
-              echo "⚠️  WARNING: $script missing shebang"
-              ISSUES=$((ISSUES + 1))
-            fi
+            head -n 1 "$script" | grep -q "^#!" || echo "⚠️ no shebang: $script"
           done
-          
-          # Check for 'set -e' usage
-          echo "Checking for error handling..."
-          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
-            [ -n "$script" ] || continue
-            if ! grep -q "set -e" "$script"; then
-              echo "ℹ️  INFO: $script doesn't use 'set -e' (consider adding for safety)"
-            fi
-          done
-          
-          # Check for executable permissions
-          echo "Checking executable permissions..."
-          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
-            [ -n "$script" ] || continue
-            if [ ! -x "$script" ]; then
-              echo "⚠️  WARNING: $script not executable"
-              echo "   Fix with: chmod +x $script"
-              ISSUES=$((ISSUES + 1))
-            fi
-          done
-          
-          if [ $ISSUES -gt 0 ]; then
-            echo ""
-            echo "⚠️  Found $ISSUES potential issues (warnings, not errors)"
-            echo "Consider addressing these for better script quality"
-          else
-            echo "✅ All scripts follow best practices"
-          fi
 
-  ###############################################################################
-  # ec2_automation Pass ↔ Secrets Manager sync (mocked integration tests)
-  ###############################################################################
+      - name: 🔍 Script dry-run (--help)
+        run: |
+          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
+            [[ "$script" == *".githooks"* ]] || [[ "$script" == *"docker-entrypoint"* ]] && continue
+            (bash "$script" --help 2>&1 || true) | grep -qi "usage\|help\|options" || true
+          done
+
   ec2-automation-pass-sync-tests:
     name: ec2_automation Pass / Secrets Manager sync tests
     runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -206,68 +109,20 @@ jobs:
           chmod +x test_cases/scripts/run-all-tests.sh
           ./test_cases/scripts/run-all-tests.sh --ec2-pass-sync-only
 
-  ###############################################################################
-  # Test Script Execution (Dry Run)
-  ###############################################################################
-  dry-run-test:
-    name: Script Dry Run Test
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-      
-      - name: 🔍 Test scripts with --help flag
-        run: |
-          echo "Testing scripts with --help flag where applicable..."
-          
-          for script in $(find . -type f -name "*.sh" ! -path "*/node_modules/*" ! -path "*/.git/*"); do
-            [ -n "$script" ] || continue
-            # Skip git hooks and certain system scripts
-            if [[ "$script" == *".githooks"* ]] || [[ "$script" == *"docker-entrypoint"* ]]; then
-              echo "Skipping system script: $script"
-              continue
-            fi
-            
-            echo "Testing: $script"
-            
-            # Try --help flag (many scripts support it); do not fail step if script exits non-zero
-            if (bash "$script" --help 2>&1 || true) | grep -q -i "usage\|help\|options"; then
-              echo "✅ $script has help documentation"
-            else
-              echo "ℹ️  $script doesn't have --help (not required)"
-            fi
-          done
-
-  ###############################################################################
-  # Validation Summary
-  ###############################################################################
   shell-validation-summary:
     name: Shell Validation Summary
     runs-on: ubuntu-latest
-    needs: [shellcheck, git-hooks-validation, shell-best-practices, ec2-automation-pass-sync-tests]
-    if: always()
-    
+    needs: [shell-gates, ec2-automation-pass-sync-tests]
+    if: always() && github.repository == 'keekar2022/OSCAL-Reports'
+
     steps:
       - name: 📊 Generate summary
         run: |
           echo "## 🐚 Shell Script Validation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All shell script validation checks completed." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Checks Performed:" >> $GITHUB_STEP_SUMMARY
-          echo "- ShellCheck linting: ${{ needs.shellcheck.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Git hooks validation: ${{ needs.git-hooks-validation.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Best practices check: ${{ needs.shell-best-practices.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Shell gates (ShellCheck + hooks + practices + dry-run): ${{ needs.shell-gates.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- ec2_automation Pass/Secrets sync tests: ${{ needs.ec2-automation-pass-sync-tests.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ needs.shellcheck.result }}" == "success" ]; then
-            echo "✅ **All critical validations passed!**" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.shell-gates.result }}" != "success" ]; then
+            echo "❌ **Shell gates failed.**" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **ShellCheck failed. Please fix the reported issues.**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Shell gates passed.**" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Resources:" >> $GITHUB_STEP_SUMMARY
-          echo "- [ShellCheck Documentation](https://www.shellcheck.net/)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Bash Best Practices](https://mywiki.wooledge.org/BashGuide/Practices)" >> $GITHUB_STEP_SUMMARY
