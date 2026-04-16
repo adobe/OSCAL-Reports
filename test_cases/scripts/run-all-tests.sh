@@ -369,7 +369,7 @@ check_version_consistency() {
         echo "Frontend version: $frontend_ver"
         
         if [ "$root_ver" != "$backend_ver" ] || [ "$root_ver" != "$frontend_ver" ]; then
-            log_finding "ERROR" "VER-001" "Version mismatch detected - run ./bump_version.sh to sync"
+            log_finding "ERROR" "VER-001" "Version mismatch detected - run ./scripts/bump_version.sh to sync"
             return 1
         else
             echo -e "${GREEN}✓${NC} All versions synchronized: $root_ver"

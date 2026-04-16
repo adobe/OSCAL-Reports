@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Diagnose Okta 401 on Blue and Green EC2 instances.
 # SSHs to each instance and checks: config (ssoConfig.okta), pass secret, env, logs.
-# Uses: Pass for SSH key (AWS/OSCAL-AWS4379-SSH); Terraform via terraform/run-with-aws-pass.sh for IPs.
+# Uses: Pass for SSH key (default AWS/OSCAL-AWS4403-SSH); Terraform via terraform/run-with-aws-pass.sh for IPs.
 #
 # Usage: ./scripts/debug/diagnose-okta-on-ec2.sh
 #        ./scripts/debug/diagnose-okta-on-ec2.sh --green-only
@@ -9,12 +9,12 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/ec2-common.sh disable=SC1091
-source "$SCRIPT_DIR/lib/ec2-common.sh"
+# shellcheck source=../lib/ec2-common.sh disable=SC1091
+source "$SCRIPT_DIR/../lib/ec2-common.sh"
 OKTA_PASS_ENTRY="${OSCAL_PASS_OKTA_SECRET:-OSCAL/sso-oauth-okta-client-secret}"
 
 resolve_ssh_key
-[ ! -x "$TERRAFORM_DIR/run-with-aws-pass.sh" ] && { echo "Error: $TERRAFORM_DIR/run-with-aws-pass.sh not executable. Use it for all Terraform commands." >&2; exit 1; }
+[ ! -x "$RUN_WITH_AWS_PASS" ] && { echo "Error: $RUN_WITH_AWS_PASS not found or not executable." >&2; exit 1; }
 
 GREEN_IP=""
 BLUE_IP=""

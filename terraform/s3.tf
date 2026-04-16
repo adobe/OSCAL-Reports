@@ -68,4 +68,13 @@ resource "aws_s3_object" "folder_config_blue" {
   etag         = md5("")
 }
 
+# deploy-to-ec2.sh uploads application bits to installer/; EC2 pulls with aws s3 sync (see iam.tf).
+resource "aws_s3_object" "folder_installer" {
+  bucket       = aws_s3_bucket.logs.id
+  key          = "installer/"
+  content_type = "application/x-directory"
+  content      = ""
+  etag         = md5("")
+}
+
 # On destroy: if the bucket is not empty, Terraform may fail with BucketNotEmpty. Empty the bucket in the AWS console (or use aws s3 rm) then run destroy again. Config/users/logs are backed up to S3 every 10 min by ec2_automation on the instances.
