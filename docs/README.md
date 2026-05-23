@@ -10,6 +10,7 @@
 
 | Document | Description | For |
 |----------|-------------|-----|
+| [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | One-page project purpose, stack, layout, and doc links | **Overview** |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, local, cloud overview) | **Start here** |
 | [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image (pull, run, CI/CD, troubleshooting) | Docker users |
 
@@ -41,7 +42,9 @@
 
 | Document | Description |
 |----------|-------------|
-| [AWS_OPERATIONS.md](AWS_OPERATIONS.md) | **Consolidated:** Terraform (ALB, Green/Blue, S3, RDS), Image Factory AMIs, Amazon Bedrock setup, EC2 hosting practices, cost estimates |
+| [AWS_OPERATIONS.md](AWS_OPERATIONS.md) | **Consolidated:** Terraform (ALB, Green/Blue ASG + EBS, S3 `installer/`/`config`/`logs`, RDS), Image Factory AMIs, Amazon Bedrock setup, EC2/S3 deploy scripts, cost estimates |
+| [CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md) | Cross-account Bedrock Phase 1: Account B IAM runbook, Terraform AssumeRole, validation (no app change) |
+| [TERRAFORM_NETWORK_PCL_AND_TAGS.md](TERRAFORM_NETWORK_PCL_AND_TAGS.md) | **Portability:** VPC segments, SG allow lists, Australia prefix lists, **ALB tags** (`Adobe:PublicPorts`, `Adobe:PortJustification`), PCL notes — copy to other projects |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platforms (Azure, AWS, GCP) |
 
 ---
@@ -102,6 +105,8 @@
 
 [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md)
 
+From repo root: **`npm run install:all`**, **`npm run dev`**, **`npm run lint:all`** (ESLint root + backend + frontend). Backend tests: **`cd backend && npm test`** (Jest config under `test_cases/backend/`).
+
 ### 🚀 DevOps / deployment
 
 [DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [AWS_OPERATIONS.md](AWS_OPERATIONS.md)
@@ -155,4 +160,4 @@ To regenerate merged files from historical sources (only if those sources exist 
 
 ---
 
-**Version:** 1.7.12 · **Last updated:** April 2026
+**Version:** 1.7.16 · **Last updated:** April 2026

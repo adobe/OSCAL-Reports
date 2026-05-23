@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0  
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.16**)  
 **Last Updated**: April 2026
 
 ---
@@ -466,12 +466,12 @@ App State:
 - **Output**: `{ suggestions: object, confidence: number, reasoning: array }`
 - **Processing**:
   1. Analyze control using pattern matching
-  2. Generate implementation text with Mistral 7B
+  2. Generate implementation text with the configured AI engine (Bedrock, Mistral API, or compatible HTTP backend)
   3. Combine pattern-matched fields with AI-generated text
   4. Return suggestions with confidence score
 
 #### GET `/api/mistral/status`
-- **Purpose**: Check Mistral 7B availability
+- **Purpose**: Check AI engine availability (Bedrock, Mistral API, Ollama URL, etc.)
 - **Output**: `{ available: boolean, provider: string, model: string }`
 - **Processing**:
   1. Check Mistral configuration
@@ -725,8 +725,8 @@ After setup, test the integration:
    # Check backend health
    curl http://localhost:3020/health
    
-   # Check AI (Bedrock/Mistral API configured in Settings)
-   curl http://localhost:11434/api/tags
+   # Optional: if using Ollama locally (aiConfig.url → :11434), list models
+   # curl http://localhost:11434/api/tags
    ```
 
 2. **Generate Suggestions:**
@@ -741,16 +741,16 @@ After setup, test the integration:
 ## Technology Stack
 
 ### Frontend
-- **React 18**: UI framework
-- **Vite**: Build tool and dev server
+- **React 19**: UI framework
+- **Vite 8**: Build tool and dev server
 - **Axios**: HTTP client
 - **CSS3**: Styling with custom properties
 - **Lucide React**: Icon library
 
 ### Backend
-- **Node.js 20**: Runtime environment
-- **Express**: Web framework
-- **Axios**: HTTP client for fetching catalogues
+- **Node.js 20+** (LTS): Runtime environment
+- **Express 5**: Web framework
+- **Axios**: HTTP client for fetching catalogues (server paths use `safeAxios` where required)
 - **ExcelJS**: Excel file generation and parsing
 - **PDFKit**: PDF generation
 - **UUID**: Unique identifier generation
@@ -758,9 +758,10 @@ After setup, test the integration:
 - **Crypto**: Node.js built-in cryptographic functions
 
 ### AI/ML
-- **Mistral 7B**: Large language model for text generation
-- **AWS Bedrock / Mistral API**: Cloud AI (no self-hosted LLM)
-- **Mistral AI API**: Cloud-based Mistral service
+- **Suggested controls / narrative**: Pattern matching plus LLM-backed text when AI is enabled
+- **AWS Bedrock** (Mistral, Amazon Titan, **Gemma** on Bedrock, etc. via SDK and configured model IDs)
+- **Mistral API** and optional **HTTP backends** (e.g. **Ollama** on a validated private URL) when set in **Settings → AI Integration** (`aiConfig`)
+- **PostgreSQL / RDS (optional)**: Custom and organisational fields; IAM DB auth supported on EC2 (see `docs/DATABASE_INTEGRATION.md`)
 
 ---
 

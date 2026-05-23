@@ -26,7 +26,7 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 - **Application Load Balancer** (ALB) with HTTP (and optional HTTPS) listeners
 - **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) each run as a **single-instance Auto Scaling Group** (Launch Template + ELB health checks) so a failed or terminated instance is replaced automatically. **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. With **direct run** (`run_oscal_via_docker = false`, default), optional **dedicated gp3 volumes** (`oscal_persistent_ebs_enabled = true`) are created per role, tagged for discovery, and mounted at **`/opt/oscal`** on boot (application tree and `/opt/oscal/data`); volumes are **not** deleted when the instance is replaced. **SSM** runs a periodic **Command** document on instances tagged `OSCAL_SSM_TARGET=true` (mount check, optional `aws s3 sync` from `oscal_ssm_release_s3_prefix` inside the logs bucket, `systemctl restart oscal-reporter` when the unit exists). Config and users on the instance are backed up to **S3** via **ec2_automation** every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead (no extra data volumes; ASGs still provide replacement).
 - **S3** bucket for **logs**, **config**, and **users** (subfolders: `logs/`, `config/green/`, `config/blue/`, `users/`). ec2_automation backs up instance data to S3 so it is retained if instances are replaced.
-- **Optional RDS PostgreSQL** (`create_rds_postgres = true` in tfvars): RDS is placed in **dedicated private subnets** (no route to the internet gateway, `map_public_ip_on_launch = false`, **`publicly_accessible = false`**), so it has **no public IP** and is reachable only on **private addresses** inside the VPC. The RDS security group allows PostgreSQL **only** from the OSCAL EC2 security group; you may add **`rds_additional_ingress_ipv4_cidr_blocks`** for extra **internal** ranges (e.g. a bastion subnet), never `0.0.0.0/0`. OSCAL instances egress to PostgreSQL **only toward those private subnet CIDRs**, not the open internet. **IAM database authentication**, master password in **Secrets Manager** (RDS-managed), app user `rds_iam_app_username` (default `oscal_app`). Green/Blue **user_data** bootstraps the IAM role and injects **systemd** `OSCAL_DATABASE_*`. The Node app uses `@aws-sdk/rds-signer` for tokens. **Tables** are created on first successful DB connection. **GUI:** Platform Settings → Database. **Cost:** RDS is billed separately; leave `create_rds_postgres = false` (default) if you use an external database. **`default_allowed_cidr_blocks`** still applies only to **ALB / SSH / direct app ports** (admin paths), not to exposing RDS on the public internet.
+- **Optional RDS PostgreSQL** (`create_rds_postgres = true` in tfvars): RDS is placed in **dedicated private subnets** (no route to the internet gateway, `map_public_ip_on_launch = false`, **`publicly_accessible = false`**), so it has **no public IP** and is reachable only on **private addresses** inside the VPC. The RDS security group allows PostgreSQL **only** from the OSCAL EC2 security group; you may add **`rds_additional_ingress_ipv4_cidr_blocks`** for extra **internal** ranges (e.g. a bastion subnet), never `0.0.0.0/0`. OSCAL instances egress to PostgreSQL **only toward those private subnet CIDRs**, not the open internet. **IAM database authentication**, admin password in **Secrets Manager** (RDS-managed), app user `rds_iam_app_username` (default `oscal_app`). Green/Blue **user_data** bootstraps the IAM role and injects **systemd** `OSCAL_DATABASE_*`. The Node app uses `@aws-sdk/rds-signer` for tokens. **Tables** are created on first successful DB connection. **GUI:** Platform Settings → Database. **Cost:** RDS is billed separately; leave `create_rds_postgres = false` (default) if you use an external database. **`default_allowed_cidr_blocks`** still applies only to **ALB / SSH / direct app ports** (admin paths), not to exposing RDS on the public internet.
 - **Tagging:** All resources receive `Project`, `Environment`, `ManagedBy`, and `Stack` (plus any `common_tags`). Filter by `Stack = <project_name>` in any account to find or remove the stack. See [terraform/README.md](../terraform/README.md) for add/remove lifecycle.
 
 Account ID is set via variable; no credentials are stored in code. For **Adobe/AMS** deployments, the template can use **Adobe Image Factory Amazon Linux 2023** (when configured) or **native Amazon Linux 2023**; see [Image Factory AMIs](#adobe-image-factory-ami-usage-for-terraform). **Per-account layouts** live under `terraform/envs/` (e.g. `envs/aws4403`); use `TERRAFORM_DIR` and `run-with-aws-pass.sh` for that env.
@@ -512,7 +512,7 @@ Leave `oscal_ami_id` and `ollama_ami_id` as **null**. Then run `terraform plan` 
 
 #### Optional: dynamic lookup (automation_framework style)
 
-If you prefer to resolve the **latest** Image Factory AMI by owner and name (e.g. to align with [automation_framework](https://git.corp.adobe.com/spartans/automation_framework/tree/master/terraform/templates)), set in `terraform.tfvars`:
+If you prefer to resolve the **latest** Image Factory AMI by owner and name (e.g. to align with [automation_framework](https://git.corp.adobe.com/spartans/automation_framework/tree/main/terraform/templates)), set in `terraform.tfvars`:
 
 ```hcl
 use_image_factory_ami          = true
@@ -801,6 +801,19 @@ If you see **Access Denied**, check IAM policy and that the correct access key i
 | **AWS SDK not installed** | Run `npm install @aws-sdk/client-bedrock-runtime` in the backend directory and restart. |
 
 For more on AI configuration and model families, see [AI integration – models and configuration](AI_INTEGRATION.md#ai-models-and-configuration) and [AI integration – architecture and security](AI_INTEGRATION.md#ai-integration-architecture-security-design).
+
+---
+
+### Cross-account Bedrock — Terraform and Account B runbook
+
+**Phase 1 (infrastructure, no app change):** Full step-by-step Account B CLI runbook, Terraform file list, tfvars, and validation commands are in **[CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md)**.
+
+After Terraform apply in Account A:
+
+- `terraform output oscal_ec2_iam_role_arn` — put in Account B role **trust** policy.
+- Enable `bedrock_cross_account_enabled`, `bedrock_account_id` (or `bedrock_assume_role_arn`), and `bedrock_external_id` in `terraform.tfvars`, then apply again.
+
+**Phase 2 (application, later):** Settings will keep **access keys** (today) and add **assume IAM role** with a user-supplied role ARN; see Phase 2 section in [CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md).
 
 ---
 

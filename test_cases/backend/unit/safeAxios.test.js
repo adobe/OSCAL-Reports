@@ -1,7 +1,9 @@
 /**
- * safeAxios — outbound header CRLF rejection (CWE-113)
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, it, expect } from '@jest/globals';
 import axiosRoot from 'axios';
 import axios, { validateOutgoingHeadersForCrlf } from '../../../backend/utils/safeAxios.js';

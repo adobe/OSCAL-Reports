@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Application Load Balancer: Green (3019) and Blue (3020) target groups
 # Health check: /health on 3019 (green) and 3020 (blue).
 # Traffic by User-Agent: Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11).
@@ -8,7 +13,7 @@
 
 locals {
   alb_use_https = (var.create_alb_certificate && var.alb_domain_name != null && var.alb_certificate_ready) || var.alb_ssl_certificate_arn != null
-  alb_cert_arn = var.create_alb_certificate && var.alb_domain_name != null ? aws_acm_certificate.alb[0].arn : var.alb_ssl_certificate_arn
+  alb_cert_arn  = var.create_alb_certificate && var.alb_domain_name != null ? aws_acm_certificate.alb[0].arn : var.alb_ssl_certificate_arn
 }
 
 # AMS PCL: ALB with port exposure must be tagged Adobe:PublicPorts (space-separated ports) and Adobe:PortJustification.
@@ -22,7 +27,7 @@ resource "aws_lb" "main" {
   idle_timeout       = 300
 
   tags = {
-    "Adobe:PublicPorts"     = local.alb_use_https ? "80 443" : "80"
+    "Adobe:PublicPorts"       = local.alb_use_https ? "80 443" : "80"
     "Adobe:PortJustification" = var.alb_port_justification
   }
 }

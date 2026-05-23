@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Local dev: restore users.json from backup (default), stop backend/frontend (3020, 3021),
 # clear caches, start backend + frontend via npm run dev.
 # Single script for restore + restart; for local laptop only. Not for Docker/EC2.

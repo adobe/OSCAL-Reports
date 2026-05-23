@@ -1,14 +1,9 @@
 /**
- * OSCAL File Integrity Service - FIPS 140-2 Compliant
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
- * 
- * Provides FIPS 140-2 compliant file integrity checking for OSCAL exports.
- * Uses SHA-256 (FIPS 180-4 approved) for cryptographic hashing.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import crypto from 'crypto';
 
 /**

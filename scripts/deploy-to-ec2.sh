@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Deploy OSCAL Report Generator to EC2 instances (direct run, no Docker).
 # deploy_one runs dnf upgrade -y or yum update -y on the instance first, then application steps (S3 sync, npm build, etc.).
 # Default / --blue / --both / --*-only: each instance runs aws s3 sync from s3://<bucket>/installer/ (no upload from this laptop).
@@ -246,17 +251,17 @@ get_terraform_ips() {
   return 1
 }
 
-# When Terraform defines RDS (rds_endpoint + rds_master_secret_arn), ensure IAM DB user, marker, and systemd
+# When Terraform defines RDS (rds_endpoint + rds_admin_secret_arn), ensure IAM DB user, marker, and systemd
 # drop-in 50-oscal-rds-env.conf match current outputs. Fixes instances that predated RDS or missed user_data.
 maybe_apply_rds_bootstrap() {
   local ip="$1"
   local key="$2"
   [ "${DEPLOY_RDS_BOOTSTRAP_SKIP:-0}" = "1" ] && return 0
 
-  local rds_host rds_port rds_db master_user secret_arn iam_user aws_reg force
+  local rds_host rds_port rds_db admin_user secret_arn iam_user aws_reg force
   rds_host=$(tf_output -raw rds_endpoint 2>/dev/null || true)
   rds_host=$(printf '%s' "$rds_host" | tr -d '\r\n')
-  secret_arn=$(tf_output -raw rds_master_secret_arn 2>/dev/null || true)
+  secret_arn=$(tf_output -raw rds_admin_secret_arn 2>/dev/null || true)
   secret_arn=$(printf '%s' "$secret_arn" | tr -d '\r\n')
   if [ -z "$rds_host" ] || [ "$rds_host" = "null" ] || [ -z "$secret_arn" ] || [ "$secret_arn" = "null" ]; then
     return 0
@@ -275,10 +280,10 @@ maybe_apply_rds_bootstrap() {
     return 0
   fi
 
-  master_user=$(tf_output -raw rds_master_username 2>/dev/null || true)
-  master_user=$(printf '%s' "$master_user" | tr -d '\r\n')
-  if [ -z "$master_user" ] || [ "$master_user" = "null" ]; then
-    master_user="oscalmaster"
+  admin_user=$(tf_output -raw rds_admin_username 2>/dev/null || true)
+  admin_user=$(printf '%s' "$admin_user" | tr -d '\r\n')
+  if [ -z "$admin_user" ] || [ "$admin_user" = "null" ]; then
+    admin_user="oscalmaster"
   fi
 
   iam_user=$(tf_output -raw rds_iam_app_username 2>/dev/null || true)
@@ -309,7 +314,7 @@ maybe_apply_rds_bootstrap() {
 
   q() { printf '%q' "$1"; }
   if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=120 "${SSH_USER}@${ip}" \
-    "sudo env AWS_DEFAULT_REGION=$(q "$aws_reg") RDS_HOST=$(q "$rds_host") RDS_PORT=$(q "$rds_port") DB_NAME=$(q "$rds_db") MASTER_USER=$(q "$master_user") SECRET_ARN=$(q "$secret_arn") IAM_USER=$(q "$iam_user") FORCE=$(q "$force") bash /tmp/rds-bootstrap-on-instance.sh"; then
+    "sudo env AWS_DEFAULT_REGION=$(q "$aws_reg") RDS_HOST=$(q "$rds_host") RDS_PORT=$(q "$rds_port") DB_NAME=$(q "$rds_db") ADMIN_USER=$(q "$admin_user") SECRET_ARN=$(q "$secret_arn") IAM_USER=$(q "$iam_user") FORCE=$(q "$force") bash /tmp/rds-bootstrap-on-instance.sh"; then
     print_error "RDS bootstrap failed on ${ip}. Check IAM (Secrets Manager + rds-db:connect), SG RDS access, and terraform outputs."
     return 1
   fi

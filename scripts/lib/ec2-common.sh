@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Shared EC2 utilities: SSH key resolution, Terraform IP lookup, AWS credentials from Pass.
 # Source from scripts under scripts/ or scripts/debug/:
 #   source "$SCRIPT_DIR/lib/ec2-common.sh"                    # when SCRIPT_DIR is scripts/

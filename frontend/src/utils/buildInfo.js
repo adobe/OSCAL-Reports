@@ -1,8 +1,9 @@
 /**
- * Build Information Utility
- * Provides version and build details for the application
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 // Import version from package.json
 import packageJson from '../../package.json';
 

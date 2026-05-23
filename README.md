@@ -61,7 +61,7 @@ OSCAL_Reports/
 │   └── ...
 ├── test_cases/              # Backend tests (Jest)
 ├── docs/                    # Documentation
-├── package.json             # Root scripts (dev, install:all, lint)
+├── package.json             # Root scripts (dev, install:all, lint, lint:all, probe-bedrock-gemma)
 ├── docker-compose.yml       # Single service (no Ollama)
 └── Dockerfile
 ```
@@ -85,6 +85,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 | Topic | Document |
 |-------|----------|
+| **Summary** | [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) – purpose, stack, layout |
 | **Start** | [docs/README.md](docs/README.md) – doc index |
 | **Deploy** | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 | **Architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
@@ -97,8 +98,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.14 (see root `package.json`) · **Last updated:** April 2026
+**Version:** 1.7.16 (see root `package.json`) · **Last updated:** April 2026
