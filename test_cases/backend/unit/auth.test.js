@@ -1,8 +1,9 @@
 /**
- * Authentication Unit Tests
- * Location: tests/backend/unit/auth.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect } from '@jest/globals';
 import crypto from 'crypto';
 

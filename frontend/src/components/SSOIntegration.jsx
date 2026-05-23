@@ -1,8 +1,9 @@
 /**
- * SSO Integration Component - Configure SAML and OAuth providers
- * Platform Admin only
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect, useRef } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';

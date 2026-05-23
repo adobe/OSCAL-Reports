@@ -1,14 +1,9 @@
 /**
- * OSCAL SOA/SSP/CCM Generator - Backend Server
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
- * 
- * Main Express server for the OSCAL Report Generator application.
- * Provides API endpoints for catalog fetching, SSP generation, and various export formats.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
@@ -88,7 +83,7 @@ import {
   cleanupOldStates,
   getStateStats
 } from './debugStateManager.js';
-import { isEmailBlacklisted, addToBlacklist } from './auth/emailBlacklist.js';
+import { isEmailBlocklisted, addToBlocklist } from './auth/emailBlocklist.js';
 import { registrationRateLimiter } from './middleware/rateLimiter.js';
 import { sendUserCredentials } from './messagingService.js';
 import { scheduleUserCleanup } from './jobs/userCleanup.js';
@@ -663,16 +658,16 @@ app.post('/api/auth/self-register', registrationRateLimiter, async (req, res) =>
       });
     }
     
-    // 2. Check if email is blacklisted (45-day cooldown)
-    const blacklistEntry = await isEmailBlacklisted(email);
-    if (blacklistEntry) {
-      const daysRemaining = Math.ceil((new Date(blacklistEntry.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
-      console.log(`⚠️ Email is blacklisted: ${email} (expires in ${daysRemaining} days)`);
+    // 2. Check if email is blocklisted (45-day cooldown)
+    const blocklistEntry = await isEmailBlocklisted(email);
+    if (blocklistEntry) {
+      const daysRemaining = Math.ceil((new Date(blocklistEntry.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
+      console.log(`⚠️ Email is blocklisted: ${email} (expires in ${daysRemaining} days)`);
       return res.status(403).json({
         success: false,
         error: 'Email not available',
         message: `This email address cannot be used for registration. It will become available in ${daysRemaining} days.`,
-        reason: blacklistEntry.reason
+        reason: blocklistEntry.reason
       });
     }
     
@@ -2949,10 +2944,10 @@ app.post('/api/database/test-connection', authenticate, authorize(PERMISSIONS.ED
       const u = String(dbConfig.user || '').toLowerCase();
       if (u === 'oscal_app') {
         clientMessage +=
-          ' User oscal_app is for IAM database authentication only (no PostgreSQL password). Use "AWS RDS IAM database authentication" or test with the RDS master user (default oscalmaster) and its Secrets Manager password.';
+          ' User oscal_app is for IAM database authentication only (no PostgreSQL password). Use "AWS RDS IAM database authentication" or test with the RDS admin user (default oscalmaster) and its Secrets Manager password.';
       } else {
         clientMessage +=
-          ' Confirm database user and password (RDS master password is in Secrets Manager when manage_master_user_password is enabled). For RDS, set SSL mode to Require.';
+          ' Confirm database user and password (RDS admin password is in Secrets Manager when manage_master_user_password is enabled). For RDS, set SSL mode to Require.';
       }
     } else if (pwFail && dbConfig?.authMode === 'iam') {
       clientMessage +=

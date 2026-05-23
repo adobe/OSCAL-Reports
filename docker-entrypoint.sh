@@ -1,12 +1,8 @@
 #!/bin/sh
-# OSCAL Report Generator - Docker Entrypoint Script
-# 
-# This script ensures persistent configuration and user data across container updates.
-# It initializes default files only if they don't exist in the mounted volume.
-#
-# Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+# Copyright 2025 Adobe. All rights reserved.
 # Copyright (c) 2025 Mukesh Kesharwani
-# License: GPL-3.0-or-later
+#
+# Licensed under the MIT License. See LICENSE file for details.
 
 set -e
 

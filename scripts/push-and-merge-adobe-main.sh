@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Push Development to Adobe remote and merge into main on Adobe repo.
 # Run this on your machine where the Adobe SSH key is configured (e.g. github.com-adobe).
 # Usage: ./scripts/push-and-merge-adobe-main.sh

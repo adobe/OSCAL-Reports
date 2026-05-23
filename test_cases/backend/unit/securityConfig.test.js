@@ -1,11 +1,9 @@
 /**
- * Security Configuration Tests
- * Tests the security configuration settings including CSRF exemptions
- * 
- * Version: 1.6.5+
- * Location: test_cases/backend/unit/securityConfig.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect } from '@jest/globals';
 import { 
   SECURITY_CONFIG, 
@@ -173,7 +171,7 @@ describe('Security Configuration Tests', () => {
     test('should document rationale for CSRF exemptions', () => {
       // This test ensures the security decisions are properly documented
       const documentation = {
-        version: '1.7.12',
+        version: '1.7.16',
         decision: 'Exempt all /api/ endpoints from CSRF protection',
         rationale: [
           'Protected endpoints use Bearer token authentication (immune to CSRF)',
@@ -190,7 +188,7 @@ describe('Security Configuration Tests', () => {
         ],
       };
 
-      expect(documentation.version).toBe('1.7.12');
+      expect(documentation.version).toBe('1.7.16');
       expect(documentation.rationale.length).toBeGreaterThan(0);
       expect(documentation.remainingProtections.length).toBeGreaterThanOrEqual(5);
     });

@@ -1,4 +1,9 @@
 #!/bin/bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Consolidate Users Between Blue and Green Deployments
 # Author: Mukesh Kesharwani
 # Version: 2.0.2

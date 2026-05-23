@@ -1,6 +1,6 @@
 {
   "name": "oscal-backend-tests",
-  "version": "1.7.12",
+  "version": "1.7.16",
   "type": "module",
   "description": "Test suite for OSCAL Report Generator Backend - v1.6.5 Security Updates",
   "scripts": {
@@ -23,5 +23,5 @@
     "authentication"
   ],
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
-  "license": "GPL-3.0-or-later"
+  "license": "MIT"
 }

@@ -1,14 +1,9 @@
 /**
- * Sync export data (controls + system info) to the connected database when Database Integration is enabled.
- * Called on every export (SSP, PDF, Excel, CCM, SAR). If DB is enabled but unreachable, throws so caller can return 503.
- * Control rows are namespaced by system (scope_id = systemScopeId::controlId) so data from different systems is not comingled.
- * Every record includes systemId and systemName in the payload for easy identification.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { getResolvedConfig } from '../configManager.js';
 import { connectPgClient, ensureExtendedDataTable } from './dbClient.js';
 

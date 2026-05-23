@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # IAM: OSCAL instance profile (S3 config/users/logs/installer read, SSM)
 
 # OSCAL instance profile: S3 read/write for config, users, logs; read-only installer/* (deploy-to-ec2 S3-first app sync)
@@ -141,7 +146,7 @@ resource "aws_iam_instance_profile" "oscal" {
   role        = aws_iam_role.oscal_instance.name
 }
 
-# RDS: read master secret for EC2 bootstrap; IAM DB auth token for application connections
+# RDS: read admin secret for EC2 bootstrap; IAM DB auth token for application connections
 resource "aws_iam_role_policy" "oscal_rds" {
   count = var.create_rds_postgres ? 1 : 0
 

@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # VPC and networking for OSCAL
 # Public subnets for ALB and EC2 (diagram does not require private subnets)
 
@@ -17,7 +22,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch  = true
+  map_public_ip_on_launch = true
 }
 
 resource "aws_route_table" "public" {

@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # OSCAL Green/Blue: Auto Scaling Groups + Launch Templates + optional persistent gp3 volumes.
 # Replaces standalone aws_instance (resilience: ASG replaces terminated/unhealthy instances).
 # See docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock.
