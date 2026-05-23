@@ -1,11 +1,9 @@
 /**
- * OSCAL SOA/SSP/CCM Generator - Main Entry Point
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'

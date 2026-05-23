@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Terraform variables for OSCAL on AWS (AI via AWS Bedrock)
 # No credentials or secrets; use environment or terraform.tfvars (gitignored)
 
@@ -272,14 +277,14 @@ variable "rds_database_name" {
   }
 }
 
-variable "rds_master_username" {
-  description = "Master username for RDS (Secrets Manager holds password). Not the IAM app user."
+variable "rds_admin_username" {
+  description = "Admin username for RDS (Secrets Manager holds password). Not the IAM app user."
   type        = string
   default     = "oscalmaster"
 
   validation {
-    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,15}$", var.rds_master_username))
-    error_message = "rds_master_username must be 1–16 alphanumeric characters (RDS constraint)."
+    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_]{0,15}$", var.rds_admin_username))
+    error_message = "rds_admin_username must be 1–16 alphanumeric characters (RDS constraint)."
   }
 }
 
@@ -329,6 +334,51 @@ variable "rds_additional_ingress_ipv4_cidr_blocks" {
 # Pass vault ↔ Secrets Manager (ec2_automation); single bundle secret + instance IAM
 variable "oscal_pass_secrets_sync_enabled" {
   description = "When true, create aws_secretsmanager_secret for OSCAL Pass sync and grant EC2 instance role Get/Put/Describe on it. Set false to skip secret creation (e.g. account not ready)."
+  type        = bool
+  default     = true
+}
+
+
+# Cross-account Bedrock (Account B hosts models; Account A EC2 assumes role — docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md)
+variable "bedrock_cross_account_enabled" {
+  description = "When true, grant OSCAL EC2 instance role sts:AssumeRole on the Bedrock account IAM role (requires bedrock_external_id and role ARN or bedrock_account_id)."
+  type        = bool
+  default     = false
+}
+
+variable "bedrock_account_id" {
+  description = "AWS account ID where Bedrock is enabled (Account B). Used to build bedrock_assume_role_arn when bedrock_assume_role_arn is empty."
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_assume_role_name" {
+  description = "IAM role name in bedrock_account_id that OSCAL EC2 assumes (e.g. OSCAL-BedrockCrossAccount)."
+  type        = string
+  default     = "OSCAL-BedrockCrossAccount"
+}
+
+variable "bedrock_assume_role_arn" {
+  description = "Full ARN of Bedrock cross-account role. If set, overrides bedrock_account_id + bedrock_assume_role_name."
+  type        = string
+  default     = ""
+}
+
+variable "bedrock_external_id" {
+  description = "ExternalId for AssumeRole (must match Account B role trust policy). Set in terraform.tfvars only."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "bedrock_runtime_vpc_endpoint_enabled" {
+  description = "Create interface VPC endpoint for com.amazonaws.<region>.bedrock-runtime (optional; public subnets usually use IGW)."
+  type        = bool
+  default     = false
+}
+
+variable "bedrock_inject_systemd_env" {
+  description = "When cross-account Bedrock is configured, write BEDROCK_ASSUME_ROLE_ARN and BEDROCK_EXTERNAL_ID into oscal-reporter systemd drop-in (Phase 2 app)."
   type        = bool
   default     = true
 }

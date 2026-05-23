@@ -2,7 +2,7 @@
 
 **OSCAL Report Generator: a web application for generating compliance documentation from OSCAL catalogs. This guide covers Docker Hub publishing, setup, and usage.**
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/keekar/oscal_reports)](https://hub.docker.com/r/keekar/oscal_reports)
 
 ---
@@ -118,7 +118,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 
 **Steps**
 
-1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.7.12`), then pushes that tag and also `latest`:
+1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.7.16`), then pushes that tag and also `latest`:
 
    ```bash
    DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
@@ -127,7 +127,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 2. To use an explicit tag (e.g. a specific version or `latest` only):
 
    ```bash
-   ./scripts/build-and-push-dockerhub.sh v1.7.12
+   ./scripts/build-and-push-dockerhub.sh v1.7.16
    ```
 
 3. If your Docker Hub username is not `keekar`, set it in the environment:
@@ -137,7 +137,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
    ./scripts/build-and-push-dockerhub.sh
    ```
 
-The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.7.12`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
+The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.7.16`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
 
 ---
 
@@ -847,11 +847,11 @@ docker pull --platform linux/amd64 keekar/oscal_reports:latest
 docker pull --platform linux/arm64 keekar/oscal_reports:latest
 ```
 
-#### Issue: Some Tags Work, Others Don't (e.g. 1.7 / 1.7.8 work; v1.7.12 / latest don't)
+#### Issue: Some Tags Work, Others Don't (e.g. 1.7 / 1.7.8 work; v1.7.16 / latest don't)
 
 **Cause**: Tags built with the **GitHub workflow** are **multi-platform** (linux/amd64 and linux/arm64), so they run on both Intel/AMD and Apple Silicon. Tags built with a **local script** using plain `docker build` are **single-platform** (e.g. arm64 only when built on a Mac M1/M4). When you pull a single-platform image on a different architecture (e.g. amd64 server), it can fail or use slow emulation.
 
-**Solution**: Use the updated **`scripts/build-and-push-dockerhub.sh`**, which uses **Docker Buildx** to build for both `linux/amd64` and `linux/arm64`, matching the GitHub workflow. Rebuild and push the failing tag (e.g. `./scripts/build-and-push-dockerhub.sh v1.7.12`); the new image will work on both architectures. See [Local build and publish](#local-build-and-publish) in this guide.
+**Solution**: Use the updated **`scripts/build-and-push-dockerhub.sh`**, which uses **Docker Buildx** to build for both `linux/amd64` and `linux/arm64`, matching the GitHub workflow. Rebuild and push the failing tag (e.g. `./scripts/build-and-push-dockerhub.sh v1.7.16`); the new image will work on both architectures. See [Local build and publish](#local-build-and-publish) in this guide.
 
 #### Issue: Container Won't Start
 
@@ -1082,7 +1082,7 @@ Contributions are welcome. Visit the [GitHub repository](https://github.com/keek
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE) for details.
+This project is licensed under the **MIT License**. See [LICENSE](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE) for details.
 
 ---
 
@@ -1104,4 +1104,4 @@ This project is licensed under the **GNU General Public License v3.0** (GPL-3.0)
 
 **Last Updated**: April 2026  
 **Maintained By**: Mukesh Kesharwani  
-**Version**: 1.7.12
+**Version**: 1.7.16

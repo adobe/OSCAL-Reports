@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Fast-forward local Pre_Prod to match personal repo branch Quality (read-only fetch).
 # Intended for GitHub Actions on AdobeManagedServices/OSCAL-Reports (one-click sync).
 # Requires: run from repo root with Pre_Prod checked out; PERSONAL_REPO_READ_TOKEN set.

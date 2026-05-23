@@ -1,12 +1,9 @@
 /**
- * Resolve _pass pointers from config via `pass show` and insert secrets into pass.
- * Env: PASSWORD_STORE_DIR (pass store location), OSCAL_PASS_DISABLED=1 (skip resolution).
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { execSync, spawnSync } from 'child_process';
 
 const PASS_DISABLED = process.env.OSCAL_PASS_DISABLED === '1' || process.env.OSCAL_PASS_DISABLED === 'true';

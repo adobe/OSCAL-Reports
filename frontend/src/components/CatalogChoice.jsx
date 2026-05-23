@@ -1,11 +1,9 @@
 /**
- * CatalogChoice Component - Choose between keeping current catalog or updating
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState } from 'react';
 import './CatalogChoice.css';
 
@@ -66,7 +64,8 @@ const SAMPLE_CATALOGUES = [
   },
   {
     name: 'Singapore IM8 Reform',
-    url: 'https://raw.githubusercontent.com/GovTechSG/tech-standards/refs/heads/master/catalogs/im8-reform.json',
+    // Upstream default branch name (GovTechSG/tech-standards)
+    url: 'https://raw.githubusercontent.com/GovTechSG/tech-standards/refs/heads/main/catalogs/im8-reform.json',
     description: 'Singapore Government IM8 Reform catalog',
     classification: 'moderate'
   },

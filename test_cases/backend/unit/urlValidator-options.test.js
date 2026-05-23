@@ -1,15 +1,9 @@
 /**
- * URL Validator Options Tests
- * Tests the allowPrivateIPs and allowLocalhost options for AI Integration
- * 
- * Added in v1.6.5 to support AI services running on private networks
- * 
- * Architecture Decision: AI services (e.g. local or private URL) run on private networks
- * The urlValidator supports options to allow private IPs for specific use cases
- * 
- * Location: test_cases/backend/unit/urlValidator-options.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect } from '@jest/globals';
 import { validateUrl, validateUrlSync } from '../../../backend/utils/urlValidator.js';
 import { SECURITY_CONFIG } from '../../../backend/utils/securityConfig.js';

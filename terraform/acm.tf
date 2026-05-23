@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # ACM certificate for ALB HTTPS (when create_alb_certificate = true)
 # Terraform requests the certificate; you add the DNS validation CNAME records and the domain→ALB record manually in Route53.
 

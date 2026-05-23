@@ -1034,7 +1034,7 @@ For issues related to:
 
 **Version**: 1.4.2  
 **Last Updated**: April 2026  
-**License**: GPL-3.0-or-later
+**License**: MIT
 
 ---
 

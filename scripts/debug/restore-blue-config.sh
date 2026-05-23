@@ -1,15 +1,8 @@
 #!/bin/bash
-# Restore Blue instance config and users after accidental rollback/wipe
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
 #
-# Run this ON the host where Blue runs (e.g. 192.168.1.200), from the Blue
-# deployment directory (the repo root that contains scripts/ and data-blue/).
-#
-# Usage:
-#   ./scripts/debug/restore-blue-config.sh --from-backup   # Restore from latest deploy backup
-#   ./scripts/debug/restore-blue-config.sh --from-green    # Copy config/users from Green to Blue
-#
-# Author: OSCAL Reports project
-# License: GPL-3.0-or-later
+# Licensed under the MIT License. See LICENSE file for details.
 
 set -e
 

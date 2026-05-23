@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Outputs for OSCAL deployment (AI via AWS Bedrock)
 
 data "aws_instances" "oscal_green_members" {
@@ -40,7 +45,7 @@ output "aws_region" {
 }
 
 output "oscal_ec2_iam_role_name" {
-  description = "IAM role attached to OSCAL EC2 (Green/Blue). Inline policies: S3, SSM, optional EBS/SSM-release; when RDS is enabled, Secrets Manager read for RDS master + rds-db:connect for IAM DB auth."
+  description = "IAM role attached to OSCAL EC2 (Green/Blue). Inline policies: S3, SSM, optional EBS/SSM-release; when RDS is enabled, Secrets Manager read for RDS admin + rds-db:connect for IAM DB auth."
   value       = aws_iam_role.oscal_instance.name
 }
 
@@ -123,7 +128,7 @@ output "oscal_green_private_ip" {
 
 output "oscal_green_public_ip" {
   description = "Public IP of OSCAL Green (for SSH/deploy when the instance has a public IP)"
-  value = length(data.aws_instances.oscal_green_members.public_ips) > 0 && data.aws_instances.oscal_green_members.public_ips[0] != "" ? data.aws_instances.oscal_green_members.public_ips[0] : null
+  value       = length(data.aws_instances.oscal_green_members.public_ips) > 0 && data.aws_instances.oscal_green_members.public_ips[0] != "" ? data.aws_instances.oscal_green_members.public_ips[0] : null
 }
 
 output "oscal_blue_instance_id" {
@@ -138,7 +143,7 @@ output "oscal_blue_private_ip" {
 
 output "oscal_blue_public_ip" {
   description = "Public IP of OSCAL Blue (for SSH/deploy when the instance has a public IP)"
-  value = length(data.aws_instances.oscal_blue_members.public_ips) > 0 && data.aws_instances.oscal_blue_members.public_ips[0] != "" ? data.aws_instances.oscal_blue_members.public_ips[0] : null
+  value       = length(data.aws_instances.oscal_blue_members.public_ips) > 0 && data.aws_instances.oscal_blue_members.public_ips[0] != "" ? data.aws_instances.oscal_blue_members.public_ips[0] : null
 }
 
 output "oscal_green_autoscaling_group_name" {
@@ -202,15 +207,15 @@ output "rds_dbi_resource_id" {
   value       = var.create_rds_postgres ? aws_db_instance.oscal[0].resource_id : null
 }
 
-output "rds_master_secret_arn" {
-  description = "Secrets Manager ARN for RDS master password (bootstrap only; do not embed in app config)"
+output "rds_admin_secret_arn" {
+  description = "Secrets Manager ARN for RDS admin password (bootstrap only; do not embed in app config)"
   value       = var.create_rds_postgres ? aws_db_instance.oscal[0].master_user_secret[0].secret_arn : null
   sensitive   = true
 }
 
-output "rds_master_username" {
-  description = "RDS master PostgreSQL user (bootstrap psql -U; default oscalmaster)"
-  value       = var.create_rds_postgres ? var.rds_master_username : null
+output "rds_admin_username" {
+  description = "RDS admin PostgreSQL user (bootstrap psql -U; default oscalmaster)"
+  value       = var.create_rds_postgres ? var.rds_admin_username : null
 }
 
 output "rds_private_subnet_cidrs" {
@@ -221,4 +226,19 @@ output "rds_private_subnet_cidrs" {
 output "oscal_pass_secrets_sync_secret_arn" {
   description = "Secrets Manager ARN for Pass vault bundle sync (ec2_automation). Null when oscal_pass_secrets_sync_enabled is false."
   value       = var.oscal_pass_secrets_sync_enabled ? aws_secretsmanager_secret.oscal_pass_sync[0].arn : null
+}
+
+output "oscal_ec2_iam_role_arn" {
+  description = "ARN of OSCAL EC2 IAM role — put in Account B trust policy Principal.AWS"
+  value       = aws_iam_role.oscal_instance.arn
+}
+
+output "bedrock_assume_role_arn" {
+  description = "Cross-account Bedrock role ARN (Account B) when bedrock_cross_account_enabled and role ARN/account id are set"
+  value = var.bedrock_cross_account_enabled && local.bedrock_assume_role_arn != "" ? local.bedrock_assume_role_arn : null
+}
+
+output "bedrock_cross_account_configured" {
+  description = "True when cross-account Bedrock variables are set (ExternalId is configured; value is non-sensitive boolean)"
+  value       = nonsensitive(local.bedrock_cross_account_ready)
 }

@@ -30,6 +30,9 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `oscal_pass_sync_secret.tf` – Secrets Manager JSON bundle for Pass vault sync (`oscal_pass_secrets_sync_enabled`; output `oscal_pass_secrets_sync_secret_arn` for deploy)
 - `iam.tf` – OSCAL instance profile (S3, SSM, optional Pass-sync secret Get/Put, optional RDS Secrets Manager + `rds-db:connect`)
 - `templates/oscal-rds-bootstrap.sh.tftpl` – EC2 user_data fragment: IAM DB user + systemd `OSCAL_DATABASE_*` env vars
+- `bedrock_cross_account.tf` – optional `sts:AssumeRole` on Bedrock account role + systemd `BEDROCK_*` env (see [docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md](../docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md))
+- `bedrock_vpc_endpoint.tf` – optional interface endpoint for `bedrock-runtime`
+- `templates/oscal-bedrock-bootstrap.sh.tftpl` – systemd drop-in for cross-account Bedrock (Phase 2 app)
 
 Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.example`) and state under `envs/<env>/`. **Every** shared root `*.tf` (including `rds.tf`, `oscal_asg_ebs.tf`, `oscal_ssm.tf`) must be **symlinked** into each env directory; `run-with-aws-pass.sh` defaults to `terraform/envs/aws4403`, so a missing symlink omits that file from the module and causes errors such as undeclared `aws_db_instance.oscal`.
 
@@ -106,4 +109,4 @@ Then run `terraform plan` and `terraform apply` again. AWS credentials must be s
 
 ---
 
-**Version:** 1.7.12 · **Last updated:** April 2026
+**Version:** 1.7.16 · **Last updated:** April 2026
