@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Import the existing ALB port-80 listener into Terraform state as aws_lb_listener.http_redirect[0].
 # Use this when Terraform apply fails with "DuplicateListener: A listener already exists on this port"
 # (e.g. after enabling HTTPS: the old HTTP listener still exists and Terraform tries to create the redirect listener).

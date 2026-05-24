@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # OSCAL on AWS - Terraform (AI via AWS Bedrock)
 # See docs/diagrams/generate-diagram.html and docs/AWS_OPERATIONS.md#aws-ec2-cost-estimate-for-oscal-report-generator-ollama
 
@@ -38,11 +43,11 @@ provider "aws" {
 
   default_tags {
     tags = merge(var.common_tags, {
-      Project       = var.project_name
-      Environment   = var.environment
-      ManagedBy     = "terraform"
-      Stack           = var.project_name # Single tag to filter all stack resources in any account
-      "Service ID"    = var.adobe_service_id_tag # Adobe CMDB / cost allocation (e.g. 602844)
+      Project      = var.project_name
+      Environment  = var.environment
+      ManagedBy    = "terraform"
+      Stack        = var.project_name         # Single tag to filter all stack resources in any account
+      "Service ID" = var.adobe_service_id_tag # Adobe CMDB / cost allocation (e.g. 602844)
     })
   }
 }

@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # ------------------------------------------------------------------------------
 # Adobe Image Factory – AMI best practices (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform)
 # ------------------------------------------------------------------------------
@@ -24,7 +29,7 @@ locals {
     var.image_factory_amazon_linux_ami_us_east_1 != null ? { "us-east-1" = var.image_factory_amazon_linux_ami_us_east_1 } : {}
   )
   image_factory_ami_id_amazon_linux = lookup(local.image_factory_amazon_linux_by_region, var.aws_region, null)
-  image_factory_ami_id_static      = local.image_factory_ami_id_amazon_linux
+  image_factory_ami_id_static       = local.image_factory_ami_id_amazon_linux
 }
 
 # Optional: dynamic lookup like automation_framework – use latest Image Factory AMI by owner + name pattern (when AMIs are shared with this account).
@@ -69,8 +74,8 @@ locals {
 
 # Fallback only when Image Factory is not used or not available: native Amazon Linux 2023 (maintained by Amazon).
 data "aws_ami" "amazon_linux" {
-  most_recent  = true
-  owners       = ["amazon"]
+  most_recent = true
+  owners      = ["amazon"]
 
   filter {
     name   = "name"
