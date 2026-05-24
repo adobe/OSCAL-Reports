@@ -1,15 +1,9 @@
 /**
- * Debug State Manager - Server-Side State Inspection
- * 
- * Provides server-side session state storage for debugging purposes.
- * State files are human-readable JSON for easy inspection with jq or text editors.
- * 
- * @module debugStateManager
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

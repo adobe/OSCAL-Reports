@@ -1,12 +1,9 @@
 /**
- * Bedrock Gemma Service
- * AWS Bedrock Converse API for Gemma models only. Response extraction matches probe-validated shape.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
 import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';

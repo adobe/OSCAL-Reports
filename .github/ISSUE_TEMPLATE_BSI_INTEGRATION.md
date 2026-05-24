@@ -16,7 +16,7 @@ Integrate BSI's **Grundschutz++ Kompendium** catalogue from their Stand-der-Tech
 
 ### Repository
 - **Source**: [BSI-Bund/Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
-- **License**: CC BY-SA 4.0 (compatible with GPL-3.0-or-later)
+- **License**: CC BY-SA 4.0 (compatible with MIT)
 - **Format**: OSCAL JSON (same as existing catalogues)
 
 ### Technical Details
