@@ -4891,7 +4891,7 @@ Add "Quick Reference" section to end of `BEST_PRACTICES_OSCAL_REPORTS.md`:
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * @license MIT
  * 
  * Purpose: [Describe the module's responsibility]
  * 
@@ -4909,7 +4909,7 @@ Add "Quick Reference" section to end of `BEST_PRACTICES_OSCAL_REPORTS.md`:
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * @license MIT
  */
 
 import fs from 'fs';
@@ -4960,7 +4960,7 @@ export default {
  * 
  * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
  * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * @license MIT
  */
 
 import React, { useState, useEffect } from 'react';

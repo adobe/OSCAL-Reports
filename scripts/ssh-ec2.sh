@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # SSH wrapper to connect to OSCAL EC2 instances (Green, Blue).
 # Uses: Pass for SSH key (default AWS/OSCAL-AWS4403-SSH via ec2-common); Terraform run-with-aws-pass.sh for IPs.
 #

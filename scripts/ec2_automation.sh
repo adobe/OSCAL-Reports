@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # ec2_automation.sh: Backup config/users/logs to S3; optional sync of app code from s3://<bucket>/<installer-prefix>/ (not Git);
 # optional OS package updates (dnf upgrade -y or yum update -y from configured repos); optional Pass ↔ AWS Secrets Manager sync.
 # Runs every 10 min via cron (svc_ams-oscal).

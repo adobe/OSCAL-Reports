@@ -1,8 +1,9 @@
 /**
- * Settings Component with Tabs
- * Includes API Gateway Settings and SSO Integration
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState } from 'react';
 import Settings from './Settings';
 import SSOIntegration from './SSOIntegration';

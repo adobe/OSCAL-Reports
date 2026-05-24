@@ -4,7 +4,7 @@
   "version": "1.7.17",
   "type": "module",
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",

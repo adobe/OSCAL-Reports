@@ -1,9 +1,9 @@
 /**
- * Allowed users check for AI "Get Suggestions" (chargeable providers only).
- * Used when provider is Mistral API Cloud or AWS Bedrock.
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 const MAX_PATTERNS = 5;
 
 /**
