@@ -1,14 +1,9 @@
 /**
- * URL Validator - Prevents SSRF (Server-Side Request Forgery) attacks
- * 
- * This utility validates URLs to ensure they don't point to:
- * - Private IP ranges
- * - Localhost
- * - Cloud metadata endpoints
- * - Link-local addresses
- * - Dangerous protocols
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { URL } from 'url';
 import dns from 'dns';
 import { promisify } from 'util';

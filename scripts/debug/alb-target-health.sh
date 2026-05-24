@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Print ALB Green/Blue target health (AWS describe-target-health) for the stack in TERRAFORM_DIR.
 # Requires: aws CLI, jq; target group ARNs from terraform output or env (see below).
 # AWS credentials: if AWS_ACCESS_KEY_ID is unset, loads from Pass (same shape as terraform/run-with-aws-pass.sh).

@@ -1,8 +1,9 @@
 /**
- * URL Validator Tests
- * Tests for SSRF prevention utility
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { validateUrl, validateUrlSync } from '../../../backend/utils/urlValidator.js';
 

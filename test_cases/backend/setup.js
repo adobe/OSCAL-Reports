@@ -1,7 +1,9 @@
 /**
- * Test Setup and Global Configuration
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 // Set test environment variables
 process.env.NODE_ENV = 'test';
 process.env.PORT = '3999'; // Different port for testing
