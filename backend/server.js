@@ -83,7 +83,7 @@ import {
   cleanupOldStates,
   getStateStats
 } from './debugStateManager.js';
-import { isEmailBlocklisted, addToBlocklist } from './auth/emailBlocklist.js';
+import { isEmailBlocklisted } from './auth/emailBlocklist.js';
 import { registrationRateLimiter } from './middleware/rateLimiter.js';
 import { sendUserCredentials } from './messagingService.js';
 import { scheduleUserCleanup } from './jobs/userCleanup.js';
