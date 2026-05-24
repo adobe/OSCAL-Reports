@@ -175,6 +175,45 @@ variable "oscal_ssm_release_s3_prefix" {
   default     = null
 }
 
+variable "oscal_os_patch_enabled" {
+  description = "Enable SSM Patch Manager baseline, patch groups, and staggered Blue/Green maintenance windows. Adds Patch Group tag on launch templates."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_os_patch_hour" {
+  description = "UTC hour (0-23) for Monday OS patch maintenance windows."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.oscal_os_patch_hour >= 0 && var.oscal_os_patch_hour <= 23
+    error_message = "oscal_os_patch_hour must be between 0 and 23 (UTC)."
+  }
+}
+
+variable "oscal_os_patch_reboot_option" {
+  description = "RebootOption for AWS-RunPatchBaseline maintenance tasks (RebootIfNeeded or NoReboot)."
+  type        = string
+  default     = "RebootIfNeeded"
+
+  validation {
+    condition     = contains(["RebootIfNeeded", "NoReboot"], var.oscal_os_patch_reboot_option)
+    error_message = "oscal_os_patch_reboot_option must be RebootIfNeeded or NoReboot."
+  }
+}
+
+variable "oscal_os_patch_approval_days" {
+  description = "Auto-approve patches released within this many days (patch baseline approval rule)."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.oscal_os_patch_approval_days >= 0 && var.oscal_os_patch_approval_days <= 180
+    error_message = "oscal_os_patch_approval_days must be between 0 and 180."
+  }
+}
+
 # S3 (best practice: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
   description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, config, users."

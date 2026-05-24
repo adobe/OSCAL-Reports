@@ -160,4 +160,4 @@ To regenerate merged files from historical sources (only if those sources exist 
 
 ---
 
-**Version:** 1.7.16 · **Last updated:** April 2026
+**Version:** 1.7.17 · **Last updated:** April 2026

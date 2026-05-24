@@ -171,7 +171,7 @@ describe('Security Configuration Tests', () => {
     test('should document rationale for CSRF exemptions', () => {
       // This test ensures the security decisions are properly documented
       const documentation = {
-        version: '1.7.16',
+        version: '1.7.17',
         decision: 'Exempt all /api/ endpoints from CSRF protection',
         rationale: [
           'Protected endpoints use Bearer token authentication (immune to CSRF)',
@@ -188,7 +188,7 @@ describe('Security Configuration Tests', () => {
         ],
       };
 
-      expect(documentation.version).toBe('1.7.16');
+      expect(documentation.version).toBe('1.7.17');
       expect(documentation.rationale.length).toBeGreaterThan(0);
       expect(documentation.remainingProtections.length).toBeGreaterThanOrEqual(5);
     });
