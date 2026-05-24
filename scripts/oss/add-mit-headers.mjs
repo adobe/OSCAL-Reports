@@ -78,7 +78,6 @@ function stripHashCommentBlock(content) {
     i += 1;
   }
   if (i === 0) return content;
-  const first = lines[0];
   const looksLikeHeader =
     i > 0 &&
     lines.slice(0, i).some((l) =>
