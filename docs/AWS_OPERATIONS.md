@@ -24,7 +24,7 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 
 - **VPC** and public subnets (2 AZs)
 - **Application Load Balancer** (ALB) with HTTP (and optional HTTPS) listeners
-- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) each run as a **single-instance Auto Scaling Group** (Launch Template + ELB health checks) so a failed or terminated instance is replaced automatically. **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. With **direct run** (`run_oscal_via_docker = false`, default), optional **dedicated gp3 volumes** (`oscal_persistent_ebs_enabled = true`) are created per role, tagged for discovery, and mounted at **`/opt/oscal`** on boot (application tree and `/opt/oscal/data`); volumes are **not** deleted when the instance is replaced. **SSM** runs a periodic **Command** document on instances tagged `OSCAL_SSM_TARGET=true` (mount check, optional `aws s3 sync` from `oscal_ssm_release_s3_prefix` inside the logs bucket, `systemctl restart oscal-reporter` when the unit exists). Config and users on the instance are backed up to **S3** via **ec2_automation** every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead (no extra data volumes; ASGs still provide replacement).
+- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) each run as a **single-instance Auto Scaling Group** (Launch Template + ELB health checks) so a failed or terminated instance is replaced automatically. **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. With **direct run** (`run_oscal_via_docker = false`, default), optional **dedicated gp3 volumes** (`oscal_persistent_ebs_enabled = true`) are created per role, tagged for discovery, and mounted at **`/opt/oscal`** on boot (application tree and `/opt/oscal/data`); volumes are **not** deleted when the instance is replaced. **SSM** runs a periodic **Command** document on instances tagged `OSCAL_SSM_TARGET=true` (mount check, optional `aws s3 sync` from `oscal_ssm_release_s3_prefix` inside the logs bucket, `systemctl restart oscal-reporter` when the unit exists). **OS patching** uses **SSM Patch Manager** with staggered Blue/Green maintenance windows ([OS patching](#os-patching-ssm-patch-manager)). Config and users on the instance are backed up to **S3** via **ec2_automation** every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead (no extra data volumes; ASGs still provide replacement).
 - **S3** bucket for **logs**, **config**, and **users** (subfolders: `logs/`, `config/green/`, `config/blue/`, `users/`). ec2_automation backs up instance data to S3 so it is retained if instances are replaced.
 - **Optional RDS PostgreSQL** (`create_rds_postgres = true` in tfvars): RDS is placed in **dedicated private subnets** (no route to the internet gateway, `map_public_ip_on_launch = false`, **`publicly_accessible = false`**), so it has **no public IP** and is reachable only on **private addresses** inside the VPC. The RDS security group allows PostgreSQL **only** from the OSCAL EC2 security group; you may add **`rds_additional_ingress_ipv4_cidr_blocks`** for extra **internal** ranges (e.g. a bastion subnet), never `0.0.0.0/0`. OSCAL instances egress to PostgreSQL **only toward those private subnet CIDRs**, not the open internet. **IAM database authentication**, admin password in **Secrets Manager** (RDS-managed), app user `rds_iam_app_username` (default `oscal_app`). Green/Blue **user_data** bootstraps the IAM role and injects **systemd** `OSCAL_DATABASE_*`. The Node app uses `@aws-sdk/rds-signer` for tokens. **Tables** are created on first successful DB connection. **GUI:** Platform Settings → Database. **Cost:** RDS is billed separately; leave `create_rds_postgres = false` (default) if you use an external database. **`default_allowed_cidr_blocks`** still applies only to **ALB / SSH / direct app ports** (admin paths), not to exposing RDS on the public internet.
 - **Tagging:** All resources receive `Project`, `Environment`, `ManagedBy`, and `Stack` (plus any `common_tags`). Filter by `Stack = <project_name>` in any account to find or remove the stack. See [terraform/README.md](../terraform/README.md) for add/remove lifecycle.
@@ -197,6 +197,47 @@ If your state still contains **`aws_instance.oscal_green` / `oscal_blue`** and *
 
 **EventBridge:** Per-instance “EC2 running → Run Command” rules need the event’s `instance-id` passed into `SendCommand`; the managed layout uses a **scheduled SSM association** (`rate(30 minutes)`) instead so replacements are not coupled to global EC2 events. You can add a custom EventBridge rule later if your org requires immediate post-boot runs.
 
+
+<a id="os-patching-ssm-patch-manager"></a>
+
+### OS patching (SSM Patch Manager)
+
+OSCAL Green/Blue instances are patched via **AWS Systems Manager Patch Manager**, not per-instance cron. Terraform provisions a patch baseline (Amazon Linux 2023), **Patch Group** tags on launch templates, and **maintenance windows** that run `AWS-RunPatchBaseline` with staggered schedules so Blue and Green are not patched on the same Mondays.
+
+| Role | Maintenance windows (UTC) | Patch Group tag |
+|------|---------------------------|-----------------|
+| **Blue** | 1st and 3rd Monday at `oscal_os_patch_hour` (default 02:00) | `<project_name>-blue` |
+| **Green** | 2nd and 4th Monday at `oscal_os_patch_hour` | `<project_name>-green` |
+
+**Terraform variables** (see `terraform.tfvars.example`):
+
+- `oscal_os_patch_enabled` (default `true`)
+- `oscal_os_patch_hour` — UTC hour 0–23 (default `2`)
+- `oscal_os_patch_reboot_option` — `RebootIfNeeded` (default) or `NoReboot`
+- `oscal_os_patch_approval_days` — auto-approve patches within N days (default `7`)
+
+**Central tracking:** AWS Console → **Systems Manager** → **Patch Manager** → **Compliance** / **Dashboard**. Run Command output is also written to `s3://<logs-bucket>/ssm-patch/blue/` and `.../green/` when maintenance tasks run.
+
+**New ASG instances:** Launch templates add the `Patch Group` tag automatically; no manual crontab. **Existing instances** after `terraform apply` need the tag once (instance refresh, or tag manually) before the next maintenance window includes them.
+
+**Remove legacy cron** (if you previously added manual root crontab entries):
+
+```bash
+sudo ./scripts/remove-legacy-os-patch-cron.sh
+```
+
+**Verify after apply:**
+
+```bash
+terraform output oscal_os_patch_baseline_id
+terraform output oscal_os_patch_maintenance_window_ids
+```
+
+In the console: **Fleet Manager** → instances **Online**; **Patch Manager** → **Patch groups** shows `<project>-blue` and `<project>-green`.
+
+**Reboot note:** With `RebootIfNeeded`, kernel updates may reboot the instance during the maintenance window. ALB health checks and ASG should replace unhealthy nodes; tune `oscal_asg_health_check_grace_period` if needed after large patch cycles.
+
+
 #### Checklist: precautions, apply, and verification
 
 **Before plan/apply**
@@ -212,7 +253,7 @@ If your state still contains **`aws_instance.oscal_green` / `oscal_blue`** and *
 **Plan review**
 
 - Confirm **destroy/create** list matches intent (especially first cutover from standalone EC2).
-- New resources should include **`aws_autoscaling_group`**, **`aws_launch_template`**, **`aws_autoscaling_attachment`**, optional **`aws_ebs_volume`**, **`aws_ssm_document`**, **`aws_ssm_association`**.
+- New resources should include **`aws_autoscaling_group`**, **`aws_launch_template`**, **`aws_autoscaling_attachment`**, optional **`aws_ebs_volume`**, **`aws_ssm_document`**, **`aws_ssm_association`**, and when `oscal_os_patch_enabled` is true: **`aws_ssm_patch_baseline`**, **`aws_ssm_patch_group`**, **`aws_ssm_maintenance_window`**.
 
 **After apply**
 

@@ -102,4 +102,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.16 (see root `package.json`) · **Last updated:** April 2026
+**Version:** 1.7.17 (see root `package.json`) · **Last updated:** April 2026
