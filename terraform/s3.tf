@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # S3 bucket for logs, config, and users
 # Best practice (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
 # Terraform forces lowercase to satisfy S3 and avoid InvalidBucketName.

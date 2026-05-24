@@ -9,7 +9,8 @@ project_name   = "oscal-reports"
 # Networking
 vpc_cidr          = "10.0.0.0/16"
 # Default CIDRs for ALB HTTPS and SSH ingress. PCL custom-config-ec2-sg-port-check disallows 0.0.0.0/0. For stage accounts, prefer /32 to avoid PCL "broad CIDR" quarantine (e.g. VPN egress IPs as /32).
-default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Your IP(s) or VPN subnet, e.g. ["203.191.182.138/32", "130.248.32.17/32"]
+# Composing the list (mixed /32 + /24, comments, curl ifconfig.me, run-with-aws-pass.sh): docs/TERRAFORM_NETWORK_PCL_AND_TAGS.md §3.1a
+default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Your IP(s) or VPN subnet; add end-of-line # comments per entry in real tfvars
 
 # EC2: existing key pair for SSH (optional; omit or set null to launch without SSH key)
 # Create in AWS Console: EC2 → Key Pairs → Create, or: aws ec2 create-key-pair --key-name oscal-aws4403 --query 'KeyMaterial' --output text > oscal-aws4403.pem
@@ -83,3 +84,19 @@ common_tags = {
 # oscal_asg_health_check_grace_period = 420  # seconds before ELB health affects ASG (tune if flapping)
 # oscal_ssm_post_boot_association_enabled = true   # periodic SSM document on tag OSCAL_SSM_TARGET=true
 # oscal_ssm_release_s3_prefix       = null  # e.g. "releases/current" inside s3_logs_bucket_name for SSM sync
+
+# SSM Patch Manager — staggered Blue/Green OS patching (see docs/AWS_OPERATIONS.md#os-patching-ssm-patch-manager)
+# oscal_os_patch_enabled          = true
+# oscal_os_patch_hour             = 2      # UTC; 02:00 UTC ≈ 12:00/13:00 Sydney (AEST/AEDT)
+# oscal_os_patch_reboot_option     = "RebootIfNeeded"   # or "NoReboot"
+# oscal_os_patch_approval_days      = 7
+
+# ------------------------------------------------------------------------------
+# Cross-account Bedrock (Account B) — see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md
+# ------------------------------------------------------------------------------
+# bedrock_cross_account_enabled        = true
+# bedrock_account_id                   = "123456789012"
+# bedrock_assume_role_name             = "OSCAL-BedrockCrossAccount"
+# bedrock_assume_role_arn              = ""
+# bedrock_external_id                  = "<from Account B runbook>"
+# bedrock_runtime_vpc_endpoint_enabled = false

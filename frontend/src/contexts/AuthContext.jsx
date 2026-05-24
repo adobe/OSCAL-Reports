@@ -1,8 +1,9 @@
 /**
- * Authentication Context
- * Manages user authentication state and provides auth-related functions
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 

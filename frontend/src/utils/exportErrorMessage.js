@@ -1,7 +1,9 @@
 /**
- * Build a clear message from export API error payloads (JSON or blob-wrapped JSON).
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 export function formatExportApiBody(data, fallback) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return fallback;
   const parts = [data.error, data.message].filter(Boolean);

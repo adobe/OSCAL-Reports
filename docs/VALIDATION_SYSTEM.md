@@ -495,7 +495,7 @@ Date: January 22, 2026
 
 ## 📄 License
 
-GPL-3.0-or-later
+MIT
 
 ---
 

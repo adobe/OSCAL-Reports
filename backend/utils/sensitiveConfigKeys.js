@@ -1,12 +1,9 @@
 /**
- * Sensitive config keys and their pass store entry names.
- * Used to persist secrets in pass and store only pointers in config.json.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 /**
  * List of sensitive config paths (dot-notation) and their pass entry names.
  * Order: messaging, ai, then SSO (nested under ssoConfig.oauth.providers).
