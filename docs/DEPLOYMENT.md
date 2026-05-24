@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.16  
+**Version**: 1.7.17  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -315,8 +315,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.16 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.16
+# ✓ Current version: 1.7.17 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.17
 # ✓ Versions match - no build needed
 ```
 

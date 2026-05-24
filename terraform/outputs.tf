@@ -156,6 +156,27 @@ output "oscal_blue_autoscaling_group_name" {
   value       = aws_autoscaling_group.oscal_blue.name
 }
 
+
+output "oscal_os_patch_baseline_id" {
+  description = "SSM patch baseline ID for OSCAL Amazon Linux 2023 (null when oscal_os_patch_enabled is false)"
+  value       = var.oscal_os_patch_enabled ? aws_ssm_patch_baseline.oscal_al2023[0].id : null
+}
+
+output "oscal_os_patch_group_blue" {
+  description = "Patch Group tag value for Blue instances (SSM Patch Manager)"
+  value       = var.oscal_os_patch_enabled ? local.oscal_patch_group_blue : null
+}
+
+output "oscal_os_patch_group_green" {
+  description = "Patch Group tag value for Green instances (SSM Patch Manager)"
+  value       = var.oscal_os_patch_enabled ? local.oscal_patch_group_green : null
+}
+
+output "oscal_os_patch_maintenance_window_ids" {
+  description = "SSM maintenance window IDs for staggered Blue/Green OS patching"
+  value       = var.oscal_os_patch_enabled ? { for k, w in aws_ssm_maintenance_window.oscal_patch : k => w.id } : {}
+}
+
 output "oscal_post_boot_ssm_document_name" {
   description = "SSM Command document name for periodic post-boot checks (optional S3 sync when oscal_ssm_release_s3_prefix is set)"
   value       = aws_ssm_document.oscal_post_boot.name

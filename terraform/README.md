@@ -25,6 +25,7 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `oscal_instances.tf` – Green/Blue user data (Node/Docker), locals for persistent EBS snippets
 - `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (size 1), optional gp3 volumes, ALB attachments
 - `oscal_ssm.tf` – SSM Command document and optional periodic association (post-boot checks / optional S3 sync)
+- `oscal_ssm_patch.tf` – SSM Patch Manager baseline, patch groups, and staggered Blue/Green maintenance windows
 - `rds.tf` – Amazon RDS PostgreSQL (Database Integration; IAM DB auth) when `create_rds_postgres = true` (default **true**; set `false` in `terraform.tfvars` to skip RDS)
 - `s3.tf` – S3 bucket for logs, config, users (Public Access Block for PCL rule `custom-s3-pab-check`)
 - `oscal_pass_sync_secret.tf` – Secrets Manager JSON bundle for Pass vault sync (`oscal_pass_secrets_sync_enabled`; output `oscal_pass_secrets_sync_secret_arn` for deploy)
@@ -109,4 +110,4 @@ Then run `terraform plan` and `terraform apply` again. AWS credentials must be s
 
 ---
 
-**Version:** 1.7.16 · **Last updated:** April 2026
+**Version:** 1.7.17 · **Last updated:** April 2026
