@@ -1,11 +1,9 @@
 /**
- * Configuration Manager - Server-side settings persistence
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -235,7 +233,7 @@ export function applyDatabaseEnvOverrides(config) {
 /**
  * Effective databaseConfig for POST /api/database/test-connection when the client sends
  * the current Platform Settings form. Does not apply OSCAL_DATABASE_AUTH=iam from the
- * environment, so admins can test the RDS master user (e.g. oscalmaster) and password.
+ * environment, so admins can test the RDS admin user (e.g. oscalmaster) and password.
  * Terraform OSCAL_DATABASE_HOST / PORT / NAME / SSL / ENABLED still fill blanks only.
  *
  * @param {Object|null|undefined} formDatabaseConfig - Fields from the UI (same shape as databaseConfig)

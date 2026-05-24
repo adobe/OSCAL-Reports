@@ -32,7 +32,8 @@ The OSCAL Report Generator now supports German IT security standards from the **
 - ✅ **OSCAL-compliant**: BSI catalogues use standard OSCAL JSON format
 - ✅ **Direct integration**: No backend modifications required
 - ✅ **German IT security standards**: Comprehensive IT-Grundschutz framework
-- ✅ **License compatible**: CC BY-SA 4.0 (compatible with GPL-3.0-or-later)
+- ✅ **License compatible**: CC BY-SA 4.0 (compatible with MIT)
+- **GitHub Raw Content**: Allowlisted domain
 
 ---
 
@@ -125,7 +126,7 @@ BSI GitHub URLs pass existing security checks:
 
 - **URL Validator**: `backend/utils/urlValidator.js`
 - **SSRF Protection**: Public HTTPS URLs allowed
-- **GitHub Raw Content**: Whitelisted domain
+- **GitHub Raw Content**: Allowlisted domain
 
 ### Frontend Integration
 

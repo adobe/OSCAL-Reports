@@ -51,3 +51,19 @@ common_tags = {
 # oscal_asg_health_check_grace_period = 420
 # oscal_ssm_post_boot_association_enabled = true
 # oscal_ssm_release_s3_prefix  = null   # e.g. "releases/current" inside s3_logs_bucket_name
+
+# SSM Patch Manager — staggered Blue/Green OS patching (see docs/AWS_OPERATIONS.md#os-patching-ssm-patch-manager)
+# oscal_os_patch_enabled          = true
+# oscal_os_patch_hour             = 2      # UTC; 02:00 UTC ≈ 12:00/13:00 Sydney (AEST/AEDT)
+# oscal_os_patch_reboot_option     = "RebootIfNeeded"   # or "NoReboot"
+# oscal_os_patch_approval_days      = 7
+
+# ------------------------------------------------------------------------------
+# Cross-account Bedrock (Account B) — see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md
+# ------------------------------------------------------------------------------
+# bedrock_cross_account_enabled        = true
+# bedrock_account_id                   = "123456789012"
+# bedrock_assume_role_name             = "OSCAL-BedrockCrossAccount"
+# bedrock_assume_role_arn              = ""
+# bedrock_external_id                  = "<from Account B runbook>"
+# bedrock_runtime_vpc_endpoint_enabled = false

@@ -1,11 +1,9 @@
 /**
- * Normalize T1–T3 (adobeTeamResponsible) to three string slots for UI and OSCAL props.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 /**
  * @param {*} raw - JSON string from OSCAL prop, array, or undefined
  * @returns {[string, string, string]}

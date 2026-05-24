@@ -1,15 +1,9 @@
 /**
- * OSCAL SOA/SSP/CCM Generator - Main Application Component
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
- * 
- * Main application component that manages the workflow for creating and editing
- * OSCAL-compliant System Security Plans (SSP), Statement of Applicability (SOA),
- * and Cloud Control Matrix (CCM) documents.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from './utils/safeAxios.js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';

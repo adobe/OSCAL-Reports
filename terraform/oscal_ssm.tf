@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # SSM Command document + periodic association (mount/service check, optional S3 app sync).
 # Targets instances tagged OSCAL_SSM_TARGET=true and Stack=<project_name>.
 
@@ -23,7 +28,7 @@ resource "aws_ssm_document" "oscal_post_boot" {
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description = "OSCAL: verify /opt/oscal mount, optional S3 sync into /opt/oscal/app, restart oscal-reporter if unit exists"
+    description   = "OSCAL: verify /opt/oscal mount, optional S3 sync into /opt/oscal/app, restart oscal-reporter if unit exists"
     mainSteps = [
       {
         action = "aws:runShellScript"

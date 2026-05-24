@@ -1,12 +1,9 @@
 /**
- * Shared Axios instance with outbound header hardening (CWE-113).
- * Rejects CR/LF in merged header names and values before the HTTP adapter runs,
- * mitigating request-smuggling / header-injection gadget chains when combined with
- * prototype pollution elsewhere in the dependency graph.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * Mirrors backend/utils/safeAxios.js for consistent client behavior.
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import axiosRoot from 'axios';
 
 /** Axios default header buckets (see mergeConfig / AxiosHeaders). */

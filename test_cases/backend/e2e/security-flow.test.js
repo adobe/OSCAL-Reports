@@ -1,16 +1,9 @@
 /**
- * End-to-End Security Flow Tests
- * 
- * Tests complete security workflows including:
- * - CSRF exemption for API endpoints
- * - Bearer token authentication
- * - SSRF protection with AI integration
- * - Public vs Protected endpoint access
- * 
- * Version: 1.6.5+
- * Location: test_cases/backend/e2e/security-flow.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';

@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Security groups: ALB, OSCAL instances
 #
 # PCL / Stage-account mandate: Do not allow ingress from public IP (no 0.0.0.0/0). All ingress uses
@@ -6,10 +11,10 @@
 # ALB: HTTPS (443) from default_allowed_cidr_blocks or Australia prefix lists (alb_restrict_to_australia); HTTP (80) optional from allowed CIDRs when alb_allow_http_for_testing = true.
 # PCL-friendly pattern: explicit TCP 443/80 only; no 0.0.0.0/0; for stage, prefer /32 in default_allowed_cidr_blocks to avoid "broad CIDR" quarantine (per AMS PCL / FluffyJaws).
 resource "aws_security_group" "alb" {
-  name_prefix               = "${var.project_name}-alb-"
-  description               = "ALB for OSCAL Blue/Green"
-  vpc_id                    = aws_vpc.main.id
-  revoke_rules_on_delete    = true
+  name_prefix            = "${var.project_name}-alb-"
+  description            = "ALB for OSCAL Blue/Green"
+  vpc_id                 = aws_vpc.main.id
+  revoke_rules_on_delete = true
 
   # HTTPS 443: alb_allow_443_from_all = from default_allowed_cidr_blocks; else Australia prefix lists or default_allowed_cidr_blocks. No 0.0.0.0/0 (PCL).
   dynamic "ingress" {
