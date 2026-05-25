@@ -13,14 +13,14 @@ Build the OSCAL Report Generator Docker image locally and push it to Docker Hub 
 
 **What it does:**
 - Builds the image from the repo root using the project Dockerfile
-- Tags the image using version from `package.json` (e.g. `v1.7.17`) or an optional tag argument
+- Tags the image using version from `package.json` (e.g. `v1.7.18`) or an optional tag argument
 - Pushes the image to Docker Hub; when the tag is a version, also tags and pushes `latest`
 
 **Usage:** From the repository root (after `docker login`):
 ```bash
 DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
 # Or with an explicit tag:
-./scripts/build-and-push-dockerhub.sh v1.7.17
+./scripts/build-and-push-dockerhub.sh v1.7.18
 ```
 
 **Environment:** `DOCKERHUB_USERNAME` (default: `keekar`) – your Docker Hub username.
@@ -478,5 +478,5 @@ If you encounter issues:
 ---
 
 **Author:** Mukesh Kesharwani  
-**Version:** 1.7.17  
+**Version:** 1.7.18  
 **Last Updated:** April 2026

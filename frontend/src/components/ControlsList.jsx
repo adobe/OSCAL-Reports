@@ -86,8 +86,46 @@ function ControlsList({ controls, onControlUpdate, organizationName = 'Organizat
   return (
     <div className="controls-list-container">
       <div className="controls-toolbar">
-        {/* Row 1: Search and Control Groups */}
-        <div className="filters-row filters-row-1">
+        <div className="filters-column">
+          <select
+            className="filter-select"
+            value={filterClass}
+            onChange={(e) => setFilterClass(e.target.value)}
+          >
+            <option value="all">All Classes</option>
+            {classes.filter(c => c !== 'all').map(cls => (
+              <option key={cls} value={cls}>{cls}</option>
+            ))}
+          </select>
+
+          <select
+            className="filter-select"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="not-assessed">Not Assessed</option>
+            <option value="effective">Effective</option>
+            <option value="alternate-control">Alternate Control</option>
+            <option value="ineffective">Ineffective</option>
+            <option value="no-visibility">No Visibility</option>
+            <option value="not-implemented">Not Implemented</option>
+            <option value="not-applicable">Not Applicable</option>
+          </select>
+
+          <select
+            className="filter-select"
+            value={filterResponsibleParty}
+            onChange={(e) => setFilterResponsibleParty(e.target.value)}
+          >
+            <option value="all">All Responsible Parties</option>
+            {responsibleParties.filter(rp => rp !== 'all').map(party => (
+              <option key={party} value={party}>{party}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filters-row-secondary">
           <div className="search-box">
             <input
               type="text"
@@ -110,37 +148,8 @@ function ControlsList({ controls, onControlUpdate, organizationName = 'Organizat
               ))}
             </select>
           </div>
-        </div>
 
-        {/* Row 2: Other Filters and Bulk Actions */}
-        <div className="filters-row filters-row-2">
-          <div className="filters-left">
-            <select
-              className="filter-select"
-              value={filterClass}
-              onChange={(e) => setFilterClass(e.target.value)}
-            >
-              <option value="all">All Classes</option>
-              {classes.filter(c => c !== 'all').map(cls => (
-                <option key={cls} value={cls}>{cls}</option>
-              ))}
-            </select>
-
-            <select
-              className="filter-select"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="not-assessed">Not Assessed</option>
-              <option value="effective">Effective</option>
-              <option value="alternate-control">Alternate Control</option>
-              <option value="ineffective">Ineffective</option>
-              <option value="no-visibility">No Visibility</option>
-              <option value="not-implemented">Not Implemented</option>
-              <option value="not-applicable">Not Applicable</option>
-            </select>
-
+          <div className="filter-box">
             <select
               className="filter-select"
               value={filterControlType}
@@ -151,19 +160,10 @@ function ControlsList({ controls, onControlUpdate, organizationName = 'Organizat
                 <option key={type} value={type}>{type}</option>
               ))}
             </select>
+          </div>
 
-            <select
-              className="filter-select"
-              value={filterResponsibleParty}
-              onChange={(e) => setFilterResponsibleParty(e.target.value)}
-            >
-              <option value="all">All Responsible Parties</option>
-              {responsibleParties.filter(rp => rp !== 'all').map(party => (
-                <option key={party} value={party}>{party}</option>
-              ))}
-            </select>
-
-            {hasChangeData && (
+          {hasChangeData && (
+            <div className="filter-box">
               <select
                 className="filter-select filter-change"
                 value={filterChange}
@@ -174,8 +174,8 @@ function ControlsList({ controls, onControlUpdate, organizationName = 'Organizat
                 <option value="changed">⚠️ Changed Controls</option>
                 <option value="unchanged">✓ Unchanged Controls</option>
               </select>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="bulk-actions">
             <span className="bulk-label">Bulk Actions:</span>
