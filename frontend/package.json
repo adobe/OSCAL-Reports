@@ -1,7 +1,7 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-frontend",
   "private": true,
-  "version": "1.7.17",
+  "version": "1.7.18",
   "type": "module",
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
   "license": "MIT",
@@ -15,7 +15,7 @@
   "dependencies": {
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "axios": ">=1.15.0",
+    "axios": ">=1.15.2",
     "lucide-react": "^0.577.0"
   },
   "devDependencies": {
@@ -27,7 +27,7 @@
   },
   "overrides": {
     "rollup": ">=4.59.0",
-    "axios": ">=1.15.0",
+    "axios": ">=1.15.2",
     "picomatch": ">=4.0.4"
   }
 }

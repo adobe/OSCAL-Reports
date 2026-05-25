@@ -298,7 +298,8 @@
 .uploaded-info {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   padding: 1rem 1.5rem;
   background: rgba(198, 246, 213, 0.2);
   border: 1px solid rgba(154, 230, 180, 0.5);
@@ -826,5 +827,128 @@
   .header-actions button {
     width: 100%;
   }
+}
+
+.mrc-prefs-notice {
+  margin-bottom: 1rem;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.mrc-prefs-notice-title {
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  text-align: left;
+}
+
+.mrc-prefs-notice p {
+  text-align: left;
+  margin: 0 0 0.5rem;
+  line-height: 1.5;
+  color: inherit;
+}
+
+/* Prevent global .info-box strong { display: block } from breaking inline copy */
+.mrc-prefs-notice p strong {
+  display: inline;
+  font-weight: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+.mrc-prefs-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.mrc-export-buttons {
+  justify-content: center;
+}
+
+.mrc-export-buttons .export-btn {
+  max-width: 320px;
+}
+
+.file-upload-btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.mrc-input-mode-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mrc-mode-btn {
+  flex: 1;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f8f9fa;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.mrc-mode-btn.active {
+  background: var(--primary, #ED1C24);
+  color: #fff;
+  border-color: var(--primary, #ED1C24);
+}
+
+.mrc-url-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mrc-url-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.mrc-url-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mrc-url-actions .btn-verify,
+.mrc-url-actions .btn-primary {
+  flex: 1;
+  min-width: 120px;
+}
+
+.multi-report-comparison .verification-message {
+  font-size: 0.85rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.multi-report-comparison .verification-message.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.multi-report-comparison .verification-message.warning {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.multi-report-comparison .verification-message.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.multi-report-comparison .verification-message.info {
+  background: #d1ecf1;
+  color: #0c5460;
 }
 

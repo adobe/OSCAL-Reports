@@ -241,9 +241,26 @@ describe('Settings API Integration Tests', () => {
       
       // If we got here without a SyntaxError, the async handler is working
       asyncOperationCompleted = true;
-      
+
       expect(asyncOperationCompleted).toBe(true);
       expect(response.body.success).toBe(true);
+    });
+
+    test('should accept apiGateways-only POST without publishedSoaUrl', async () => {
+      const gatewayOnly = {
+        apiGateways: {
+          aws: { enabled: true, url: 'https://api.example.com', region: 'us-east-1' },
+          azure: { enabled: false, url: '' },
+        },
+      };
+
+      const response = await request(app)
+        .post('/api/settings')
+        .send(gatewayOnly)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('config');
     });
   });
 });
