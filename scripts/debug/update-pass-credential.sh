@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # List pass entries, let user pick one (or add new), paste credentials, parse and store;
 # or delete an existing entry (with confirmation).
 # Credentials are read from stdin (paste then Ctrl+D); they are not written to disk.

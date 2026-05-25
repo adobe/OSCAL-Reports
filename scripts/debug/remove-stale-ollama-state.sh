@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Remove Ollama-related resources from Terraform state (they were removed from .tf files).
 # Run with credentials for the SAME account as your state (e.g. via terraform/run-with-aws-pass.sh):
 #   ./terraform/run-with-aws-pass.sh remove-stale-ollama-state

@@ -1,31 +1,9 @@
 /**
- * Atomic File Operations Utility
- * 
- * Provides crash-resistant file write operations using the atomic rename pattern.
- * 
- * @module atomicWrite
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
- * 
- * @description
- * This module implements atomic file writes using the following pattern:
- * 1. Write data to a temporary file (.tmp.{pid})
- * 2. Atomically rename temp file to target file
- * 
- * Why Atomic Writes?
- * - If crash occurs during write, temp file is corrupted, not main file
- * - If crash occurs during rename, old file is still valid
- * - rename() is atomic on Unix systems (single syscall)
- * - Prevents partial/corrupted data in production files
- * 
- * Use Cases:
- * - Configuration file saves (config.json)
- * - User data updates (users.json)
- * - State file persistence
- * - Any critical data that must not corrupt
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import fs from 'fs/promises';
 import path from 'path';
 

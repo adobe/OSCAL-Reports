@@ -1,12 +1,9 @@
 /**
- * Merge extended_data control payloads into in-memory controls after SSP extract/compare.
- * When a DB row exists for scope control / scope_id systemScopeId::controlId, DB wins for adobeTeamResponsible.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { getResolvedConfig } from '../configManager.js';
 import { normalizeAdobeTeamResponsibleSlots } from '../utils/adobeTeamResponsible.js';
 import { connectPgClient, ensureExtendedDataTable } from './dbClient.js';

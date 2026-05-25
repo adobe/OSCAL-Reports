@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Diagnose Okta 401 on Blue and Green EC2 instances.
 # SSHs to each instance and checks: config (ssoConfig.okta), pass secret, env, logs.
 # Uses: Pass for SSH key (default AWS/OSCAL-AWS4403-SSH); Terraform via terraform/run-with-aws-pass.sh for IPs.

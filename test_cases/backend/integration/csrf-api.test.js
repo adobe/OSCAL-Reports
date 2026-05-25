@@ -1,18 +1,9 @@
 /**
- * CSRF and API Endpoint Integration Tests
- * 
- * Tests the CSRF protection behavior for different API endpoints
- * Added in v1.6.5 to verify CSRF exemption for /api/ endpoints
- * 
- * Key Security Features Tested:
- * - CSRF exemption for all /api/ endpoints
- * - Bearer token authentication for protected endpoints
- * - Public endpoint accessibility
- * - Protected endpoint authorization
- * 
- * Location: test_cases/backend/integration/csrf-api.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';

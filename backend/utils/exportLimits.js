@@ -1,11 +1,9 @@
 /**
- * Export generation payload limits (OWASP API4 — avoid unbounded resource use).
- * Override with environment variables on large-catalog deployments.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * OSCAL_EXPORT_MAX_CONTROLS — default 10000, clamped 100–50000
- * OSCAL_EXPORT_MAX_METADATA_BYTES — default 512KB, clamped 10KB–5MB
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 function clampInt(value, min, max, fallback) {
   const n = parseInt(value, 10);
   if (Number.isNaN(n)) return fallback;

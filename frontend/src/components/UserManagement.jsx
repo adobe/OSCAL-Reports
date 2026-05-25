@@ -1,8 +1,9 @@
 /**
- * User Management Component - Platform Admin only
- * Manage users, roles, and permissions
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth, ROLES } from '../contexts/AuthContext';
