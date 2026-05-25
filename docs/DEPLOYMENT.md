@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.17  
+**Version**: 1.7.18  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -315,8 +315,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.17 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.17
+# ✓ Current version: 1.7.18 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.18
 # ✓ Versions match - no build needed
 ```
 
@@ -448,8 +448,9 @@ After first deployment, configure via web UI:
 3. **Configure Settings**:
    - Email/SMTP settings
    - AI integration (optional)
-   - Published SOA URL
    - API Gateways
+
+**Multi-Report Comparison URLs:** Report source URLs are entered on the **Multi-Report Comparison** screen (URL or file per slot). Last-used URLs are stored in the **user’s browser** (`localStorage`, keyed by user id)—not in Platform Settings or on the server. Other users do not see your saved URLs.
 
 ### Configuration Files
 
@@ -463,9 +464,9 @@ email_blocklist.json     # Blocked emails (legacy email_blacklist.json migrated 
 rate_limit.json          # API rate limiting rules
 ```
 
-### Published SOA/CCM uploads (Published_OSCAL)
+### Published SOA/CCM uploads (Published_OSCAL) — legacy
 
-Uploaded published SOA/CCM JSON files (Platform Settings → Published SOA/CCM URL → upload) are stored in **`backend/Published_OSCAL/`** (next to the app’s `public/` directory, not under it). They are **not** served as static files: access is only via the application API (`GET /api/baseline-report`, `GET /api/published-soa/:filename`), so web crawlers and scanners cannot reach them.
+Legacy server-side published SOA files may exist under **`backend/Published_OSCAL/`**. New deployments should use **Multi-Report Comparison** with per-user URL or file upload (browser-local URL recall). The Settings page no longer stores a system-wide Published SOA/CCM URL.
 
 **Restrict directory permissions** so only the application service user can read/write:
 
