@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.17**)  
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.18**)  
 **Last Updated**: April 2026
 
 ---
