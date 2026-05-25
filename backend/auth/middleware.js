@@ -1,7 +1,9 @@
 /**
- * Authentication and Authorization Middleware
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { validateSession } from './userManager.js';
 import { hasPermission } from './roles.js';
 

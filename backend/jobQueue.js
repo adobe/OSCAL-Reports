@@ -1,15 +1,9 @@
 /**
- * Job Queue Manager for Heavy Background Operations
- * 
- * Handles async processing of heavy operations like PDF/Excel generation
- * to prevent GUI timeouts and improve user experience.
- * 
- * @module jobQueue
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';

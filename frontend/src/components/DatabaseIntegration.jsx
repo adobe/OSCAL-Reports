@@ -1,12 +1,9 @@
 /**
- * Database Integration - Platform Settings tab
- * Configure PostgreSQL (or AWS RDS) connection for schema-less extended data storage.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';

@@ -1,0 +1,1 @@
+../../bedrock_cross_account.tf

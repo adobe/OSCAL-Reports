@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Australia IP ranges for ALB ingress restriction (when alb_restrict_to_australia = true).
 # Fetches aggregated AU CIDRs from IPdeny; splits into prefix lists (max 100 entries each per AWS API limit).
 

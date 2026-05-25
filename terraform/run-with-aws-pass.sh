@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Load AWS credentials from Pass and run Terraform (or import EC2 key from Pass).
 # For apply: use ./run-with-aws-pass.sh apply (not raw terraform apply) so existing ALB
 # port 80/443 listeners are removed automatically if Terraform will create the HTTPS listener.
