@@ -1,13 +1,9 @@
 /**
- * Settings API Integration Tests
- * 
- * Tests the /api/settings endpoint to ensure proper async operation handling.
- * This test suite was added after the v1.6.1 bug where the settings endpoint
- * was missing the 'async' keyword, causing server crashes.
- * 
- * Location: tests/backend/integration/settings-api.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';

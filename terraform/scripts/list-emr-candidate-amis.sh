@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # List EC2 AMIs you can launch in the current account that look like Amazon Linux 2023 EMR
 # (Image Factory naming). Use after AWS credentials are active (e.g. run-with-aws-pass / SSO).
 #
