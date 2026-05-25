@@ -1,21 +1,8 @@
 #!/bin/bash
-#
-# OSCAL Report Generator V2 - Automated Version Bumping Script
-#
-# Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+# Copyright 2025 Adobe. All rights reserved.
 # Copyright (c) 2025 Mukesh Kesharwani
-# License: MIT
 #
-# Usage: ./scripts/bump_version.sh [major|minor|patch] "changelog message"
-#        ./scripts/bump_version.sh set VERSION "changelog message"
-# Example: ./scripts/bump_version.sh minor "Add new AI integration features"
-# Example: ./scripts/bump_version.sh set 1.7.12 "Release 1.7.12"
-#
-# This script:
-# - Updates version in all 3 package.json files (root, backend, frontend)
-# - Appends changelog entry to docs/CHANGELOG.md
-# - Creates a git commit with the version bump
-# - Optionally creates a git tag
+# Licensed under the MIT License. See LICENSE file for details.
 
 set -e  # Exit on error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

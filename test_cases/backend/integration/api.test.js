@@ -1,9 +1,9 @@
 /**
- * API Integration Tests
- * Tests the actual API endpoints with a test server
- * Location: tests/backend/integration/api.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';

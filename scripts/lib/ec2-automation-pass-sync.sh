@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # shellcheck shell=bash
 # Pass vault ↔ AWS Secrets Manager sync (allowlist). Sourced by ec2_automation.sh after otel_log is defined.
 # Test hook: PASS_SYNC_TEST_EPOCH overrides wall clock for min-interval and merge timestamps (integer seconds).
