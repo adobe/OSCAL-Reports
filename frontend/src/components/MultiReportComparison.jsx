@@ -4,27 +4,72 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import axios from '../utils/safeAxios.js';
 import buildInfo from '../utils/buildInfo';
 import { useAuth } from '../contexts/AuthContext';
 import { exportErrorMessage } from '../utils/exportErrorMessage';
+import {
+  loadComparisonReportPrefs,
+  saveComparisonUrlForSlot,
+  saveComparisonReportTypes,
+  defaultSlotInputMode,
+} from '../utils/comparisonReportPrefs.js';
+import { verifyOscalReportUrl } from '../utils/verifyOscalReportUrl.js';
 import ControlEditModal from './ControlEditModal';
+import ValidationStatus from './ValidationStatus';
+import { validateSSP, getValidatorStatus } from '../services/oscalValidator';
 import './MultiReportComparison.css';
+import './ExportButtons.css';
+
+const REPORT_SLOTS = ['baseline', 'csp1', 'csp2'];
+
+const SLOT_LABELS = {
+  baseline: '📄 Assessment Subject Report',
+  csp1: '☁️ Cloud Service Provider Report 1',
+  csp2: '☁️ Cloud Service Provider Report 2',
+};
+
+const DEFAULT_REPORT_NAMES = {
+  baseline: 'Assessment Subject Report',
+  csp1: 'Cloud Service Provider Report 1',
+  csp2: 'Cloud Service Provider Report 2',
+};
+
+const FILE_UPLOAD_LABEL = {
+  baseline: '📁 Upload OSCAL JSON',
+  csp1: '📁 Update OSCAL JSON',
+  csp2: '📁 Update OSCAL JSON',
+};
+
+async function fetchOscalJsonFromUrl(url, getAuthConfig) {
+  const trimmed = url.trim();
+  if (trimmed.startsWith('/api/')) {
+    if (trimmed === '/api/baseline-report' || trimmed.startsWith('/api/baseline-report?')) {
+      return axios.get('/api/baseline-report', getAuthConfig());
+    }
+    return axios.get(trimmed, getAuthConfig());
+  }
+  return axios.get(trimmed);
+}
 
 function MultiReportComparison({ onBack, onShowSettings }) {
-  const { getAuthConfig } = useAuth();
-  const [publishedSoaUrl, setPublishedSoaUrl] = useState('');
+  const { getAuthConfig, user } = useAuth();
+  const [slotUrls, setSlotUrls] = useState({ baseline: '', csp1: '', csp2: '' });
+  const [slotModes, setSlotModes] = useState({ baseline: 'url', csp1: 'file', csp2: 'file' });
+  const [slotVerifyMessages, setSlotVerifyMessages] = useState({ baseline: '', csp1: '', csp2: '' });
+  const [verifyingSlot, setVerifyingSlot] = useState(null);
+  const [loadingSlot, setLoadingSlot] = useState(null);
   const [reports, setReports] = useState({
     baseline: null,      // Your default/current report or published SOA
     csp1: null,          // First CSP report (IaaS/PaaS/SaaS)
     csp2: null           // Second CSP report (IaaS/PaaS/SaaS)
   });
   const [reportNames, setReportNames] = useState({
-    baseline: 'Baseline Report',
-    csp1: 'CSP Report 1',
-    csp2: 'CSP Report 2'
+    baseline: 'Assessment Subject Report',
+    csp1: 'Cloud Service Provider Report 1',
+    csp2: 'Cloud Service Provider Report 2',
   });
   const [reportTypes, setReportTypes] = useState({
     baseline: 'PaaS',
@@ -38,16 +83,61 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   const [editingControl, setEditingControl] = useState(null);
   const [baselineControls, setBaselineControls] = useState(null); // Editable baseline controls
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [exportValidating, setExportValidating] = useState(false);
+  const [exportValidationResult, setExportValidationResult] = useState(null);
+  const [validatorReady, setValidatorReady] = useState(false);
+  const [exportValidationOptions, setExportValidationOptions] = useState({
+    requiredFields: true,
+    stringPatterns: false,
+    enums: false,
+    formats: false,
+    lengthRestrictions: false,
+    additionalProperties: false,
+  });
   const [databaseIntegrationEnabled, setDatabaseIntegrationEnabled] = useState(false);
   const [adobeTeamOptions, setAdobeTeamOptions] = useState([]);
 
-  // Load published SOA URL and Database Integration / Adobe Team options from server settings
+  const persistReportTypes = useCallback((nextTypes) => {
+    if (user?.id) {
+      saveComparisonReportTypes(user.id, nextTypes);
+    }
+  }, [user?.id]);
+
+  // Per-user URL prefs (localStorage) + DB settings; legacy baseline URL pre-fill (UI only)
   useEffect(() => {
-    const fetchSettings = async () => {
+    const init = async () => {
       try {
+        if (user?.id) {
+          const prefs = loadComparisonReportPrefs(user.id);
+          if (prefs) {
+            setSlotUrls({
+              baseline: prefs.baselineUrl || '',
+              csp1: prefs.csp1Url || '',
+              csp2: prefs.csp2Url || '',
+            });
+            setReportTypes(prefs.reportTypes);
+            setSlotModes({
+              baseline: defaultSlotInputMode(prefs, 'baseline'),
+              csp1: defaultSlotInputMode(prefs, 'csp1'),
+              csp2: defaultSlotInputMode(prefs, 'csp2'),
+            });
+            if (!prefs.baselineUrl) {
+              try {
+                const settingsRes = await axios.get('/api/settings', getAuthConfig());
+                const legacyUrl = (settingsRes.data?.publishedSoaUrl || '').trim();
+                if (legacyUrl && !legacyUrl.startsWith('/api/published-soa/')) {
+                  setSlotUrls((prev) => ({ ...prev, baseline: legacyUrl }));
+                  setSlotModes((prev) => ({ ...prev, baseline: 'url' }));
+                }
+              } catch {
+                /* ignore legacy pre-fill errors */
+              }
+            }
+          }
+        }
+
         const response = await axios.get('/api/settings', getAuthConfig());
         const serverSettings = response.data;
-        setPublishedSoaUrl(serverSettings.publishedSoaUrl || '');
         const dbEnabled = !!(serverSettings.databaseConfig?.enabled);
         setDatabaseIntegrationEnabled(dbEnabled);
         if (dbEnabled) {
@@ -57,11 +147,63 @@ function MultiReportComparison({ onBack, onShowSettings }) {
           setAdobeTeamOptions([]);
         }
       } catch (error) {
-        console.error('❌ Failed to load settings:', error);
+        console.error('❌ Failed to load comparison settings:', error);
       }
     };
-    fetchSettings();
-  }, [getAuthConfig]);
+    init();
+  }, [getAuthConfig, user?.id]);
+
+  useEffect(() => {
+    if (step === 2) {
+      getValidatorStatus().then((status) => setValidatorReady(status.ready));
+    }
+  }, [step]);
+
+  const getBaselineControlsForExport = useCallback(() => {
+    if (baselineControls && Object.keys(baselineControls).length > 0) {
+      return Object.values(baselineControls);
+    }
+    const reqs = reports.baseline?.['system-security-plan']?.['control-implementation']?.['implemented-requirements'];
+    return Array.isArray(reqs) ? reqs : [];
+  }, [baselineControls, reports.baseline]);
+
+  const buildAssessmentSubjectSystemInfo = useCallback(() => {
+    const ssp = reports.baseline?.['system-security-plan'] || {};
+    return {
+      title: ssp.metadata?.title || 'System Security Plan',
+      systemName: ssp['system-characteristics']?.['system-name'] || reportNames.baseline,
+      systemId: ssp['system-characteristics']?.['system-ids']?.[0]?.id || 'N/A',
+      description: ssp['system-characteristics']?.description || '',
+      securityLevel: ssp['system-characteristics']?.['security-sensitivity-level'] || 'moderate',
+    };
+  }, [reports.baseline, reportNames.baseline]);
+
+  const generateAssessmentSubjectSsp = useCallback(async (validationOptions = {}) => {
+    const controlsArray = getBaselineControlsForExport();
+    if (!reports.baseline || controlsArray.length === 0) {
+      throw new Error('No assessment subject report controls available to export.');
+    }
+    const metadata = reports.baseline['system-security-plan']?.metadata || {};
+    const response = await axios.post('/api/generate-ssp', {
+      metadata,
+      controls: controlsArray,
+      systemInfo: buildAssessmentSubjectSystemInfo(),
+      validationOptions,
+    }, getAuthConfig());
+    return response.data;
+  }, [reports.baseline, getBaselineControlsForExport, buildAssessmentSubjectSystemInfo, getAuthConfig]);
+
+  const applyLoadedReport = (reportKey, jsonData, displayName) => {
+    setReports((prev) => ({ ...prev, [reportKey]: jsonData }));
+    setReportNames((prev) => ({
+      ...prev,
+      [reportKey]: displayName
+        || jsonData['system-security-plan']?.['system-characteristics']?.['system-name']
+        || jsonData['system-security-plan']?.metadata?.title
+        || DEFAULT_REPORT_NAMES[reportKey],
+    }));
+    setError('');
+  };
 
   const handleFileUpload = async (reportKey, file) => {
     if (!file) return;
@@ -69,60 +211,63 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     try {
       const text = await file.text();
       const jsonData = JSON.parse(text);
-      
-      setReports(prev => ({
-        ...prev,
-        [reportKey]: jsonData
-      }));
-      
-      // Extract system name for display
-      const systemName = jsonData['system-security-plan']?.['system-characteristics']?.['system-name'] || 
-                        jsonData['system-security-plan']?.metadata?.title ||
-                        file.name;
-      setReportNames(prev => ({
-        ...prev,
-        [reportKey]: systemName
-      }));
-      
-      setError('');
+      applyLoadedReport(reportKey, jsonData, file.name);
+      setSlotUrls((prev) => ({ ...prev, [reportKey]: '' }));
     } catch (err) {
       setError(`Error reading ${reportKey} file: ${err.message}`);
     }
   };
 
-  const handleFetchPublished = async () => {
-    if (!publishedSoaUrl) {
-      setError('No Published SOA/CCM URL configured. Please set it in Settings.');
+  const handleSlotUrlChange = (reportKey, value) => {
+    setSlotUrls((prev) => ({ ...prev, [reportKey]: value }));
+    setSlotVerifyMessages((prev) => ({ ...prev, [reportKey]: '' }));
+  };
+
+  const handleSlotModeChange = (reportKey, mode) => {
+    setSlotModes((prev) => ({ ...prev, [reportKey]: mode }));
+  };
+
+  const handleReportTypeChange = (reportKey, value) => {
+    setReportTypes((prev) => {
+      const next = { ...prev, [reportKey]: value };
+      persistReportTypes(next);
+      return next;
+    });
+  };
+
+  const handleVerifySlotUrl = async (reportKey) => {
+    const url = (slotUrls[reportKey] || '').trim();
+    if (!url) {
+      setSlotVerifyMessages((prev) => ({ ...prev, [reportKey]: '❌ Please enter a URL to verify' }));
+      return;
+    }
+    setVerifyingSlot(reportKey);
+    setSlotVerifyMessages((prev) => ({ ...prev, [reportKey]: '🔄 Verifying URL...' }));
+    const result = await verifyOscalReportUrl(url, getAuthConfig());
+    setSlotVerifyMessages((prev) => ({ ...prev, [reportKey]: result.message }));
+    setVerifyingSlot(null);
+  };
+
+  const handleLoadFromUrl = async (reportKey) => {
+    const url = (slotUrls[reportKey] || '').trim();
+    if (!url) {
+      setError(`Enter a URL for ${DEFAULT_REPORT_NAMES[reportKey]}.`);
       return;
     }
 
-    setLoading(true);
+    setLoadingSlot(reportKey);
     setError('');
 
     try {
-      // Stored files: fetch via backend (same-origin). External URLs (e.g. GitHub): fetch directly from browser (restores 1.6.5 behavior, avoids server-side 404/CORS).
-      const isStoredFile = publishedSoaUrl.startsWith('/api/');
-      const response = isStoredFile
-        ? await axios.get('/api/baseline-report', getAuthConfig())
-        : await axios.get(publishedSoaUrl);
-      setReports(prev => ({
-        ...prev,
-        baseline: response.data
-      }));
-      
-      const systemName = response.data['system-security-plan']?.['system-characteristics']?.['system-name'] || 
-                        response.data['system-security-plan']?.metadata?.title ||
-                        'Published Report';
-      setReportNames(prev => ({
-        ...prev,
-        baseline: systemName
-      }));
-      
-      setError('');
+      const response = await fetchOscalJsonFromUrl(url, getAuthConfig());
+      applyLoadedReport(reportKey, response.data, null);
+      if (user?.id) {
+        saveComparisonUrlForSlot(user.id, reportKey, url);
+      }
     } catch (err) {
-      setError(`Failed to fetch published report: ${err.message}`);
+      setError(`Failed to load ${reportKey} report: ${err.message}`);
     } finally {
-      setLoading(false);
+      setLoadingSlot(null);
     }
   };
 
@@ -182,9 +327,9 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       csp2: null
     });
     setReportNames({
-      baseline: 'Baseline Report',
-      csp1: 'CSP Report 1',
-      csp2: 'CSP Report 2'
+      baseline: 'Assessment Subject Report',
+      csp1: 'Cloud Service Provider Report 1',
+      csp2: 'Cloud Service Provider Report 2',
     });
     setComparisonResult(null);
     setBaselineControls(null);
@@ -217,55 +362,329 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     console.log('✅ Control updated:', updatedControl.id);
   };
 
-  const handleExportDefault = async () => {
-    if (!reports.baseline || !baselineControls) {
-      setError('No baseline report to export.');
+  const handleExportValidationOptionChange = (option) => {
+    setExportValidationOptions((prev) => ({
+      ...prev,
+      [option]: !prev[option],
+    }));
+  };
+
+  const renderAssessmentExportPanel = () => (
+    <div className="export-container">
+      <div className="export-card">
+        <h3>Export Assessment Subject Report</h3>
+        <p className="export-description">
+          Export edits made to the assessment subject report as OSCAL JSON. Validate against the OSCAL schema before downloading (same as other use cases).
+        </p>
+
+        <div className="validation-section">
+          <h4 className="validation-options-title">
+            <span className="icon">⚙️</span> Validation Options (Metaschema Framework Awareness)
+          </h4>
+          <p className="validation-options-description">
+            Select what aspects to validate. This helps understand Metaschema Framework compliance without affecting exports.
+          </p>
+
+          <div className="validation-checkboxes">
+            <label className="checkbox-label" title="Validate all mandatory OSCAL fields (uuid, metadata, system-characteristics, system-implementation, control-implementation)">
+              <input
+                type="checkbox"
+                checked={exportValidationOptions.requiredFields}
+                onChange={() => handleExportValidationOptionChange('requiredFields')}
+              />
+              <span className="checkbox-text">
+                <strong>Required Fields</strong>
+                <span className="info-icon" title="Validate all mandatory OSCAL fields">ⓘ</span>
+              </span>
+            </label>
+
+            <label className="checkbox-label" title="Validate string formats: no leading/trailing spaces, proper trimming, pattern compliance">
+              <input
+                type="checkbox"
+                checked={exportValidationOptions.stringPatterns}
+                onChange={() => handleExportValidationOptionChange('stringPatterns')}
+              />
+              <span className="checkbox-text">
+                <strong>String Patterns</strong>
+                <span className="info-icon" title="Validate string format rules">ⓘ</span>
+              </span>
+            </label>
+
+            <label className="checkbox-label" title="Validate that values match predefined options (oscal-version: '2.1.0', status states, classification levels)">
+              <input
+                type="checkbox"
+                checked={exportValidationOptions.enums}
+                onChange={() => handleExportValidationOptionChange('enums')}
+              />
+              <span className="checkbox-text">
+                <strong>Enum Values</strong>
+                <span className="info-icon" title="Validate predefined value lists">ⓘ</span>
+              </span>
+            </label>
+
+            <label className="checkbox-label" title="Validate email addresses (RFC 5322), URIs, UUIDs (RFC 4122), date-time (RFC 3339), and other format types">
+              <input
+                type="checkbox"
+                checked={exportValidationOptions.formats}
+                onChange={() => handleExportValidationOptionChange('formats')}
+              />
+              <span className="checkbox-text">
+                <strong>Format Validation</strong>
+                <span className="info-icon" title="Validate email, URI, UUID, date formats">ⓘ</span>
+              </span>
+            </label>
+
+            <label className="checkbox-label" title="Validate min/max length constraints for strings, arrays, and objects (e.g., string minLength: 1, array maxItems: 100)">
+              <input
+                type="checkbox"
+                checked={exportValidationOptions.lengthRestrictions}
+                onChange={() => handleExportValidationOptionChange('lengthRestrictions')}
+              />
+              <span className="checkbox-text">
+                <strong>Length Restrictions</strong>
+                <span className="info-icon" title="Validate size/length constraints">ⓘ</span>
+              </span>
+            </label>
+
+            <label className="checkbox-label" title="Flag custom fields not defined in OSCAL schema. Helps identify non-standard extensions and ensure strict compliance.">
+              <input
+                type="checkbox"
+                checked={exportValidationOptions.additionalProperties}
+                onChange={() => handleExportValidationOptionChange('additionalProperties')}
+              />
+              <span className="checkbox-text">
+                <strong>No Additional Properties</strong>
+                <span className="info-icon" title="Flag custom/non-standard fields">ⓘ</span>
+              </span>
+            </label>
+          </div>
+
+          <button
+            type="button"
+            className={`btn validation-btn ${validatorReady ? 'btn-info' : 'btn-warning'}`}
+            onClick={handleValidateAssessmentExport}
+            disabled={exportValidating || loading || !reports.baseline || !validatorReady}
+            title={validatorReady ? 'Validate with selected options' : 'Docker not available - validation disabled'}
+          >
+            {exportValidating ? (
+              <>
+                <span className="spinner"></span>
+                Validating...
+              </>
+            ) : (
+              <>
+                <span className="export-icon">{validatorReady ? '✓' : '⚠'}</span>
+                Validate OSCAL with Selected Options
+              </>
+            )}
+          </button>
+          {!validatorReady && (
+            <small className="validator-warning">
+              Docker required for validation. <a href="https://www.docker.com/products/docker-desktop" target="_blank" rel="noopener noreferrer">Install Docker</a>
+            </small>
+          )}
+        </div>
+
+        <div className="export-buttons mrc-export-buttons">
+          <button
+            type="button"
+            className="btn btn-primary export-btn"
+            onClick={handleExportAssessmentSubject}
+            disabled={loading || exportValidating || !reports.baseline}
+            title="Export assessment subject report as OSCAL JSON"
+          >
+            {loading ? (
+              <>
+                <span className="spinner"></span>
+                Exporting...
+              </>
+            ) : (
+              <>
+                <span className="export-icon">📄</span>
+                Export OSCAL JSON
+              </>
+            )}
+          </button>
+        </div>
+
+        {exportValidationResult && (
+          <ValidationStatus result={exportValidationResult} />
+        )}
+      </div>
+    </div>
+  );
+
+  const handleValidateAssessmentExport = async () => {
+    setExportValidating(true);
+    setExportValidationResult(null);
+    setError('');
+    try {
+      const ssp = await generateAssessmentSubjectSsp(exportValidationOptions);
+      const result = await validateSSP(ssp, exportValidationOptions);
+      setExportValidationResult(result);
+    } catch (err) {
+      setError(`Validation failed: ${await exportErrorMessage(err, err?.message || 'Unknown error')}`);
+    } finally {
+      setExportValidating(false);
+    }
+  };
+
+  const handleExportAssessmentSubject = async () => {
+    if (!reports.baseline) {
+      setError('No assessment subject report to export.');
       return;
     }
 
     setLoading(true);
+    setError('');
     try {
-      // Prepare system info from baseline report
-      const systemInfo = {
-        title: reports.baseline['system-security-plan']?.metadata?.title || 'System Security Plan',
-        systemName: reports.baseline['system-security-plan']?.['system-characteristics']?.['system-name'] || reportNames.baseline,
-        systemId: reports.baseline['system-security-plan']?.['system-characteristics']?.['system-ids']?.[0]?.id || 'N/A',
-        description: reports.baseline['system-security-plan']?.['system-characteristics']?.description || '',
-        securityLevel: reports.baseline['system-security-plan']?.['system-characteristics']?.['security-sensitivity-level'] || 'moderate'
-      };
+      const ssp = await generateAssessmentSubjectSsp(exportValidationOptions);
+      const validation = await validateSSP(ssp, exportValidationOptions);
+      setExportValidationResult(validation);
+      if (!validation.valid) {
+        setError('OSCAL validation failed. Review validation results and fix issues before exporting.');
+        return;
+      }
 
-      // Convert baselineControls map to array
-      const controlsArray = Object.values(baselineControls);
-
-      // Extract metadata from baseline report
-      const metadata = reports.baseline['system-security-plan']?.metadata || {};
-
-      // Call the generate-ssp API
-      const response = await axios.post('/api/generate-ssp', {
-        metadata: metadata,
-        controls: controlsArray,
-        systemInfo: systemInfo
-      }, getAuthConfig());
-
-      // Download the file
-      const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
+      const systemInfo = buildAssessmentSubjectSystemInfo();
+      const blob = new Blob([JSON.stringify(ssp, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${systemInfo.systemName || 'default-report'}_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `${systemInfo.systemName || 'assessment-subject-report'}_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
       setHasUnsavedChanges(false);
-      console.log('✅ Default report exported successfully');
     } catch (err) {
       console.error('❌ Export failed:', err);
       setError(`Export failed: ${await exportErrorMessage(err, err?.message || 'Unknown error')}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderReportSlot = (reportKey) => {
+    const mode = slotModes[reportKey] || 'file';
+    const verifyMsg = slotVerifyMessages[reportKey] || '';
+    const isVerifying = verifyingSlot === reportKey;
+    const isLoading = loadingSlot === reportKey;
+
+    return (
+      <div key={reportKey} className="upload-card">
+        <div className="upload-header">
+          <h4>{SLOT_LABELS[reportKey]}</h4>
+        </div>
+        <div className="upload-body">
+          <div className="csp-type-selector">
+            <label>Service Type:</label>
+            <select
+              className="csp-type-select"
+              value={reportTypes[reportKey]}
+              onChange={(e) => handleReportTypeChange(reportKey, e.target.value)}
+            >
+              <option value="IaaS">IaaS (Infrastructure)</option>
+              <option value="PaaS">PaaS (Platform)</option>
+              <option value="SaaS">SaaS (Software)</option>
+            </select>
+          </div>
+
+          {reports[reportKey] ? (
+            <div className="uploaded-info">
+              <span className="success-icon">✅</span>
+              <div>
+                <strong>{reportNames[reportKey]}</strong>
+                <small>{reportTypes[reportKey]} Provider OSCAL Report</small>
+              </div>
+              <label className="file-upload-btn file-upload-btn-sm">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={(e) => handleFileUpload(reportKey, e.target.files[0])}
+                />
+                📁 Update OSCAL JSON
+              </label>
+              <button
+                type="button"
+                className="btn-sm btn-danger"
+                onClick={() => setReports((prev) => ({ ...prev, [reportKey]: null }))}
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="mrc-input-mode-toggle" role="group" aria-label="Report source">
+                <button
+                  type="button"
+                  className={`mrc-mode-btn ${mode === 'url' ? 'active' : ''}`}
+                  onClick={() => handleSlotModeChange(reportKey, 'url')}
+                >
+                  🔗 URL
+                </button>
+                <button
+                  type="button"
+                  className={`mrc-mode-btn ${mode === 'file' ? 'active' : ''}`}
+                  onClick={() => handleSlotModeChange(reportKey, 'file')}
+                >
+                  📁 Upload file
+                </button>
+              </div>
+
+              {mode === 'url' ? (
+                <div className="mrc-url-panel">
+                  <input
+                    type="url"
+                    className="form-control mrc-url-input"
+                    value={slotUrls[reportKey] || ''}
+                    onChange={(e) => handleSlotUrlChange(reportKey, e.target.value)}
+                    placeholder="https://raw.githubusercontent.com/.../report.json"
+                  />
+                  <div className="mrc-url-actions">
+                    <button
+                      type="button"
+                      className="btn-verify"
+                      onClick={() => handleVerifySlotUrl(reportKey)}
+                      disabled={isVerifying || !(slotUrls[reportKey] || '').trim()}
+                    >
+                      {isVerifying ? '⏳ Verifying...' : '🔍 Verify'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => handleLoadFromUrl(reportKey)}
+                      disabled={isLoading || !(slotUrls[reportKey] || '').trim()}
+                    >
+                      {isLoading ? '⏳ Loading...' : '🌐 Load report'}
+                    </button>
+                  </div>
+                  {verifyMsg && (
+                    <div className={`verification-message ${verifyMsg.includes('✅') ? 'success' : verifyMsg.includes('⚠️') ? 'warning' : verifyMsg.includes('🔄') ? 'info' : 'error'}`}>
+                      {verifyMsg.split('\n').map((line, idx) => (
+                        <div key={idx}>{line}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="upload-options">
+                  <label className="file-upload-btn">
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={(e) => handleFileUpload(reportKey, e.target.files[0])}
+                    />
+                    {FILE_UPLOAD_LABEL[reportKey]}
+                  </label>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (step === 2 && comparisonResult) {
@@ -298,19 +717,17 @@ function MultiReportComparison({ onBack, onShowSettings }) {
             )}
           </div>
           <div className="header-actions">
-            <button 
-              className="btn-primary" 
-              onClick={handleExportDefault}
-              disabled={loading || !reports.baseline}
-              title="Export Default Report"
-            >
-              {loading ? '⏳ Exporting...' : '📥 Export Default Report'}
-            </button>
             <button className="btn-secondary" onClick={onBack}>
               ← Back to Main
             </button>
           </div>
         </div>
+
+        {error && (
+          <div className="alert alert-error">
+            ❌ {error}
+          </div>
+        )}
 
         <div className="comparison-summary">
           <h3>Reports Being Compared:</h3>
@@ -450,7 +867,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
                       <button 
                         className="control-id-link"
                         onClick={() => handleControlClick(control.id)}
-                        title="Click to edit this control in Default Report"
+                        title="Click to edit this control in the Assessment Subject Report"
                       >
                         <strong>{control.id}</strong> 📝
                       </button>
@@ -499,6 +916,8 @@ function MultiReportComparison({ onBack, onShowSettings }) {
           document.body
         )}
 
+        {renderAssessmentExportPanel()}
+
         <footer className="app-footer">
           <p>
             <strong>Made with Passion by Mukesh Kesharwani</strong><br />
@@ -546,154 +965,18 @@ function MultiReportComparison({ onBack, onShowSettings }) {
         </div>
       )}
 
+      <div className="mrc-prefs-notice info-box">
+        <div className="mrc-prefs-notice-title">ℹ️ Your report URLs</div>
+        <p>
+          — Each user supplies report sources here (URL or file). Last-used URLs are remembered in this browser only, not on the server. Other users will not see your URLs.
+        </p>
+        <p>
+          — If you clear your browser cache, these remembered URLs will be removed.
+        </p>
+      </div>
+
       <div className="upload-section">
-        
-        {/* Baseline Report */}
-        <div className="upload-card">
-          <div className="upload-header">
-            <h4>📄 This platform published report (Default)</h4>
-          </div>
-          <div className="upload-body">
-            <div className="csp-type-selector">
-              <label>Service Type:</label>
-              <select 
-                className="csp-type-select"
-                value={reportTypes.baseline}
-                onChange={(e) => setReportTypes(prev => ({ ...prev, baseline: e.target.value }))}
-              >
-                <option value="IaaS">IaaS (Infrastructure)</option>
-                <option value="PaaS">PaaS (Platform)</option>
-                <option value="SaaS">SaaS (Software)</option>
-              </select>
-            </div>
-            {reports.baseline ? (
-              <div className="uploaded-info">
-                <span className="success-icon">✅</span>
-                <div>
-                  <strong>{reportNames.baseline}</strong>
-                  <small>{reportTypes.baseline} Provider OSCAL Report</small>
-                </div>
-                <button 
-                  className="btn-sm btn-danger"
-                  onClick={() => setReports(prev => ({ ...prev, baseline: null }))}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="upload-options">
-                {publishedSoaUrl ? (
-                  <button 
-                    className="btn-primary"
-                    onClick={handleFetchPublished}
-                    disabled={loading}
-                  >
-                    {loading ? '⏳ Fetching...' : '🌐 Fetch Published'}
-                  </button>
-                ) : (
-                  <div className="no-url-message">
-                    <p>⚠️ No Published SOA/CCM URL configured.</p>
-                    <p>Please configure the URL in <strong>Settings</strong> to use this feature.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* CSP Report 1 */}
-        <div className="upload-card">
-          <div className="upload-header">
-            <h4>☁️ Cloud Service Provider 1 Report</h4>
-          </div>
-          <div className="upload-body">
-            <div className="csp-type-selector">
-              <label>Service Type:</label>
-              <select 
-                className="csp-type-select"
-                value={reportTypes.csp1}
-                onChange={(e) => setReportTypes(prev => ({ ...prev, csp1: e.target.value }))}
-              >
-                <option value="IaaS">IaaS (Infrastructure)</option>
-                <option value="PaaS">PaaS (Platform)</option>
-                <option value="SaaS">SaaS (Software)</option>
-              </select>
-            </div>
-            {reports.csp1 ? (
-              <div className="uploaded-info">
-                <span className="success-icon">✅</span>
-                <div>
-                  <strong>{reportNames.csp1}</strong>
-                  <small>{reportTypes.csp1} Provider OSCAL Report</small>
-                </div>
-                <button 
-                  className="btn-sm btn-danger"
-                  onClick={() => setReports(prev => ({ ...prev, csp1: null }))}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="upload-options">
-                <label className="file-upload-btn">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={(e) => handleFileUpload('csp1', e.target.files[0])}
-                  />
-                  📁 Upload OSCAL JSON
-                </label>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* CSP Report 2 */}
-        <div className="upload-card">
-          <div className="upload-header">
-            <h4>☁️ Report 2</h4>
-          </div>
-          <div className="upload-body">
-            <div className="csp-type-selector">
-              <label>Service Type:</label>
-              <select 
-                className="csp-type-select"
-                value={reportTypes.csp2}
-                onChange={(e) => setReportTypes(prev => ({ ...prev, csp2: e.target.value }))}
-              >
-                <option value="IaaS">IaaS (Infrastructure)</option>
-                <option value="PaaS">PaaS (Platform)</option>
-                <option value="SaaS">SaaS (Software)</option>
-              </select>
-            </div>
-            {reports.csp2 ? (
-              <div className="uploaded-info">
-                <span className="success-icon">✅</span>
-                <div>
-                  <strong>{reportNames.csp2}</strong>
-                  <small>{reportTypes.csp2} Provider OSCAL Report</small>
-                </div>
-                <button 
-                  className="btn-sm btn-danger"
-                  onClick={() => setReports(prev => ({ ...prev, csp2: null }))}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="upload-options">
-                <label className="file-upload-btn">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={(e) => handleFileUpload('csp2', e.target.files[0])}
-                  />
-                  📁 Upload OSCAL JSON
-                </label>
-              </div>
-            )}
-          </div>
-        </div>
+        {REPORT_SLOTS.map((slotKey) => renderReportSlot(slotKey))}
       </div>
 
       <div className="action-section">

@@ -17,7 +17,7 @@
 
 **Date:** 2026-01-23  
 **Status:** Production-Ready  
-**Version:** 1.1 (guide revision; application release: root **`package.json`**, currently **1.7.17**)
+**Version:** 1.1 (guide revision; application release: root **`package.json`**, currently **1.7.18**)
 
 ---
 
@@ -646,7 +646,7 @@ Gemma3 is supported via the same pattern matching: any model name containing `"g
 
 ---
 
-*Last updated: April 2026*
+*Last updated: May 2026*
 
 ---
 

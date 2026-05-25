@@ -83,13 +83,13 @@ import {
   cleanupOldStates,
   getStateStats
 } from './debugStateManager.js';
-import { isEmailBlocklisted, addToBlocklist } from './auth/emailBlocklist.js';
+import { isEmailBlocklisted } from './auth/emailBlocklist.js';
 import { registrationRateLimiter } from './middleware/rateLimiter.js';
 import { sendUserCredentials } from './messagingService.js';
 import { scheduleUserCleanup } from './jobs/userCleanup.js';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
-import csrf from 'csurf';
+import { csrfProtection } from './middleware/csrfProtection.js';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
 import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
 import { validateExportGenerationLimits } from './utils/exportLimits.js';
@@ -198,12 +198,7 @@ app.use(session(SECURITY_CONFIG.session));
 // This is a tool limitation, not a security vulnerability.
 // ============================================================================
 
-// CSRF Protection
-const csrfProtection = csrf({ 
-  cookie: SECURITY_CONFIG.csrf.cookieOptions 
-});
-
-// Conditional CSRF middleware - exempt certain paths, enforce on CSRF_PROTECTED_PATHS
+// CSRF Protection (csrf package — replaces deprecated csurf) - exempt certain paths, enforce on CSRF_PROTECTED_PATHS
 app.use((req, res, next) => {
   // Skip CSRF for GET/HEAD/OPTIONS requests (safe methods)
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
