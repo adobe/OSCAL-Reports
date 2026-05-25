@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # One-off: set ENABLE_S3_INSTALLER_UPDATE=false on Blue and remove the ec2_automation cron job.
 # Use this to fix the current Blue instance without a full deploy.
 # Uses same SSH key as deploy-to-ec2.sh (Pass or SSH_KEY_FILE). Run from repo root.

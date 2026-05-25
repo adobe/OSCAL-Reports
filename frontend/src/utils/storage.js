@@ -1,11 +1,9 @@
 /**
- * Local Storage Utilities - Persist SSP data across sessions
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 const STORAGE_KEYS = {
   SSP_DATA: 'oscal_ssp_data',
   AUTO_SAVE_TIMESTAMP: 'oscal_ssp_autosave_time',

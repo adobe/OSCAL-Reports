@@ -1,12 +1,9 @@
 /**
- * OSCAL Security Assessment Results (SAR) Generator
- * Generates OSCAL-compliant SAR documents with assessment objectives and methods
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { v4 as uuidv4 } from 'uuid';
 
 // OSCAL empty placeholder for required fields
