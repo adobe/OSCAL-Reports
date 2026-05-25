@@ -1,8 +1,9 @@
 /**
- * RBAC (Role-Based Access Control) Unit Tests
- * Location: tests/backend/unit/roles.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect } from '@jest/globals';
 import { ROLES, PERMISSIONS, hasPermission, getRolePermissions } from '../../../backend/auth/roles.js';
 

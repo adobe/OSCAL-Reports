@@ -1,18 +1,9 @@
 /**
- * Async Handler Tests
- * 
- * Tests to ensure all route handlers that use 'await' are properly declared as 'async'.
- * This prevents the SyntaxError that occurred in v1.6.1 where a route handler used
- * 'await' without being declared as 'async', causing server crashes.
- * 
- * Bug History:
- * - v1.6.1: Route handler in /api/settings was missing 'async' keyword
- * - Symptom: "SyntaxError: Unexpected reserved word" on server startup
- * - Fix: Added 'async' keyword to route handler in v1.6.2
- * 
- * Location: tests/backend/unit/async-handlers.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect } from '@jest/globals';
 import fs from 'fs';
 import path from 'path';

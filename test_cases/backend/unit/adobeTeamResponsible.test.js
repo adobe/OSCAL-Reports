@@ -1,7 +1,9 @@
 /**
- * @jest-environment node
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect } from '@jest/globals';
 import { normalizeAdobeTeamResponsibleSlots } from '../../../backend/utils/adobeTeamResponsible.js';
 

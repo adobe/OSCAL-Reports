@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 #
 # Build the OSCAL Report Generator Docker image locally and push to Docker Hub.
 # Use this when you want to publish from your machine (e.g. Docker Desktop) instead

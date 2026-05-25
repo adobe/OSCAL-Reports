@@ -25,14 +25,35 @@
     }
   },
   "aiConfig": {
-    "enabled": true,
-    "url": "http://localhost:11434",
+    "enabled": false,
+    "provider": "aws-bedrock",
+    "url": "",
     "apiToken": { "_pass": "OSCAL/ai-api-token" },
-    "model": "mistral",
-    "timeout": 120000,
+    "model": "mistral:7b",
+    "timeout": 180000,
     "organizationName": "Your Organization",
+    "awsRegion": "us-east-1",
+    "bedrockModelId": "mistral.mistral-large-2402-v1:0",
     "awsAccessKeyId": { "_pass": "OSCAL/ai-aws-access-key-id" },
-    "awsSecretAccessKey": { "_pass": "OSCAL/ai-aws-secret-access-key" }
+    "awsSecretAccessKey": { "_pass": "OSCAL/ai-aws-secret-access-key" },
+    "extensiveLogging": false,
+    "allowedUsersForAI": "",
+    "maxTokens": {
+      "connectionTest": 10,
+      "controlGeneration": 150,
+      "general": 512
+    }
+  },
+  "databaseConfig": {
+    "enabled": false,
+    "host": "",
+    "port": 5432,
+    "database": "",
+    "user": "",
+    "password": "",
+    "authMode": "password",
+    "sslMode": "disable",
+    "connectionTimeout": 10000
   },
   "lastModified": "",
   "version": "1.0.0"

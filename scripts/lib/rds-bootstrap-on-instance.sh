@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Run ON the EC2 instance as root (sudo). Expects env: AWS_DEFAULT_REGION, RDS_HOST, RDS_PORT, DB_NAME,
-# MASTER_USER, SECRET_ARN, IAM_USER, FORCE (true/false), MARKER path.
+# ADMIN_USER, SECRET_ARN, IAM_USER, FORCE (true/false), MARKER path.
 # Invoked by scripts/deploy-to-ec2.sh when Terraform has RDS outputs (do not run standalone unless you set all env vars).
 
 set -euo pipefail
@@ -20,7 +25,7 @@ if [[ ! -f "$MARKER" ]]; then
   for _attempt in $(seq 1 30); do
     PGPASSWORD="$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text 2>/dev/null | jq -r '.password // empty')" || true
     export PGPASSWORD
-    if [[ -n "$PGPASSWORD" ]] && psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -c 'SELECT 1' >/dev/null 2>&1; then
+    if [[ -n "$PGPASSWORD" ]] && psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d postgres -c 'SELECT 1' >/dev/null 2>&1; then
       echo "RDS bootstrap: database is reachable"
       break
     fi
@@ -39,15 +44,15 @@ END
 $$;
 ROLESQL
   sed -i "s/ROLEHOLDER/${IAM_USER}/g" /tmp/oscal-rds-create-role.sql
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -f /tmp/oscal-rds-create-role.sql
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -f /tmp/oscal-rds-create-role.sql
   rm -f /tmp/oscal-rds-create-role.sql
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT rds_iam TO \"${IAM_USER}\";"
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT CONNECT ON DATABASE \"${DB_NAME}\" TO \"${IAM_USER}\";"
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT USAGE, CREATE ON SCHEMA public TO \"${IAM_USER}\";"
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"${IAM_USER}\";"
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"${IAM_USER}\";"
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"${IAM_USER}\";"
-  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$MASTER_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT rds_iam TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c "GRANT CONNECT ON DATABASE \"${DB_NAME}\" TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT USAGE, CREATE ON SCHEMA public TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"${IAM_USER}\";"
+  psql -h "$RDS_HOST" -p "$RDS_PORT" -U "$ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"${IAM_USER}\";"
   touch "$MARKER"
   echo "RDS bootstrap: SQL completed"
 fi

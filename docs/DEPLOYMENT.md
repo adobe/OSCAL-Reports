@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.12  
+**Version**: 1.7.17  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -315,8 +315,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.6.2
-# ✓ GitHub version: 1.6.2
+# ✓ Current version: 1.7.17 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.17
 # ✓ Versions match - no build needed
 ```
 
@@ -330,14 +330,14 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 │       └── app/
 │           ├── config.json         # Application settings
 │           ├── users.json          # User accounts
-│           ├── email_blacklist.json
+│           ├── email_blocklist.json
 │           └── rate_limit.json
 └── OSCAL-Report-Generator-Green/
     └── config/
         └── app/
             ├── config.json
             ├── users.json
-            ├── email_blacklist.json
+            ├── email_blocklist.json
             └── rate_limit.json
 ```
 
@@ -356,6 +356,17 @@ This ensures:
 ---
 
 ## Automated Deployments
+
+### AWS EC2 (Terraform) and S3 `installer/`
+
+For **Terraform-provisioned** Green/Blue EC2 (ALB, ASG, S3, optional RDS), the supported update path is:
+
+1. **Upload** a fresh app tree to **`s3://<environment-logs-bucket>/installer/`** (excludes `.cursor`, `terraform/`, large dev folders). From the repo root: `./scripts/deploy-to-ec2.sh --update-s3` (AWS credentials via **Pass**, same pattern as `terraform/run-with-aws-pass.sh`).
+2. **Deploy on instances** (pull from S3, optional OS updates, install/build/restart): `./scripts/deploy-to-ec2.sh`, or **`--blue`** / **`--both`** for one or both roles.
+
+Cron on instances can run **`scripts/ec2_automation.sh`** (S3 config backup; optional installer sync / OS updates via `ec2_automation.env`). This path is distinct from **TrueNAS + Docker Hub** (`install_from_dockerhub.sh`) above.
+
+**References:** [docs/AWS_OPERATIONS.md](AWS_OPERATIONS.md), [terraform/README.md](../terraform/README.md), header comments in `scripts/deploy-to-ec2.sh` and `scripts/ec2_automation.sh`.
 
 ### Cron Setup (Monthly Updates)
 
@@ -448,7 +459,7 @@ After first deployment, configure via web UI:
 ```
 config.json              # Main application config
 users.json               # User accounts (hashed passwords)
-email_blacklist.json     # Blocked email domains
+email_blocklist.json     # Blocked emails (legacy email_blacklist.json migrated on first load)
 rate_limit.json          # API rate limiting rules
 ```
 
@@ -689,4 +700,4 @@ For issues or questions:
 
 **Last Updated**: April 14, 2026  
 **Maintainer**: Mukesh Kesharwani <mkesharw@adobe.com>  
-**License**: GPL-3.0-or-later
+**License**: MIT

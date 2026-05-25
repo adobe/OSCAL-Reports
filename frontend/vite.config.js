@@ -1,3 +1,9 @@
+/**
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
+ */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
