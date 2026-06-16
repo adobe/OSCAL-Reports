@@ -21,7 +21,7 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `outputs.tf` – ALB URL, instance IDs, S3 bucket, VPC, etc.
 - `vpc.tf` – VPC, subnets, internet gateway
 - `security_groups.tf` – ALB, OSCAL security groups
-- `alb.tf` – Application Load Balancer and target groups (Green 3019, Blue 3020)
+- `alb.tf` – Application Load Balancer and target groups (Green and Blue, same app port)
 - `oscal_instances.tf` – Green/Blue user data (Node/Docker), locals for persistent EBS snippets
 - `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (size 1), optional gp3 volumes, ALB attachments
 - `oscal_ssm.tf` – SSM Command document and optional periodic association (post-boot checks / optional S3 sync)
@@ -110,4 +110,4 @@ Then run `terraform plan` and `terraform apply` again. AWS credentials must be s
 
 ---
 
-**Version:** 1.7.18 · **Last updated:** May 2026
+**Version:** 1.7.20 · **Last updated:** June 2026

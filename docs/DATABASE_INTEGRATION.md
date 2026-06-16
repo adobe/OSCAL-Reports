@@ -158,4 +158,4 @@ Counts below are derived from `backend/oscal-schema.json` (OSCAL unified JSON Sc
 
 ---
 
-**Version:** 1.7.18 · **Last updated:** May 2026
+**Version:** 1.7.20 · **Last updated:** June 2026

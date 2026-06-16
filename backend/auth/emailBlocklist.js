@@ -94,7 +94,7 @@ export async function isEmailBlocklisted(email) {
 }
 
 /**
- * Add email to blocklist with 45-day expiry
+ * Add email to blocklist with 30-day expiry
  * @param {string} email - Email address to blocklist
  * @param {Date} deletedAt - When the user was deleted (defaults to now)
  * @returns {Promise<void>}
@@ -105,7 +105,7 @@ export async function addToBlocklist(email, deletedAt = null) {
   const deleted = deletedAt ? new Date(deletedAt) : now;
 
   const expiresAt = new Date(deleted);
-  expiresAt.setDate(expiresAt.getDate() + 45);
+  expiresAt.setDate(expiresAt.getDate() + 30);
 
   const existingIndex = blocklist.findIndex(item =>
     item.email.toLowerCase() === email.toLowerCase()
@@ -116,14 +116,14 @@ export async function addToBlocklist(email, deletedAt = null) {
       email: email.toLowerCase(),
       deletedAt: deleted.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      reason: 'User deactivated due to 45-day inactivity'
+      reason: 'User deactivated due to 30-day inactivity'
     };
   } else {
     blocklist.push({
       email: email.toLowerCase(),
       deletedAt: deleted.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      reason: 'User deactivated due to 45-day inactivity'
+      reason: 'User deactivated due to 30-day inactivity'
     });
   }
 

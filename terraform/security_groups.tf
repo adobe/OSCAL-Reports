@@ -82,36 +82,22 @@ resource "aws_security_group" "oscal" {
   revoke_rules_on_delete = true
 
   ingress {
-    from_port       = 3019
-    to_port         = 3019
+    from_port       = var.oscal_app_port
+    to_port         = var.oscal_app_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
+  # Green ↔ Blue: allow OSCAL instances to reach each other on private IP (app port)
   ingress {
-    from_port       = 3020
-    to_port         = 3020
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  # Blue ↔ Green: allow OSCAL instances to reach each other on private IP (app ports)
-  ingress {
-    from_port   = 3019
-    to_port     = 3019
-    protocol    = "tcp"
-    self        = true
-    description = "Green/Blue inter-instance (private IP)"
-  }
-  ingress {
-    from_port   = 3020
-    to_port     = 3020
+    from_port   = var.oscal_app_port
+    to_port     = var.oscal_app_port
     protocol    = "tcp"
     self        = true
     description = "Green/Blue inter-instance (private IP)"
   }
 
-  # VPC → Blue/Green: allow instances in VPC to reach OSCAL on 80, 443, 3019, 3020
+  # VPC → Blue/Green: allow instances in VPC to reach OSCAL on 80, 443, app port
   ingress {
     from_port   = 80
     to_port     = 80
@@ -127,11 +113,11 @@ resource "aws_security_group" "oscal" {
     description = "VPC to OSCAL (HTTPS)"
   }
   ingress {
-    from_port   = 3019
-    to_port     = 3020
+    from_port   = var.oscal_app_port
+    to_port     = var.oscal_app_port
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
-    description = "VPC to OSCAL (app ports 3019, 3020)"
+    description = "VPC to OSCAL (app port ${var.oscal_app_port})"
   }
 
   # SSH: from allowed CIDRs only. Do not use 0.0.0.0/0 — PCL custom-config-ec2-sg-port-check will auto-remediate.
@@ -143,20 +129,13 @@ resource "aws_security_group" "oscal" {
     description = "SSH from allowed CIDRs"
   }
 
-  # Direct access to Green (3019) and Blue (3020) from default_allowed_cidr_blocks only (no 0.0.0.0/0 per PCL).
+  # Direct access to Green/Blue app port from default_allowed_cidr_blocks only (no 0.0.0.0/0 per PCL).
   ingress {
-    from_port   = 3019
-    to_port     = 3019
+    from_port   = var.oscal_app_port
+    to_port     = var.oscal_app_port
     protocol    = "tcp"
     cidr_blocks = var.default_allowed_cidr_blocks
-    description = "Green app port from allowed CIDRs"
-  }
-  ingress {
-    from_port   = 3020
-    to_port     = 3020
-    protocol    = "tcp"
-    cidr_blocks = var.default_allowed_cidr_blocks
-    description = "Blue app port from allowed CIDRs"
+    description = "OSCAL app port from allowed CIDRs"
   }
 
   # Access also via ALB (security_groups above), VPC CIDR (above), or self (Green↔Blue).
@@ -193,13 +172,13 @@ resource "aws_security_group" "oscal" {
     description = "SMTP submission / STARTTLS (e.g. smtp.gmail.com)"
   }
 
-  # Egress to VPC: app ports (3019, 3020), HTTP/HTTPS (80, 443) for cross-system talk
+  # Egress to VPC: app port, HTTP/HTTPS (80, 443) for cross-system talk
   egress {
-    from_port   = 3019
-    to_port     = 3020
+    from_port   = var.oscal_app_port
+    to_port     = var.oscal_app_port
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
-    description = "OSCAL to VPC (app ports)"
+    description = "OSCAL to VPC (app port)"
   }
 
   # PostgreSQL to RDS private subnets only (CIDRs avoid SG↔SG cycle; RDS has no public IP)

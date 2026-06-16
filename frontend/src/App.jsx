@@ -9,6 +9,7 @@ import axios from './utils/safeAxios.js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import OktaCallback from './components/OktaCallback';
+import GenericOidcCallback from './components/GenericOidcCallback';
 import UserManagement from './components/UserManagement';
 import SettingsWithTabs from './components/SettingsWithTabs';
 import UseCases from './components/UseCases';
@@ -1012,9 +1013,12 @@ function AppWithUseCases() {
     );
   }
 
-  // Show Okta OIDC callback handler when returning from Okta
+  // Show OIDC callback handlers when returning from IdP
   if (!isAuthenticated && typeof window !== 'undefined' && window.location.pathname === '/auth/okta/callback') {
     return <OktaCallback />;
+  }
+  if (!isAuthenticated && typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
+    return <GenericOidcCallback />;
   }
   // Show login if not authenticated
   if (!isAuthenticated) {

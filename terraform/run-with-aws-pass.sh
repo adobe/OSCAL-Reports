@@ -12,7 +12,6 @@
 #   ./run-with-aws-pass.sh apply [options]       apply (removes orphan ALB listeners first if needed)
 #   ./run-with-aws-pass.sh [terraform args...]   e.g. ./run-with-aws-pass.sh plan
 #   ./run-with-aws-pass.sh import-key [region]   import EC2 key from Pass (region defaults to us-east-1)
-#   ./run-with-aws-pass.sh remove-stale-ollama-state   remove Ollama-related entries from state (use same account as tfvars)
 #
 # Default: AWS4403 (account 442277170733).
 # Optional: AWS_PASS_ENTRY – Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403).
@@ -142,11 +141,6 @@ ensure_current_ip_in_tfvars() {
 case "${1:-}" in
   import-key)
     import_ec2_key "${2:-us-east-1}"
-    ;;
-  remove-stale-ollama-state)
-    load_aws_credentials
-    verify_aws_credentials
-    exec "$SCRIPT_DIR/../scripts/debug/remove-stale-ollama-state.sh"
     ;;
   apply)
     load_aws_credentials
