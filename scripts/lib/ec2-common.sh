@@ -21,6 +21,8 @@ TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
 # Wrapper script lives under terraform/; TERRAFORM_DIR is the env dir (state) for run-with-aws-pass.sh.
 RUN_WITH_AWS_PASS="${RUN_WITH_AWS_PASS:-$REPO_ROOT/terraform/run-with-aws-pass.sh}"
 SSH_USER="${SSH_USER:-ec2-user}"
+# OSCAL app port on EC2 Green/Blue (same on both; matches terraform var.oscal_app_port and backend default).
+OSCAL_APP_PORT="${OSCAL_APP_PORT:-3020}"
 # Defaults match scripts/deploy-to-ec2.sh (AWS4403). Override AWS_PASS_SSH_ENTRY / AWS_PASS_ENTRY when sourcing if needed.
 PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4403-SSH}"
 AWS_PASS_ENTRY="${AWS_PASS_ENTRY:-AWS/AMS_4403-STG}"
@@ -53,6 +55,41 @@ get_terraform_oscal_ip() {
   [ ! -x "$RUN_WITH_AWS_PASS" ] && return 1
   "$RUN_WITH_AWS_PASS" output -raw "oscal_${which}_public_ip" 2>/dev/null || \
   "$RUN_WITH_AWS_PASS" output -raw "oscal_${which}_private_ip" 2>/dev/null || true
+}
+
+# Live InService instance public IP from Auto Scaling Group (preferred over stale Terraform output).
+# Usage: get_asg_oscal_ip green|blue
+# Requires: aws CLI, load_aws_from_pass (or env AWS_*), terraform output oscal_*_autoscaling_group_name.
+get_asg_oscal_ip() {
+  local which="${1:-green}"
+  local asg_name instance_id pub_ip
+  case "$which" in
+    green|blue) ;;
+    *) return 1 ;;
+  esac
+  command -v aws >/dev/null 2>&1 || return 1
+  load_aws_from_pass || {
+    [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || return 1
+  }
+  if [ -z "${AWS_DEFAULT_REGION:-}" ] && [ -z "${AWS_REGION:-}" ]; then
+    export AWS_DEFAULT_REGION="us-east-1"
+  else
+    export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-1}}"
+  fi
+  if [ -x "$RUN_WITH_AWS_PASS" ]; then
+    asg_name=$("$RUN_WITH_AWS_PASS" output -raw "oscal_${which}_autoscaling_group_name" 2>/dev/null | tr -d '\r\n') || true
+  fi
+  [ -z "$asg_name" ] && return 1
+  instance_id=$(aws autoscaling describe-auto-scaling-groups \
+    --auto-scaling-group-names "$asg_name" \
+    --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId | [0]' \
+    --output text 2>/dev/null | tr -d '\r\n')
+  [ -z "$instance_id" ] || [ "$instance_id" = "None" ] && return 1
+  pub_ip=$(aws ec2 describe-instances --instance-ids "$instance_id" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+    --output text 2>/dev/null | tr -d '\r\n')
+  [ -z "$pub_ip" ] || [ "$pub_ip" = "None" ] && return 1
+  printf '%s' "$pub_ip"
 }
 
 # Load AWS credentials from Pass (AWS_PASS_ENTRY). Exports AWS_ACCESS_KEY_ID, etc.

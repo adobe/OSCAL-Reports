@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.7.20] - Unreleased
+
+Development baseline for release **1.7.20**. Add entries under Added / Changed / Fixed / Documentation as work lands.
+
+### Added
+
+- **Generic_OIDC (Authentik):** Built-in Generic SSO provider (`backend/auth/genericOidc.js`) with PKCE, discovery, signed state, redirect allowlist, and `{ "_cfgenc" }` / SM secret resolution.
+- **`frontend/src/components/GenericOidcCallback.jsx`:** Browser callback route `/auth/callback` for Generic_OIDC.
+- **`docs/TLS_CERTIFICATE_AND_PKI.md`:** Corporate PKI / ACM import runbook (replaces ad-hoc LE notes where applicable).
+- **Debug/ops scripts:** `migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`, and shared `scripts/lib/config-s3-sync.sh`, `deploy-maintenance.sh`, `installer-s3-reconcile.sh`.
+- **Unit tests:** `genericOidc.test.js`, `configFieldCrypto.test.js`, `defaultGenericOidcConfig.test.js`, `secretsManager.test.js`, `bedrockCredentials.test.js`.
+
+### Changed
+
+- **Login page:** Self-registration UI replaced with Generic SSO button and access policy copy; **Expedited entry** paragraph hidden on EC2 (`OSCAL_SECRETS_MODE=aws-sm` via `/api/auth/sso/login-providers`).
+- **User lifecycle:** Inactivity deactivation and email blocklist cooldown aligned from 45 to 30 days (`userCleanup.js`, `emailBlocklist.js`).
+- **SSO Integration UI:** Read-only Generic_OIDC card; Okta remains primary on EC2 deployments.
+- **Cross-account Bedrock:** `bedrockCredentials.js` and Terraform/bootstrap drop-in updates.
+
+### Removed
+
+- Obsolete debug scripts: `import-alb-http-redirect-listener.sh`, `remove-stale-ollama-state.sh`, `build-consolidated-docs.py`.
+- Tracked Terraform plan snapshots `terraform/envs/aws4403/depatt04`, `depatt05` (local artifacts; gitignore expanded).
+
+### Documentation
+
+- **`docs/OIDC_SSO_INTEGRATION.md`:** Generic_OIDC (Authentik) and login-page policy.
+- **`docs/AWS_OPERATIONS.md`**, **`scripts/README.md`:** EC2 secrets, debug script inventory, version **1.7.20** footers.
+
+## [1.7.19] - 2026-06-03
+
+### Added
+
+- **`backend/utils/secretsManager.js`:** EC2 AWS Secrets Manager bundle (single JSON secret) with in-memory cache, CAS merge on GUI save, and `{ "_sm": "..." }` pointer resolution.
+- **`backend/scripts/migrate-config-to-sm.mjs`** and **`scripts/debug/migrate-config-secrets-to-sm.sh`:** one-time migration of plaintext / `_pass` config secrets into SM + `_sm` pointers.
+- **Unit tests:** `test_cases/backend/unit/secretsManager.test.js`.
+
+### Changed
+
+- **EC2 secrets:** Drop `pass` on instances; systemd uses `OSCAL_SECRETS_MODE=aws-sm` and `OSCAL_SECRETS_MANAGER_ARN` instead of `PASSWORD_STORE_DIR`.
+- **`configManager`:** `prepareConfigForSave()` writes to SM on EC2; local/Docker keeps `OSCAL_SECRETS_MODE=config` (plaintext or optional pass).
+- **`ec2_automation.sh`:** Removed Pass ↔ SM cron sync (app manages SM directly).
+- **`config/app/config.json.example`:** `_pass` → `_sm` for EC2 pointer shape (local dev may use plaintext).
+
+### Documentation
+
+- **`docs/AWS_OPERATIONS.md`:** EC2 secrets runbook updated for AWS SM bundle (replaces pass vault section).
+
 ## [1.7.18] - 2026-05-26
 
 ### Added
