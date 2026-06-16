@@ -8,16 +8,17 @@ Step-by-step guide for **Okta SSO integration** and **role inheritance from Okta
 
 1. [What You Get](#what-you-get)
 2. [Best practices adopted in this project](#best-practices-adopted-in-this-project)
-3. [Application URLs by Environment](#application-urls-by-environment)
-4. [Where to Do What – Quick Map](#where-to-do-what--quick-map)
-5. [Okta Admin Console – Application](#okta-admin-console--application)
-6. [Okta Admin Console – Groups Claim (for role inheritance)](#okta-admin-console--groups-claim-for-role-inheritance)
-7. [OSCAL App – SSO Settings](#oscal-app--sso-settings)
-8. [Groups Claim & Role Mapping](#groups-claim--role-mapping)
-9. [Checklist & Verification](#checklist--verification)
-10. [Troubleshooting](#troubleshooting)
-11. [Chrome "Dangerous site" / Safe Browsing warning](#chrome-dangerous-site--safe-browsing-warning)
-12. [References](#references)
+3. [Generic_OIDC (Authentik) — local and Docker](#generic_oidc-authentik--local-and-docker)
+4. [Application URLs by Environment](#application-urls-by-environment)
+5. [Where to Do What – Quick Map](#where-to-do-what--quick-map)
+6. [Okta Admin Console – Application](#okta-admin-console--application)
+7. [Okta Admin Console – Groups Claim (for role inheritance)](#okta-admin-console--groups-claim-for-role-inheritance)
+8. [OSCAL App – SSO Settings](#oscal-app--sso-settings)
+9. [Groups Claim & Role Mapping](#groups-claim--role-mapping)
+10. [Checklist & Verification](#checklist--verification)
+11. [Troubleshooting](#troubleshooting)
+12. [Chrome "Dangerous site" / Safe Browsing warning](#chrome-dangerous-site--safe-browsing-warning)
+13. [References](#references)
 
 ---
 
@@ -80,6 +81,40 @@ This section summarizes the **SSO/OIDC patterns and best practices** implemented
 | **Fallback (no pass)** | If pass is not installed or unavailable, the secret is stored as plaintext in config; the API may warn. |
 | **Env override** | `OSCAL_OKTA_CLIENT_SECRET` on the server overrides config/pass (e.g. for EC2 or containers where pass is not used). |
 | **API masking** | Client secrets are never returned to the client; the Settings API returns masked values or placeholders. |
+
+---
+
+## Generic_OIDC (Authentik) — local and Docker
+
+Release **1.7.20** adds a built-in OIDC provider **`Generic_OIDC`** for **Authentik** (default discovery host `sso.keekar.au`). Use it on **local laptop** and **Docker** where Okta is not the primary IdP. **EC2 (AMS Gov Cloud)** continues to use **Okta**; Generic_OIDC may still appear in config but production sign-in is Okta-first.
+
+### Login page (1.7.20)
+
+| Area | Behaviour |
+|------|-----------|
+| **Upper form** | Username/password, **Sign in with Okta** (when Okta is enabled). |
+| **Lower panel** | **Sign in with Generic SSO** (Authentik orange button) when `Generic_OIDC` is enabled, followed by access-policy text (15-user cohort, 30-day dormancy, SMTP retirement). |
+| **Expedited entry (optional)** | Shown only when **not** on EC2 (`showExpeditedAccessPolicy` from `GET /api/auth/sso/login-providers`; false when `OSCAL_SECRETS_MODE=aws-sm`). |
+| **Email self-registration UI** | Removed from login page; `POST /api/auth/self-register` remains for now (Messaging tab unchanged). |
+
+### Routes and config
+
+| Item | Value |
+|------|--------|
+| **Provider id** | `Generic_OIDC` (in `ssoConfig.oauth.providers`) |
+| **Authorize** | `GET /api/auth/oidc/generic-oidc/authorize` |
+| **Token exchange** | `POST /api/auth/oidc/generic-oidc/exchange-token` |
+| **Frontend callback** | `/auth/callback` → `GenericOidcCallback.jsx` |
+| **Redirect URI allowlist** | Host/scheme validated in `genericOidc.js` (localhost, configured public hosts) |
+| **Client secret** | `{ "_cfgenc": … }` in `config.json.example`; resolved at runtime via `configFieldCrypto.js` / SM on EC2 |
+| **Settings UI** | Settings → SSO Integration: read-only Generic OIDC card + enable toggle |
+
+### User lifecycle (local Generic SSO)
+
+- Inactive **self-registered** users are deactivated after **30 days** (`userCleanup.js`); email blocklist cooldown is **30 days**.
+- Hard delete after deactivation remains **45 days** (admin lifecycle in `userManager.js`).
+
+See **`config/app/config.json.example`** for the default `Generic_OIDC` block and **`docs/CHANGELOG.md`** for release notes.
 
 ---
 
@@ -273,3 +308,7 @@ Any **backend** OIDC-related HTTP client code that uses **Axios** must import **
 - [Okta OIDC and OAuth 2.0](https://developer.okta.com/docs/concepts/oauth-openid/)
 - AMS Gov Cloud app: [https://oscal.amsgovcloud.com.au/](https://oscal.amsgovcloud.com.au/)
 - Production (Keekar): [https://keekar.3utilities.com/](https://keekar.3utilities.com/)
+
+---
+
+**Version:** 1.7.20 · **Last updated:** June 2026

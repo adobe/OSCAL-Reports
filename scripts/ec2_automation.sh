@@ -5,12 +5,14 @@
 # Licensed under the MIT License. See LICENSE file for details.
 
 # ec2_automation.sh: Backup config/users/logs to S3; optional sync of app code from s3://<bucket>/<installer-prefix>/ (not Git);
-# optional OS package updates (dnf upgrade -y or yum update -y from configured repos); optional Pass ↔ AWS Secrets Manager sync.
+# optional OS package updates (dnf upgrade -y or yum update -y from configured repos).
+# EC2 app secrets are managed in-process via AWS Secrets Manager (OSCAL_SECRETS_MODE=aws-sm); no pass sync on cron.
 # Runs every 10 min via cron (svc_ams-oscal).
-# Requires env: S3_BUCKET, S3_CONFIG_PREFIX, S3_LOGS_PREFIX, DEPLOYMENT_ROLE (green|blue).
+# Requires env: S3_BUCKET, S3_CONFIG_PREFIX (config/active), S3_LOGS_PREFIX, DEPLOYMENT_ROLE (green|blue).
+# Config/users: both colors share s3://<bucket>/config/active/; cron pulls newest among active/green/blue (last writer wins).
 # Code sync: ENABLE_S3_INSTALLER_UPDATE (default false unless set in ec2_automation.env); when true, pulls installer/ from S3
 # every S3_CODE_UPDATE_EVERY_N_CYCLES cron runs (default 100 → ~1000 min at 10-min cron). Excludes align with deploy-to-ec2.sh INSTALLERSYNC.
-# Pass sync: PASS_SECRETS_SYNC_ENABLED, PASS_SECRETS_SYNC_SECRET_ARN, PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS (from ec2_automation.env).
+# Pass sync (deprecated): app reads/writes SM bundle directly; cron does not sync pass.
 # Logs in OpenTelemetry-style JSONL to OSCAL project log directory.
 
 set -e
@@ -19,6 +21,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 [ -f "$SCRIPT_DIR/ec2_automation.env" ] && . "$SCRIPT_DIR/ec2_automation.env"
+
+OSCAL_APP_PORT="${OSCAL_APP_PORT:-3020}"
 
 CONFIG_PATH="${CONFIG_PATH:-/opt/oscal/data/config.json}"
 DATA_DIR="$(dirname "$CONFIG_PATH")"
@@ -101,16 +105,10 @@ otel_log() {
   echo "{\"timestamp\":\"$ts\",\"severityNumber\":$severity_num,\"body\":\"${message//\"/\\\"}\",\"attributes\":{$attrs}}" >> "$LOG_FILE"
 }
 
-# --- Pass vault ↔ AWS Secrets Manager (allowlist; never log secret values) ---
-if [ -f "$SCRIPT_DIR/lib/ec2-automation-pass-sync.sh" ]; then
-  # shellcheck source=./lib/ec2-automation-pass-sync.sh disable=SC1091
-  . "$SCRIPT_DIR/lib/ec2-automation-pass-sync.sh"
-else
-  pass_secrets_sync_run() {
-    otel_log "warn" "pass secrets sync unavailable: missing lib/ec2-automation-pass-sync.sh (re-deploy scripts/lib from repo)" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.skipped\":\"missing_lib\""
-    return 0
-  }
-fi
+# --- Pass ↔ SM sync removed (1.7.19): secrets in AWS SM via Node app; keep stub for older ec2_automation.env ---
+pass_secrets_sync_run() {
+  return 0
+}
 
 # Ensure AWS CLI is installed
 ensure_aws_cli() {
@@ -127,10 +125,30 @@ ensure_aws_cli() {
   return 0
 }
 
-# Restore config and users from S3 when missing locally (use last backup as default)
-restore_from_s3() {
+# shellcheck source=./lib/config-s3-sync.sh disable=SC1091
+[ -f "$SCRIPT_DIR/lib/config-s3-sync.sh" ] && . "$SCRIPT_DIR/lib/config-s3-sync.sh"
+
+# Pull shared config/users from S3 when a peer or active copy is newer (sync state file, not local mtime).
+sync_shared_config_from_s3() {
   [ -z "$S3_BUCKET" ] && return 0
-  local prefix="${S3_CONFIG_PREFIX:-config/${DEPLOYMENT_ROLE:-unknown}}"
+  local region="${AWS_DEFAULT_REGION:-us-east-1}"
+  if [ -f "$SCRIPT_DIR/lib/config-s3-sync.sh" ]; then
+    config_s3_set_search_prefixes_for_role "${DEPLOYMENT_ROLE:-}"
+    config_s3_sync_shared_to_local "$S3_BUCKET" "$CONFIG_PATH" "$USERS_PATH" "$region" 0
+    if [ "${CONFIG_S3_SYNC_CHANGED:-0}" = "1" ]; then
+      otel_log "info" "Applied newer shared config/users from S3" "success" "\"event.action\":\"config_s3_sync\""
+      sudo systemctl restart oscal-reporter.service 2>/dev/null || true
+    fi
+    return 0
+  fi
+  # Fallback when lib not installed yet
+  restore_from_s3_legacy
+}
+
+# Legacy: only when file missing (pre-1.7.20 instances)
+restore_from_s3_legacy() {
+  [ -z "$S3_BUCKET" ] && return 0
+  local prefix="${S3_CONFIG_PREFIX:-config/active}"
   local data_dir
   data_dir="$(dirname "$CONFIG_PATH")"
   mkdir -p "$data_dir"
@@ -146,10 +164,15 @@ restore_from_s3() {
   fi
 }
 
-# Backup config and users to S3
+# Backup config and users to shared S3 prefix (config/active)
 backup_to_s3() {
   [ -z "$S3_BUCKET" ] && return 0
-  local prefix="${S3_CONFIG_PREFIX:-config/${DEPLOYMENT_ROLE:-unknown}}"
+  local region="${AWS_DEFAULT_REGION:-us-east-1}"
+  if [ -f "$SCRIPT_DIR/lib/config-s3-sync.sh" ]; then
+    config_s3_backup_to_active "$S3_BUCKET" "$CONFIG_PATH" "$USERS_PATH" "$region"
+    return 0
+  fi
+  local prefix="${S3_CONFIG_PREFIX:-config/active}"
   if [ ! -f "$CONFIG_PATH" ]; then
     otel_log warn "S3 backup skipped: config.json not found at $CONFIG_PATH" "failure" "\"backup.skipped\":\"config_missing\""
   else
@@ -160,6 +183,19 @@ backup_to_s3() {
   else
     aws s3 cp "$USERS_PATH" "s3://${S3_BUCKET}/${prefix}/users.json" --quiet 2>/dev/null || true
   fi
+  local logs_prefix="${S3_LOGS_PREFIX:-logs/${DEPLOYMENT_ROLE:-unknown}}"
+  if [ -d "$LOG_DIR" ]; then
+    aws s3 sync "$LOG_DIR" "s3://${S3_BUCKET}/${logs_prefix}/" --exclude "ec2_automation.stdout" --quiet 2>/dev/null || true
+  fi
+}
+
+# Deprecated name — kept for callers; logs still use role prefix below.
+restore_from_s3() {
+  sync_shared_config_from_s3
+}
+
+_backup_logs_to_s3() {
+  [ -z "$S3_BUCKET" ] && return 0
   local logs_prefix="${S3_LOGS_PREFIX:-logs/${DEPLOYMENT_ROLE:-unknown}}"
   if [ -d "$LOG_DIR" ]; then
     aws s3 sync "$LOG_DIR" "s3://${S3_BUCKET}/${logs_prefix}/" --exclude "ec2_automation.stdout" --quiet 2>/dev/null || true
@@ -221,6 +257,14 @@ sync_from_s3_installer_and_restart() {
 
   verify_installer_manifest_optional "$S3_BUCKET" "$region" "$APP_DIR" "$S3_INSTALLER_PREFIX" || return 1
 
+  # shellcheck source=./lib/installer-s3-reconcile.sh disable=SC1091
+  _reconcile_lib="${APP_DIR}/scripts/lib/installer-s3-reconcile.sh"
+  if [ -f "$_reconcile_lib" ]; then
+    # shellcheck source=./lib/installer-s3-reconcile.sh disable=SC1091
+    source "$_reconcile_lib"
+    reconcile_installer_package_versions "$S3_BUCKET" "$region" "$APP_DIR" "$S3_INSTALLER_PREFIX" || return 1
+  fi
+
   if [ -f "${APP_DIR}/scripts/ec2_automation.sh" ]; then
     sudo cp "${APP_DIR}/scripts/ec2_automation.sh" /opt/oscal/scripts/
     sudo chmod +x /opt/oscal/scripts/ec2_automation.sh
@@ -247,8 +291,7 @@ sync_from_s3_installer_and_restart() {
 
   if sudo systemctl is-active --quiet oscal-reporter.service 2>/dev/null; then
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
-    app_port="3019"
-    [ "$DEPLOYMENT_ROLE" = "blue" ] && app_port="3020"
+    app_port="${OSCAL_APP_PORT}"
     sleep 3
     curl -sf --connect-timeout 3 "http://127.0.0.1:${app_port}/health" >/dev/null 2>&1 || true
   fi
@@ -353,9 +396,19 @@ maybe_os_package_update() {
   return 0
 }
 
+# Skip disruptive work while deploy-to-ec2.sh holds maintenance (ASG/ALB protection on laptop).
+DEPLOY_MAINTENANCE_FLAG="${DEPLOY_MAINTENANCE_FLAG:-/opt/oscal/data/.deploy_maintenance}"
+
 # --- main ---
 OUTCOME="success"
 EXTRA=""
+
+if [ -f "$DEPLOY_MAINTENANCE_FLAG" ]; then
+  otel_log "info" "deploy maintenance flag present; skipping S3 installer sync and OS package update" "success" "\"event.action\":\"deploy_maintenance_skip\""
+  pass_secrets_sync_run || true
+  otel_log "info" "ec2_automation completed" "success" "\"event.action\":\"deploy_maintenance_skip\""
+  exit 0
+fi
 
 if ! ensure_aws_cli; then
   OUTCOME="failure"
@@ -363,8 +416,9 @@ if ! ensure_aws_cli; then
 fi
 
 if [ "$OUTCOME" = "success" ] && [ -n "$S3_BUCKET" ]; then
-  restore_from_s3 || true
+  sync_shared_config_from_s3 || true
   backup_to_s3 || { OUTCOME="failure"; EXTRA="\"error.type\":\"BackupFailed\""; }
+  _backup_logs_to_s3 || true
 fi
 
 if [ "$OUTCOME" = "success" ]; then

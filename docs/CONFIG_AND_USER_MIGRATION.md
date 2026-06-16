@@ -75,7 +75,18 @@ Copy your current `config/app/config.json` to that path and use it as the single
 
 ## Instance → Port → Directory Mapping
 
-On TrueNAS (e.g. truenas.keekar.com) or any host running multiple OSCAL instances, the **deploy/build scripts** use this mapping:
+### AWS EC2 (Green / Blue)
+
+Green and Blue are **separate EC2 instances**; both use the **same app port** (**3020**, `oscal_app_port` in Terraform). Role is distinguished by `DEPLOYMENT_ROLE`, ALB target group, and S3 log prefix—not by TCP port. Config and users are shared via `s3://<bucket>/config/active/`.
+
+| Role | App port | Data on instance |
+|------|----------|------------------|
+| **Green** | **3020** | `/opt/oscal/data` (`config.json`, `users.json`) |
+| **Blue** | **3020** | `/opt/oscal/data` (same files; synced from S3) |
+
+### TrueNAS / Docker (legacy, same host)
+
+On TrueNAS (e.g. truenas.keekar.com) or any host running **multiple OSCAL containers on one machine**, the deploy scripts historically used **different host ports** so two containers could bind simultaneously:
 
 | Port | Instance | Container name                 | Data directory / volume      |
 |------|----------|--------------------------------|------------------------------|

@@ -5,7 +5,8 @@
 # Licensed under the MIT License. See LICENSE file for details.
 
 # Deploy OSCAL Report Generator to EC2 instances (direct run, no Docker).
-# deploy_one runs dnf upgrade -y or yum update -y on the instance first, then application steps (S3 sync, npm build, etc.).
+# deploy_one runs application steps (S3 sync, npm build, etc.). OS package update is skipped by default during deploy
+# (DEPLOY_SKIP_OS_PACKAGE_UPDATE=1) to avoid kernel reboot and ASG instance replacement mid-deploy.
 # Default / --blue / --both / --*-only: each instance runs aws s3 sync from s3://<bucket>/installer/ (no upload from this laptop).
 # Use --update-s3 to upload this repo to installer/ (same excludes as legacy rsync), then exit without SSH. After that, a normal deploy
 # pulls that snapshot into /opt/oscal/app, npm install/build, copies scripts from the synced tree to /opt/oscal/scripts, restarts oscal-reporter.
@@ -16,8 +17,10 @@
 # installer/ too (existing S3 objects only unless you ran --update-s3 first). Confirm bucket: terraform output -raw s3_logs_bucket_name.
 # Application and cron run as service account svc_ams-oscal (not root). Pass is installed and initialized for that user for secrets.
 #
-# Green/Blue are Auto Scaling Group members: Terraform outputs oscal_*_public_ip / oscal_*_private_ip point at the current instance.
-# After an ASG replacement, re-run this script (or use --green-only / --blue-only with the new IP from terraform output). Optional SSM
+# Green/Blue are Auto Scaling Group members. By default IPs resolve from the live ASG InService instance (not stale Terraform output).
+# Maintenance mode (default DEPLOY_MAINTENANCE_MODE=1): before deploying a color, ALB routes 100% traffic to the peer color and the
+# target ASG is suspended (no HealthCheck/ReplaceUnhealthy/Launch/Terminate) with scale-in protection on the in-service instance.
+# After a successful deploy and ALB target health check, weighted browser routing is restored. Optional SSM
 # (oscal_ssm_release_s3_prefix) can sync prebuilt artifacts from S3 on a schedule; it does not replace this script for full builds.
 #
 # Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; Terraform outputs readable (run-with-aws-pass.sh).
@@ -33,9 +36,8 @@
 #   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8    # Deploy to blue at given IP
 #   SSH_KEY_FILE=/path/to/key.pem ./scripts/deploy-to-ec2.sh
 #
-# Blue vs Green: Only PORT differs (Blue=3020, Green=3019). Same unit file, S3 prefix (config/blue vs config/green),
-# and ec2_automation.env DEPLOYMENT_ROLE. If Blue fails to start, check journalctl (shown on health failure);
-# common causes: bad config/users, missing pass vault, or wrong PORT in unit (script now forces PORT per role).
+# Green and Blue EC2 instances use the same app port (OSCAL_APP_PORT, default 3020). Config/users are shared via s3://<bucket>/config/active/ (newest among active/green/blue wins).
+# DEPLOYMENT_ROLE in ec2_automation.env distinguishes green vs blue for logs and deploy targeting only.
 #
 # Terraform: All terraform commands (output, apply) use terraform/run-with-aws-pass.sh.
 #
@@ -54,11 +56,14 @@
 #   DEPLOY_RDS_BOOTSTRAP_SKIP   Set to 1 to skip copying/running scripts/lib/rds-bootstrap-on-instance.sh (default: run when Terraform has RDS).
 #   DEPLOY_RDS_BOOTSTRAP_FORCE  Set to 1 to remove /opt/oscal/data/.rds-bootstrap-done on the instance and re-run SQL grants (use rarely).
 #   DEPLOY_LOCAL_CONFIG_SEED    Set to 1 to allow copying config/app/*.json from the laptop when S3 config/<role>/ restore failed (default: off).
+#   DEPLOY_MAINTENANCE_MODE     Default 1: ALB drain to peer color + ASG suspend/protect during deploy; restore after success.
+#   DEPLOY_USE_ASG_IP           Default 1: resolve Green/Blue public IP from live ASG (fallback: Terraform output).
+#   DEPLOY_SKIP_OS_PACKAGE_UPDATE  Default 1: skip dnf/yum upgrade during deploy (prevents kernel reboot / ASG recycle).
+#   DEPLOY_TERRAFORM_APPLY      Default 0: skip terraform apply at end of deploy (run separately when infra changes are intended).
 
 set -e
 
-# Service account for OSCAL app and cron (not root). Pass vault at $SVC_HOME/.password-store for tokens/credentials.
-# To add a secret on instance: sudo -u svc_ams-oscal pass insert OSCAL/entry-name
+# Service account for OSCAL app and cron (not root). EC2 secrets via AWS Secrets Manager (OSCAL_SECRETS_MODE=aws-sm).
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
 SVC_HOME="/var/lib/svc_ams-oscal"
@@ -75,6 +80,10 @@ print_warning() { echo -e "${YELLOW}⚠${NC}  $1"; }
 print_info() { echo -e "${CYAN}ℹ${NC}  $1"; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=./lib/ec2-common.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib/ec2-common.sh"
+# shellcheck source=./lib/deploy-maintenance.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib/deploy-maintenance.sh"
 
 # Default to aws4403.
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
@@ -235,6 +244,60 @@ get_pass_sync_secret_arn() {
   tf_output -raw oscal_pass_secrets_sync_secret_arn 2>/dev/null || return 1
 }
 
+# Cross-account Bedrock: ARN from Terraform output; ExternalId from terraform.tfvars (if set).
+load_bedrock_deploy_env() {
+  BEDROCK_ASSUME_ROLE_ARN=""
+  BEDROCK_EXTERNAL_ID=""
+  local configured
+  configured=$(tf_output -raw bedrock_cross_account_configured 2>/dev/null || echo "false")
+  configured=$(printf '%s' "$configured" | tr -d '\r\n')
+  if [ "$configured" != "true" ]; then
+    export BEDROCK_ASSUME_ROLE_ARN BEDROCK_EXTERNAL_ID
+    return 0
+  fi
+  BEDROCK_ASSUME_ROLE_ARN=$(tf_output -raw bedrock_assume_role_arn 2>/dev/null || true)
+  BEDROCK_ASSUME_ROLE_ARN=$(printf '%s' "$BEDROCK_ASSUME_ROLE_ARN" | tr -d '\r\n')
+  local tfvars="${TERRAFORM_DIR}/terraform.tfvars"
+  if [ -f "$tfvars" ]; then
+    local line
+    line=$(grep -E '^[[:space:]]*bedrock_external_id[[:space:]]*=' "$tfvars" 2>/dev/null | head -1 || true)
+    if [ -n "$line" ]; then
+      BEDROCK_EXTERNAL_ID=$(echo "$line" | sed -E 's/^[^=]*=[[:space:]]*//; s/^"//; s/"$//; s/[[:space:]]*#.*//; s/^[[:space:]]+//; s/[[:space:]]+$//')
+      case "$BEDROCK_EXTERNAL_ID" in
+        ""|"<"*) BEDROCK_EXTERNAL_ID="" ;;
+      esac
+    fi
+  fi
+  export BEDROCK_ASSUME_ROLE_ARN BEDROCK_EXTERNAL_ID
+}
+
+# Systemd BEDROCK_* + config.json aiConfig (iam-role) so deploy does not rely on manual Settings.
+maybe_apply_bedrock_cross_account() {
+  local ip="$1"
+  local key="$2"
+  load_bedrock_deploy_env
+  if [ -z "${BEDROCK_ASSUME_ROLE_ARN:-}" ]; then
+    return 0
+  fi
+  local lib_local="$REPO_ROOT/scripts/lib/oscal-bedrock-dropin.sh"
+  if [ ! -f "$lib_local" ]; then
+    print_warning "Missing $lib_local; skipping Bedrock env apply."
+    return 0
+  fi
+  print_info "Cross-account Bedrock: applying assume-role ARN on instance (config + systemd)..."
+  scp -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$lib_local" "${SSH_USER}@${ip}:/tmp/oscal-bedrock-dropin.sh"
+  q() { printf '%q' "$1"; }
+  if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=60 "${SSH_USER}@${ip}" \
+    "sudo env BEDROCK_ASSUME_ROLE_ARN=$(q "$BEDROCK_ASSUME_ROLE_ARN") BEDROCK_EXTERNAL_ID=$(q "$BEDROCK_EXTERNAL_ID") S3_SYNC_CHOWN_USER=$(q "${SSH_USER}") S3_SYNC_CHOWN_GROUP=$(q "${SVC_GROUP}") bash /tmp/oscal-bedrock-dropin.sh && rm -f /tmp/oscal-bedrock-dropin.sh"; then
+    print_error "Bedrock env apply failed on ${ip}"
+    return 1
+  fi
+  print_success "Bedrock assume-role configured: ${BEDROCK_ASSUME_ROLE_ARN}"
+  if [ -z "${BEDROCK_EXTERNAL_ID:-}" ]; then
+    print_warning "bedrock_external_id not set in terraform.tfvars — add it if Account B trust policy requires ExternalId"
+  fi
+}
+
 # Get instance IPs from Terraform output (optional)
 get_terraform_ips() {
   local tfdir="$1"
@@ -329,28 +392,39 @@ deploy_one() {
   local s3_bucket="$4"
   local results_file="${5:-}"
   local port
-  [ "$role" = "green" ] && port="3019" || port="3020"
+  local sm_arn
+  sm_arn="${PASS_SYNC_SECRET_ARN:-}"
+  sm_arn=$(printf '%s' "$sm_arn" | tr -d '\r\n')
+  port="${OSCAL_APP_PORT:-3020}"
   print_info "Deploying to $role at $ip (port $port)..."
 
-  # Refresh installed OS packages from configured repos before app sync/build (AL2023: dnf; else yum). Deploy aborts if this fails.
-  print_info "Updating OS packages on instance (dnf upgrade -y or yum update -y) before application deploy..."
-  if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=120 "${SSH_USER}@${ip}" \
-    'set -eo pipefail
-     export PATH="/usr/local/bin:/usr/bin:/bin"
-     if command -v dnf >/dev/null 2>&1; then
-       sudo dnf upgrade -y
-     elif command -v yum >/dev/null 2>&1; then
-       sudo yum update -y
-     else
-       echo "Neither dnf nor yum found; cannot update OS packages." >&2
-       exit 1
-     fi'; then
-    print_error "OS package update failed on ${role} at ${ip} (check repos, disk, and sudo). Application deploy was not started."
-    return 1
+  deploy_one__set_instance_maintenance_flag "$ip" "$key" on
+  # shellcheck disable=SC2064
+  trap "deploy_one__set_instance_maintenance_flag '$ip' '$key' off" RETURN
+
+  if [ "${DEPLOY_SKIP_OS_PACKAGE_UPDATE:-1}" = "1" ]; then
+    print_info "Skipping OS package update during deploy (DEPLOY_SKIP_OS_PACKAGE_UPDATE=1; avoids kernel reboot and ASG instance replacement)."
+  else
+    # Refresh installed OS packages from configured repos before app sync/build (AL2023: dnf; else yum). Deploy aborts if this fails.
+    print_info "Updating OS packages on instance (dnf upgrade -y or yum update -y) before application deploy..."
+    if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=120 "${SSH_USER}@${ip}" \
+      'set -eo pipefail
+       export PATH="/usr/local/bin:/usr/bin:/bin"
+       if command -v dnf >/dev/null 2>&1; then
+         sudo dnf upgrade -y
+       elif command -v yum >/dev/null 2>&1; then
+         sudo yum update -y
+       else
+         echo "Neither dnf nor yum found; cannot update OS packages." >&2
+         exit 1
+       fi'; then
+      print_error "OS package update failed on ${role} at ${ip} (check repos, disk, and sudo). Application deploy was not started."
+      return 1
+    fi
   fi
 
-  # Ensure service account svc_ams-oscal and group oscal exist; install and initialize Pass (inline in this deploy step).
-  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$SSH_USER" << 'REMOTEPASS' || true
+  # Ensure service account svc_ams-oscal and group oscal exist (no pass vault on EC2 — secrets in AWS SM).
+  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$SSH_USER" << 'REMOTESVC' || true
 set -e
 REMOTE_SSH_USER="${1:-ec2-user}"
 SVC_USER="svc_ams-oscal"
@@ -365,58 +439,41 @@ if ! id "$SVC_USER" >/dev/null 2>&1; then
 fi
 sudo usermod -aG "$SVC_GROUP" "$REMOTE_SSH_USER" 2>/dev/null || true
 command -v aws >/dev/null 2>&1 || sudo dnf install -y awscli 2>/dev/null || sudo yum install -y awscli 2>/dev/null || true
-
-# --- Install dependencies (tree, pass, gnupg2, git, make) ---
-sudo dnf install -y tree 2>/dev/null || sudo yum install -y tree 2>/dev/null || true
-sudo dnf install -y --allowerasing gnupg2 2>/dev/null || sudo yum install -y gnupg2 2>/dev/null || true
-command -v gpg >/dev/null 2>&1 || { echo "Failed to install gpg"; exit 1; }
-command -v git >/dev/null 2>&1 || sudo dnf install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null || true
-command -v make >/dev/null 2>&1 || sudo dnf install -y make 2>/dev/null || sudo yum install -y make 2>/dev/null || true
-# Pass: package first, then from source (Amazon Linux 2023 often has no pass package)
-if ! command -v pass >/dev/null 2>&1; then
-  sudo dnf install -y pass 2>/dev/null || sudo yum install -y pass 2>/dev/null || true
-fi
-if ! command -v pass >/dev/null 2>&1; then
-  TMP_PASS=$(mktemp -d)
-  if git clone --depth 1 https://github.com/zx2c4/password-store.git "$TMP_PASS" 2>/dev/null; then :; elif git clone --depth 1 https://git.zx2c4.com/password-store "$TMP_PASS" 2>/dev/null; then :; else rm -rf "$TMP_PASS"; exit 1; fi
-  if [ -f "$TMP_PASS/Makefile" ]; then (cd "$TMP_PASS" && sudo make install PREFIX=/usr/local); fi
-  rm -rf "$TMP_PASS"
-fi
-command -v pass >/dev/null 2>&1 || { echo "Failed to install pass"; exit 1; }
-
-if [ ! -d "$SVC_HOME/.password-store" ]; then
-  sudo -u "$SVC_USER" env HOME="$SVC_HOME" gpg-agent --daemon 2>/dev/null || true
-  # GPG Name-Real is the identity shown for the store (avoid generic "Password Store" label)
-  sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" gpg --batch --no-tty --yes --generate-key 2>/dev/null << 'GPGEOF'
-Key-Type: RSA
-Key-Length: 2048
-Name-Real: OSCAL_password_store
-Name-Email: oscal-password-store@localhost
-Expire-Date: 0
-%no-protection
-%commit
-GPGEOF
-  KEY_ID=$(sudo -u "$SVC_USER" env HOME="$SVC_HOME" gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/ {print $5; exit}')
-  # Run pass init from SVC_HOME so any subprocess (e.g. find) restores cwd to a dir svc_ams-oscal can access; avoids "find: Failed to restore initial working directory: /home/ec2-user: Permission denied"
-  if [ -n "$KEY_ID" ]; then sudo -u "$SVC_USER" env PATH="/usr/local/bin:$PATH" HOME="$SVC_HOME" sh -c "cd \"$SVC_HOME\" && pass init \"$KEY_ID\""; fi
-fi
-REMOTEPASS
-  # Check if pass is usable by service user (store exists and pass runs)
-  if ! ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo -u $SVC_USER env PATH=/usr/local/bin:/usr/bin:/bin HOME=$SVC_HOME test -d $SVC_HOME/.password-store 2>/dev/null && sudo -u $SVC_USER env PATH=/usr/local/bin:/usr/bin:/bin HOME=$SVC_HOME pass ls >/dev/null 2>&1"; then
-    PASS_MISSING_ANY=1
-  fi
-  print_success "Service account $SVC_USER and Pass vault ensured"
+REMOTESVC
+  print_success "Service account $SVC_USER ensured"
 
   # Directory layout: /opt/oscal/app = app code only; /opt/oscal/data = config.json + users.json (canonical on EC2); /opt/oscal/scripts = ec2_automation. Repo config/ is excluded from S3 installer sync so only /opt/oscal/data is used.
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo mkdir -p /opt/oscal/app /opt/oscal/scripts /opt/oscal/data && sudo chown -R ${SSH_USER}:${SVC_GROUP} /opt/oscal && sudo chmod -R g+rX,g+w /opt/oscal" || true
 
-  # Prefer last backed-up config/users from S3; optional local seed only when DEPLOY_LOCAL_CONFIG_SEED=1
+  # Shared config/users: newest S3 backup among config/active, config/green, config/blue (force on deploy).
   if [ -n "$s3_bucket" ]; then
-    print_info "Copying config.json and users.json from s3://${s3_bucket}/config/${role}/ to /opt/oscal/data/..."
-    if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "command -v aws >/dev/null 2>&1 && aws s3 cp s3://${s3_bucket}/config/${role}/config.json /opt/oscal/data/config.json --quiet 2>/dev/null && aws s3 cp s3://${s3_bucket}/config/${role}/users.json /opt/oscal/data/users.json --quiet 2>/dev/null"; then
-      print_success "Restored config.json and users.json from S3 (last backup)"
+    local sync_lib="$REPO_ROOT/scripts/lib/config-s3-sync.sh"
+    if [ -f "$sync_lib" ]; then
+      scp -i "$key" -o StrictHostKeyChecking=no "$sync_lib" "${SSH_USER}@${ip}:/tmp/config-s3-sync.sh" 2>/dev/null || true
+      print_info "Syncing config.json and users.json from newest S3 backup (config/active, config/green, config/blue)..."
+      if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$role" <<'CONFIGSYNC'
+set -euo pipefail
+BUCKET="$1"
+REGION="$2"
+ROLE="$3"
+export AWS_DEFAULT_REGION="$REGION"
+# shellcheck source=/dev/null disable=SC1091
+. /tmp/config-s3-sync.sh
+config_s3_set_search_prefixes_for_role "$ROLE"
+sudo mkdir -p /opt/oscal/data
+sudo chown -R "${S3_SYNC_CHOWN_USER:-ec2-user}:${S3_SYNC_CHOWN_GROUP:-oscal}" /opt/oscal/data 2>/dev/null || \
+  sudo chown -R ec2-user:oscal /opt/oscal/data 2>/dev/null || true
+rm -f /opt/oscal/data/.config-s3-sync.json
+config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" 1
+rm -f /tmp/config-s3-sync.sh
+CONFIGSYNC
+      then
+        print_success "Restored shared config.json and users.json from newest S3 backup"
+      else
+        print_warning "Shared S3 config sync failed or no backup found on S3 yet."
+      fi
     else
-      print_warning "S3 restore skipped or failed (bucket: $s3_bucket, role: $role). Set DEPLOY_LOCAL_CONFIG_SEED=1 to seed from laptop config/app/ if needed."
+      print_warning "Missing scripts/lib/config-s3-sync.sh; skipping shared config restore."
     fi
   fi
   need_seed=$(ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "[ -f /opt/oscal/data/config.json ] && [ -f /opt/oscal/data/users.json ] && echo no || echo yes" 2>/dev/null) || need_seed="yes"
@@ -426,7 +483,7 @@ REMOTEPASS
     print_success "Seeded /opt/oscal/data/config.json and users.json from repo (DEPLOY_LOCAL_CONFIG_SEED=1)"
   elif [ "$need_seed" = "yes" ]; then
     if [ -n "$s3_bucket" ]; then
-      print_warning "config.json/users.json still missing on instance; upload to s3://${s3_bucket}/config/${role}/ or set DEPLOY_LOCAL_CONFIG_SEED=1 with local config/app files."
+      print_warning "config.json/users.json still missing on instance; ensure Green has backed up to s3://${s3_bucket}/config/active/ (or config/green/), or set DEPLOY_LOCAL_CONFIG_SEED=1."
     else
       print_warning "config.json/users.json still missing on instance; set DEPLOY_LOCAL_CONFIG_SEED=1 with local config/app files or configure S3 restore."
     fi
@@ -500,6 +557,25 @@ if aws s3api head-object --bucket "$BUCKET" --key "$MANIFEST_KEY" --region "$REG
   {
     echo "=== $(date -Iseconds) installer manifest verify OK (sha256 ${DISK_SHA}) ==="
   } >>"$SYNC_LOG" 2>/dev/null || true
+  # aws s3 sync may skip same-size package.json (1.7.18 vs 1.7.19); reconcile from manifest package_version.
+  if command -v jq >/dev/null 2>&1; then
+    MANIFEST_VER=$(jq -r '.package_version // empty' "$MF" 2>/dev/null)
+    DISK_VER=$(jq -r '.version // empty' "${APP}/package.json" 2>/dev/null)
+    if [ -n "$MANIFEST_VER" ] && [ -n "$DISK_VER" ] && [ "$MANIFEST_VER" != "$DISK_VER" ]; then
+      echo "=== $(date -Iseconds) installer version drift manifest=${MANIFEST_VER} disk=${DISK_VER}; forcing package.json from S3 ===" | tee -a "$SYNC_LOG"
+      for REL in package.json frontend/package.json backend/package.json; do
+        if aws s3api head-object --bucket "$BUCKET" --key "installer/${REL}" --region "$REGION" >/dev/null 2>&1; then
+          aws s3 cp "s3://${BUCKET}/installer/${REL}" "${APP}/${REL}" --region "$REGION"
+        fi
+      done
+      DISK_VER=$(jq -r '.version // empty' "${APP}/package.json" 2>/dev/null)
+      if [ "$MANIFEST_VER" != "$DISK_VER" ]; then
+        echo "installer verify failed: package.json still ${DISK_VER} after reconcile (expected ${MANIFEST_VER})" >&2
+        exit 1
+      fi
+      echo "=== $(date -Iseconds) installer version reconcile OK (${DISK_VER}) ===" | tee -a "$SYNC_LOG"
+    fi
+  fi
 else
   {
     echo "=== $(date -Iseconds) installer manifest missing on S3 (${MANIFEST_URI}); skipping sha verify (re-upload from laptop with current deploy script) ==="
@@ -524,10 +600,18 @@ INSTALLERSYNC
       sudo mkdir -p /opt/oscal/scripts/lib
       sudo cp \"\$APP/scripts/lib/ec2-automation-pass-sync.sh\" /opt/oscal/scripts/lib/
     fi
-    if [ -f \"\$APP/scripts/debug/update-pass-credential.sh\" ]; then
+    if [ -f \"\$APP/scripts/lib/config-s3-sync.sh\" ]; then
+      sudo mkdir -p /opt/oscal/scripts/lib
+      sudo cp \"\$APP/scripts/lib/config-s3-sync.sh\" /opt/oscal/scripts/lib/
+    fi
+    if [ -d \"\$APP/scripts/debug\" ]; then
       sudo mkdir -p /opt/oscal/scripts/debug
-      sudo cp \"\$APP/scripts/debug/update-pass-credential.sh\" /opt/oscal/scripts/debug/
-      sudo chmod +x /opt/oscal/scripts/debug/update-pass-credential.sh
+      for _dbg in update-pass-credential.sh backup-config-to-s3.sh sync-config-from-s3-newest.sh push-pass-to-secrets-manager.sh pull-secrets-manager-to-pass.sh; do
+        if [ -f \"\$APP/scripts/debug/\$_dbg\" ]; then
+          sudo cp \"\$APP/scripts/debug/\$_dbg\" /opt/oscal/scripts/debug/
+          sudo chmod +x \"/opt/oscal/scripts/debug/\$_dbg\"
+        fi
+      done
     fi
     for f in sync-consolidation-script.sh consolidate-users.sh; do
       if [ -f \"\$APP/scripts/\$f\" ]; then
@@ -559,7 +643,7 @@ INSTALLERSYNC
       fi
       ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "cat > /opt/oscal/scripts/ec2_automation.env << ENVEOF
 S3_BUCKET=$s3_bucket
-S3_CONFIG_PREFIX=config/$role
+S3_CONFIG_PREFIX=config/active
 S3_LOGS_PREFIX=logs/$role
 DEPLOYMENT_ROLE=$role
 AWS_DEFAULT_REGION=${AWS_DEPLOY_REGION:-us-east-1}
@@ -570,7 +654,8 @@ ENABLE_OS_PACKAGE_UPDATE=$os_pkg_update
 OS_PACKAGE_UPDATE_EVERY_N_CYCLES=${OS_PACKAGE_UPDATE_EVERY_N_CYCLES:-144}
 S3_SYNC_CHOWN_USER=${SSH_USER}
 S3_SYNC_CHOWN_GROUP=${SVC_GROUP}
-PASS_SECRETS_SYNC_ENABLED=${PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE:-false}
+OSCAL_APP_PORT=${OSCAL_APP_PORT:-3020}
+PASS_SECRETS_SYNC_ENABLED=false
 PASS_SECRETS_SYNC_SECRET_ARN=${PASS_SYNC_SECRET_ARN:-}
 PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS=${PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS:-21600}
 ENVEOF"
@@ -601,7 +686,37 @@ ENVEOF"
     return 1
   fi
 
+  # After lib is installed: force-pull newest config/users (Green backup may be under config/green/ until migrated to config/active/)
+  if [ -n "$s3_bucket" ]; then
+    print_info "Applying shared config/users from newest S3 backup (post-install)..."
+    if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$role" <<'POSTCONFIGSYNC'
+set -euo pipefail
+BUCKET="$1"
+REGION="$2"
+ROLE="$3"
+export AWS_DEFAULT_REGION="$REGION"
+LIB=/opt/oscal/scripts/lib/config-s3-sync.sh
+if [ ! -f "$LIB" ]; then
+  exit 0
+fi
+# shellcheck source=/dev/null disable=SC1091
+. "$LIB"
+config_s3_set_search_prefixes_for_role "$ROLE"
+rm -f /opt/oscal/data/.config-s3-sync.json
+config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" 1
+if [ "${CONFIG_S3_SYNC_CHANGED:-0}" = "1" ]; then
+  sudo systemctl restart oscal-reporter.service 2>/dev/null || true
+fi
+POSTCONFIGSYNC
+    then
+      print_success "Shared config/users sync complete"
+    else
+      print_warning "Post-install shared config sync failed (check S3 backups under config/active/, config/green/, config/blue/)"
+    fi
+  fi
+
   maybe_apply_rds_bootstrap "$ip" "$key"
+  maybe_apply_bedrock_cross_account "$ip" "$key"
 
   # On instance: ensure Node/npm (Amazon Linux may not have it if user_data not run yet), then npm install, build, restart
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
@@ -616,6 +731,9 @@ ENVEOF"
     cd frontend && npm install --no-audit --no-fund && npm run build && cd ..
     mkdir -p backend/public
     cp -r frontend/dist/* backend/public/
+    if [ -n \"${sm_arn}\" ] && [ -f backend/scripts/migrate-config-to-sm.mjs ]; then
+      sudo -u $SVC_USER env OSCAL_SECRETS_MODE=aws-sm OSCAL_SECRETS_MANAGER_ARN='${sm_arn}' CONFIG_PATH=/opt/oscal/data/config.json AWS_DEFAULT_REGION=${AWS_DEPLOY_REGION:-us-east-1} node backend/scripts/migrate-config-to-sm.mjs 2>/dev/null || echo 'Secret migration skipped or already complete'
+    fi
     if ! sudo systemctl restart oscal-reporter.service 2>/dev/null; then
       if [ ! -f /etc/systemd/system/oscal-reporter.service ]; then
         sudo tee /etc/systemd/system/oscal-reporter.service > /dev/null << 'SVCEOF'
@@ -635,16 +753,16 @@ Environment=NODE_ENV=production
 Environment=PORT=PORT_PLACEHOLDER
 Environment=CONFIG_PATH=/opt/oscal/data/config.json
 Environment=USERS_PATH=/opt/oscal/data/users.json
-Environment=HOME=SVC_HOME_PLACEHOLDER
-Environment=PASSWORD_STORE_DIR=SVC_HOME_PLACEHOLDER/.password-store
+Environment=OSCAL_SECRETS_MODE=aws-sm
+Environment=OSCAL_SECRETS_MANAGER_ARN=SM_ARN_PLACEHOLDER
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-# HOME and PASSWORD_STORE_DIR required so GUI save uses pass vault (not plaintext in config)
+# Secrets resolved from AWS SM in-memory cache (GUI save writes bundle + _sm pointers in config)
 
 [Install]
 WantedBy=multi-user.target
 SVCEOF
         SVC_HOME=/var/lib/svc_ams-oscal
-        sudo sed -i \"s/PORT_PLACEHOLDER/$port/g;s/SVC_USER_PLACEHOLDER/$SVC_USER/g;s/SVC_GROUP_PLACEHOLDER/$SVC_GROUP/g;s|SVC_HOME_PLACEHOLDER|$SVC_HOME|g\" /etc/systemd/system/oscal-reporter.service
+        sudo sed -i \"s/PORT_PLACEHOLDER/$port/g;s/SVC_USER_PLACEHOLDER/$SVC_USER/g;s/SVC_GROUP_PLACEHOLDER/$SVC_GROUP/g;s|SM_ARN_PLACEHOLDER|${sm_arn}|g\" /etc/systemd/system/oscal-reporter.service
         sudo systemctl daemon-reload
         sudo systemctl enable oscal-reporter.service
         sudo systemctl start oscal-reporter.service
@@ -655,12 +773,21 @@ SVCEOF
       fi
     fi
     sudo chown -R $SVC_USER:$SVC_GROUP /opt/oscal
-    # Always ensure PORT matches this role (Blue=3020, Green=3019) so health check and ALB target use correct port
+    # Ensure PORT matches OSCAL_APP_PORT (default 3020) so health check and ALB target use correct port
     sudo sed -i \"s/^Environment=PORT=.*/Environment=PORT=$port/\" /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
     grep -q '^User=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/^\[Service\]/a User=$SVC_USER' /etc/systemd/system/oscal-reporter.service; sudo sed -i '/^User=/a Group=$SVC_GROUP' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
     grep -q 'Environment=PATH=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=PATH=/usr/local/bin:/usr/bin:/bin' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
-    grep -q 'Environment=HOME=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=HOME=/var/lib/svc_ams-oscal' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
-    grep -q 'Environment=PASSWORD_STORE_DIR=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=HOME=/a Environment=PASSWORD_STORE_DIR=/var/lib/svc_ams-oscal/.password-store' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    grep -q 'Environment=OSCAL_SECRETS_MODE=' /etc/systemd/system/oscal-reporter.service 2>/dev/null || { sudo sed -i '/Environment=USERS_PATH=/a Environment=OSCAL_SECRETS_MODE=aws-sm' /etc/systemd/system/oscal-reporter.service; sudo systemctl daemon-reload; sudo systemctl restart oscal-reporter.service 2>/dev/null; }
+    if [ -n \"${sm_arn}\" ]; then
+      if grep -q 'Environment=OSCAL_SECRETS_MANAGER_ARN=' /etc/systemd/system/oscal-reporter.service 2>/dev/null; then
+        sudo sed -i \"s|^Environment=OSCAL_SECRETS_MANAGER_ARN=.*|Environment=OSCAL_SECRETS_MANAGER_ARN=${sm_arn}|\" /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
+      else
+        sudo sed -i \"/Environment=OSCAL_SECRETS_MODE=/a Environment=OSCAL_SECRETS_MANAGER_ARN=${sm_arn}\" /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
+      fi
+      sudo systemctl daemon-reload
+      sudo systemctl restart oscal-reporter.service 2>/dev/null || true
+    fi
+    sudo sed -i '/Environment=PASSWORD_STORE_DIR=/d' /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
     sudo systemctl daemon-reload
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
     echo OK
@@ -670,7 +797,7 @@ SVCEOF
   # Restart so new code and env (HOME/PASSWORD_STORE_DIR) are active
   print_info "Restarting oscal-reporter.service..."
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo systemctl restart oscal-reporter.service" 2>/dev/null || true
-  # Verify app responds. Public curl often fails: SG allows only ALB/VPC/self on 3019/3020, not the internet.
+  # Verify app responds. Public curl often fails: SG allows only ALB/VPC/self on OSCAL_APP_PORT, not the internet.
   print_info "Waiting 20s then checking /health (retry up to 5 times)..."
   sleep 20
   health_ok=""
@@ -716,8 +843,8 @@ sudo touch "$LOG"
 sudo chown "$(whoami)":oscal "$LOG" 2>/dev/null || sudo chmod 666 "$LOG"
 {
   echo "=== $(date -Iseconds) deploy_one local binding port=$1 role=$2 ==="
-  echo "--- ss listening (3019/3020 or node) ---"
-  ss -tlnp 2>/dev/null | grep -E ':3019|:3020' || ss -tlnp 2>/dev/null | grep node || echo "ss: no matching listener"
+  echo "--- ss listening (${OSCAL_APP_PORT:-3020} or node) ---"
+  ss -tlnp 2>/dev/null | grep -E ":${OSCAL_APP_PORT:-3020}\\b" || ss -tlnp 2>/dev/null | grep node || echo "ss: no matching listener"
   echo "--- curl http://127.0.0.1:$1/health ---"
   curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://127.0.0.1:$1/health" || echo "curl_127_fail"
   if [ -n "$3" ]; then
@@ -729,6 +856,72 @@ sudo chown "$(whoami)":oscal "$LOG" 2>/dev/null || sudo chmod 666 "$LOG"
 } 2>&1 | sudo tee -a "$LOG" >/dev/null
 DEPLOYLOGLOCAL
   print_info "ALB idle_timeout should be 300s (see terraform/alb.tf) to avoid 504 on long requests."
+}
+
+# Set/clear on-instance flag so ec2_automation skips S3 installer sync and OS updates during deploy.
+deploy_one__set_instance_maintenance_flag() {
+  local ip="$1"
+  local key="$2"
+  local action="$3"
+  case "$action" in
+    on)
+      ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${ip}" \
+        'sudo mkdir -p /opt/oscal/data && sudo touch /opt/oscal/data/.deploy_maintenance && sudo chown svc_ams-oscal:oscal /opt/oscal/data/.deploy_maintenance 2>/dev/null || true' \
+        2>/dev/null || true
+      ;;
+    off)
+      ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SSH_USER}@${ip}" \
+        'sudo rm -f /opt/oscal/data/.deploy_maintenance' 2>/dev/null || true
+      ;;
+  esac
+}
+
+# Enter ALB/ASG maintenance, deploy, wait for target health, restore routing.
+deploy_role_with_maintenance() {
+  local role="$1"
+  local ip="$2"
+  local maintenance_enabled=0
+  local deploy_rc=0
+  local live_ip=""
+
+  if [ "${DEPLOY_MAINTENANCE_MODE:-1}" = "1" ]; then
+    print_info "Entering deploy maintenance for $role (ALB → peer color only; ASG suspend + scale-in protection)..."
+    if deploy_maintenance_enter "$role"; then
+      maintenance_enabled=1
+    else
+      print_warning "Maintenance enter failed; deploy may be interrupted by ASG/ALB fault tolerance."
+    fi
+  fi
+
+  if [ "${DEPLOY_USE_ASG_IP:-1}" = "1" ]; then
+    if [ "$role" = "green" ] && [ -z "${GREEN_ONLY_IP:-}" ]; then
+      live_ip=$(get_asg_oscal_ip green 2>/dev/null || true)
+      [ -n "$live_ip" ] && ip="$live_ip"
+    elif [ "$role" = "blue" ] && [ -z "${BLUE_ONLY_IP:-}" ]; then
+      live_ip=$(get_asg_oscal_ip blue 2>/dev/null || true)
+      [ -n "$live_ip" ] && ip="$live_ip"
+    fi
+    print_info "Deploy target IP ($role): $ip"
+  fi
+
+  deploy_one "$ip" "$role" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE" || deploy_rc=$?
+
+  if [ "$maintenance_enabled" = "1" ]; then
+    if [ "$deploy_rc" -eq 0 ]; then
+      print_info "Waiting for ALB target health on $role before restoring weighted routing..."
+      if deploy_maintenance_wait_target_healthy "$role"; then
+        print_success "ALB target $role is healthy."
+      else
+        print_warning "ALB target $role not healthy yet; restoring weighted routing (peer color still carries traffic until healthy)."
+      fi
+    else
+      print_warning "Deploy failed for $role; restoring ALB/ASG maintenance state."
+    fi
+    print_info "Exiting deploy maintenance for $role..."
+    deploy_maintenance_exit "$role" || true
+  fi
+
+  return "$deploy_rc"
 }
 
 # --- main ---
@@ -772,6 +965,10 @@ while [ $# -gt 0 ]; do
       echo "  (default): deploy to green only (IPs from Terraform). Use --both or --blue when Blue must match installer/ too."
       echo "  --green-only IP: deploy to green at given IP."
       echo "  --blue-only IP:  deploy to blue at given IP."
+      echo "  Maintenance: DEPLOY_MAINTENANCE_MODE=1 (default) drains ALB to peer color and suspends target ASG during deploy."
+      echo "  IPs: DEPLOY_USE_ASG_IP=1 (default) uses live ASG InService instance; falls back to Terraform output."
+      echo "  OS updates: DEPLOY_SKIP_OS_PACKAGE_UPDATE=1 (default) during deploy; set 0 to run dnf/yum upgrade first."
+      echo "  Terraform: DEPLOY_TERRAFORM_APPLY=0 (default); set 1 to run terraform apply after deploy."
       echo "  SSH key: Pass entry $PASS_ENTRY or SSH_KEY_FILE=/path/to/key.pem"
       echo "  --update-s3: operator IAM needs s3:PutObject/Delete/List on installer/*. Normal deploy: instances read installer/* via IAM only."
       echo "  Instance sync: chown ec2-user:oscal on app dir before s3 sync (so prior svc_ams-oscal files can be replaced). Verify bucket:"
@@ -803,25 +1000,36 @@ if [ "$UPDATE_S3_ONLY" = "1" ]; then
   exit 0
 fi
 
-# Resolve IPs: from --green-only/--blue-only or from Terraform
+# Resolve IPs: explicit --*-only, else live ASG (preferred), else Terraform output
 if [ -n "$GREEN_ONLY_IP" ]; then
   GREEN_IP="$GREEN_ONLY_IP"
 fi
 if [ -n "$BLUE_ONLY_IP" ]; then
   BLUE_IP="$BLUE_ONLY_IP"
 fi
-if [ -z "$GREEN_IP" ] || [ -z "$BLUE_IP" ]; then
+if [ "${DEPLOY_USE_ASG_IP:-1}" = "1" ] && { [ -z "${GREEN_IP:-}" ] || [ -z "${BLUE_IP:-}" ]; }; then
+  load_deploy_aws_credentials || print_warning "Could not load AWS credentials for ASG IP lookup; using Terraform output if available."
+fi
+if [ -z "${GREEN_IP:-}" ] || [ -z "${BLUE_IP:-}" ]; then
+  if [ "${DEPLOY_USE_ASG_IP:-1}" = "1" ]; then
+    [ -z "${GREEN_IP:-}" ] && GREEN_IP=$(get_asg_oscal_ip green 2>/dev/null || true)
+    [ -z "${BLUE_IP:-}" ] && BLUE_IP=$(get_asg_oscal_ip blue 2>/dev/null || true)
+  fi
+fi
+if [ -z "${GREEN_IP:-}" ] || [ -z "${BLUE_IP:-}" ]; then
   IPS=$(get_terraform_ips "$TERRAFORM_DIR" || true)
   if [ -n "$IPS" ]; then
-    [ -z "$GREEN_IP" ] && GREEN_IP=$(echo "$IPS" | awk '{print $1}')
-    [ -z "$BLUE_IP" ] && BLUE_IP=$(echo "$IPS" | awk '{print $2}')
-    print_info "Using Terraform dir: $TERRAFORM_DIR"
-    print_info "Green: $GREEN_IP  Blue: $BLUE_IP"
-  else
-    print_error "Run from repo root after './terraform/run-with-aws-pass.sh apply' or use --green-only IP / --blue-only IP"
-    echo "  Set TERRAFORM_DIR to the directory that contains terraform.tfstate for your stack."
-    exit 1
+    [ -z "${GREEN_IP:-}" ] && GREEN_IP=$(echo "$IPS" | awk '{print $1}')
+    [ -z "${BLUE_IP:-}" ] && BLUE_IP=$(echo "$IPS" | awk '{print $2}')
   fi
+fi
+if [ -n "${GREEN_IP:-}" ] || [ -n "${BLUE_IP:-}" ]; then
+  print_info "Using Terraform dir: $TERRAFORM_DIR"
+  print_info "Green: ${GREEN_IP:-n/a}  Blue: ${BLUE_IP:-n/a}"
+else
+  print_error "Could not resolve instance IPs (ASG or Terraform). Run after apply or use --green-only IP / --blue-only IP"
+  echo "  Set TERRAFORM_DIR to the directory that contains terraform.tfstate for your stack."
+  exit 1
 fi
 
 # Default: deploy green only. --both deploys both, --blue deploys blue only.
@@ -843,11 +1051,12 @@ resolve_ssh_key
 S3_BUCKET=$(get_s3_bucket "$TERRAFORM_DIR" || true)
 
 PASS_SYNC_SECRET_ARN=$(get_pass_sync_secret_arn "$TERRAFORM_DIR" || true)
-PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE=true
+PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE=false
 if [ -z "${PASS_SYNC_SECRET_ARN}" ] || [ "${PASS_SYNC_SECRET_ARN}" = "null" ]; then
   PASS_SYNC_SECRET_ARN=""
-  PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE=false
-  print_warning "Terraform output oscal_pass_secrets_sync_secret_arn missing or null; ec2_automation.env sets PASS_SECRETS_SYNC_ENABLED=false (apply Terraform with oscal_pass_secrets_sync_enabled or check state)."
+  print_warning "Terraform output oscal_pass_secrets_sync_secret_arn missing or null; systemd OSCAL_SECRETS_MANAGER_ARN will be empty until Terraform is applied."
+else
+  print_info "EC2 secrets: AWS Secrets Manager bundle ARN configured for systemd (OSCAL_SECRETS_MODE=aws-sm)."
 fi
 export PASS_SYNC_SECRET_ARN PASS_SECRETS_SYNC_ENABLED_ON_INSTANCE
 
@@ -889,6 +1098,7 @@ ALB_USE_HTTPS=$(tf_output -raw alb_use_https 2>/dev/null || echo "true")
 # Results file for post-deploy summary and health status (option 2, 4)
 DEPLOY_RESULTS_FILE=$(mktemp)
 cleanup_deploy_exit() {
+  deploy_maintenance_trap_cleanup 2>/dev/null || true
   rm -f "$DEPLOY_RESULTS_FILE" 2>/dev/null || true
   if [ "${SSH_KEY_IS_TEMP:-0}" = "1" ] && [ -n "${SSH_KEY:-}" ]; then
     rm -f "$SSH_KEY" 2>/dev/null || true
@@ -897,11 +1107,12 @@ cleanup_deploy_exit() {
 trap cleanup_deploy_exit EXIT
 
 PASS_MISSING_ANY=0
-if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
-  deploy_one "$GREEN_IP" "green" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
-fi
+# Blue first when deploying both so peer color serves traffic during each maintenance window.
 if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
-  deploy_one "$BLUE_IP" "blue" "$SSH_KEY" "$S3_BUCKET" "$DEPLOY_RESULTS_FILE"
+  deploy_role_with_maintenance "blue" "$BLUE_IP" || exit 1
+fi
+if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
+  deploy_role_with_maintenance "green" "$GREEN_IP" || exit 1
 fi
 
 # Cross-instance curls: pass IPs via bash -s and quoted heredoc so terraform values are never locally expanded (no $(...) injection).
@@ -910,46 +1121,50 @@ if [ -n "$GREEN_IP" ] && [ -n "$BLUE_IP" ]; then
   _cross_curl_any=0
   if [ -n "$GREEN_PRIVATE" ]; then
     _cross_curl_any=1
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash -s "$GREEN_PRIVATE" <<'CROSSCURL_B_TO_G_PRIV'
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash -s "$GREEN_PRIVATE" "${OSCAL_APP_PORT:-3020}" <<'CROSSCURL_B_TO_G_PRIV'
 LOG=/opt/oscal/app/logs/deployment.log
 sudo mkdir -p /opt/oscal/app/logs
 GP="$1"
+APP_PORT="$2"
 {
-  echo "=== $(date -Iseconds) from-blue curl green-private:3019 ==="
-  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${GP}:3019/health" || echo curl_fail
+  echo "=== $(date -Iseconds) from-blue curl green-private:${APP_PORT} ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${GP}:${APP_PORT}/health" || echo curl_fail
 } 2>&1 | sudo tee -a "$LOG" >/dev/null
 CROSSCURL_B_TO_G_PRIV
   fi
   if [ -n "$GREEN_PUBLIC" ]; then
     _cross_curl_any=1
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash -s "$GREEN_PUBLIC" <<'CROSSCURL_B_TO_G_PUB'
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${BLUE_IP}" bash -s "$GREEN_PUBLIC" "${OSCAL_APP_PORT:-3020}" <<'CROSSCURL_B_TO_G_PUB'
 LOG=/opt/oscal/app/logs/deployment.log
 GP="$1"
+APP_PORT="$2"
 {
-  echo "=== $(date -Iseconds) from-blue curl green-public:3019 ==="
-  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${GP}:3019/health" || echo curl_fail
+  echo "=== $(date -Iseconds) from-blue curl green-public:${APP_PORT} ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${GP}:${APP_PORT}/health" || echo curl_fail
 } 2>&1 | sudo tee -a "$LOG" >/dev/null
 CROSSCURL_B_TO_G_PUB
   fi
   if [ -n "$BLUE_PRIVATE" ]; then
     _cross_curl_any=1
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash -s "$BLUE_PRIVATE" <<'CROSSCURL_G_TO_B_PRIV'
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash -s "$BLUE_PRIVATE" "${OSCAL_APP_PORT:-3020}" <<'CROSSCURL_G_TO_B_PRIV'
 LOG=/opt/oscal/app/logs/deployment.log
 BP="$1"
+APP_PORT="$2"
 {
-  echo "=== $(date -Iseconds) from-green curl blue-private:3020 ==="
-  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${BP}:3020/health" || echo curl_fail
+  echo "=== $(date -Iseconds) from-green curl blue-private:${APP_PORT} ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${BP}:${APP_PORT}/health" || echo curl_fail
 } 2>&1 | sudo tee -a "$LOG" >/dev/null
 CROSSCURL_G_TO_B_PRIV
   fi
   if [ -n "$BLUE_PUBLIC" ]; then
     _cross_curl_any=1
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash -s "$BLUE_PUBLIC" <<'CROSSCURL_G_TO_B_PUB'
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${SSH_USER}@${GREEN_IP}" bash -s "$BLUE_PUBLIC" "${OSCAL_APP_PORT:-3020}" <<'CROSSCURL_G_TO_B_PUB'
 LOG=/opt/oscal/app/logs/deployment.log
 BP="$1"
+APP_PORT="$2"
 {
-  echo "=== $(date -Iseconds) from-green curl blue-public:3020 ==="
-  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${BP}:3020/health" || echo curl_fail
+  echo "=== $(date -Iseconds) from-green curl blue-public:${APP_PORT} ==="
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://${BP}:${APP_PORT}/health" || echo curl_fail
 } 2>&1 | sudo tee -a "$LOG" >/dev/null
 CROSSCURL_G_TO_B_PUB
   fi
@@ -992,30 +1207,7 @@ if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   fi
 fi
 
-# If Pass is not installed/initialized on any instance, warn and prompt
-if [ "${PASS_MISSING_ANY:-0}" = "1" ]; then
-  echo ""
-  print_warning "Pass is not installed or not initialized for $SVC_USER on one or more instances."
-  echo -e "  ${YELLOW}Secrets (e.g. Okta client secret) will be stored in plain text in config.json.${NC}"
-  echo ""
-  echo "  Would you like to continue with deployment anyway? [y/N]"
-  if [ -t 0 ]; then
-    read -r response
-    case "${response:-n}" in
-      [yY]|[yY][eE][sS]) ;;
-      *) print_error "Deployment aborted. Install and initialize Pass first, then re-run deploy."
-        echo "  Re-run ./scripts/deploy-to-ec2.sh after fixing Pass on the instance, or add secrets manually:"
-        echo "  sudo -u $SVC_USER pass insert OSCAL/sso-oauth-okta-client-secret"
-        exit 1
-        ;;
-    esac
-  else
-    print_error "Deployment completed but Pass is not available. Secrets will be stored in config.json."
-    echo "  To use Pass for secrets, re-run deploy after fixing Pass on the instance (see docs/AWS_OPERATIONS.md#ec2-web-hosting-best-practices)."
-  fi
-fi
-
-# Summary: deployed instances and health (option 4)
+# Summary: deployed instances and health
 print_success "Deploy complete."
 if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
   echo ""
@@ -1025,16 +1217,16 @@ if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
     if [ "$status" = "ok" ]; then
       echo -e "  ${GREEN}✓${NC} $role ($ip): healthy"
     elif [ "$status" = "ok_ssh" ]; then
-      echo -e "  ${GREEN}✓${NC} $role ($ip): healthy (localhost; use ALB -- SG blocks direct :3019/:3020)"
+      echo -e "  ${GREEN}✓${NC} $role ($ip): healthy (localhost; use ALB -- SG blocks direct :${OSCAL_APP_PORT:-3020})"
     else
       echo -e "  ${RED}✗${NC} $role ($ip): /health not responding"
     fi
   done < "$DEPLOY_RESULTS_FILE"
 fi
 echo ""
-# Post-deploy: pass vault reminder (compare config _pass pointers vs vault on each instance)
-print_info "Pass vault: on each instance run: sudo -u $SVC_USER env HOME=$SVC_HOME pass ls"
-print_info "Ensure config.json _pass entries exist in the vault (see docs/AWS_OPERATIONS.md#ec2-web-hosting-best-practices)."
+# Post-deploy: secrets migration reminder
+print_info "EC2 secrets: config.json should use { \"_sm\": \"OSCAL/...\" } pointers only (see docs/AWS_OPERATIONS.md)."
+print_info "If plaintext remains after deploy, run: ./scripts/debug/migrate-config-secrets-to-sm.sh green|blue"
 echo ""
 # Fail script if any instance failed health check (ok_ssh counts as success -- SG blocks public app ports by design)
 # Use wc -l so HEALTH_FAIL is always a single integer (grep -c in a subshell can yield newlines on some systems)
@@ -1050,18 +1242,22 @@ if [ "$HEALTH_FAIL" -gt 0 ] 2>/dev/null; then
   print_error "One or more instances failed health check. Fix and re-run deploy or check: sudo systemctl status oscal-reporter.service"
   exit 1
 fi
-print_info "ALB default listener uses weighted forward (Green 3019 / Blue 3020). Unhealthy targets get no traffic; host-header rules may bias one color; stickiness can pin your browser. If you see 502, wait for target health then retry."
+print_info "ALB default listener uses weighted forward (Green / Blue on port ${OSCAL_APP_PORT:-3020}). Maintenance mode drains the deploy target color until deploy succeeds and the target is healthy."
 
-# Apply Terraform so any drift (e.g. ALB idle_timeout) is applied. Does not destroy or replace Green/Blue instances.
-print_info "Running terraform apply -auto-approve via run-with-aws-pass.sh..."
-if [ -x "$REPO_ROOT/terraform/run-with-aws-pass.sh" ]; then
-  if "$REPO_ROOT/terraform/run-with-aws-pass.sh" apply -auto-approve; then
-    print_success "Terraform apply completed."
+# Optional Terraform apply (off by default — avoids launch-template refresh triggering ASG replacement during deploy).
+if [ "${DEPLOY_TERRAFORM_APPLY:-0}" = "1" ]; then
+  print_info "Running terraform apply -auto-approve via run-with-aws-pass.sh..."
+  if [ -x "$REPO_ROOT/terraform/run-with-aws-pass.sh" ]; then
+    if "$REPO_ROOT/terraform/run-with-aws-pass.sh" apply -auto-approve; then
+      print_success "Terraform apply completed."
+    else
+      print_warning "Terraform apply failed or had errors (check output above). Instances were not modified."
+    fi
   else
-    print_warning "Terraform apply failed or had errors (check output above). Instances were not modified."
+    print_warning "terraform/run-with-aws-pass.sh not found or not executable; skipping terraform apply."
   fi
 else
-  print_warning "terraform/run-with-aws-pass.sh not found or not executable; skipping terraform apply."
+  print_info "Skipping terraform apply (DEPLOY_TERRAFORM_APPLY=0). Run ./terraform/run-with-aws-pass.sh apply separately when infra changes are intended."
 fi
 
 # --- ACM HTTPS: validate CNAME records and guide next steps or raise-a-ticket ---

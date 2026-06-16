@@ -6,8 +6,8 @@ contact: mukesh.kesharwani@adobe.com
 # Project summary — OSCAL Report Generator
 
 **Application:** Keekar’s OSCAL SOA / SSP / CCM Generator (npm: `keekars-oscal-soa-ssp-ccm-generator`).  
-**Version:** See root `package.json` (currently **1.7.18**).  
-**Last updated:** May 2026
+**Version:** See root `package.json` (currently **1.7.20**).  
+**Last updated:** June 2026
 
 ---
 

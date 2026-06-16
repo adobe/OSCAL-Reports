@@ -15,7 +15,7 @@ export default defineConfig({
   },
   server: {
     port: 3021,
-    allowedHosts: ['keekar.3utilities.com'],
+    allowedHosts: ['keekar.3utilities.com', 'oscal.keekar.au'],
     proxy: {
       '/api': {
         target: 'http://localhost:3020',

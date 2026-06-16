@@ -86,7 +86,7 @@ resource "aws_launch_template" "oscal_green" {
     tags = merge(
       {
         Name                  = "${var.project_name}-oscal-green"
-        Port                  = "3019"
+        Port                  = tostring(var.oscal_app_port)
         Stack                 = var.project_name
         OSCAL_PERSISTENT_ROLE = "green"
         OSCAL_SSM_TARGET      = "true"
@@ -151,7 +151,7 @@ resource "aws_launch_template" "oscal_blue" {
     tags = merge(
       {
         Name                  = "${var.project_name}-oscal-blue"
-        Port                  = "3020"
+        Port                  = tostring(var.oscal_app_port)
         Stack                 = var.project_name
         OSCAL_PERSISTENT_ROLE = "blue"
         OSCAL_SSM_TARGET      = "true"

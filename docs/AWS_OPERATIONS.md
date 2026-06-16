@@ -24,7 +24,7 @@ This document describes how to provision the AWS architecture for the OSCAL Repo
 
 - **VPC** and public subnets (2 AZs)
 - **Application Load Balancer** (ALB) with HTTP (and optional HTTPS) listeners
-- **OSCAL Green** (port 3019) and **OSCAL Blue** (port 3020) each run as a **single-instance Auto Scaling Group** (Launch Template + ELB health checks) so a failed or terminated instance is replaced automatically. **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. With **direct run** (`run_oscal_via_docker = false`, default), optional **dedicated gp3 volumes** (`oscal_persistent_ebs_enabled = true`) are created per role, tagged for discovery, and mounted at **`/opt/oscal`** on boot (application tree and `/opt/oscal/data`); volumes are **not** deleted when the instance is replaced. **SSM** runs a periodic **Command** document on instances tagged `OSCAL_SSM_TARGET=true` (mount check, optional `aws s3 sync` from `oscal_ssm_release_s3_prefix` inside the logs bucket, `systemctl restart oscal-reporter` when the unit exists). **OS patching** uses **SSM Patch Manager** with staggered Blue/Green maintenance windows ([OS patching](#os-patching-ssm-patch-manager)). Config and users on the instance are backed up to **S3** via **ec2_automation** every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead (no extra data volumes; ASGs still provide replacement).
+- **OSCAL Green** and **OSCAL Blue** each run as a **single-instance Auto Scaling Group** (Launch Template + ELB health checks) so a failed or terminated instance is replaced automatically. Both instances listen on the **same app port** (`oscal_app_port`, default **3020**). **Preferred instance:** Graviton **t4g.small** (default), then AMD **t3a.small**; set `instance_type` and `instance_architecture` in tfvars. With **direct run** (`run_oscal_via_docker = false`, default), optional **dedicated gp3 volumes** (`oscal_persistent_ebs_enabled = true`) are created per role, tagged for discovery, and mounted at **`/opt/oscal`** on boot (application tree and `/opt/oscal/data`); volumes are **not** deleted when the instance is replaced. **SSM** runs a periodic **Command** document on instances tagged `OSCAL_SSM_TARGET=true` (mount check, optional `aws s3 sync` from `oscal_ssm_release_s3_prefix` inside the logs bucket, `systemctl restart oscal-reporter` when the unit exists). **OS patching** uses **SSM Patch Manager** with staggered Blue/Green maintenance windows ([OS patching](#os-patching-ssm-patch-manager)). Config and users on the instance are backed up to **S3** via **ec2_automation** every 10 min. Set `run_oscal_via_docker = true` to use Docker/podman and the GHCR image instead (no extra data volumes; ASGs still provide replacement).
 - **S3** bucket for **logs**, **config**, and **users** (subfolders: `logs/`, `config/green/`, `config/blue/`, `users/`). ec2_automation backs up instance data to S3 so it is retained if instances are replaced.
 - **Optional RDS PostgreSQL** (`create_rds_postgres = true` in tfvars): RDS is placed in **dedicated private subnets** (no route to the internet gateway, `map_public_ip_on_launch = false`, **`publicly_accessible = false`**), so it has **no public IP** and is reachable only on **private addresses** inside the VPC. The RDS security group allows PostgreSQL **only** from the OSCAL EC2 security group; you may add **`rds_additional_ingress_ipv4_cidr_blocks`** for extra **internal** ranges (e.g. a bastion subnet), never `0.0.0.0/0`. OSCAL instances egress to PostgreSQL **only toward those private subnet CIDRs**, not the open internet. **IAM database authentication**, admin password in **Secrets Manager** (RDS-managed), app user `rds_iam_app_username` (default `oscal_app`). Green/Blue **user_data** bootstraps the IAM role and injects **systemd** `OSCAL_DATABASE_*`. The Node app uses `@aws-sdk/rds-signer` for tokens. **Tables** are created on first successful DB connection. **GUI:** Platform Settings → Database. **Cost:** RDS is billed separately; leave `create_rds_postgres = false` (default) if you use an external database. **`default_allowed_cidr_blocks`** still applies only to **ALB / SSH / direct app ports** (admin paths), not to exposing RDS on the public internet.
 - **Tagging:** All resources receive `Project`, `Environment`, `ManagedBy`, and `Stack` (plus any `common_tags`). Filter by `Stack = <project_name>` in any account to find or remove the stack. See [terraform/README.md](../terraform/README.md) for add/remove lifecycle.
@@ -258,7 +258,7 @@ In the console: **Fleet Manager** → instances **Online**; **Patch Manager** �
 **After apply**
 
 1. **Outputs:** `terraform output` (via wrapper) — `oscal_green_instance_id`, `oscal_*_public_ip` / `private_ip` should be non-null once instances are **running** (ASG may take a few minutes).
-2. **ALB targets:** EC2 → Target Groups → Green/Blue → targets **healthy** (HTTP `/health` on 3019 / 3020 per `alb.tf`).
+2. **ALB targets:** EC2 → Target Groups → Green/Blue → targets **healthy** (HTTP `/health` on `oscal_app_port`, default 3020, per `alb.tf`).
 3. **SSH / deploy:** `./scripts/deploy-to-ec2.sh` (or `--both`) so **`/opt/oscal/app`** matches your repo; restores full build after a fresh instance.
 4. **Data:** If new persistent volumes are **empty**, seed **`/opt/oscal/data`** from S3 `config/<green|blue>/` or snapshots before expecting the app to serve traffic.
 5. **SSM:** Systems Manager → **Run Command** / **Compliance** — association on document `oscal_post_boot_ssm_document_name` (output) should show successful invocations on tagged instances after ~30 minutes (or run the document manually once).
@@ -269,7 +269,7 @@ In the console: **Fleet Manager** → instances **Online**; **Patch Manager** �
 | Check | Command / action |
 |--------|-------------------|
 | ALB health | `curl -sS -o /dev/null -w "%{http_code}" "http://$(terraform output -raw alb_dns_name)/health"` (or HTTPS URL if cert in use); expect **200** from default routing or host rules. |
-| Green direct | From a host allowed by SGs: `curl -sS -o /dev/null -w "%{http_code}" "http://<green-ip>:3019/health"` |
+| Green direct | From a host allowed by SGs: `curl -sS -o /dev/null -w "%{http_code}" "http://<green-ip>:3020/health"` |
 | Blue direct | `curl ... "http://<blue-ip>:3020/health"` |
 | App UI | Open ALB URL or green/blue hostnames in browser; exercise login and one report path. |
 | Logs | Instance: `journalctl -u oscal-reporter -n 50 --no-pager`; S3: `logs/green/` or `logs/blue/` after ec2_automation runs. |
@@ -282,7 +282,7 @@ To access Blue and Green with two different hostnames (e.g. `blue.oscal.example.
 
 1. Set in `terraform.tfvars`: `alb_blue_hostname = "blue.oscal.example.com"` and `alb_green_hostname = "green.oscal.example.com"` (use your own domain).
 2. Create **CNAME** DNS records: `blue.oscal.example.com` and `green.oscal.example.com` both pointing to the ALB DNS name (output `alb_dns_name`).
-3. Run `terraform apply`. The ALB will route by **Host** header: requests to the blue hostname go to Blue (port 3020), requests to the green hostname go to Green (port 3019). Default action (e.g. raw ALB DNS) forwards to Blue.
+3. Run `terraform apply`. The ALB will route by **Host** header: requests to the blue hostname go to Blue, requests to the green hostname go to Green. Default action (e.g. raw ALB DNS) forwards with weighted Green/Blue routing.
 
 For HTTPS, use an ACM certificate that covers both hostnames (e.g. wildcard `*.oscal.example.com` or a cert with both SANs).
 
@@ -296,8 +296,10 @@ If your organisation does not authorize `acm:RequestCertificate`, you can establ
    - `alb_allow_http_for_testing = true` – ALB security group allows port 80 from `default_allowed_cidr_blocks` so you can reach the ALB for testing.
 2. **Apply:** From repo root with `TERRAFORM_DIR` set to your env (e.g. `terraform/envs/aws4403`), run `./terraform/run-with-aws-pass.sh apply`.
 3. **Use the ALB:** After apply, run `terraform output alb_url_http` (or `alb_dns_name`). From a machine whose IP is in `default_allowed_cidr_blocks`, open **http://&lt;alb_dns_name&gt;** in a browser or run `curl http://&lt;alb_dns_name&gt;/health`.
-4. **If direct instance URLs work (e.g. http://&lt;green-ip&gt;:3019) but the ALB URL does not:** The ALB allows port 80 only from `default_allowed_cidr_blocks`. Add your current public IP (run `curl -s ifconfig.me` to see it) as `"x.x.x.x/32"` in `default_allowed_cidr_blocks` in tfvars, then run `terraform apply` again. Also check in the AWS Console that the ALB target groups show the ASG-registered targets as **Healthy** (Targets tab); if they are Unhealthy, the ALB returns 503.
+4. **If direct instance URLs work (e.g. http://&lt;green-ip&gt;:3020) but the ALB URL does not:** The ALB allows port 80 only from `default_allowed_cidr_blocks`. Add your current public IP (run `curl -s ifconfig.me` to see it) as `"x.x.x.x/32"` in `default_allowed_cidr_blocks` in tfvars, then run `terraform apply` again. Also check in the AWS Console that the ALB target groups show the ASG-registered targets as **Healthy** (Targets tab); if they are Unhealthy, the ALB returns 503.
 5. **Add a certificate later:** When your organisation provides an ACM certificate (same account/region), set `alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT:certificate/CERT_ID"` in tfvars, keep `create_alb_certificate = false`, and run `terraform apply` again. Terraform will add the HTTPS listener (443) and HTTP→HTTPS redirect; no ACM request is made.
+
+**Corporate PKI (Adobe PLM):** CSR, private key, and issued cert storage paths, PLM portal, and cutover from Let's Encrypt are documented in [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md). Request audit log: [logs/SSL_CERT_PKI_REQUEST_2026-05-27.md](../logs/SSL_CERT_PKI_REQUEST_2026-05-27.md).
 
 **Let's Encrypt and import into ACM:** If you use Let's Encrypt (e.g. when ACM *request* is not allowed but ACM *import* is), run the script `scripts/debug/letsencrypt-acm-import.sh` from the repo root. It uses **manual DNS-01** validation: you add the TXT record in Route53 yourself (Route53 may be in a different AWS account; the script prompts you with exact steps). The script then imports the issued cert into ACM and can update your env's `terraform.tfvars` with the new cert ARN. Prerequisites: `certbot` installed, AWS CLI credentials for the ALB account (Pass entry `AWS/AMS_4403-STG` or env). See the script header for usage and environment variables.
 
@@ -312,7 +314,7 @@ To serve the app over HTTPS with an AWS-issued certificate and redirect all HTTP
 5. **Apply:** `terraform apply`. The ALB will have an HTTPS listener on port 443 using the ACM certificate. The HTTP listener (port 80) will **redirect** all requests to HTTPS (301). Use `alb_url_https` output or `https://your-domain.com`.
 6. **Use:** `https://your-domain.com` for production. HTTP requests to the ALB (e.g. `http://your-domain.com`) will redirect to `https://your-domain.com`.
 
-**Direct instance URLs (IP:3019, IP:3020):** AWS ACM certificates cannot be installed on EC2 instances; ACM works only with AWS services (ALB, CloudFront, API Gateway). To access Green or Blue over HTTPS, use **ALB hostnames** (`alb_green_hostname`, `alb_blue_hostname`) with a CNAME to the ALB and the same ACM cert—traffic is then HTTPS via the ALB. The raw IP:port URLs (e.g. `http://3.234.177.204:3019`, `http://54.145.135.149:3020`) remain HTTP and are suitable for debug or internal use only.
+**Direct instance URLs (IP:3020):** AWS ACM certificates cannot be installed on EC2 instances; ACM works only with AWS services (ALB, CloudFront, API Gateway). To access Green or Blue over HTTPS, use **ALB hostnames** (`alb_green_hostname`, `alb_blue_hostname`) with a CNAME to the ALB and the same ACM cert—traffic is then HTTPS via the ALB. The raw IP:port URLs (e.g. `http://<green-ip>:3020`, `http://<blue-ip>:3020`) remain HTTP and are suitable for debug or internal use only.
 
 #### PCL auto-remediation: ALB security group (recovery)
 
@@ -368,7 +370,7 @@ See `terraform/variables.tf` and `terraform/terraform.tfvars.example` (or `terra
 
 ### Troubleshooting: Access broken (direct instances and ALB)
 
-When **all** of the following are unreachable — `http://<green-ip>:3019/`, `http://<blue-ip>:3020/`, and `https://<alb-dns-name>/`:
+When **all** of the following are unreachable — `http://<green-ip>:3020/`, `http://<blue-ip>:3020/`, and `https://<alb-dns-name>/`:
 
 **1. Your IP is not in the allow list**  
 Access is restricted to `default_allowed_cidr_blocks`. If you changed networks (e.g. home vs office, different VPN), your public IP may no longer be allowed.
@@ -385,11 +387,11 @@ PCL may have swapped the ALB's security group again, so the ALB no longer allows
 - In AWS Console: **EC2 → Instances** — confirm Green and Blue are **running**.
 - **EC2 → Target Groups → Targets** — confirm targets are **Healthy**. If Unhealthy, fix the app or health check on the instance.
 
-**4. ALB works but direct instance URLs (http://&lt;green-ip&gt;:3019, http://&lt;blue-ip&gt;:3020) are broken**  
-The ALB and the instances use the same `default_allowed_cidr_blocks`; if the ALB is reachable, your IP is in the list. Direct access is allowed by the **OSCAL** security group (ports 3019, 3020). If that SG is out of sync (e.g. a previous apply failed after updating the ALB SG, or rules were changed in the console), the OSCAL SG may be missing your CIDR.
+**4. ALB works but direct instance URLs (http://&lt;green-ip&gt;:3020, http://&lt;blue-ip&gt;:3020) are broken**  
+The ALB and the instances use the same `default_allowed_cidr_blocks`; if the ALB is reachable, your IP is in the list. Direct access is allowed by the **OSCAL** security group (app port 3020). If that SG is out of sync (e.g. a previous apply failed after updating the ALB SG, or rules were changed in the console), the OSCAL SG may be missing your CIDR.
 
 - **Fix:** Run `terraform apply` again so the OSCAL security group is updated to match `default_allowed_cidr_blocks` (e.g. `TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./terraform/run-with-aws-pass.sh apply`).
-- **Verify:** In AWS Console, **EC2 → Security Groups** → find the OSCAL SG (name like `ams-oscal-reports-oscal-*`) → **Inbound rules** → confirm there are rules for ports **3019** and **3020** from your IP or CIDR (e.g. `203.191.182.150/32`). If those rules are missing, apply again or fix drift.
+- **Verify:** In AWS Console, **EC2 → Security Groups** → find the OSCAL SG (name like `ams-oscal-reports-oscal-*`) → **Inbound rules** → confirm there is a rule for port **3020** from your IP or CIDR (e.g. `203.191.182.150/32`). If that rule is missing, apply again or fix drift.
 
 ---
 
@@ -398,7 +400,7 @@ The ALB and the instances use the same `default_allowed_cidr_blocks`; if the ALB
 The ALB returns **503 Service Temporarily Unavailable** when the target group that was selected for the request has **no healthy targets**. Even if one instance (e.g. Blue) is up and responding, you can still see 503 in these cases:
 
 1. **You are using the Green hostname**  
-   If `alb_green_hostname` is set (e.g. `green.oscal.example.com`), requests to that host go **only** to the Green target group (priority 100). If Green has no healthy targets (instance down, app not on 3019, or `/health` failing), the ALB returns 503. Blue being healthy does not help for that hostname.
+   If `alb_green_hostname` is set (e.g. `green.oscal.example.com`), requests to that host go **only** to the Green target group (priority 100). If Green has no healthy targets (instance down, app not on 3020, or `/health` failing), the ALB returns 503. Blue being healthy does not help for that hostname.
 
 2. **Both target groups are unhealthy**  
    The default action forwards with weights (50/50 or 99/1 Green/Blue). The ALB only routes to healthy targets; if **both** Green and Blue have no healthy targets, every request gets 503.
@@ -422,7 +424,7 @@ The ALB returns **503 Service Temporarily Unavailable** when the target group th
   If Green is unhealthy, use the **Blue** URL (e.g. `alb_blue_hostname` or the main ALB URL). With weighted forwarding, the ALB sends traffic only to healthy target groups, so the main ALB URL will use Blue if Green has no healthy targets. If you were using the **Green** hostname, switch to the Blue hostname or the main ALB DNS name.
 
 - **Fix Green so both are healthy**  
-  On the Green instance: ensure the app is listening on **port 3019**, bound to **0.0.0.0** (not only 127.0.0.1), and that `GET http://<green-private-ip>:3019/health` returns **200**. Security groups already allow the ALB to reach instances on 3019 and 3020.
+  On each instance: ensure the app is listening on **port 3020**, bound to **0.0.0.0** (not only 127.0.0.1), and that `GET http://<instance-private-ip>:3020/health` returns **200**. Security groups allow the ALB to reach instances on 3020.
 
 ### Remote state (optional)
 
@@ -584,7 +586,7 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 
 1. In `terraform.tfvars`, set **`image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"`** with the Adobe Image Factory Amazon Linux 2023 AMI ID for us-east-1 (from [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/)). Leave `oscal_ami_id` and `ollama_ami_id` **null** so Green, Blue, and Ollama all use this AMI.
 2. Run **`terraform apply`** (e.g. `cd terraform && ./run-with-aws-pass.sh apply -auto-approve`) so the launch templates are updated.
-3. Replace the Ollama instance so the new one uses the new AMI: set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/run-install-ollama-on-instance.sh`.
+3. Replace the Ollama instance so the new one uses the new AMI: set ASG desired capacity to 0, wait for termination, set to 1, then complete any remaining Ollama bootstrap on the new instance per your runbook (legacy; Ollama was removed in favor of Bedrock—see [Amazon Bedrock Integration](#amazon-bedrock-integration-step-by-step-aws-setup)).
 
 ### Summary
 
@@ -595,7 +597,7 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 | SSAAU-169 / InfraSec | Pin latest EMR `ami-*` in `terraform.tfvars`; run `terraform/scripts/list-emr-candidate-amis.sh` to list candidates; replace EC2 via `terraform apply`. |
 | Terraform variables | `use_image_factory_ami` (default **true** = Image Factory Amazon Linux 2023 when in map, else native AL2023); `oscal_ami_id`, `ollama_ami_id` (null = use preference order) |
 | Add Image Factory Amazon Linux | In `terraform.tfvars` set `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (from Image Factory UI), or add entries in `terraform/image_factory_ami.tf` in `image_factory_amazon_linux_by_region`. Both Green/Blue and Ollama use it. |
-| Replace Ollama instance for new AMI | Set ASG desired capacity to 0, wait for termination, set to 1, then run `./scripts/debug/run-install-ollama-on-instance.sh`. |
+| Replace Ollama instance for new AMI | Legacy Ollama path only; current stacks use Bedrock (see [Amazon Bedrock Integration](#amazon-bedrock-integration-step-by-step-aws-setup)). |
 | Bucket naming | Lowercase; AMS prefix `ams-oscal-<account-id>` (e.g. `ams-oscal-442277170733`). Terraform lowercases the value. |
 
 ---
@@ -1152,7 +1154,7 @@ This document consolidates best practices evolved for hosting the OSCAL Report G
 ### Table of Contents
 
 1. [Directory layout](#1-directory-layout)
-2. [Service account and Pass](#2-service-account-and-pass)
+2. [Service account and AWS Secrets Manager](#2-service-account-and-aws-secrets-manager)
 3. [Config and users: single canonical location](#3-config-and-users-single-canonical-location)
 4. [Deploy workflow](#4-deploy-workflow)
 5. [Cron and ec2_automation (Green vs Blue)](#5-cron-and-ec2_automation-green-vs-blue)
@@ -1180,13 +1182,14 @@ Use a **strict layout** so config is never confused with app code:
 
 ---
 
-### 2. Service account and Pass
+### 2. Service account and AWS Secrets Manager
 
 - **Run the app and cron as a dedicated user**, not root: `svc_ams-oscal` (group `oscal`), home `/var/lib/svc_ams-oscal`.
-- **Secrets:** Use [pass](https://www.passwordstore.org/) for the service user. The deploy script ensures the Pass vault at `$SVC_HOME/.password-store` is created and initialized. Store Okta client secret, SMTP password, etc. there; `config.json` holds only pointers (e.g. `"_pass": "OSCAL/sso-oauth-okta-client-secret"`).
-- **Adding a secret on instance:**  
-  `sudo -u svc_ams-oscal pass insert OSCAL/entry-name`
-- **If Pass is missing:** Deploy will warn; secrets would be stored in plain text in config. Re-run `./scripts/deploy-to-ec2.sh` after fixing Pass on the instance, or add secrets manually (`sudo -u svc_ams-oscal pass insert …`).
+- **EC2 secrets (1.7.19+):** The Node app reads and writes a **single AWS Secrets Manager JSON bundle** (`entries` + `_meta`). `config.json` stores only `{ "_sm": "OSCAL/..." }` pointers — never plaintext. Systemd sets `OSCAL_SECRETS_MODE=aws-sm` and `OSCAL_SECRETS_MANAGER_ARN` (from Terraform output `oscal_pass_secrets_sync_secret_arn`). Secrets are cached **in memory** at startup and after GUI save; they are not written to `process.env` or disk.
+- **GUI save:** Settings merges changed keys into the SM bundle (compare-and-swap) and rewrites config with `_sm` pointers. Green and Blue share one bundle — concurrent saves retry on version conflict.
+- **One-time migration:** If config still has plaintext or legacy `_pass` pointers, deploy runs `backend/scripts/migrate-config-to-sm.mjs`, or run `./scripts/debug/migrate-config-secrets-to-sm.sh green|blue` from the laptop.
+- **Local / Docker:** Default `OSCAL_SECRETS_MODE=config` — secrets in `config.json` (or optional laptop `pass` via `_pass` pointers). Do not commit real secrets; use `config.json.example` as a template.
+- **Deprecated on EC2:** `pass` vault, `PASSWORD_STORE_DIR`, and cron Pass ↔ SM sync (`ec2-automation-pass-sync.sh`). Laptop `pass` remains for Terraform/AWS SSH only (`run-with-aws-pass.sh`).
 
 ---
 
@@ -1212,13 +1215,13 @@ Use a **strict layout** so config is never confused with app code:
   Get IPs from Terraform:  
   `terraform -chdir=terraform output -raw oscal_green_public_ip` (and `oscal_blue_public_ip`).
 - **What deploy does:**  
-  - Ensures service account and Pass.  
+  - Ensures service account `svc_ams-oscal`.  
   - Creates `/opt/oscal/app`, `/opt/oscal/scripts`, `/opt/oscal/data`.  
   - Restores config/users from S3 if available; otherwise seeds from repo if missing.  
   - Writes `ec2_automation.env` and installs/removes cron per role (see below).  
   - Rsyncs repo to `/opt/oscal/app` (excludes `config/`, `node_modules`, `.git`, etc.), runs `npm install` and frontend build, copies build into `backend/public`.  
-  - Installs/updates `oscal-reporter.service` (Node, PORT, CONFIG_PATH, USERS_PATH, HOME, PASSWORD_STORE_DIR, OLLAMA_*).  
-  - Restarts the service and verifies `/health`.
+  - Installs/updates `oscal-reporter.service` (Node, PORT, CONFIG_PATH, USERS_PATH, `OSCAL_SECRETS_MODE`, `OSCAL_SECRETS_MANAGER_ARN`).  
+  - Migrates plaintext secrets to SM when needed; restarts the service and verifies `/health`.
 
 **Best practice:** Run Terraform via `terraform/run-with-aws-pass.sh` (output, apply). Do not commit AWS credentials; use Pass or env.
 
@@ -1229,21 +1232,20 @@ Use a **strict layout** so config is never confused with app code:
 - **ec2_automation.sh** backs up config, users, and logs to S3 and (optionally) syncs application code from **`s3://<bucket>/installer/`** (same prefix as `deploy-to-ec2.sh`), then `npm install` / frontend build / service restart. There is **no** scheduled Git pull; updates come from whatever was last uploaded to `installer/`.
 - **Green:** By default deploy installs a **cron** for user `svc_ams-oscal` every 10 minutes:  
   `*/10 * * * * ... /opt/oscal/scripts/ec2_automation.sh ...`  
-  **`ENABLE_S3_INSTALLER_UPDATE` defaults to true** in deploy-generated `ec2_automation.env` (`DEPLOY_ENABLE_S3_INSTALLER_UPDATE` defaults to **1**). When enabled, a **counter** in `/opt/oscal/data/.ec2_automation_installer_cycle` advances each run; a full `aws s3 sync` from `installer/` runs only every **`S3_CODE_UPDATE_EVERY_N_CYCLES`** runs (default **100** → about **1000 minutes** at a 10-minute cron). Set **`DEPLOY_ENABLE_S3_INSTALLER_UPDATE=0`** when deploying (or `ENABLE_S3_INSTALLER_UPDATE=false` on the instance) to skip scheduled code sync while keeping S3 backup and Pass ↔ Secrets Manager sync.
-- **Blue:** By default deploy installs the **same** cron on Blue (`DEPLOY_BLUE_AUTO_UPDATE` defaults to `1`) so S3 backup, optional installer sync, and Pass ↔ Secrets Manager sync run on both instances. Set **`DEPLOY_BLUE_AUTO_UPDATE=0`** when running deploy if you want Blue **manual-only** (no cron; deploy removes the ec2_automation line from Blue’s crontab).
+  **`ENABLE_S3_INSTALLER_UPDATE` defaults to true** in deploy-generated `ec2_automation.env` (`DEPLOY_ENABLE_S3_INSTALLER_UPDATE` defaults to **1**). When enabled, a **counter** in `/opt/oscal/data/.ec2_automation_installer_cycle` advances each run; a full `aws s3 sync` from `installer/` runs only every **`S3_CODE_UPDATE_EVERY_N_CYCLES`** runs (default **100** → about **1000 minutes** at a 10-minute cron). Set **`DEPLOY_ENABLE_S3_INSTALLER_UPDATE=0`** when deploying (or `ENABLE_S3_INSTALLER_UPDATE=false` on the instance) to skip scheduled code sync while keeping S3 backup.
+- **Blue:** By default deploy installs the **same** cron on Blue (`DEPLOY_BLUE_AUTO_UPDATE` defaults to `1`) so S3 backup and optional installer sync run on both instances. Set **`DEPLOY_BLUE_AUTO_UPDATE=0`** when running deploy if you want Blue **manual-only** (no cron; deploy removes the ec2_automation line from Blue’s crontab).
 - **ec2_automation.env** (per instance):  
-  `S3_BUCKET`, `S3_CONFIG_PREFIX`, `S3_LOGS_PREFIX`, `DEPLOYMENT_ROLE`, `AWS_DEFAULT_REGION`, `S3_INSTALLER_PREFIX` (usually `installer`), `S3_CODE_UPDATE_EVERY_N_CYCLES`, `ENABLE_S3_INSTALLER_UPDATE`, `S3_SYNC_CHOWN_USER` / `S3_SYNC_CHOWN_GROUP` (for `aws s3 sync` as `ec2-user`), and (when Terraform provides it) `PASS_SECRETS_SYNC_ENABLED`, `PASS_SECRETS_SYNC_SECRET_ARN`, `PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS` for Pass vault sync to AWS Secrets Manager.  
+  `S3_BUCKET`, `S3_CONFIG_PREFIX`, `S3_LOGS_PREFIX`, `DEPLOYMENT_ROLE`, `AWS_DEFAULT_REGION`, `S3_INSTALLER_PREFIX` (usually `installer`), `S3_CODE_UPDATE_EVERY_N_CYCLES`, `ENABLE_S3_INSTALLER_UPDATE`, `S3_SYNC_CHOWN_USER` / `S3_SYNC_CHOWN_GROUP` (for `aws s3 sync` as `ec2-user`). App secrets are **not** synced by cron — the Node process uses AWS Secrets Manager directly.
   Deploy overwrites this file on each run.
 
 ---
 
 ### 6. Blue/Green ports and health
 
-- **Green:** port **3019**.  
-- **Blue:** port **3020**.  
-- The systemd unit is the same; only `Environment=PORT=` differs. Deploy forces the correct PORT per role.
-- **Health:** ALB checks `http://<target>:<port>/health`. After deploy, the script waits ~20s and retries up to 5 times. If health fails, it prints recent `journalctl -u oscal-reporter.service` for debugging.
-- **Common causes of failure:** Bad or missing config/users in `/opt/oscal/data`, missing or broken Pass vault, wrong PORT in the unit file.
+- **Green and Blue:** port **3020** (same on both EC2 instances; `oscal_app_port` in Terraform, `OSCAL_APP_PORT` in deploy scripts).
+- Green and Blue differ by **role** (`DEPLOYMENT_ROLE`, ALB target group, S3 log prefix `logs/green` vs `logs/blue`), not by TCP port. Config and users are shared via `config/active/` on S3.
+- **Health:** ALB checks `http://<target>:3020/health`. After deploy, the script waits ~20s and retries up to 5 times. If health fails, it prints recent `journalctl -u oscal-reporter.service` for debugging.
+- **Common causes of failure:** Bad or missing config/users in `/opt/oscal/data`, missing or broken Pass vault, wrong PORT in the unit file (deploy forces `3020`).
 
 ---
 
@@ -1253,16 +1255,16 @@ Use a **strict layout** so config is never confused with app code:
   - SSH and run:  
     `sudo systemctl status oscal-reporter.service`  
     `sudo journalctl -u oscal-reporter.service -n 50 --no-pager`  
-  - From repo root, SSH to the instance (e.g. `./scripts/ssh-ec2.sh blue`) and inspect the same items: `systemctl`, `journalctl`, disk, `sudo crontab -u svc_ams-oscal -l`, `/opt/oscal/scripts/ec2_automation.env`, `/opt/oscal/app/logs/`, and `curl -sf http://127.0.0.1:3020/health` (Blue) or port `3019` (Green).
+  - From repo root, SSH to the instance (e.g. `./scripts/ssh-ec2.sh blue`) and inspect the same items: `systemctl`, `journalctl`, disk, `sudo crontab -u svc_ams-oscal -l`, `/opt/oscal/scripts/ec2_automation.env`, `/opt/oscal/app/logs/`, and `curl -sf http://127.0.0.1:3020/health` (Green or Blue).
 - **Blue only – disable cron and fix env now (one-off):**  
   `./scripts/debug/fix-blue-no-cron.sh`  
   (or with explicit IP). This sets `ENABLE_S3_INSTALLER_UPDATE=false` and removes the ec2_automation cron on Blue.
 - **Backup/restore verification:**  
   On the instance: confirm `sudo crontab -u svc_ams-oscal -l` includes `ec2_automation.sh`, check `/opt/oscal/scripts/ec2_automation.env` for `S3_BUCKET`, and run `/opt/oscal/scripts/ec2_automation.sh` once and confirm S3 objects update under `config/<role>/`.
 - **Pass vault on instances:**  
-  Compare `config.json` `_pass` references with `sudo -u svc_ams-oscal env HOME=/var/lib/svc_ams-oscal pass ls` (and `pass show` for specific keys).
-- **AI engine (Ollama) unreachable from Green/Blue:**  
-  See [Terraform on AWS – troubleshooting (AI engine unreachable)](#aws-terraform-for-oscal-ai-via-bedrock). Use `./scripts/debug/check-ollama-connectivity.sh` (optionally `--blue-only <ip>` or `--green-only <ip>`).
+  Compare `config.json` `_sm` (or legacy `_pass`) references with the SM bundle in AWS console or `migrate-config-secrets-to-sm.sh`.
+- **AI engine unreachable from Green/Blue:**  
+  See [Terraform on AWS – troubleshooting (AI engine unreachable)](#aws-terraform-for-oscal-ai-via-bedrock). On the instance, verify Bedrock IAM role/keys in `config.json`, systemd env, and backend logs (`journalctl -u oscal-reporter.service`).
 
 ---
 
@@ -1275,8 +1277,12 @@ Use a **strict layout** so config is never confused with app code:
 | `scripts/reactivate-admin.sh` | Reactivate admin user in `users.json`. Use repo path or pass path; works with `/opt/oscal/data/users.json`. |
 | `scripts/debug/fix-blue-no-cron.sh` | One-off: set ENABLE_S3_INSTALLER_UPDATE=false and remove ec2_automation cron on Blue. |
 | `scripts/debug/diagnose-okta-on-ec2.sh` | Diagnose Okta SSO on EC2 (config paths, tokens). |
-| `scripts/debug/check-ollama-connectivity.sh` | Check connectivity from Green/Blue to Ollama NLB. |
+| `scripts/debug/alb-target-health.sh` | Print ALB Green/Blue target health via AWS CLI. |
 | `scripts/debug/restore-blue-config.sh` | Copy config/users from Green to Blue (e.g. after replacing Blue). |
+| `scripts/debug/migrate-config-secrets-to-sm.sh` | One-time: migrate plaintext / `_pass` secrets in config to AWS SM + `_sm` pointers on EC2. |
+| `scripts/debug/backup-config-to-s3.sh` | On-instance backup of config/users to S3 (cron companion). |
+| `scripts/debug/sync-config-from-s3-newest.sh` | Pull newest shared config from S3 `config/active/` prefixes. |
+| `scripts/debug/scp-to-ec2.sh` | Copy a debug script from laptop to Green/Blue via SSH. |
 
 ---
 
@@ -1383,7 +1389,7 @@ Continue reading for:
 │  ┌──────────────────┐      ┌──────────────────┐            │
 │  │   EC2 Instance   │      │   EC2 Instance   │            │
 │  │  OSCAL - Green   │      │  OSCAL - Blue    │            │
-│  │  Port: 3019      │      │  Port: 3020      │            │
+│  │  Port: 3020      │      │  Port: 3020      │            │
 │  │  t4g.small       │      │  t4g.small       │            │
 │  │  2 vCPU, 2GB RAM │      │  2 vCPU, 2GB RAM │            │
 │  └──────────────────┘      └──────────────────┘            │
@@ -1595,7 +1601,7 @@ For non-critical workloads:
 │    ┌────▼─────────┐                        ┌────────▼────┐      │
 │    │ EC2 Instance │                        │ EC2 Instance│      │
 │    │ OSCAL-Green  │◄──Health Check────────►│ OSCAL-Blue  │      │
-│    │ Port: 3019   │                        │ Port: 3020  │      │
+│    │ Port: 3020   │                        │ Port: 3020  │      │
 │    │ t4g.small    │                        │ t4g.small   │      │
 │    └──────┬───────┘                        └──────┬──────┘      │
 │           │                                        │              │

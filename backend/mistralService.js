@@ -8,6 +8,11 @@ import axios from './utils/safeAxios.js';
 import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
+import {
+  bedrockCredentialsConfigured,
+  createBedrockRuntimeClient,
+  normalizeBedrockAuthMode
+} from './utils/bedrockCredentials.js';
 import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
 
 // AWS SDK imports (lazy loaded when needed)
@@ -46,6 +51,9 @@ export async function loadMistralConfig() {
     let awsAccessKeyId = '';
     let awsSecretAccessKey = '';
     let bedrockModelId = 'mistral.mistral-large-2402-v1:0';
+    let bedrockAuthMode = 'access-keys';
+    let bedrockAssumeRoleArn = '';
+    let bedrockExternalId = '';
     
     if (config.aiConfig && config.aiConfig.enabled) {
       aiEnabled = true;
@@ -59,6 +67,9 @@ export async function loadMistralConfig() {
         awsAccessKeyId = config.aiConfig.awsAccessKeyId || '';
         awsSecretAccessKey = config.aiConfig.awsSecretAccessKey || '';
         bedrockModelId = config.aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+        bedrockAuthMode = normalizeBedrockAuthMode(config.aiConfig);
+        bedrockAssumeRoleArn = config.aiConfig.bedrockAssumeRoleArn || '';
+        bedrockExternalId = config.aiConfig.bedrockExternalId || '';
         console.log(`🔧 Using AWS Bedrock in region: ${awsRegion}`);
         console.log(`   Model: ${bedrockModelId}`);
         console.log(`   Timeout: ${aiTimeout}ms (${aiTimeout/1000}s)`);
@@ -115,6 +126,9 @@ export async function loadMistralConfig() {
       awsRegion: awsRegion,
       awsAccessKeyId: awsAccessKeyId,
       awsSecretAccessKey: awsSecretAccessKey,
+      bedrockAuthMode,
+      bedrockAssumeRoleArn,
+      bedrockExternalId,
       bedrockModelId: bedrockModelId,
       timeout: aiTimeout || config.mistralConfig?.timeout || 180000, // 180 seconds default for model loading and processing
       maxRetries: config.mistralConfig?.maxRetries || 2,
@@ -423,8 +437,8 @@ async function generateWithAWSBedrock(control, config, existingControls = [], pr
     throw new Error('AWS SDK not installed. Install with: npm install @aws-sdk/client-bedrock-runtime');
   }
 
-  if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
-    throw new Error('AWS credentials not configured');
+  if (!bedrockCredentialsConfigured(config)) {
+    throw new Error('AWS credentials not configured (access keys or IAM role)');
   }
 
   if (!config.awsRegion) {
@@ -436,30 +450,9 @@ async function generateWithAWSBedrock(control, config, existingControls = [], pr
   
   try {
     console.log(`🔄 Connecting to AWS Bedrock in ${config.awsRegion}...`);
-    
-    // Import Node.js https and AWS SDK handler
-    const { Agent: HttpsAgent } = await import('https');
-    const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-    
-    // Create custom HTTPS agent to handle SSL certificate issues
-    // In production, you should use proper SSL certificates
-    const httpsAgent = new HttpsAgent({
-      rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
-      keepAlive: true
-    });
-    
-    // Create Bedrock Runtime client with custom request handler
-    const client = new BedrockRuntimeClient({
-      region: config.awsRegion,
-      credentials: {
-        accessKeyId: config.awsAccessKeyId,
-        secretAccessKey: config.awsSecretAccessKey
-      },
-      requestHandler: new NodeHttpHandler({
-        httpsAgent: httpsAgent,
-        connectionTimeout: 30000,
-        socketTimeout: config.timeout || 180000
-      })
+    const client = await createBedrockRuntimeClient(config, {
+      connectionTimeout: 30000,
+      socketTimeout: config.timeout || 180000
     });
 
     // Set model ID (default to Mistral Large if not specified)
@@ -1114,11 +1107,11 @@ export async function checkMistralAvailability() {
         };
       }
       
-      if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+      if (!bedrockCredentialsConfigured(config)) {
         return {
           available: false,
           provider: 'aws-bedrock',
-          reason: 'AWS credentials not configured'
+          reason: 'AWS credentials not configured (access keys or IAM role)'
         };
       }
       

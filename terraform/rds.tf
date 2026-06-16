@@ -71,6 +71,8 @@ resource "aws_db_instance" "oscal" {
   engine         = "postgres"
   engine_version = var.rds_engine_version
 
+  auto_minor_version_upgrade = true
+
   instance_class        = var.rds_instance_class
   allocated_storage     = var.rds_allocated_storage
   max_allocated_storage = var.rds_max_allocated_storage > 0 ? var.rds_max_allocated_storage : null
@@ -100,5 +102,7 @@ resource "aws_db_instance" "oscal" {
 
   lifecycle {
     prevent_destroy = false
+    # AWS may patch engine_version_actual ahead of Terraform (auto minor upgrade); never downgrade.
+    ignore_changes = [engine_version]
   }
 }
