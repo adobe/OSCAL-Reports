@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.21  
+**Version**: 1.7.22  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -315,8 +315,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.21 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.21
+# ✓ Current version: 1.7.22 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.22
 # ✓ Versions match - no build needed
 ```
 
@@ -495,11 +495,11 @@ docker restart oscal-report-generator-blue
 
 ### Sensitive settings and pass
 
-Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token, AWS Bedrock keys, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager. `config.json` holds only pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. The app resolves these at runtime and never persists plaintext secrets in config.
+Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token, AWS Bedrock keys, SSO client secrets) use **logical keys** in `config.json` pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. On the operator laptop, values are stored in a **single pass JSON bundle** at **`PROD/OSCAL/AWS_SM`** (same `{ entries, _meta }` shape as AWS Secrets Manager). The app resolves pointers from that bundle at runtime and never persists plaintext secrets in config.
 
-**Pass entry names:**
+**Logical keys (inside `PROD/OSCAL/AWS_SM` → `entries`):**
 
-| Setting | Pass entry |
+| Setting | Logical key |
 |--------|------------|
 | SMTP password | `OSCAL/smtp-password` |
 | Slack webhook URL | `OSCAL/slack-webhook-url` |
@@ -510,10 +510,11 @@ Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token,
 | SSO Google client secret | `OSCAL/sso-oauth-google-client-secret` |
 | SSO Okta client secret | `OSCAL/sso-oauth-okta-client-secret` |
 | SSO GitHub client secret | `OSCAL/sso-oauth-github-client-secret` |
+| SSO Generic OIDC client secret | `OSCAL/sso-oauth-generic-oidc-client-secret` |
 
-- **Local (laptop):** Install and initialize `pass`; create entries with `pass insert OSCAL/smtp-password` etc. Set `OSCAL_PASS_DISABLED=1` to skip pass (secrets then empty; useful for dev without pass). Optional: `PASSWORD_STORE_DIR` for store location.
-- **TrueNAS / Docker:** For pass-backed secrets, either install pass inside the container and mount the host’s `~/.password-store` (or a dedicated store) into the container, or run pass on the host and use a script to inject resolved values. Prefer mounting a volume for `~/.password-store` and running `pass insert OSCAL/...` on the host (or copying the store into the volume).
-- **EC2 (direct run):** Pass is set up for the service account `svc_ams-oscal`. Ensure the app runs as that user and config is under `/opt/oscal/data`. Add secrets with `sudo -u svc_ams-oscal pass insert OSCAL/smtp-password` etc. on the instance.
+- **Local (laptop):** Install and initialize `pass`. Populate the bundle via Settings save (GUI) or `./scripts/debug/migrate-pass-entries-to-bundle.sh --apply` (one-time from legacy `OSCAL/*` entries). Optional: `OSCAL_PASS_BUNDLE_ENTRY` (default `PROD/OSCAL/AWS_SM`), `PASSWORD_STORE_DIR` for store location. Set `OSCAL_PASS_DISABLED=1` to skip pass (secrets empty; useful for dev).
+- **TrueNAS / Docker:** Mount the host pass store (or pre-populated bundle JSON) and set `PASSWORD_STORE_DIR` if non-default. Same bundle entry name applies.
+- **EC2 production:** Uses AWS SM only (`OSCAL_SECRETS_MODE=aws-sm`); do not rely on per-instance pass entries.
 
 ### Environment Variables
 

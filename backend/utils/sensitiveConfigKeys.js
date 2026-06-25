@@ -4,6 +4,8 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
+import { isCfgEncPointer } from './configFieldCrypto.js';
+
 /**
  * List of sensitive config paths (dot-notation) and their pass entry names.
  * Order: messaging, ai, then SSO (nested under ssoConfig.oauth.providers).
@@ -18,6 +20,7 @@ export const SENSITIVE_CONFIG_KEYS = [
   { path: 'ssoConfig.oauth.providers.google.clientSecret', smEntry: 'OSCAL/sso-oauth-google-client-secret', passEntry: 'OSCAL/sso-oauth-google-client-secret' },
   { path: 'ssoConfig.oauth.providers.okta.clientSecret', smEntry: 'OSCAL/sso-oauth-okta-client-secret', passEntry: 'OSCAL/sso-oauth-okta-client-secret' },
   { path: 'ssoConfig.oauth.providers.github.clientSecret', smEntry: 'OSCAL/sso-oauth-github-client-secret', passEntry: 'OSCAL/sso-oauth-github-client-secret' },
+  { path: 'ssoConfig.oauth.providers.Generic_OIDC.clientSecret', smEntry: 'OSCAL/sso-oauth-generic-oidc-client-secret', passEntry: 'OSCAL/sso-oauth-generic-oidc-client-secret' },
   { path: 'databaseConfig.password', smEntry: 'OSCAL/database-password', passEntry: 'OSCAL/database-password' }
 ];
 
@@ -74,7 +77,7 @@ export function isSecretPointer(value) {
 export function isMaskedOrEmpty(value) {
   if (value == null) return true;
   if (typeof value !== 'string') {
-    if (isSecretPointer(value)) return true;
+    if (isSecretPointer(value) || isCfgEncPointer(value)) return true;
     return false;
   }
   const s = value.trim();

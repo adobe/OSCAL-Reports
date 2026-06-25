@@ -106,7 +106,7 @@
             { "matchingMode": "regex", "url": "https?://([a-z0-9-]+\\.)*oscal\\.keekar\\.au(:\\d+)?/auth/callback" },
             { "matchingMode": "regex", "url": "https?://oscal\\.amsgovcloud\\.com\\.au(:\\d+)?/auth/callback" }
           ],
-          "tlsRelaxed": false
+          "tlsRelaxed": true
         },
         "okta": {
           "enabled": false,

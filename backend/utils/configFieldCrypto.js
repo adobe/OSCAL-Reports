@@ -14,6 +14,17 @@ const DIGEST = 'sha256';
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 
+/**
+ * Whether _cfgenc decryption can run (env secret set, or non-production dev fallback).
+ * @returns {boolean}
+ */
+export function canResolveCfgEnc() {
+  if ((process.env.OSCAL_CONFIG_FIELD_SECRET || '').trim()) return true;
+  if ((process.env.SESSION_SECRET || '').trim()) return true;
+  if (process.env.NODE_ENV !== 'production') return true;
+  return false;
+}
+
 function getMasterSecret() {
   const fromEnv = (process.env.OSCAL_CONFIG_FIELD_SECRET || '').trim();
   if (fromEnv) return fromEnv;
@@ -88,12 +99,30 @@ export function decryptConfigSecret(input) {
  * @param {Object} root
  */
 export function resolveCfgEncPointers(root) {
+  if (!canResolveCfgEnc()) {
+    console.warn('Skipping _cfgenc resolution (set SESSION_SECRET or OSCAL_CONFIG_FIELD_SECRET in production)', {
+      'service.name': 'oscal-report-generator',
+      'event.action': 'cfgenc_resolution_skipped',
+      'event.category': 'configuration',
+      'deployment.environment': process.env.NODE_ENV || 'development',
+    });
+    return;
+  }
   if (!root || typeof root !== 'object') return;
   if (Array.isArray(root)) {
     for (let i = 0; i < root.length; i += 1) {
       const item = root[i];
       if (isCfgEncPointer(item)) {
-        root[i] = decryptConfigSecret(item);
+        try {
+          root[i] = decryptConfigSecret(item);
+        } catch (err) {
+          console.warn('Skipping _cfgenc field (decrypt failed)', {
+            'service.name': 'oscal-report-generator',
+            'event.action': 'cfgenc_decrypt_skipped',
+            'event.category': 'configuration',
+            'error.type': err?.name || 'Error',
+          });
+        }
       } else {
         resolveCfgEncPointers(item);
       }
@@ -103,7 +132,16 @@ export function resolveCfgEncPointers(root) {
   for (const key of Object.keys(root)) {
     const val = root[key];
     if (isCfgEncPointer(val)) {
-      root[key] = decryptConfigSecret(val);
+      try {
+        root[key] = decryptConfigSecret(val);
+      } catch (err) {
+        console.warn('Skipping _cfgenc field (decrypt failed)', {
+          'service.name': 'oscal-report-generator',
+          'event.action': 'cfgenc_decrypt_skipped',
+          'event.category': 'configuration',
+          'error.type': err?.name || 'Error',
+        });
+      }
     } else if (val && typeof val === 'object') {
       resolveCfgEncPointers(val);
     }

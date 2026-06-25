@@ -314,6 +314,19 @@ Any **backend** OIDC-related HTTP client code that uses **Axios** must import **
 
 ---
 
+## Local pass bundle (1.7.22)
+
+On the **operator laptop** (and local/Docker with `OSCAL_SECRETS_MODE=config`), OAuth client secrets and other sensitive config values are stored in a **single pass entry** **`PROD/OSCAL/AWS_SM`** — the same `{ entries, _meta }` JSON shape as the AWS Secrets Manager bundle on EC2. `config.json` still uses logical pointers such as `{ "_pass": "OSCAL/sso-oauth-okta-client-secret" }`; the backend resolves them from the bundle via **`backend/utils/passBundle.js`**.
+
+- **Migrate legacy entries:** `./scripts/debug/migrate-pass-entries-to-bundle.sh --dry-run` then `--apply`
+- **Sync laptop ↔ SM:** `./scripts/debug/push-pass-to-secrets-manager.sh`, `./scripts/debug/pull-secrets-manager-to-pass.sh`
+- **Override entry name:** `OSCAL_PASS_BUNDLE_ENTRY` (default `PROD/OSCAL/AWS_SM`)
+- **EC2 production:** Unchanged — AWS SM only; no per-instance pass vault
+
+See [DEPLOYMENT.md](DEPLOYMENT.md#sensitive-settings-and-pass) and [AWS_OPERATIONS.md](AWS_OPERATIONS.md).
+
+---
+
 ## References
 
 - [Okta Admin Console](https://help.okta.com/en-us/content/topic/okta-admin-console.htm)
@@ -323,4 +336,4 @@ Any **backend** OIDC-related HTTP client code that uses **Axios** must import **
 
 ---
 
-**Version:** 1.7.21 · **Last updated:** June 2026
+**Version:** 1.7.22 · **Last updated:** June 2026

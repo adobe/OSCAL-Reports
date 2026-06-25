@@ -19,7 +19,7 @@ This directory contains the unified test script for the OSCAL Report Generator.
 - ✅ v1.6.5 Features (CSRF exemption, Bearer tokens, AI integration)
 - ✅ Test Coverage (>75% requirement)
 - ✅ Deployment Validation (script checks, optional Docker tests)
-- ✅ EC2 AWS Secrets Manager secrets module (`secretsManager.test.js`; legacy `ec2-automation-pass-sync.sh` shell tests retained for migration tooling)
+- ✅ EC2 AWS Secrets Manager secrets module (`secretsManager.test.js`; pass bundle `passBundle.test.js`; legacy `ec2-automation-pass-sync.sh` whole-bundle shell tests)
 
 **Usage:**
 
@@ -160,8 +160,7 @@ npm run test:coverage
 ## References
 
 - [Test Suite README](../README.md) - Complete test documentation
-- [Testing Quick Reference](../TESTING_QUICK_REFERENCE.md) - Quick commands
-- [Test Updates v1.6.5](../../docs/TEST_UPDATES_V1.6.5.md) - Version-specific changes
+- **Quick commands:** see [Usage](#usage) above (`run-all-tests.sh`, `--ec2-pass-sync-only`, `--skip-deployment`)
 
 ---
 

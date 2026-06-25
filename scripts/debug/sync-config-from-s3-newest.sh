@@ -3,6 +3,7 @@
 # Contact: mukesh.kesharwani@adobe.com
 #
 # Pull config.json and users.json from the newest S3 copy among config/active, config/green, config/blue.
+# For a known-good snapshot use restore-config-from-s3-default.sh (s3://<bucket>/config/default/).
 # Use on Blue (or Green) when peer instance saved config and this host is stale — no full deploy required.
 #
 # On EC2:

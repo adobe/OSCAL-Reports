@@ -154,10 +154,33 @@ Set **`TERRAFORM_DIR`** to your env (e.g. `export TERRAFORM_DIR=$PWD/terraform/e
 ```bash
 export TERRAFORM_DIR=$PWD/terraform/envs/aws4403   # if not already the default
 ./scripts/deploy-to-ec2.sh --update-s3   # upload repo to s3://<bucket>/installer/ (once per release)
-./scripts/deploy-to-ec2.sh --both        # Green + Blue pull installer/, build, restart (1.7.21+)
+./scripts/deploy-to-ec2.sh --both        # Green + Blue pull installer/, build, restart (1.7.22+)
 ```
 
-**Release 1.7.21:** Installer manifest `.installer-build.json` on S3 records package version; instances reconcile `package.json` on pull. Before deploy, ensure SSO/config backups under `config/active/` are current—force sync on deploy can overwrite local `config.json` with the newest S3 copy.
+**Release 1.7.22:** Safe deploy flags (`DEPLOY_CONFIG_S3_SKIP`, `DEPLOY_RDS_BOOTSTRAP_SKIP`), golden **`config/default/`** restore, laptop pass bundle **`PROD/OSCAL/AWS_SM`**. Before changing SSO secrets, publish or verify golden config: `./scripts/debug/publish-config-default-to-s3.sh --via-green`.
+
+**RDS bootstrap during deploy:** When Terraform defines RDS, `deploy-to-ec2.sh` runs `scripts/lib/rds-bootstrap-on-instance.sh` over SSH. If deploy appears stuck with no output after the script is copied, the instance was likely blocked on **`dnf install`** (package lock vs `ec2_automation` OS updates) or a long RDS wait loop. The script now skips `dnf` when tools exist and the bootstrap marker is present, logs each step with timestamps, caps `dnf`/`psql` waits, and uses a **600s** SSH timeout (`DEPLOY_RDS_BOOTSTRAP_TIMEOUT_SEC`). To skip on a routine code deploy: `DEPLOY_RDS_BOOTSTRAP_SKIP=1 ./scripts/deploy-to-ec2.sh --green`.
+
+**Config/users during deploy:** By default deploy **does not force-overwrite** `/opt/oscal/data/config.json` from S3. Local EBS config is backed up to `s3://<bucket>/config/active/` before any optional pull; S3 is used only when files are missing or `DEPLOY_CONFIG_S3_FORCE=1`. Skip S3 config sync entirely on code-only deploys: `DEPLOY_CONFIG_S3_SKIP=1`. The SM migration script (`migrate-config-to-sm.mjs`) runs only when `DEPLOY_MIGRATE_CONFIG_SM=1` (not on every deploy). If local config is missing or smaller than 256 bytes after sync, deploy **automatically restores** from the golden prefix **`s3://<bucket>/config/default/`** (config.default) when that snapshot exists.
+
+**Golden config.default (quick restore):** After SSO/SMTP/OIDC are verified on an instance, publish a operator-controlled snapshot:
+
+```bash
+# On Green (or any instance with good /opt/oscal/data):
+sudo bash /opt/oscal/scripts/debug/publish-config-default-to-s3.sh
+
+# From laptop via Green:
+./scripts/debug/publish-config-default-to-s3.sh --via-green
+```
+
+Objects: `config/default/config.json`, `config/default/users.json`, `config/default/manifest.json`. Routine cron and `config/active/` backups **do not** overwrite `config/default/`. To restore on Green or Blue after a bad deploy:
+
+```bash
+sudo bash /opt/oscal/scripts/debug/restore-config-from-s3-default.sh
+sudo systemctl restart oscal-reporter.service   # omitted if script runs without --no-restart
+```
+
+If SSO/SMTP settings were lost and config.default is stale, run on the instance: `node scripts/debug/repair-ec2-config-from-backups.mjs` then `node scripts/debug/fix-ec2-generic-oidc-secret.mjs` (with `OSCAL_FIX_GENERIC_OIDC_SECRET` if needed), then **re-publish** config.default.
 
 **Amazon Linux 2023 (Image Factory or native):** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 
@@ -176,6 +199,8 @@ Config and users live on each instance at `/opt/oscal/data`; the deploy script d
 In the AWS S3 console, open your bucket → **`config`** or **`logs`** → **`green`** or **`blue`**. ec2_automation on each instance uploads:
 - `config/green/config.json`, `config/green/users.json` (Green)
 - `config/blue/config.json`, `config/blue/users.json` (Blue)
+- `config/active/config.json`, `config/active/users.json` (shared newest-wins sync)
+- **`config/default/config.json`**, **`config/default/users.json`**, **`config/default/manifest.json`** — **golden restore point (config.default)**; publish with `publish-config-default-to-s3.sh` only (not cron)
 - `logs/green/`, `logs/blue/` (log files)
 
 Terraform creates folder placeholders; ec2_automation populates them. For new instances, ensure `/opt/oscal/data/config.json` and `users.json` exist (e.g. copy from backup or create from examples) before or after first deploy.
@@ -1191,8 +1216,8 @@ Use a **strict layout** so config is never confused with app code:
 - **EC2 secrets (1.7.19+):** The Node app reads and writes a **single AWS Secrets Manager JSON bundle** (`entries` + `_meta`). `config.json` stores only `{ "_sm": "OSCAL/..." }` pointers — never plaintext. Systemd sets `OSCAL_SECRETS_MODE=aws-sm` and `OSCAL_SECRETS_MANAGER_ARN` (from Terraform output `oscal_pass_secrets_sync_secret_arn`). Secrets are cached **in memory** at startup and after GUI save; they are not written to `process.env` or disk.
 - **GUI save:** Settings merges changed keys into the SM bundle (compare-and-swap) and rewrites config with `_sm` pointers. Green and Blue share one bundle — concurrent saves retry on version conflict.
 - **One-time migration:** If config still has plaintext or legacy `_pass` pointers, deploy runs `backend/scripts/migrate-config-to-sm.mjs`, or run `./scripts/debug/migrate-config-secrets-to-sm.sh green|blue` from the laptop.
-- **Local / Docker:** Default `OSCAL_SECRETS_MODE=config` — secrets in `config.json` (or optional laptop `pass` via `_pass` pointers). Do not commit real secrets; use `config.json.example` as a template.
-- **Deprecated on EC2:** `pass` vault, `PASSWORD_STORE_DIR`, and cron Pass ↔ SM sync (`ec2-automation-pass-sync.sh`). Laptop `pass` remains for Terraform/AWS SSH only (`run-with-aws-pass.sh`).
+- **Local / Docker:** Default `OSCAL_SECRETS_MODE=config` — secrets in `config.json` with `{ "_pass": "OSCAL/..." }` pointers (logical keys inside the bundle). On the **operator laptop**, all OSCAL app secrets live in one pass entry **`PROD/OSCAL/AWS_SM`** (same JSON shape as SM). Override with `OSCAL_PASS_BUNDLE_ENTRY`. Migrate legacy per-key `OSCAL/*` entries with `./scripts/debug/migrate-pass-entries-to-bundle.sh --dry-run` then `--apply`. Sync laptop ↔ SM with `push-pass-to-secrets-manager.sh` / `pull-secrets-manager-to-pass.sh`. Set `OSCAL_PASS_DISABLED=1` to skip pass I/O.
+- **Deprecated:** Per-key `OSCAL/*` pass files on the laptop (superseded by `PROD/OSCAL/AWS_SM`). On EC2: `pass` vault, `PASSWORD_STORE_DIR`, and cron Pass ↔ SM sync remain disabled; laptop `pass` still used for Terraform/AWS SSH (`run-with-aws-pass.sh`).
 
 ---
 
@@ -1246,7 +1271,7 @@ Use a **strict layout** so config is never confused with app code:
 ### 6. Blue/Green ports and health
 
 - **Green and Blue:** port **3020** (same on both EC2 instances; `oscal_app_port` in Terraform, `OSCAL_APP_PORT` in deploy scripts).
-- Green and Blue differ by **role** (`DEPLOYMENT_ROLE`, ALB target group, S3 log prefix `logs/green` vs `logs/blue`), not by TCP port. Config and users are shared via `config/active/` on S3.
+- Green and Blue differ by **role** (`DEPLOYMENT_ROLE`, ALB target group, S3 log prefix `logs/green` vs `logs/blue`), not by TCP port. Config and users are shared via `config/active/` on S3; **golden restore** uses **`config/default/`** (config.default).
 - **Health:** ALB checks `http://<target>:3020/health`. After deploy, the script waits ~20s and retries up to 5 times. If health fails, it prints recent `journalctl -u oscal-reporter.service` for debugging.
 - **Common causes of failure:** Bad or missing config/users in `/opt/oscal/data`, missing or broken Pass vault, wrong PORT in the unit file (deploy forces `3020`).
 
@@ -1263,7 +1288,9 @@ Use a **strict layout** so config is never confused with app code:
   `./scripts/debug/fix-blue-no-cron.sh`  
   (or with explicit IP). This sets `ENABLE_S3_INSTALLER_UPDATE=false` and removes the ec2_automation cron on Blue.
 - **Backup/restore verification:**  
-  On the instance: confirm `sudo crontab -u svc_ams-oscal -l` includes `ec2_automation.sh`, check `/opt/oscal/scripts/ec2_automation.env` for `S3_BUCKET`, and run `/opt/oscal/scripts/ec2_automation.sh` once and confirm S3 objects update under `config/<role>/`.
+  On the instance: confirm `sudo crontab -u svc_ams-oscal -l` includes `ec2_automation.sh`, check `/opt/oscal/scripts/ec2_automation.env` for `S3_BUCKET`, and run `/opt/oscal/scripts/ec2_automation.sh` once and confirm S3 objects update under `config/<role>/`. For a **known-good rollback**, restore from `s3://<bucket>/config/default/` (config.default) — see **Golden config.default** under direct EC2 deploy above.
+- **Config wiped after deploy:**  
+  `sudo bash /opt/oscal/scripts/debug/restore-config-from-s3-default.sh` on each instance, then verify `/health` and SSO login. Golden copy: `s3://<bucket>/config/default/`. Future code deploys: `DEPLOY_CONFIG_S3_SKIP=1 DEPLOY_RDS_BOOTSTRAP_SKIP=1 ./scripts/deploy-to-ec2.sh --both`.
 - **Pass vault on instances:**  
   Compare `config.json` `_sm` (or legacy `_pass`) references with the SM bundle in AWS console or `migrate-config-secrets-to-sm.sh`.
 - **AI engine unreachable from Green/Blue:**  
@@ -1283,7 +1310,9 @@ Use a **strict layout** so config is never confused with app code:
 | `scripts/debug/alb-target-health.sh` | Print ALB Green/Blue target health via AWS CLI. |
 | `scripts/debug/restore-blue-config.sh` | Copy config/users from Green to Blue (e.g. after replacing Blue). |
 | `scripts/debug/migrate-config-secrets-to-sm.sh` | One-time: migrate plaintext / `_pass` secrets in config to AWS SM + `_sm` pointers on EC2. |
-| `scripts/debug/backup-config-to-s3.sh` | On-instance backup of config/users to S3 (cron companion). |
+| `scripts/debug/backup-config-to-s3.sh` | On-instance backup of config/users to S3 (cron companion). Notes whether **config.default** exists. |
+| `scripts/debug/publish-config-default-to-s3.sh` | Publish golden snapshot to `s3://<bucket>/config/default/` (config.default). |
+| `scripts/debug/restore-config-from-s3-default.sh` | Restore `/opt/oscal/data` from config.default (fast rollback). |
 | `scripts/debug/sync-config-from-s3-newest.sh` | Pull newest shared config from S3 `config/active/` prefixes. |
 | `scripts/debug/scp-to-ec2.sh` | Copy a debug script from laptop to Green/Blue via SSH. |
 
