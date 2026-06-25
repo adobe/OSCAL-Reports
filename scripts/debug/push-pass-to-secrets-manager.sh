@@ -7,38 +7,27 @@
 #
 # Licensed under the MIT License. See LICENSE file for details.
 #
-# Push secrets from the local pass vault into AWS Secrets Manager (OSCAL bundle).
-# DEPRECATED on EC2 (1.7.19+): app reads/writes SM directly; use migrate-config-secrets-to-sm.sh
-# for one-time migration. Retained for laptop pass → SM seeding during cutover.
+# Push secrets from laptop pass bundle (PROD/OSCAL/AWS_SM) into AWS Secrets Manager.
+# DEPRECATED on EC2 (1.7.19+): app reads/writes SM directly. Retained for laptop → SM sync.
 #
-# Run on Green (working pass vault):
-#   sudo bash /opt/oscal/scripts/debug/push-pass-to-secrets-manager.sh --discover-only
-#   sudo bash /opt/oscal/scripts/debug/push-pass-to-secrets-manager.sh --dry-run
-#   sudo bash /opt/oscal/scripts/debug/push-pass-to-secrets-manager.sh
+# Run on laptop (operator pass store):
+#   ./scripts/debug/push-pass-to-secrets-manager.sh --discover-only
+#   ./scripts/debug/push-pass-to-secrets-manager.sh --dry-run
+#   ./scripts/debug/push-pass-to-secrets-manager.sh
 #
-# Related:
-#   pull-secrets-manager-to-pass.sh      -> SM -> pass
-#   ec2_automation pass_secrets_sync_run -> bidirectional by mtime (cron)
+# Env: OSCAL_PASS_BUNDLE_ENTRY (default PROD/OSCAL/AWS_SM), PASSWORD_STORE_DIR (operator store)
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/pass-bundle-common.sh disable=SC1091
+source "$SCRIPT_DIR/../lib/pass-bundle-common.sh"
 
 SVC_USER="${SVC_USER:-svc_ams-oscal}"
 SVC_HOME="${SVC_HOME:-/var/lib/svc_ams-oscal}"
 ENV_FILE="${ENV_FILE:-/opt/oscal/scripts/ec2_automation.env}"
 DRY_RUN=0
 DISCOVER_ONLY=0
-
-PASS_ENTRIES=(
-  OSCAL/smtp-password
-  OSCAL/slack-webhook-url
-  OSCAL/ai-api-token
-  OSCAL/ai-aws-access-key-id
-  OSCAL/ai-aws-secret-access-key
-  OSCAL/sso-oauth-azure-client-secret
-  OSCAL/sso-oauth-google-client-secret
-  OSCAL/sso-oauth-okta-client-secret
-  OSCAL/sso-oauth-github-client-secret
-)
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -70,15 +59,16 @@ is_svc_user() {
   [ "$(id -un 2>/dev/null)" = "$SVC_USER" ]
 }
 
-pass_show_entry() {
-  local entry="$1"
+pass_show_bundle() {
   local pass_store="${PASSWORD_STORE_DIR:-$SVC_HOME/.password-store}"
+  local entry
+  entry=$(pass_bundle_entry)
   if is_svc_user; then
-    env HOME="$SVC_HOME" PASSWORD_STORE_DIR="$pass_store" PATH="/usr/local/bin:/usr/bin:/bin" \
-      pass show "$entry" 2>/dev/null | sed '/^#/d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '' || true
+    env HOME="${HOME:-$SVC_HOME}" PASSWORD_STORE_DIR="$pass_store" PATH="/usr/local/bin:/usr/bin:/bin" \
+      pass show "$entry" 2>/dev/null || true
   else
-    sudo -u "$SVC_USER" env HOME="$SVC_HOME" PASSWORD_STORE_DIR="$pass_store" PATH="/usr/local/bin:/usr/bin:/bin" \
-      pass show "$entry" 2>/dev/null | sed '/^#/d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '' || true
+    env HOME="${HOME:-$SVC_HOME}" PASSWORD_STORE_DIR="$pass_store" PATH="/usr/local/bin:/usr/bin:/bin" \
+      pass show "$entry" 2>/dev/null || true
   fi
 }
 
@@ -106,32 +96,14 @@ resolve_secret_arn() {
   return 1
 }
 
-collect_pass_entries_json() {
-  local now_ts="$1"
-  local out_file="$2"
-  local entry val found=0 skipped=0
-
-  jq -n '{entries:{}, _meta:{keys:{}}}' >"$out_file"
-
-  for entry in "${PASS_ENTRIES[@]}"; do
-    val=$(pass_show_entry "$entry")
-    if [ -z "$val" ]; then
-      info "Skip (empty pass): $entry"
-      skipped=$((skipped + 1))
-      continue
-    fi
-    jq --arg k "$entry" --arg v "$val" --argjson t "$now_ts" \
-      '.entries[$k] = $v | ._meta.keys[$k] = {t: $t}' "$out_file" >"${out_file}.new"
-    mv "${out_file}.new" "$out_file"
-    ok "Collected from pass: $entry (${#val} chars)"
-    found=$((found + 1))
-  done
-
-  COLLECT_SKIPPED=$skipped
-  if [ "$found" -eq 0 ]; then
-    return 1
+read_local_bundle() {
+  local raw entry
+  entry=$(pass_bundle_entry)
+  raw=$(pass_show_bundle)
+  if ! echo "$raw" | jq -e 'has("entries") and has("_meta")' >/dev/null 2>&1; then
+    fail "Pass bundle $entry missing or invalid JSON (run migrate-pass-entries-to-bundle.sh --dry-run first)"
   fi
-  return 0
+  echo "$raw" | jq -c .
 }
 
 merge_local_wins() {
@@ -173,7 +145,7 @@ merge_local_wins() {
   canon_remote=$(echo "$remote_raw2" | jq -c -S . 2>/dev/null) || canon_remote=""
   canon_merged=$(echo "$merged" | jq -c -S .)
   if [ -n "$canon_remote" ] && [ "$canon_remote" = "$canon_merged" ]; then
-    info "SM already matches pass (no PutSecretValue)"
+    info "SM already matches pass bundle (no PutSecretValue)"
     echo "$merged" | jq -c .
     return 2
   fi
@@ -184,56 +156,46 @@ merge_local_wins() {
 compare_pass_vs_sm() {
   local arn="$1"
   local region="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
-  local remote_raw entry local_val remote_val
+  local remote_raw local_bundle entry key local_val remote_val
 
+  entry=$(pass_bundle_entry)
+  local_bundle=$(read_local_bundle)
   remote_raw=$(aws secretsmanager get-secret-value --region "$region" --secret-id "$arn" \
     --query SecretString --output text 2>/dev/null) || remote_raw=""
 
-  for entry in "${PASS_ENTRIES[@]}"; do
-    local_val=$(pass_show_entry "$entry")
-    remote_val=$(echo "$remote_raw" | jq -r --arg k "$entry" '.entries[$k] // empty' 2>/dev/null || true)
+  info "Pass bundle: $entry"
+  while IFS= read -r key || [ -n "$key" ]; do
+    [ -z "$key" ] && continue
+    local_val=$(echo "$local_bundle" | jq -r --arg k "$key" '.entries[$k] // empty')
+    remote_val=$(echo "$remote_raw" | jq -r --arg k "$key" '.entries[$k] // empty' 2>/dev/null || true)
     if [ -z "$local_val" ] && [ -z "$remote_val" ]; then
-      info "  $entry: both empty"
+      info "  $key: both empty"
     elif [ -z "$local_val" ]; then
-      info "  $entry: pass empty, SM has value"
+      info "  $key: pass empty, SM has value"
     elif [ -z "$remote_val" ]; then
-      info "  $entry: pass has value, SM empty (would push)"
+      info "  $key: pass has value, SM empty (would push)"
     elif [ "$local_val" = "$remote_val" ]; then
-      info "  $entry: match"
+      info "  $key: match"
     else
-      info "  $entry: DIFFER (pass wins on push)"
+      info "  $key: DIFFER (pass wins on push)"
     fi
-  done
+  done < <(echo "$local_bundle" | jq -r '.entries | keys[]?' 2>/dev/null)
 }
-
-if [ ! -f "$ENV_FILE" ]; then
-  fail "Missing $ENV_FILE"
-fi
-
-# shellcheck disable=SC1090
-source "$ENV_FILE"
 
 command -v pass >/dev/null 2>&1 || fail "pass not installed"
 command -v jq >/dev/null 2>&1 || fail "jq required"
 command -v aws >/dev/null 2>&1 || fail "aws CLI required"
 
-PASS_STORE="${PASSWORD_STORE_DIR:-$SVC_HOME/.password-store}"
-if is_svc_user; then
-  if [ ! -d "$PASS_STORE" ]; then
-    fail "Pass store missing: $PASS_STORE"
-  fi
-else
-  if ! sudo -u "$SVC_USER" test -d "$PASS_STORE"; then
-    fail "Pass store missing: $PASS_STORE"
-  fi
-fi
+PASS_STORE="${PASSWORD_STORE_DIR:-${HOME}/.password-store}"
+info "Pass store: $PASS_STORE"
+info "Bundle entry: $(pass_bundle_entry)"
 
-SECRET_ARN=$(resolve_secret_arn) || fail "Could not resolve PASS_SECRETS_SYNC_SECRET_ARN"
+SECRET_ARN=$(resolve_secret_arn) || fail "Could not resolve PASS_SECRETS_SYNC_SECRET_ARN (set env or run on EC2 with ec2_automation.env)"
 info "Secrets Manager: $SECRET_ARN"
-info "Pass store: $PASS_STORE (local wins on conflict)"
+info "Local pass bundle wins on conflict"
 
 if [ "$DISCOVER_ONLY" = "1" ]; then
-  info "Compare pass vs SM:"
+  info "Compare pass bundle vs SM:"
   compare_pass_vs_sm "$SECRET_ARN"
   exit 0
 fi
@@ -242,13 +204,12 @@ TMP_LOCAL=$(mktemp)
 TMP_MERGED=$(mktemp)
 trap 'rm -f "$TMP_LOCAL" "$TMP_MERGED"' EXIT
 
-now_ts=$(date +%s)
-if ! collect_pass_entries_json "$now_ts" "$TMP_LOCAL"; then
-  fail "No pass entries to upload"
-fi
-
+read_local_bundle >"$TMP_LOCAL"
 entry_count=$(jq '.entries | length' "$TMP_LOCAL")
-info "Summary: ${entry_count} pass entries (${COLLECT_SKIPPED:-0} skipped)"
+if [ "$entry_count" -eq 0 ]; then
+  fail "Pass bundle has no entries"
+fi
+info "Summary: ${entry_count} entries in pass bundle"
 
 if [ "$DRY_RUN" = "1" ]; then
   merge_local_wins "$TMP_LOCAL" "$SECRET_ARN" >"$TMP_MERGED" || true
@@ -272,4 +233,4 @@ aws secretsmanager put-secret-value \
   --secret-id "$SECRET_ARN" \
   --secret-string "file://${TMP_MERGED}" >/dev/null
 
-ok "Secrets Manager updated from pass (${entry_count} entries, local wins)"
+ok "Secrets Manager updated from pass bundle (${entry_count} entries, local wins)"

@@ -8,6 +8,7 @@ import {
   decryptConfigSecret,
   isCfgEncPointer,
   resolveCfgEncPointers,
+  canResolveCfgEnc,
 } from '../../../backend/utils/configFieldCrypto.js';
 
 describe('configFieldCrypto', () => {
@@ -46,5 +47,23 @@ describe('configFieldCrypto', () => {
 
   it('fails on wrong version', () => {
     expect(() => decryptConfigSecret({ _cfgenc: 'v0$bad' })).toThrow();
+  });
+
+  it('canResolveCfgEnc is false in production without env secrets', () => {
+    const prevNode = process.env.NODE_ENV;
+    const prevCfg = process.env.OSCAL_CONFIG_FIELD_SECRET;
+    const prevSess = process.env.SESSION_SECRET;
+    process.env.NODE_ENV = 'production';
+    delete process.env.OSCAL_CONFIG_FIELD_SECRET;
+    delete process.env.SESSION_SECRET;
+    expect(canResolveCfgEnc()).toBe(false);
+    const cfg = { ssoConfig: { oauth: { providers: { Generic_OIDC: { clientSecret: { _cfgenc: 'v1$placeholder' } } } } } };
+    resolveCfgEncPointers(cfg);
+    expect(isCfgEncPointer(cfg.ssoConfig.oauth.providers.Generic_OIDC.clientSecret)).toBe(true);
+    process.env.NODE_ENV = prevNode;
+    if (prevCfg === undefined) delete process.env.OSCAL_CONFIG_FIELD_SECRET;
+    else process.env.OSCAL_CONFIG_FIELD_SECRET = prevCfg;
+    if (prevSess === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = prevSess;
   });
 });

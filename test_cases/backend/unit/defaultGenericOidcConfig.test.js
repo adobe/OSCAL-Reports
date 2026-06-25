@@ -28,7 +28,7 @@ describe('defaultGenericOidcConfig', () => {
     expect(generic.discoveryUrl).toContain('.well-known/openid-configuration');
     expect(Array.isArray(generic.redirectUriPatterns)).toBe(true);
     expect(generic.redirectUriPatterns.length).toBeGreaterThan(0);
-    expect(generic.tlsRelaxed).toBe(false);
+    expect(generic.tlsRelaxed).toBe(true);
   });
 
   it('prepareConfigForSave preserves _cfgenc when UI sends masked secret', async () => {

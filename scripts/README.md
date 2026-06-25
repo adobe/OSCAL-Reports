@@ -4,7 +4,7 @@ This directory contains upgrade and consolidation scripts for Blue-Green deploym
 
 **Repeated-use helpers** at repo [`scripts/`](.): [`ssh-ec2.sh`](ssh-ec2.sh) (SSH to Green/Blue via Terraform IPs), [`restart-local-dev.sh`](restart-local-dev.sh) (local npm dev restart). Shared EC2/Pass/Terraform helpers: [`lib/ec2-common.sh`](lib/ec2-common.sh).
 
-**Debug and one-off tools** under [`scripts/debug/`](debug/): Okta diagnosis (`diagnose-okta-on-ec2.sh`), ALB target health (`alb-target-health.sh`), Let's Encrypt → ACM import (`letsencrypt-acm-import.sh`), Terraform SG dependency lookup (`terraform-find-sg-dependencies.sh`), EC2 config/SM helpers (`migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`, deprecated `push-pass-to-secrets-manager.sh` / `pull-secrets-manager-to-pass.sh`), Blue config restore (`restore-blue-config.sh`), and related utilities.
+**Debug and one-off tools** under [`scripts/debug/`](debug/): Okta diagnosis (`diagnose-okta-on-ec2.sh`), ALB target health (`alb-target-health.sh`), Let's Encrypt → ACM import (`letsencrypt-acm-import.sh`), Terraform SG dependency lookup (`terraform-find-sg-dependencies.sh`), EC2 config/SM helpers (`migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`), laptop pass bundle sync (`push-pass-to-secrets-manager.sh`, `pull-secrets-manager-to-pass.sh`, `migrate-pass-entries-to-bundle.sh`), Blue config restore (`restore-blue-config.sh`), and related utilities.
 
 ## 📋 Available Scripts
 
@@ -13,14 +13,14 @@ Build the OSCAL Report Generator Docker image locally and push it to Docker Hub 
 
 **What it does:**
 - Builds the image from the repo root using the project Dockerfile
-- Tags the image using version from `package.json` (e.g. `v1.7.21`) or an optional tag argument
+- Tags the image using version from `package.json` (e.g. `v1.7.22`) or an optional tag argument
 - Pushes the image to Docker Hub; when the tag is a version, also tags and pushes `latest`
 
 **Usage:** From the repository root (after `docker login`):
 ```bash
 DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
 # Or with an explicit tag:
-./scripts/build-and-push-dockerhub.sh v1.7.21
+./scripts/build-and-push-dockerhub.sh v1.7.22
 ```
 
 **Environment:** `DOCKERHUB_USERNAME` (default: `keekar`) – your Docker Hub username.
@@ -478,5 +478,5 @@ If you encounter issues:
 ---
 
 **Author:** Mukesh Kesharwani  
-**Version:** 1.7.21  
+**Version:** 1.7.22  
 **Last Updated:** April 2026

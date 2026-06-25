@@ -8,7 +8,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { atomicWriteJSON } from './utils/atomicWrite.js';
-import { resolvePassPointers, passInsert } from './utils/passResolver.js';
+import { resolvePassPointers, passShow, isPassPointer } from './utils/passResolver.js';
+import { mergePassBundlePartial } from './utils/passBundle.js';
 import {
   isAwsSmMode,
   isSmPointer,
@@ -17,6 +18,8 @@ import {
   reloadSecretsFromAws,
   ensureSmCacheReady,
   resolveSmPointers,
+  isSecretCached,
+  getSecret,
 } from './utils/secretsManager.js';
 import {
   SENSITIVE_CONFIG_KEYS,
@@ -26,7 +29,7 @@ import {
   isSecretPointer,
 } from './utils/sensitiveConfigKeys.js';
 import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
-import { resolveCfgEncPointers, isCfgEncPointer } from './utils/configFieldCrypto.js';
+import { resolveCfgEncPointers, isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
 import { DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS } from './auth/genericOidc.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -184,15 +187,12 @@ const DEFAULT_CONFIG = {
           discoveryUrl:
             'https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration',
           clientId: 'oscal-report-generator',
-          clientSecret: {
-            _cfgenc:
-              'v1$zCkoUHduWfK-Jx-JXToepQ$nTLppYu_rebzwx1t$Wsheakg0AdszPtsHi9Q6iQ$TAaz35ixMrnc2zRMQZs4QxeDZgWxtrq4iP_MlRfbqk5_VWammPT3NAokXQ',
-          },
+          clientSecret: '',
           callbackPath: '/auth/callback',
           scope: 'openid profile email',
           endSessionUrl: 'https://sso.keekar.au/application/o/oscal-report-generator/end-session/',
           redirectUriPatterns: DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS,
-          tlsRelaxed: false,
+          tlsRelaxed: true,
         },
         okta: {
           enabled: false,
@@ -389,6 +389,7 @@ function resolveSecretsInConfig(clone) {
   resolveCfgEncPointers(clone);
   if (isAwsSmMode()) {
     resolveSmPointers(clone);
+    resolvePassPointers(clone);
   } else {
     resolvePassPointers(clone);
     resolveSmPointers(clone);
@@ -454,6 +455,7 @@ async function prepareConfigForSave(configToSave, existingRaw) {
   const passErrors = [];
   const smErrors = [];
   const smPartial = {};
+  const passPartial = {};
 
   for (const { path: keyPath, smEntry, passEntry } of SENSITIVE_CONFIG_KEYS) {
     if (shouldSkipSensitiveKey(keyPath, configToSave)) {
@@ -464,7 +466,16 @@ async function prepareConfigForSave(configToSave, existingRaw) {
     const existing = getByPath(existingRaw, keyPath);
 
     if (isMaskedOrEmpty(incoming)) {
-      setByPath(result, keyPath, pointerFromExisting(existing, smEntry, passEntry));
+      const pointer = pointerFromExisting(existing, smEntry, passEntry);
+      if (isAwsSmMode() && !isSecretCached(smEntry)) {
+        if (isPassPointer(existing)) {
+          const fromPass = passShow(existing._pass) || '';
+          if (fromPass.trim()) smPartial[smEntry] = fromPass.trim();
+        } else if (typeof existing === 'string' && !isMaskedOrEmpty(existing)) {
+          smPartial[smEntry] = existing.trim();
+        }
+      }
+      setByPath(result, keyPath, pointer);
       continue;
     }
 
@@ -474,13 +485,8 @@ async function prepareConfigForSave(configToSave, existingRaw) {
         smPartial[smEntry] = trimmed;
         setByPath(result, keyPath, entryKeyToConfigPointer(smEntry));
       } else {
-        const insertResult = passInsert(passEntry, trimmed);
-        if (insertResult.success) {
-          setByPath(result, keyPath, { _pass: passEntry });
-        } else {
-          setByPath(result, keyPath, trimmed);
-          passErrors.push(`${keyPath}: pass unavailable (${insertResult.error}); secret stored in config`);
-        }
+        passPartial[passEntry] = trimmed;
+        setByPath(result, keyPath, { _pass: passEntry });
       }
       continue;
     }
@@ -490,10 +496,31 @@ async function prepareConfigForSave(configToSave, existingRaw) {
     }
   }
 
+  migrateGenericOidcSecretForAwsSm(result, configToSave, existingRaw, smPartial);
+
+  if (!isAwsSmMode() && Object.keys(passPartial).length > 0) {
+    const bundleResult = mergePassBundlePartial(passPartial);
+    if (!bundleResult.success) {
+      for (const [passEntry, secretVal] of Object.entries(passPartial)) {
+        const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.passEntry === passEntry);
+        if (keyDef && secretVal != null && String(secretVal).trim() !== '') {
+          setByPath(result, keyDef.path, String(secretVal).trim());
+          passErrors.push(`${keyDef.path}: pass bundle unavailable (${bundleResult.error}); secret stored in config`);
+        }
+      }
+    }
+  }
+
   if (isAwsSmMode() && Object.keys(smPartial).length > 0) {
     const putResult = await mergeAndPutBundle(smPartial);
     if (!putResult.success) {
       smErrors.push(`secrets_manager: ${putResult.error || 'put_failed'}`);
+      for (const [entryKey, secretVal] of Object.entries(smPartial)) {
+        const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.smEntry === entryKey);
+        if (keyDef && secretVal != null && String(secretVal).trim() !== '') {
+          setByPath(result, keyDef.path, String(secretVal).trim());
+        }
+      }
     } else {
       await reloadSecretsFromAws();
     }
@@ -505,14 +532,69 @@ async function prepareConfigForSave(configToSave, existingRaw) {
 }
 
 const GENERIC_OIDC_SECRET_PATH = 'ssoConfig.oauth.providers.Generic_OIDC.clientSecret';
+const GENERIC_OIDC_SM_ENTRY = 'OSCAL/sso-oauth-generic-oidc-client-secret';
+
+function tryDecryptCfgEncSecret(value) {
+  if (!isCfgEncPointer(value)) return '';
+  try {
+    return decryptConfigSecret(value).trim();
+  } catch (_) {
+    return '';
+  }
+}
 
 /**
- * Generic_OIDC client secret uses _cfgenc; preserve on masked UI saves.
+ * On EC2 (aws-sm), migrate Generic_OIDC secret from _cfgenc / plaintext into SM bundle.
+ * @param {Object} result
+ * @param {Object} configToSave
+ * @param {Object} existingRaw
+ * @param {Record<string, string>} smPartial
+ */
+function migrateGenericOidcSecretForAwsSm(result, configToSave, existingRaw, smPartial) {
+  if (!isAwsSmMode()) return;
+  const incoming = getByPath(configToSave, GENERIC_OIDC_SECRET_PATH);
+  const existing = getByPath(existingRaw, GENERIC_OIDC_SECRET_PATH);
+  const current = getByPath(result, GENERIC_OIDC_SECRET_PATH);
+  let plain = '';
+  if (typeof incoming === 'string' && !isMaskedOrEmpty(incoming)) {
+    plain = incoming.trim();
+  } else {
+    plain = tryDecryptCfgEncSecret(incoming)
+      || tryDecryptCfgEncSecret(existing)
+      || tryDecryptCfgEncSecret(current);
+  }
+  if (plain && !Object.prototype.hasOwnProperty.call(smPartial, GENERIC_OIDC_SM_ENTRY)) {
+    smPartial[GENERIC_OIDC_SM_ENTRY] = plain;
+  }
+  const cachedSecret = (getSecret(GENERIC_OIDC_SM_ENTRY) || '').trim();
+  const willHaveInSm =
+    !!plain
+    || !!cachedSecret
+    || Object.prototype.hasOwnProperty.call(smPartial, GENERIC_OIDC_SM_ENTRY);
+  if (willHaveInSm) {
+    setByPath(result, GENERIC_OIDC_SECRET_PATH, entryKeyToConfigPointer(GENERIC_OIDC_SM_ENTRY));
+    return;
+  }
+  // Orphan _sm pointer (SM empty) breaks login-providers — keep resolvable plaintext/_cfgenc.
+  if (isSmPointer(current) || isSmPointer(incoming)) {
+    if (typeof existing === 'string' && !isMaskedOrEmpty(existing)) {
+      setByPath(result, GENERIC_OIDC_SECRET_PATH, existing.trim());
+    } else if (isCfgEncPointer(existing)) {
+      setByPath(result, GENERIC_OIDC_SECRET_PATH, existing);
+    } else if (typeof current === 'string' && !isMaskedOrEmpty(current)) {
+      setByPath(result, GENERIC_OIDC_SECRET_PATH, current.trim());
+    }
+  }
+}
+
+/**
+ * Generic_OIDC client secret uses _cfgenc in local/config mode; preserve on masked UI saves.
  * @param {Object} result
  * @param {Object} configToSave
  * @param {Object} existingRaw
  */
 function preserveGenericOidcClientSecretOnSave(result, configToSave, existingRaw) {
+  if (isAwsSmMode()) return;
   const incoming = getByPath(configToSave, GENERIC_OIDC_SECRET_PATH);
   const existing = getByPath(existingRaw, GENERIC_OIDC_SECRET_PATH);
   if (isMaskedOrEmpty(incoming) && (isCfgEncPointer(existing) || (typeof existing === 'string' && existing.trim()))) {
@@ -530,6 +612,7 @@ function prepareConfigWithPassPointers(configToSave, existingRaw) {
   }
   const result = JSON.parse(JSON.stringify(configToSave));
   const passErrors = [];
+  const passPartial = {};
   for (const { path: keyPath, passEntry } of SENSITIVE_CONFIG_KEYS) {
     if (shouldSkipSensitiveKey(keyPath, configToSave)) {
       setByPath(result, keyPath, '');
@@ -540,13 +623,19 @@ function prepareConfigWithPassPointers(configToSave, existingRaw) {
       const existing = getByPath(existingRaw, keyPath);
       setByPath(result, keyPath, existing !== undefined ? existing : { _pass: passEntry });
     } else if (typeof incoming === 'string' && incoming.trim() !== '') {
-      const trimmed = incoming.trim();
-      const insertResult = passInsert(passEntry, trimmed);
-      if (insertResult.success) {
-        setByPath(result, keyPath, { _pass: passEntry });
-      } else {
-        setByPath(result, keyPath, trimmed);
-        passErrors.push(`${keyPath}: pass unavailable (${insertResult.error}); secret stored in config`);
+      passPartial[passEntry] = incoming.trim();
+      setByPath(result, keyPath, { _pass: passEntry });
+    }
+  }
+  if (Object.keys(passPartial).length > 0) {
+    const bundleResult = mergePassBundlePartial(passPartial);
+    if (!bundleResult.success) {
+      for (const [passEntry, secretVal] of Object.entries(passPartial)) {
+        const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.passEntry === passEntry);
+        if (keyDef) {
+          setByPath(result, keyDef.path, secretVal);
+          passErrors.push(`${keyDef.path}: pass bundle unavailable (${bundleResult.error}); secret stored in config`);
+        }
       }
     }
   }

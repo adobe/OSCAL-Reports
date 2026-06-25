@@ -50,7 +50,7 @@ git config core.hooksPath   # Should output: .githooks
 Development → Quality_Test → Pre_Prod → main
 ```
 
-**Current application release:** **1.7.21** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` before promoting to Pre_Prod/main.
+**Current application release:** **1.7.22** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` before promoting to Pre_Prod/main.
 
 **main** accepts PRs from **Development**, **Quality_Test**, or **Pre_Prod**. Feature/custom branches cannot target main. Recommended: use Pre_Prod for staging validation first.
 

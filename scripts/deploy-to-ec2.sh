@@ -10,7 +10,7 @@
 # Default / --blue / --both / --*-only: each instance runs aws s3 sync from s3://<bucket>/installer/ (no upload from this laptop).
 # Use --update-s3 to upload this repo to installer/ (same excludes as legacy rsync), then exit without SSH. After that, a normal deploy
 # pulls that snapshot into /opt/oscal/app, npm install/build, copies scripts from the synced tree to /opt/oscal/scripts, restarts oscal-reporter.
-# Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount). logs/ in the bucket is for
+# Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount). Golden restore: s3://<bucket>/config/default/ (config.default) via publish-config-default-to-s3.sh / restore-config-from-s3-default.sh. logs/ in the bucket is for
 # runtime log backup (logs/green, logs/blue), not application code—installer/ holds deployable bits.
 # Reliability: On each instance, ec2-user runs aws s3 sync; files previously owned by svc_ams-oscal could not be overwritten without
 # chown ec2-user:oscal on /opt/oscal/app first (see INSTALLERSYNC). Default deploy updates GREEN only—use --both or --blue so Blue pulls
@@ -55,7 +55,12 @@
 #   OS_PACKAGE_UPDATE_EVERY_N_CYCLES  Optional; default 144 written to ec2_automation.env (OS update at most once per N cron runs ≈ 24h at 10-min cron).
 #   DEPLOY_RDS_BOOTSTRAP_SKIP   Set to 1 to skip copying/running scripts/lib/rds-bootstrap-on-instance.sh (default: run when Terraform has RDS).
 #   DEPLOY_RDS_BOOTSTRAP_FORCE  Set to 1 to remove /opt/oscal/data/.rds-bootstrap-done on the instance and re-run SQL grants (use rarely).
+#   DEPLOY_RDS_BOOTSTRAP_TIMEOUT_SEC  Max seconds for remote RDS bootstrap SSH (default: 600). Set 0 to disable timeout wrapper.
 #   DEPLOY_LOCAL_CONFIG_SEED    Set to 1 to allow copying config/app/*.json from the laptop when S3 config/<role>/ restore failed (default: off).
+#   DEPLOY_CONFIG_S3_SKIP       Set to 1 to skip pulling config/users from S3 during deploy (keeps local EBS files).
+#   DEPLOY_CONFIG_S3_FORCE      Set to 1 to force-pull newest S3 backup even when local is newer (default: 0; only pull if missing or S3 newer).
+#   DEPLOY_MIGRATE_CONFIG_SM    Set to 1 to run migrate-config-to-sm.mjs during deploy (default: 0; run manually when rotating secrets).
+# Golden restore: s3://<bucket>/config/default/ (config.default). Publish: scripts/debug/publish-config-default-to-s3.sh. Restore: restore-config-from-s3-default.sh.
 #   DEPLOY_MAINTENANCE_MODE     Default 1: ALB drain to peer color + ASG suspend/protect during deploy; restore after success.
 #   DEPLOY_USE_ASG_IP           Default 1: resolve Green/Blue public IP from live ASG (fallback: Terraform output).
 #   DEPLOY_SKIP_OS_PACKAGE_UPDATE  Default 1: skip dnf/yum upgrade during deploy (prevents kernel reboot / ASG recycle).
@@ -84,6 +89,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/ec2-common.sh"
 # shellcheck source=./lib/deploy-maintenance.sh disable=SC1091
 source "$REPO_ROOT/scripts/lib/deploy-maintenance.sh"
+# shellcheck source=./lib/session-secret-systemd.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib/session-secret-systemd.sh"
+# shellcheck source=./lib/generic-oidc-tls-systemd.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib/generic-oidc-tls-systemd.sh"
 
 # Default to aws4403.
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
@@ -375,10 +384,22 @@ maybe_apply_rds_bootstrap() {
   print_info "RDS in Terraform state: applying IAM DB user + systemd OSCAL_DATABASE_* on instance..."
   scp -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$script_local" "${SSH_USER}@${ip}:/tmp/rds-bootstrap-on-instance.sh"
 
+  local rds_timeout="${DEPLOY_RDS_BOOTSTRAP_TIMEOUT_SEC:-600}"
+  print_info "Running RDS bootstrap on instance (logs stream below; timeout ${rds_timeout}s)..."
   q() { printf '%q' "$1"; }
-  if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=120 "${SSH_USER}@${ip}" \
-    "sudo env AWS_DEFAULT_REGION=$(q "$aws_reg") RDS_HOST=$(q "$rds_host") RDS_PORT=$(q "$rds_port") DB_NAME=$(q "$rds_db") ADMIN_USER=$(q "$admin_user") SECRET_ARN=$(q "$secret_arn") IAM_USER=$(q "$iam_user") FORCE=$(q "$force") bash /tmp/rds-bootstrap-on-instance.sh"; then
-    print_error "RDS bootstrap failed on ${ip}. Check IAM (Secrets Manager + rds-db:connect), SG RDS access, and terraform outputs."
+  local remote_cmd
+  remote_cmd="sudo env AWS_DEFAULT_REGION=$(q "$aws_reg") RDS_HOST=$(q "$rds_host") RDS_PORT=$(q "$rds_port") DB_NAME=$(q "$rds_db") ADMIN_USER=$(q "$admin_user") SECRET_ARN=$(q "$secret_arn") IAM_USER=$(q "$iam_user") FORCE=$(q "$force") RESTART_OSCAL_SERVICE=0 bash /tmp/rds-bootstrap-on-instance.sh"
+  if [ "$rds_timeout" = "0" ]; then
+    if ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=120 \
+      -o ServerAliveInterval=15 -o ServerAliveCountMax=40 \
+      "${SSH_USER}@${ip}" "$remote_cmd"; then
+      print_error "RDS bootstrap failed on ${ip}. Check IAM (Secrets Manager + rds-db:connect), SG RDS access, and terraform outputs."
+      return 1
+    fi
+  elif ! ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=120 \
+    -o ServerAliveInterval=15 -o ServerAliveCountMax=40 \
+    "${SSH_USER}@${ip}" "timeout ${rds_timeout} ${remote_cmd}"; then
+    print_error "RDS bootstrap failed or timed out after ${rds_timeout}s on ${ip}. Set DEPLOY_RDS_BOOTSTRAP_SKIP=1 to skip on repeat deploys, or check /opt/oscal/app/logs and dnf lock (ec2_automation OS updates)."
     return 1
   fi
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -f /tmp/rds-bootstrap-on-instance.sh" 2>/dev/null || true
@@ -445,17 +466,20 @@ REMOTESVC
   # Directory layout: /opt/oscal/app = app code only; /opt/oscal/data = config.json + users.json (canonical on EC2); /opt/oscal/scripts = ec2_automation. Repo config/ is excluded from S3 installer sync so only /opt/oscal/data is used.
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo mkdir -p /opt/oscal/app /opt/oscal/scripts /opt/oscal/data && sudo chown -R ${SSH_USER}:${SVC_GROUP} /opt/oscal && sudo chmod -R g+rX,g+w /opt/oscal" || true
 
-  # Shared config/users: newest S3 backup among config/active, config/green, config/blue (force on deploy).
-  if [ -n "$s3_bucket" ]; then
+  # Shared config/users: optional S3 restore (never overwrites good local config unless DEPLOY_CONFIG_S3_FORCE=1).
+  if [ -n "$s3_bucket" ] && [ "${DEPLOY_CONFIG_S3_SKIP:-0}" != "1" ]; then
     local sync_lib="$REPO_ROOT/scripts/lib/config-s3-sync.sh"
     if [ -f "$sync_lib" ]; then
       scp -i "$key" -o StrictHostKeyChecking=no "$sync_lib" "${SSH_USER}@${ip}:/tmp/config-s3-sync.sh" 2>/dev/null || true
-      print_info "Syncing config.json and users.json from newest S3 backup (config/active, config/green, config/blue)..."
-      if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$role" <<'CONFIGSYNC'
+      local config_s3_force=0
+      [ "${DEPLOY_CONFIG_S3_FORCE:-0}" = "1" ] && config_s3_force=1
+      print_info "Syncing config.json/users.json from S3 (force=${config_s3_force}; local EBS kept when newer)..."
+      if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$role" "$config_s3_force" <<'CONFIGSYNC'
 set -euo pipefail
 BUCKET="$1"
 REGION="$2"
 ROLE="$3"
+FORCE="$4"
 export AWS_DEFAULT_REGION="$REGION"
 # shellcheck source=/dev/null disable=SC1091
 . /tmp/config-s3-sync.sh
@@ -463,12 +487,33 @@ config_s3_set_search_prefixes_for_role "$ROLE"
 sudo mkdir -p /opt/oscal/data
 sudo chown -R "${S3_SYNC_CHOWN_USER:-ec2-user}:${S3_SYNC_CHOWN_GROUP:-oscal}" /opt/oscal/data 2>/dev/null || \
   sudo chown -R ec2-user:oscal /opt/oscal/data 2>/dev/null || true
-rm -f /opt/oscal/data/.config-s3-sync.json
-config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" 1
+if [ -f /opt/oscal/data/config.json ] && [ "$(wc -c </opt/oscal/data/config.json | tr -d ' ')" -ge 256 ]; then
+  config_s3_backup_to_active "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" || true
+fi
+if [ "$FORCE" = "1" ]; then
+  rm -f /opt/oscal/data/.config-s3-sync.json
+fi
+need_config=0
+need_users=0
+[ ! -f /opt/oscal/data/config.json ] && need_config=1
+[ ! -s /opt/oscal/data/config.json ] && need_config=1
+[ ! -f /opt/oscal/data/users.json ] && need_users=1
+if [ "$FORCE" = "1" ] || [ "$need_config" = "1" ] || [ "$need_users" = "1" ]; then
+  config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" "$FORCE"
+fi
+cfg_bytes=0
+if [ -f /opt/oscal/data/config.json ]; then
+  cfg_bytes=$(wc -c </opt/oscal/data/config.json | tr -d ' ')
+fi
+if [ "${cfg_bytes:-0}" -lt 256 ]; then
+  if config_s3_restore_from_default "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION"; then
+    echo "[config] Restored missing/invalid config from s3://${BUCKET}/config/default/ (config.default)"
+  fi
+fi
 rm -f /tmp/config-s3-sync.sh
 CONFIGSYNC
       then
-        print_success "Restored shared config.json and users.json from newest S3 backup"
+        print_success "Shared config/users S3 sync step complete"
       else
         print_warning "Shared S3 config sync failed or no backup found on S3 yet."
       fi
@@ -493,6 +538,8 @@ CONFIGSYNC
     print_error "S3 bucket unknown (Terraform output s3_logs_bucket_name); cannot deploy from installer/."
     return 1
   fi
+
+  print_info "S3 golden config (config.default): s3://${s3_bucket}/config/default/ — restore: scripts/debug/restore-config-from-s3-default.sh"
 
   print_info "Syncing s3://${s3_bucket}/${INSTALLER_PREFIX}/ to ${REMOTE_APP}/ on instance..."
   # ec2-user must own app tree before aws s3 sync: after prior deploy files are svc_ams-oscal:oscal (group often r-x only) and sync cannot overwrite (H1).
@@ -686,14 +733,17 @@ ENVEOF"
     return 1
   fi
 
-  # After lib is installed: force-pull newest config/users (Green backup may be under config/green/ until migrated to config/active/)
-  if [ -n "$s3_bucket" ]; then
-    print_info "Applying shared config/users from newest S3 backup (post-install)..."
-    if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$role" <<'POSTCONFIGSYNC'
+  # After lib is installed: optional S3 config pull (same rules as pre-install; default keeps local EBS).
+  if [ -n "$s3_bucket" ] && [ "${DEPLOY_CONFIG_S3_SKIP:-0}" != "1" ]; then
+    local post_config_force=0
+    [ "${DEPLOY_CONFIG_S3_FORCE:-0}" = "1" ] && post_config_force=1
+    print_info "Post-install config/users S3 sync (force=${post_config_force})..."
+    if ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" bash -s "$s3_bucket" "${AWS_DEPLOY_REGION:-us-east-1}" "$role" "$post_config_force" <<'POSTCONFIGSYNC'
 set -euo pipefail
 BUCKET="$1"
 REGION="$2"
 ROLE="$3"
+FORCE="$4"
 export AWS_DEFAULT_REGION="$REGION"
 LIB=/opt/oscal/scripts/lib/config-s3-sync.sh
 if [ ! -f "$LIB" ]; then
@@ -702,8 +752,24 @@ fi
 # shellcheck source=/dev/null disable=SC1091
 . "$LIB"
 config_s3_set_search_prefixes_for_role "$ROLE"
-rm -f /opt/oscal/data/.config-s3-sync.json
-config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" 1
+if [ -f /opt/oscal/data/config.json ] && [ "$(wc -c </opt/oscal/data/config.json | tr -d ' ')" -ge 256 ]; then
+  config_s3_backup_to_active "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" || true
+fi
+if [ "$FORCE" = "1" ]; then
+  rm -f /opt/oscal/data/.config-s3-sync.json
+  config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" 1
+elif [ ! -s /opt/oscal/data/config.json ] || [ ! -f /opt/oscal/data/users.json ]; then
+  config_s3_sync_shared_to_local "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION" 0
+fi
+cfg_bytes=0
+if [ -f /opt/oscal/data/config.json ]; then
+  cfg_bytes=$(wc -c </opt/oscal/data/config.json | tr -d ' ')
+fi
+if [ "${cfg_bytes:-0}" -lt 256 ]; then
+  if config_s3_restore_from_default "$BUCKET" /opt/oscal/data/config.json /opt/oscal/data/users.json "$REGION"; then
+    echo "[config] Post-install: restored from s3://${BUCKET}/config/default/ (config.default)"
+  fi
+fi
 if [ "${CONFIG_S3_SYNC_CHANGED:-0}" = "1" ]; then
   sudo systemctl restart oscal-reporter.service 2>/dev/null || true
 fi
@@ -731,7 +797,7 @@ POSTCONFIGSYNC
     cd frontend && npm install --no-audit --no-fund && npm run build && cd ..
     mkdir -p backend/public
     cp -r frontend/dist/* backend/public/
-    if [ -n \"${sm_arn}\" ] && [ -f backend/scripts/migrate-config-to-sm.mjs ]; then
+    if [ -n \"${sm_arn}\" ] && [ \"${DEPLOY_MIGRATE_CONFIG_SM:-0}\" = \"1\" ] && [ -f backend/scripts/migrate-config-to-sm.mjs ]; then
       sudo -u $SVC_USER env OSCAL_SECRETS_MODE=aws-sm OSCAL_SECRETS_MANAGER_ARN='${sm_arn}' CONFIG_PATH=/opt/oscal/data/config.json AWS_DEFAULT_REGION=${AWS_DEPLOY_REGION:-us-east-1} node backend/scripts/migrate-config-to-sm.mjs 2>/dev/null || echo 'Secret migration skipped or already complete'
     fi
     if ! sudo systemctl restart oscal-reporter.service 2>/dev/null; then
@@ -794,6 +860,16 @@ SVCEOF
   "
 
   print_success "Deployed to $role at $ip"
+  if [ -n "$sm_arn" ]; then
+    print_info "Ensuring SESSION_SECRET systemd drop-in from Secrets Manager bundle..."
+    if ! ensure_oscal_session_secret_systemd "$ip" "$key" "$SSH_USER" "$sm_arn" "${AWS_DEPLOY_REGION:-us-east-1}"; then
+      print_warning "SESSION_SECRET bootstrap failed; config screen may fail until SESSION_SECRET is set"
+    fi
+  fi
+  print_info "Ensuring Generic OIDC TLS relaxed env for Authentik/homelab IdPs (DEPLOY_GENERIC_OIDC_TLS_RELAXED=${DEPLOY_GENERIC_OIDC_TLS_RELAXED:-1})..."
+  if ! ensure_generic_oidc_tls_relaxed_systemd "$ip" "$key" "$SSH_USER"; then
+    print_warning "Generic OIDC TLS drop-in failed; set tlsRelaxed:true in config or OSCAL_GENERIC_OIDC_TLS_RELAXED=1"
+  fi
   # Restart so new code and env (HOME/PASSWORD_STORE_DIR) are active
   print_info "Restarting oscal-reporter.service..."
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo systemctl restart oscal-reporter.service" 2>/dev/null || true

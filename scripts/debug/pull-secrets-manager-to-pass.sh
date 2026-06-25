@@ -7,7 +7,7 @@
 #
 # Licensed under the MIT License. See LICENSE file for details.
 #
-# Pull OSCAL/* secrets from AWS Secrets Manager bundle into the local pass vault.
+# Pull AWS Secrets Manager bundle into pass entry PROD/OSCAL/AWS_SM (single JSON).
 # DEPRECATED on EC2 (1.7.19+): app uses SM in-process; use migrate-config-secrets-to-sm.sh instead.
 # Retained for laptop pass seeding during cutover only.
 #
@@ -18,6 +18,10 @@
 # May also run as svc_ams-oscal (e.g. after ./scripts/ssh-ec2.sh blue svc) — no sudo used.
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/pass-bundle-common.sh disable=SC1091
+source "$SCRIPT_DIR/../lib/pass-bundle-common.sh"
 
 SVC_USER="${SVC_USER:-svc_ams-oscal}"
 SVC_HOME="${SVC_HOME:-/var/lib/svc_ams-oscal}"
@@ -121,7 +125,7 @@ info "Secrets Manager: ${PASS_SECRETS_SYNC_SECRET_ARN}"
 info "Pass store: ${PASS_STORE} (user ${SVC_USER}, runner: $(id -un))"
 
 if [ "$DRY_RUN" = "1" ]; then
-  info "[dry-run] Would run pass_secrets_sync_run"
+  info "[dry-run] Would write pass bundle: $(pass_bundle_entry)"
   aws secretsmanager get-secret-value \
     --secret-id "${PASS_SECRETS_SYNC_SECRET_ARN}" \
     --query SecretString --output text 2>/dev/null \
@@ -158,12 +162,7 @@ else
   sudo -u "$SVC_USER" "$SYNC_WRAPPER"
 fi
 
-info "Pass entries after sync:"
-if run_as_svc pass ls 2>/dev/null; then
-  :
-else
-  warn "pass ls failed"
-fi
+info "Pass bundle after sync: $(pass_bundle_entry 2>/dev/null || echo 'PROD/OSCAL/AWS_SM')"
 
 if is_svc_user; then
   ok "Done. Ask ec2-user to restart: sudo systemctl restart oscal-reporter.service"

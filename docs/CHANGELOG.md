@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.7.22] - 2026-06-26
+
+Release **1.7.22** hardens EC2 deploy and config retention, consolidates laptop pass secrets into a single bundle entry (`PROD/OSCAL/AWS_SM`), and fixes Generic OIDC / SSO config edge cases. EC2 production remains AWS Secrets Manager primary; Docker image `keekar/oscal_reports:v1.7.22` is multi-arch (`linux/amd64`, `linux/arm64`).
+
+### Added
+
+- **`backend/utils/passBundle.js`**, **`bundleSchema.js`**, **`passOAuthSecret.js`:** Single pass entry **`PROD/OSCAL/AWS_SM`** (override `OSCAL_PASS_BUNDLE_ENTRY`) with the same `{ entries, _meta }` JSON shape as AWS SM; batch GUI saves via `mergePassBundlePartial`.
+- **`scripts/lib/pass-bundle-common.sh`:** Shared bundle entry name and legacy key list for shell tooling.
+- **`scripts/debug/migrate-pass-entries-to-bundle.sh`:** One-time migration from legacy per-key `OSCAL/*` pass entries into the bundle (`--dry-run` default, `--apply` to write).
+- **Golden config.default on S3:** `s3://<bucket>/config/default/` (`config.json`, `users.json`, `manifest.json`) for known-good restore; **`scripts/debug/publish-config-default-to-s3.sh`**, **`scripts/debug/restore-config-from-s3-default.sh`**; Terraform placeholder under `config/default/`.
+- **Deploy env flags:** `DEPLOY_CONFIG_S3_SKIP`, `DEPLOY_CONFIG_S3_FORCE` (default 0), `DEPLOY_MIGRATE_CONFIG_SM` (default 0), `DEPLOY_RDS_BOOTSTRAP_SKIP` — safe code-only deploy without overwriting local config or re-running SM migration every time.
+- **Unit tests:** `passBundle.test.js`, `passBundleConfigSave.test.js`; updated pass-sync shell tests for whole-bundle model.
+
+### Fixed
+
+- **EC2 SSO/config wipe on deploy:** Deploy no longer force-overwrites `/opt/oscal/data/config.json` from S3; auto-restore from `config/default/` when local config is missing or &lt; 256 bytes; validates JSON before accepting S3 copies.
+- **`migrate-config-to-sm.mjs`:** Refuses tiny/invalid config; writes `_sm` pointers only when SM has or receives the secret; atomic write with backup.
+- **Generic OIDC orphan `_sm` pointers:** `migrateGenericOidcSecretForAwsSm` avoids leaving `_sm` when SM is empty (fixes missing Generic SSO button on login page).
+- **RDS bootstrap on routine deploy:** Faster path when schema unchanged (`scripts/lib/rds-bootstrap-on-instance.sh`).
+
+### Changed
+
+- **Laptop pass model:** Per-key `OSCAL/*.gpg` deprecated; **`push-pass-to-secrets-manager.sh`** / **`pull-secrets-manager-to-pass.sh`** operate on the single bundle entry; **`ec2-automation-pass-sync.sh`** whole-bundle compare (still disabled on EC2 deploy).
+- **`passShow` / `resolveSecretPointer`:** Logical `OSCAL/*` keys resolve from pass bundle; SM fallback uses bundle on laptop during local testing.
+- **`config-s3-sync.sh`:** Min config size 256, JSON validation, backup/restore helpers for `config/default/`.
+
+### Documentation
+
+- Version footers, deployment examples, and Docker Hub tags updated to **1.7.22**.
+- **`docs/AWS_OPERATIONS.md`:** Golden config.default, safe deploy flags, pass bundle (`PROD/OSCAL/AWS_SM`), troubleshooting SSO/config restore.
+- **`docs/DEPLOYMENT.md`:** Pass bundle logical keys and migration script reference.
+- **`scripts/README.md`:** Pass bundle sync script inventory.
+- **Repo cleanup:** Removed stale binary docs (`docs/OSCAL_Compliance_Tool_Demo.pptx`, `docs/1.15.2025_GovTechSingapore.pdf`) and superseded test meta-docs (`test_cases/CHANGES_SUMMARY.md`, `test_cases/TESTING_QUICK_REFERENCE.md`); use `test_cases/scripts/README.md` and `test_cases/README.md` instead.
+
+### Deployment
+
+- **EC2 (recommended routine):** `DEPLOY_RDS_BOOTSTRAP_SKIP=1 DEPLOY_CONFIG_S3_SKIP=1 ./scripts/deploy-to-ec2.sh --update-s3` then `DEPLOY_RDS_BOOTSTRAP_SKIP=1 DEPLOY_CONFIG_S3_SKIP=1 ./scripts/deploy-to-ec2.sh --both`.
+- **EC2 config restore:** `sudo bash /opt/oscal/scripts/debug/restore-config-from-s3-default.sh` on each instance.
+- **Laptop pass:** `./scripts/debug/migrate-pass-entries-to-bundle.sh --apply` then `./scripts/debug/push-pass-to-secrets-manager.sh --discover-only`.
+- **Docker Hub:** `./scripts/build-and-push-dockerhub.sh v1.7.22` → `keekar/oscal_reports:v1.7.22` and `latest`.
+
+---
+
 ## [1.7.21] - 2026-06-25
 
 Release **1.7.21** ships Multi-Report Comparison (MRC) export reliability, unified SSP export with the main application, richer AI control suggestions, and Generic OIDC TLS options for Docker/NAS. EC2 (AMS Gov Cloud) continues Okta-first SSO; Docker image `keekar/oscal_reports:v1.7.21` is multi-arch (`linux/amd64`, `linux/arm64`).

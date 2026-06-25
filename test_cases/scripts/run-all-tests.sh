@@ -921,17 +921,17 @@ test_pull_from_aws_into_pass() {
   write_mock_aws
   write_mock_jq
   write_mock_pass
-  bundle=$(jq -n --arg v 'from-aws-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  bundle=$(jq -n --arg v 'from-aws-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 9999999}}}}' -c)
   jq -n --arg s "$bundle" --arg vid 'vid-1' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
   PASS_SYNC_TEST_EPOCH=3000000
   pass_secrets_sync_run
-  assert_file_contains "$TELEMETRY_LOG" "updated pass from AWS only"
+  assert_file_contains "$TELEMETRY_LOG" "updated pass bundle from AWS"
   local got
-  got=$(cat "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg")
-  if [ "$got" != "from-aws-secret" ]; then
-    die "pull: expected pass file content from-aws-secret, got $got"
+  got=$(cat "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg")
+  if ! echo "$got" | jq -e '.entries["OSCAL/smtp-password"] == "from-aws-secret"' >/dev/null; then
+    die "pull: expected bundle JSON with from-aws-secret, got $got"
   fi
   assert_file_contains "$TELEMETRY_LOG" '"outcome":"success"'
 }
@@ -943,9 +943,10 @@ test_put_local_wins_calls_put() {
   write_mock_pass
   empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
   jq -n --arg s "$empty_bundle" --arg vid 'vid-same' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
-  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
-  echo "local-only-secret" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
-  touch -d '2000-01-01' "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg" 2>/dev/null || touch "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  local_bundle=$(jq -n --arg v 'local-only-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  mkdir -p "$PASSWORD_STORE_DIR/PROD/OSCAL"
+  echo "$local_bundle" >"$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
+  touch "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
   PASS_SYNC_TEST_EPOCH=4000000
@@ -967,8 +968,10 @@ test_put_failure_logs_put_false() {
   write_mock_pass
   empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
   jq -n --arg s "$empty_bundle" --arg vid 'vid-same' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
-  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
-  echo "local-secret" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  local_bundle=$(jq -n --arg v 'local-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  mkdir -p "$PASSWORD_STORE_DIR/PROD/OSCAL"
+  echo "$local_bundle" >"$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
+  touch "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
   export PASS_SYNC_TEST_PUT_EXIT=1
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
@@ -1013,8 +1016,10 @@ if "$is_put"; then exit 0; fi
 exit 1
 EOS
   chmod +x "$WORKDIR/bin/aws"
-  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
-  echo "local" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  local_bundle=$(jq -n --arg v 'local' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  mkdir -p "$PASSWORD_STORE_DIR/PROD/OSCAL"
+  echo "$local_bundle" >"$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
+  touch "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
   PASS_SYNC_TEST_EPOCH=6000000
