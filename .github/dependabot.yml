@@ -1,0 +1,68 @@
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
+#
+# Dependabot version updates and security alerts for npm workspaces.
+# Transitive security pins (@babel/core, js-yaml) are handled via package.json overrides;
+# this config groups related updates to reduce PR noise.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      root-dev-deps:
+        patterns:
+          - "concurrently"
+          - "@playwright/*"
+          - "express"
+          - "qs"
+
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      backend-aws:
+        patterns:
+          - "@aws-sdk/*"
+          - "@smithy/*"
+      backend-dev-security:
+        patterns:
+          - "@babel/*"
+          - "jest*"
+          - "@jest/*"
+          - "js-yaml"
+          - "nodemailer"
+          - "axios"
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      frontend-build:
+        patterns:
+          - "vite"
+          - "esbuild"
+          - "postcss"
+          - "@vitejs/*"
+          - "rollup"
+      frontend-runtime:
+        patterns:
+          - "react*"
+          - "axios"
+          - "form-data"
+          - "lucide-react"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
