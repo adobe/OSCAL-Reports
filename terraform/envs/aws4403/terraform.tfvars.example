@@ -7,7 +7,7 @@ environment    = "prod"
 project_name   = "ams-oscal-reports"
 
 vpc_cidr         = "10.0.0.0/16"
-# Default CIDRs for ALB HTTP testing, SSH, and direct Green/Blue 3019/3020. PCL disallows 0.0.0.0/0.
+# Default CIDRs for ALB HTTP testing, SSH, and direct Green/Blue app access (port 3020). PCL disallows 0.0.0.0/0.
 default_allowed_cidr_blocks = ["1.2.3.4/32"]  # Replace with your IP(s), e.g. ["130.248.32.17/32", "203.191.182.150/32"]
 # alb_allow_http_for_testing = false  # Set true to open ALB port 80 from default_allowed_cidr_blocks only (for testing)
 # AMS PCL: ALB is tagged Adobe:PublicPorts and Adobe:PortJustification automatically. Override if needed:
@@ -62,8 +62,9 @@ common_tags = {
 # Cross-account Bedrock (Account B) — see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md
 # ------------------------------------------------------------------------------
 # bedrock_cross_account_enabled        = true
-# bedrock_account_id                   = "123456789012"
+# bedrock_account_id                   = "928475551084"
+# bedrock_assume_role_arn              = "arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount"
 # bedrock_assume_role_name             = "OSCAL-BedrockCrossAccount"
-# bedrock_assume_role_arn              = ""
-# bedrock_external_id                  = "<from Account B runbook>"
+# bedrock_external_id                  = "<from Account B trust policy sts:ExternalId, if used>"
+# bedrock_inject_systemd_env           = true
 # bedrock_runtime_vpc_endpoint_enabled = false

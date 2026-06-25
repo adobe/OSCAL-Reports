@@ -69,6 +69,7 @@ s3_logs_bucket_name = "ams-oscal-442277170733"
 # create_rds_postgres = false
 # ------------------------------------------------------------------------------
 # rds_instance_class  = "db.t4g.micro"
+# rds_engine_version  = "16.13"   # initial create only; live minor patches are ignored (see rds.tf lifecycle)
 # rds_skip_final_snapshot = true  # set false + rds_deletion_protection = true for production
 
 # Optional tags
@@ -95,8 +96,9 @@ common_tags = {
 # Cross-account Bedrock (Account B) — see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md
 # ------------------------------------------------------------------------------
 # bedrock_cross_account_enabled        = true
-# bedrock_account_id                   = "123456789012"
+# bedrock_account_id                   = "928475551084"
+# bedrock_assume_role_arn              = "arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount"
 # bedrock_assume_role_name             = "OSCAL-BedrockCrossAccount"
-# bedrock_assume_role_arn              = ""
-# bedrock_external_id                  = "<from Account B runbook>"
+# bedrock_external_id                  = "<from Account B trust policy, if trust uses ExternalId>"
+# bedrock_inject_systemd_env           = true
 # bedrock_runtime_vpc_endpoint_enabled = false

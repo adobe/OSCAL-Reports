@@ -6,13 +6,11 @@
 # Systemd drop-in for cross-account Bedrock AssumeRole (Phase 2 app; CLI validation in Phase 1).
 DROPIN_DIR="/etc/systemd/system/oscal-reporter.service.d"
 DROPIN="$DROPIN_DIR/51-oscal-bedrock-env.conf"
-if [[ ! -f "$DROPIN" ]]; then
-  mkdir -p "$DROPIN_DIR"
-  cat > "$DROPIN" <<'BEDROCKENVEOF'
+mkdir -p "$DROPIN_DIR"
+cat > "$DROPIN" <<'BEDROCKENVEOF'
 [Service]
 Environment=BEDROCK_ASSUME_ROLE_ARN=__BEDROCK_ASSUME_ROLE_ARN__
 Environment=BEDROCK_EXTERNAL_ID=__BEDROCK_EXTERNAL_ID__
 BEDROCKENVEOF
-  sed -i "s|__BEDROCK_ASSUME_ROLE_ARN__|${bedrock_assume_role_arn}|g;s|__BEDROCK_EXTERNAL_ID__|${bedrock_external_id}|g" "$DROPIN"
-  chmod 644 "$DROPIN"
-fi
+sed -i "s|__BEDROCK_ASSUME_ROLE_ARN__|${bedrock_assume_role_arn}|g;s|__BEDROCK_EXTERNAL_ID__|${bedrock_external_id}|g" "$DROPIN"
+chmod 644 "$DROPIN"

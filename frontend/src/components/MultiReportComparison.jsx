@@ -11,10 +11,17 @@ import buildInfo from '../utils/buildInfo';
 import { useAuth } from '../contexts/AuthContext';
 import { exportErrorMessage } from '../utils/exportErrorMessage';
 import {
+  exportBaselineSspWithEdits,
+  buildSspFromBaselineWithEdits,
+} from '../utils/exportSsp.js';
+import {
   loadComparisonReportPrefs,
   saveComparisonUrlForSlot,
   saveComparisonReportTypes,
   defaultSlotInputMode,
+  loadComparisonWorkSession,
+  saveComparisonWorkSession,
+  mergeBaselineControlsFromSession,
 } from '../utils/comparisonReportPrefs.js';
 import { verifyOscalReportUrl } from '../utils/verifyOscalReportUrl.js';
 import ControlEditModal from './ControlEditModal';
@@ -96,6 +103,23 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   });
   const [databaseIntegrationEnabled, setDatabaseIntegrationEnabled] = useState(false);
   const [adobeTeamOptions, setAdobeTeamOptions] = useState([]);
+  const [workSessionSavedAt, setWorkSessionSavedAt] = useState(null);
+
+  const persistWorkSession = useCallback((partial = {}) => {
+    if (!user?.id) {
+      return { saved: false, reason: 'no_user' };
+    }
+    const result = saveComparisonWorkSession(user.id, {
+      baselineControls: partial.baselineControls ?? baselineControls,
+      exportValidationOptions: partial.exportValidationOptions ?? exportValidationOptions,
+      reportNames: partial.reportNames ?? reportNames,
+      reportTypes: partial.reportTypes ?? reportTypes,
+    });
+    if (result.saved) {
+      setWorkSessionSavedAt(new Date().toISOString());
+    }
+    return result;
+  }, [user?.id, baselineControls, exportValidationOptions, reportNames, reportTypes]);
 
   const persistReportTypes = useCallback((nextTypes) => {
     if (user?.id) {
@@ -109,6 +133,13 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       try {
         if (user?.id) {
           const prefs = loadComparisonReportPrefs(user.id);
+          const workSession = loadComparisonWorkSession(user.id);
+          if (workSession.exportValidationOptions) {
+            setExportValidationOptions(workSession.exportValidationOptions);
+          }
+          if (workSession.reportNames) {
+            setReportNames((prev) => ({ ...prev, ...workSession.reportNames }));
+          }
           if (prefs) {
             setSlotUrls({
               baseline: prefs.baselineUrl || '',
@@ -121,6 +152,9 @@ function MultiReportComparison({ onBack, onShowSettings }) {
               csp1: defaultSlotInputMode(prefs, 'csp1'),
               csp2: defaultSlotInputMode(prefs, 'csp2'),
             });
+            if (workSession.updatedAt) {
+              setWorkSessionSavedAt(workSession.updatedAt);
+            }
             if (!prefs.baselineUrl) {
               try {
                 const settingsRes = await axios.get('/api/settings', getAuthConfig());
@@ -159,39 +193,16 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     }
   }, [step]);
 
-  const getBaselineControlsForExport = useCallback(() => {
-    if (baselineControls && Object.keys(baselineControls).length > 0) {
-      return Object.values(baselineControls);
+  const buildExportContext = useCallback(() => {
+    if (!reports.baseline) {
+      throw new Error('No assessment subject report to export.');
     }
-    const reqs = reports.baseline?.['system-security-plan']?.['control-implementation']?.['implemented-requirements'];
-    return Array.isArray(reqs) ? reqs : [];
-  }, [baselineControls, reports.baseline]);
-
-  const buildAssessmentSubjectSystemInfo = useCallback(() => {
-    const ssp = reports.baseline?.['system-security-plan'] || {};
     return {
-      title: ssp.metadata?.title || 'System Security Plan',
-      systemName: ssp['system-characteristics']?.['system-name'] || reportNames.baseline,
-      systemId: ssp['system-characteristics']?.['system-ids']?.[0]?.id || 'N/A',
-      description: ssp['system-characteristics']?.description || '',
-      securityLevel: ssp['system-characteristics']?.['security-sensitivity-level'] || 'moderate',
+      existingSSP: reports.baseline,
+      controlEdits: baselineControls || {},
+      validationOptions: exportValidationOptions,
     };
-  }, [reports.baseline, reportNames.baseline]);
-
-  const generateAssessmentSubjectSsp = useCallback(async (validationOptions = {}) => {
-    const controlsArray = getBaselineControlsForExport();
-    if (!reports.baseline || controlsArray.length === 0) {
-      throw new Error('No assessment subject report controls available to export.');
-    }
-    const metadata = reports.baseline['system-security-plan']?.metadata || {};
-    const response = await axios.post('/api/generate-ssp', {
-      metadata,
-      controls: controlsArray,
-      systemInfo: buildAssessmentSubjectSystemInfo(),
-      validationOptions,
-    }, getAuthConfig());
-    return response.data;
-  }, [reports.baseline, getBaselineControlsForExport, buildAssessmentSubjectSystemInfo, getAuthConfig]);
+  }, [reports.baseline, baselineControls, exportValidationOptions]);
 
   const applyLoadedReport = (reportKey, jsonData, displayName) => {
     setReports((prev) => ({ ...prev, [reportKey]: jsonData }));
@@ -303,8 +314,16 @@ function MultiReportComparison({ onBack, onShowSettings }) {
             baselineControlsMap[control.id] = { ...control.baseline, id: control.id, title: control.title };
           }
         });
-        setBaselineControls(baselineControlsMap);
-        console.log('📋 Extracted baseline controls for editing:', Object.keys(baselineControlsMap).length);
+        const workSession = user?.id ? loadComparisonWorkSession(user.id) : null;
+        const merged = mergeBaselineControlsFromSession(
+          baselineControlsMap,
+          workSession?.baselineControls || {},
+        );
+        setBaselineControls(merged);
+        if (user?.id) {
+          persistWorkSession({ baselineControls: merged });
+        }
+        console.log('📋 Extracted baseline controls for editing:', Object.keys(merged).length);
       }
       
       setStep(2); // Move to comparison view
@@ -346,27 +365,45 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     // Fallback: find control in comparison result (handles ID mismatch or baselineControls not yet set)
     const row = comparisonResult?.controls?.find(c => c.id === controlId);
     if (row?.baseline) {
-      setEditingControl({ ...row.baseline, id: row.id, title: row.title });
+      setEditingControl({
+        ...row.baseline,
+        id: row.id,
+        title: row.title || row.baseline?.catalogTitle || row.id,
+        catalogTitle: row.baseline?.catalogTitle || row.title,
+        catalogDescription: row.baseline?.catalogDescription || row.baseline?.description || '',
+      });
       return;
     }
     console.warn('Control not found in baseline:', controlId);
   };
 
   const handleControlSave = (updatedControl) => {
-    setBaselineControls(prev => ({
-      ...prev,
-      [updatedControl.id]: updatedControl
-    }));
+    setBaselineControls(prev => {
+      const next = {
+        ...prev,
+        [updatedControl.id]: updatedControl,
+      };
+      if (user?.id) {
+        persistWorkSession({ baselineControls: next });
+      }
+      return next;
+    });
     setHasUnsavedChanges(true);
     setEditingControl(null);
     console.log('✅ Control updated:', updatedControl.id);
   };
 
   const handleExportValidationOptionChange = (option) => {
-    setExportValidationOptions((prev) => ({
-      ...prev,
-      [option]: !prev[option],
-    }));
+    setExportValidationOptions((prev) => {
+      const next = {
+        ...prev,
+        [option]: !prev[option],
+      };
+      if (user?.id) {
+        persistWorkSession({ exportValidationOptions: next });
+      }
+      return next;
+    });
   };
 
   const renderAssessmentExportPanel = () => (
@@ -374,8 +411,15 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       <div className="export-card">
         <h3>Export Assessment Subject Report</h3>
         <p className="export-description">
-          Export edits made to the assessment subject report as OSCAL JSON. Validate against the OSCAL schema before downloading (same as other use cases).
+          Export edits made to the assessment subject report as OSCAL JSON. Use Validate below to check
+          OSCAL compliance before exporting (recommended). Export generates the file directly without a
+          second validation pass, which avoids gateway timeouts on large reports.
         </p>
+        {workSessionSavedAt && (
+          <p className="mrc-work-session-note">
+            Your comparison edits are saved in this browser only (last saved {new Date(workSessionSavedAt).toLocaleString()}).
+          </p>
+        )}
 
         <div className="validation-section">
           <h4 className="validation-options-title">
@@ -508,7 +552,10 @@ function MultiReportComparison({ onBack, onShowSettings }) {
         </div>
 
         {exportValidationResult && (
-          <ValidationStatus result={exportValidationResult} />
+          <ValidationStatus
+            result={exportValidationResult}
+            onClose={() => setExportValidationResult(null)}
+          />
         )}
       </div>
     </div>
@@ -519,7 +566,8 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     setExportValidationResult(null);
     setError('');
     try {
-      const ssp = await generateAssessmentSubjectSsp(exportValidationOptions);
+      const exportCtx = buildExportContext();
+      const ssp = await buildSspFromBaselineWithEdits(exportCtx, getAuthConfig());
       const result = await validateSSP(ssp, exportValidationOptions);
       setExportValidationResult(result);
     } catch (err) {
@@ -538,25 +586,12 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     setLoading(true);
     setError('');
     try {
-      const ssp = await generateAssessmentSubjectSsp(exportValidationOptions);
-      const validation = await validateSSP(ssp, exportValidationOptions);
-      setExportValidationResult(validation);
-      if (!validation.valid) {
-        setError('OSCAL validation failed. Review validation results and fix issues before exporting.');
-        return;
+      const saveResult = persistWorkSession();
+      if (!saveResult.saved && saveResult.reason === 'too_large') {
+        setError('Could not save your edits in this browser (data too large). Export will still use current in-memory edits.');
       }
 
-      const systemInfo = buildAssessmentSubjectSystemInfo();
-      const blob = new Blob([JSON.stringify(ssp, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${systemInfo.systemName || 'assessment-subject-report'}_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
+      await exportBaselineSspWithEdits(buildExportContext(), getAuthConfig());
       setHasUnsavedChanges(false);
     } catch (err) {
       console.error('❌ Export failed:', err);
