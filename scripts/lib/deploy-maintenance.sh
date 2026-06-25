@@ -67,6 +67,8 @@ deploy_maintenance__target_group_arn() {
 
 deploy_maintenance__asg_in_service_instance() {
   local asg_name="$1"
+  # JMESPath backticks in --query are literals, not command substitution (SC2016).
+  # shellcheck disable=SC2016
   aws autoscaling describe-auto-scaling-groups \
     --auto-scaling-group-names "$asg_name" \
     --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId | [0]' \
@@ -79,9 +81,11 @@ deploy_maintenance__listener_arn() {
   [ -z "$alb_arn" ] || [ "$alb_arn" = "null" ] && return 1
   use_https=$(deploy_maintenance__tf_raw alb_use_https | tr -d '\r\n')
   if [ "$use_https" = "true" ]; then
+    # shellcheck disable=SC2016
     listener_arn=$(aws elbv2 describe-listeners --load-balancer-arn "$alb_arn" \
       --query 'Listeners[?Port==`443`].ListenerArn | [0]' --output text 2>/dev/null | tr -d '\r\n')
   else
+    # shellcheck disable=SC2016
     listener_arn=$(aws elbv2 describe-listeners --load-balancer-arn "$alb_arn" \
       --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text 2>/dev/null | tr -d '\r\n')
   fi
@@ -165,7 +169,7 @@ deploy_maintenance__restore_alb_traffic() {
   local state_dir="$DEPLOY_MAINTENANCE_STATE_DIR/${role}"
   local listener_arn tmp
   [ -d "$state_dir" ] || return 0
-  listener_arn=$(cat "${state_dir}/listener_arn.txt" 2>/dev/null | tr -d '\r\n')
+  listener_arn=$(tr -d '\r\n' < "${state_dir}/listener_arn.txt" 2>/dev/null || true)
   [ -z "$listener_arn" ] && return 0
 
   tmp=$(mktemp)
@@ -202,7 +206,7 @@ deploy_maintenance__suspend_asg() {
 deploy_maintenance__resume_asg() {
   local role="$1"
   local asg_name proc_args=()
-  asg_name=$(cat "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt" 2>/dev/null | tr -d '\r\n')
+  asg_name=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt" 2>/dev/null || true)
   [ -z "$asg_name" ] && asg_name=$(deploy_maintenance__asg_name "$role")
   [ -z "$asg_name" ] && return 0
   local p
@@ -230,9 +234,9 @@ deploy_maintenance__protect_instance() {
 deploy_maintenance__unprotect_instance() {
   local role="$1"
   local asg_name instance_id
-  asg_name=$(cat "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt" 2>/dev/null | tr -d '\r\n')
+  asg_name=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt" 2>/dev/null || true)
   [ -z "$asg_name" ] && asg_name=$(deploy_maintenance__asg_name "$role")
-  instance_id=$(cat "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt" 2>/dev/null | tr -d '\r\n')
+  instance_id=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt" 2>/dev/null || true)
   [ -z "$instance_id" ] || [ -z "$asg_name" ] && return 0
   aws autoscaling set-instance-protection \
     --auto-scaling-group-name "$asg_name" \
@@ -279,7 +283,7 @@ deploy_maintenance_wait_target_healthy() {
   local sleep_secs="${3:-10}"
   local tg_arn instance_id port state attempt
   tg_arn=$(deploy_maintenance__target_group_arn "$role")
-  instance_id=$(cat "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt" 2>/dev/null | tr -d '\r\n')
+  instance_id=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt" 2>/dev/null || true)
   [ -z "$instance_id" ] && {
     local asg_name
     asg_name=$(deploy_maintenance__asg_name "$role")

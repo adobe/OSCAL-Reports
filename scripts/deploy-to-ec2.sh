@@ -71,7 +71,6 @@ set -e
 # Service account for OSCAL app and cron (not root). EC2 secrets via AWS Secrets Manager (OSCAL_SECRETS_MODE=aws-sm).
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
-SVC_HOME="/var/lib/svc_ams-oscal"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -1182,7 +1181,6 @@ cleanup_deploy_exit() {
 }
 trap cleanup_deploy_exit EXIT
 
-PASS_MISSING_ANY=0
 # Blue first when deploying both so peer color serves traffic during each maintenance window.
 if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   deploy_role_with_maintenance "blue" "$BLUE_IP" || exit 1
