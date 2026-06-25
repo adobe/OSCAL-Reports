@@ -73,6 +73,15 @@ resource "aws_s3_object" "folder_config_blue" {
   etag         = md5("")
 }
 
+# Operator golden restore point (config.default); populated by publish-config-default-to-s3.sh — not cron.
+resource "aws_s3_object" "folder_config_default" {
+  bucket       = aws_s3_bucket.logs.id
+  key          = "config/default/"
+  content_type = "application/x-directory"
+  content      = ""
+  etag         = md5("")
+}
+
 # deploy-to-ec2.sh uploads application bits to installer/; EC2 pulls with aws s3 sync (see iam.tf).
 resource "aws_s3_object" "folder_installer" {
   bucket       = aws_s3_bucket.logs.id

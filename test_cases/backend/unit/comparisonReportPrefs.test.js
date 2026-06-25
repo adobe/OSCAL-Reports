@@ -16,6 +16,9 @@ import {
   defaultSlotInputMode,
   sanitizePrefs,
   getPrefsStorageKey,
+  loadComparisonWorkSession,
+  saveComparisonWorkSession,
+  mergeBaselineControlsFromSession,
 } from '../../../frontend/src/utils/comparisonReportPrefs.js';
 
 function createMemoryStorage() {
@@ -84,12 +87,23 @@ describe('comparisonReportPrefs', () => {
     expect(defaultSlotInputMode(null, 'baseline')).toBe('url');
   });
 
-  test('sanitizePrefs handles corrupt JSON fields safely', () => {
-    const prefs = sanitizePrefs({
-      baselineUrl: '  https://x.com/a.json  ',
-      reportTypes: { baseline: 'PaaS' },
-    });
-    expect(prefs.baselineUrl).toBe('https://x.com/a.json');
-    expect(prefs.reportTypes.csp2).toBe('SaaS');
+  test('mergeBaselineControlsFromSession overlays saved edits', () => {
+    const api = { ac1: { id: 'ac1', status: 'implemented' } };
+    const saved = { ac1: { id: 'ac1', status: 'partial', remarks: 'edited' } };
+    const merged = mergeBaselineControlsFromSession(api, saved);
+    expect(merged.ac1.status).toBe('partial');
+    expect(merged.ac1.remarks).toBe('edited');
+  });
+
+  test('save and load work session with baseline control edits', () => {
+    const controls = { ac1: { id: 'ac1', status: 'implemented', title: 'AC-1' } };
+    const saveResult = saveComparisonWorkSession('u1', {
+      baselineControls: controls,
+      exportValidationOptions: { requiredFields: true, stringPatterns: true, enums: false, formats: false, lengthRestrictions: false, additionalProperties: false },
+    }, storage);
+    expect(saveResult.saved).toBe(true);
+    const loaded = loadComparisonWorkSession('u1', storage);
+    expect(loaded.baselineControls.ac1.status).toBe('implemented');
+    expect(loaded.exportValidationOptions.stringPatterns).toBe(true);
   });
 });

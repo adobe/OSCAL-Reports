@@ -643,3 +643,235 @@ function extractSystemInfoFromSSP(sspData) {
   return systemInfo;
 }
 
+const IMPLEMENTATION_PROP_NAMES = new Set([
+  'implementation-status',
+  'catalog-control-title',
+  'catalog-control-description',
+  'group-title',
+  'control-group',
+  'responsible-party',
+  'adobe-team-responsible',
+  'control-owner',
+  'consumer-guidance',
+  'implementation-date',
+  'review-date',
+  'next-review-date',
+  'control-type',
+  'evidence',
+  'testing-objective',
+  'testing-procedure',
+  'testing-frequency',
+  'last-test-date',
+  'api-url',
+  'api-credential-id',
+  'api-response-data',
+  'api-data-history',
+  'risk-rating',
+  'frameworks',
+  'compensating-controls',
+  'exceptions',
+]);
+
+function readPropValue(props, name) {
+  const entry = (props || []).find((p) => p?.name === name);
+  return entry?.value != null ? String(entry.value) : '';
+}
+
+/**
+ * Extract catalog-shaped controls (title, description, parts, params, props) from embedded catalog.
+ * @param {Object} catalogRoot
+ * @returns {Array}
+ */
+function extractCatalogControlsFromEmbeddedCatalog(catalogRoot) {
+  const controls = [];
+  const catalog = catalogRoot?.catalog || catalogRoot;
+  if (!catalog) {
+    return controls;
+  }
+
+  const processGroup = (group, parentId = null) => {
+    if (group.controls) {
+      group.controls.forEach((control) => {
+        controls.push({
+          id: control.id,
+          class: control.class,
+          title: control.title,
+          description: extractControlDescription(control),
+          params: control.params || [],
+          props: control.props || [],
+          parts: control.parts || [],
+          groupId: group.id,
+          groupTitle: group.title,
+          parentId,
+        });
+        if (control.controls) {
+          control.controls.forEach((subControl) => {
+            controls.push({
+              id: subControl.id,
+              class: subControl.class,
+              title: subControl.title,
+              description: extractControlDescription(subControl),
+              params: subControl.params || [],
+              props: subControl.props || [],
+              parts: subControl.parts || [],
+              groupId: group.id,
+              groupTitle: group.title,
+              parentId: control.id,
+            });
+          });
+        }
+      });
+    }
+    if (group.groups) {
+      group.groups.forEach((nested) => processGroup(nested, group.id));
+    }
+  };
+
+  if (catalog.groups) {
+    catalog.groups.forEach((group) => processGroup(group));
+  }
+  if (catalog.controls) {
+    catalog.controls.forEach((control) => {
+      controls.push({
+        id: control.id,
+        class: control.class,
+        title: control.title,
+        description: extractControlDescription(control),
+        params: control.params || [],
+        props: control.props || [],
+        parts: control.parts || [],
+        groupId: null,
+        groupTitle: '',
+        parentId: null,
+      });
+    });
+  }
+
+  return controls;
+}
+
+/**
+ * Build catalog-control rows from an implemented-requirement (preserves parts/params/class).
+ * @param {Object} req
+ * @returns {Object|null}
+ */
+function implementedRequirementToCatalogControl(req) {
+  const id = req?.['control-id'] || req?.id;
+  if (!id) {
+    return null;
+  }
+  const props = Array.isArray(req.props) ? req.props : [];
+  const catalogOnlyProps = props.filter((p) => p?.name && !IMPLEMENTATION_PROP_NAMES.has(p.name));
+
+  return {
+    id,
+    class: req.class,
+    title: readPropValue(props, 'catalog-control-title') || req.title || '',
+    description: readPropValue(props, 'catalog-control-description') || extractDescription(req),
+    parts: req.parts || [],
+    params: req.params || [],
+    props: catalogOnlyProps,
+    groupTitle: readPropValue(props, 'group-title') || readPropValue(props, 'control-group') || '',
+  };
+}
+
+/**
+ * Catalog controls for export — embedded catalog, or implemented-requirements with OSCAL structure.
+ * @param {Object} sspData
+ * @returns {Array}
+ */
+export function buildCatalogControlsForExport(sspData) {
+  if (!sspData || typeof sspData !== 'object') {
+    return [];
+  }
+
+  if (sspData.catalog) {
+    return extractCatalogControlsFromEmbeddedCatalog(sspData.catalog);
+  }
+
+  const ssp = sspData['system-security-plan'] || sspData;
+  const reqs = ssp?.['control-implementation']?.['implemented-requirements'];
+  if (Array.isArray(reqs) && reqs.length > 0) {
+    return reqs.map(implementedRequirementToCatalogControl).filter(Boolean);
+  }
+
+  return extractControlsFromSSP(sspData).map((c) => ({
+    id: c.id,
+    title: c.catalogTitle || '',
+    description: c.catalogDescription || '',
+    parts: [],
+    params: [],
+    props: [],
+    groupTitle: c.groupTitle || '',
+  }));
+}
+
+/**
+ * Merge Multi-Report Comparison edits onto export controls without dropping catalog fields.
+ * @param {Array} controls
+ * @param {Object} controlEdits
+ * @returns {Array}
+ */
+export function applyMrcControlEdits(controls, controlEdits) {
+  if (!Array.isArray(controls)) {
+    return [];
+  }
+  if (!controlEdits || typeof controlEdits !== 'object' || Array.isArray(controlEdits)) {
+    return controls;
+  }
+
+  return controls.map((control) => {
+    const edit = controlEdits[control.id];
+    if (!edit || typeof edit !== 'object') {
+      return control;
+    }
+    const merged = { ...control };
+    for (const [key, value] of Object.entries(edit)) {
+      if (value !== undefined) {
+        merged[key] = value;
+      }
+    }
+    if (edit.catalogTitle) {
+      merged.title = edit.catalogTitle;
+    }
+    if (edit.catalogDescription) {
+      merged.description = edit.catalogDescription;
+    }
+    return merged;
+  });
+}
+
+/**
+ * Build generate-ssp payload from baseline SSP + optional MRC edits (same shape as main workflow).
+ * @param {Object} sspData
+ * @param {Object} [controlEdits]
+ * @returns {{ controls: Array, systemInfo: Object, metadata: Object }}
+ */
+export function prepareSspExportPayload(sspData, controlEdits = {}) {
+  const catalogControls = buildCatalogControlsForExport(sspData);
+  const compared = compareWithExistingSSP(catalogControls, sspData, null);
+  const controls = applyMrcControlEdits(
+    compared.controls.map(({
+      changeStatus,
+      changeReason,
+      changeDetails,
+      oldTitle,
+      oldDescription,
+      ...rest
+    }) => rest),
+    controlEdits,
+  );
+
+  const root = sspData['system-security-plan'] ? sspData : { 'system-security-plan': sspData };
+  const metadata = root['system-security-plan']?.metadata || {};
+  const catalogueUrl = root['system-security-plan']?.['import-profile']?.href || '';
+  const systemInfo = {
+    ...(compared.systemInfo || {}),
+    catalogueUrl,
+    title: compared.systemInfo?.title || metadata.title,
+    version: compared.systemInfo?.version || metadata.version,
+  };
+
+  return { controls, systemInfo, metadata };
+}
+

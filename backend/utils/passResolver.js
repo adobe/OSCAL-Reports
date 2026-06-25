@@ -4,7 +4,15 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
+import { getPassBundleSecret, isLogicalBundleKey, rawPassShow } from './passBundle.js';
+import {
+  extractOAuthPassClientSecret,
+  isOAuthClientSecretPassEntry,
+  normalizePassValue,
+} from './passOAuthSecret.js';
+
+export { extractOAuthPassClientSecret, normalizePassValue };
 
 const PASS_DISABLED = process.env.OSCAL_PASS_DISABLED === '1' || process.env.OSCAL_PASS_DISABLED === 'true';
 
@@ -21,45 +29,28 @@ export function isPassPointer(v) {
   return v && typeof v === 'object' && typeof v._pass === 'string' && v._pass.trim() !== '';
 }
 
-/** Pass entries that are OAuth client secrets: often stored with label on first line, secret on last. */
-const OAUTH_CLIENT_SECRET_ENTRIES = ['OSCAL/sso-oauth-okta-client-secret', 'OSCAL/sso-oauth-azure-client-secret', 'OSCAL/sso-oauth-google-client-secret', 'OSCAL/sso-oauth-github-client-secret'];
-
 /**
  * Run `pass show <entry>` and return the secret line.
- * For OAuth client secret entries, uses the last non-empty line if multiple lines (label + secret).
- * Otherwise returns the first line. Does not log the secret.
+ * OSCAL logical keys (OSCAL/smtp-password, etc.) resolve from PROD/OSCAL/AWS_SM bundle.
+ * Other pass paths (e.g. AWS/...) use legacy per-entry pass show.
  *
  * @param {string} entry - Pass entry name (e.g. OSCAL/smtp-password)
  * @returns {string}
  */
-/** Strip UTF-8 BOM and trim (pass / editors sometimes leave BOM on first line). */
-function normalizePassValue(value) {
-  if (typeof value !== 'string') return '';
-  return value.replace(/^\uFEFF/, '').trim();
-}
-
 export function passShow(entry) {
   if (PASS_DISABLED) {
     return '';
   }
-  const env = { ...process.env };
-  let storeDir = process.env.PASSWORD_STORE_DIR;
-  if (!storeDir && process.platform === 'linux') {
-    env.HOME = process.env.HOME || LINUX_SVC_HOME;
-    env.PASSWORD_STORE_DIR = LINUX_PASS_STORE;
-  } else if (storeDir) {
-    env.PASSWORD_STORE_DIR = storeDir;
+  if (isLogicalBundleKey(entry)) {
+    return getPassBundleSecret(entry);
   }
   try {
-    const out = execSync(`pass show ${JSON.stringify(entry)}`, {
-      encoding: 'utf8',
-      env,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    const out = rawPassShow(entry);
+    if (!out) return '';
     const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return '';
-    if (lines.length > 1 && OAUTH_CLIENT_SECRET_ENTRIES.includes(entry)) {
-      return normalizePassValue(lines[lines.length - 1]);
+    if (isOAuthClientSecretPassEntry(entry)) {
+      return extractOAuthPassClientSecret(lines);
     }
     return normalizePassValue(lines[0]);
   } catch (err) {

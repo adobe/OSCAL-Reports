@@ -116,8 +116,13 @@ output "alb_target_group_blue_arn" {
   value       = aws_lb_target_group.blue.arn
 }
 
+output "oscal_app_port" {
+  description = "TCP port for OSCAL on Green and Blue EC2 instances (same on both)"
+  value       = var.oscal_app_port
+}
+
 output "oscal_green_instance_id" {
-  description = "EC2 instance ID for OSCAL Green ASG member (port 3019); null until the ASG launches an instance."
+  description = "EC2 instance ID for OSCAL Green ASG member; null until the ASG launches an instance."
   value       = length(data.aws_instances.oscal_green_members.ids) > 0 ? data.aws_instances.oscal_green_members.ids[0] : null
 }
 
@@ -132,7 +137,7 @@ output "oscal_green_public_ip" {
 }
 
 output "oscal_blue_instance_id" {
-  description = "EC2 instance ID for OSCAL Blue ASG member (port 3020); null until the ASG launches an instance."
+  description = "EC2 instance ID for OSCAL Blue ASG member; null until the ASG launches an instance."
   value       = length(data.aws_instances.oscal_blue_members.ids) > 0 ? data.aws_instances.oscal_blue_members.ids[0] : null
 }
 
@@ -256,10 +261,22 @@ output "oscal_ec2_iam_role_arn" {
 
 output "bedrock_assume_role_arn" {
   description = "Cross-account Bedrock role ARN (Account B) when bedrock_cross_account_enabled and role ARN/account id are set"
-  value = var.bedrock_cross_account_enabled && local.bedrock_assume_role_arn != "" ? local.bedrock_assume_role_arn : null
+  value       = local.bedrock_assume_configured ? local.bedrock_assume_role_arn : null
+}
+
+output "bedrock_account_id" {
+  description = "Account B ID parsed from bedrock_assume_role_arn or bedrock_account_id variable"
+  value = local.bedrock_assume_configured ? (
+    var.bedrock_account_id != "" ? var.bedrock_account_id : try(regex("^arn:aws:iam::([0-9]+):role/", local.bedrock_assume_role_arn)[0], null)
+  ) : null
 }
 
 output "bedrock_cross_account_configured" {
-  description = "True when cross-account Bedrock variables are set (ExternalId is configured; value is non-sensitive boolean)"
+  description = "True when cross-account Bedrock is enabled with assume-role ARN (STS policy on EC2 role)"
+  value       = nonsensitive(local.bedrock_assume_configured)
+}
+
+output "bedrock_systemd_env_configured" {
+  description = "True when BEDROCK_ASSUME_ROLE_ARN and BEDROCK_EXTERNAL_ID are injected via user_data/systemd (requires bedrock_external_id in tfvars)"
   value       = nonsensitive(local.bedrock_cross_account_ready)
 }

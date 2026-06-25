@@ -50,6 +50,8 @@ git config core.hooksPath   # Should output: .githooks
 Development → Quality_Test → Pre_Prod → main
 ```
 
+**Current application release:** **1.7.22** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` before promoting to Pre_Prod/main.
+
 **main** accepts PRs from **Development**, **Quality_Test**, or **Pre_Prod**. Feature/custom branches cannot target main. Recommended: use Pre_Prod for staging validation first.
 
 ---
@@ -933,7 +935,7 @@ grep '"version"' package.json
 # https://github.com/keekar2022/OSCAL-Reports/blob/main/package.json
 
 # TrueNAS version
-ssh mkesharw@NAS01 "cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && grep '\"version\"' package.json"
+ssh mkesharw@nas.keekar.au "cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && grep '\"version\"' package.json"
 ```
 
 **Sync personal repo from Adobe:**

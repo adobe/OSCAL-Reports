@@ -7,6 +7,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  bedrockCredentialsReadyForTest,
+  credentialFieldDisplayValue,
+  credentialFieldHasVaultStorage,
+  CREDENTIAL_MASK,
+  getEffectiveAwsRegion,
+  hasCredentialValue,
+  isIamRoleBedrockMode,
+  normalizeAiConfigFromApi,
+} from '../utils/aiConfigHelpers.js';
 import './AIIntegration.css';
 
 function AIIntegration({ embedded = false }) {
@@ -27,6 +37,9 @@ function AIIntegration({ embedded = false }) {
     extensiveLogging: false, // When true, append AI telemetry to logs/ (e.g. ai-telemetry-*.jsonl)
     allowedUsersForAI: '',  // Comma-separated, max 5; only for mistral-api/aws-bedrock, e.g. *@adobe.com, mkesharw
     // AWS Bedrock specific
+    bedrockAuthMode: 'access-keys', // 'access-keys' | 'iam-role'
+    bedrockAssumeRoleArn: '',
+    bedrockExternalId: '',
     awsRegion: 'us-east-1',
     awsAccessKeyId: '',
     awsSecretAccessKey: '',
@@ -85,13 +98,13 @@ function AIIntegration({ embedded = false }) {
 
   useEffect(() => {
     if (aiConfig.provider === 'aws-bedrock') {
-      fetchBedrockModels(aiConfig.awsRegion || 'us-east-1');
+      fetchBedrockModels(getEffectiveAwsRegion(aiConfig));
     } else {
       setBedrockModels([]);
       setBedrockModelsError('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiConfig.provider, aiConfig.awsRegion]);
+  }, [aiConfig.provider, aiConfig.awsRegion, aiConfig.bedrockAuthMode, aiConfig.bedrockAssumeRoleArn]);
 
   const loadAIConfig = async () => {
     try {
@@ -107,11 +120,15 @@ function AIIntegration({ embedded = false }) {
         organizationName: '',
         extensiveLogging: false,
         allowedUsersForAI: '',
+        bedrockAuthMode: 'access-keys',
+        bedrockAssumeRoleArn: '',
+        bedrockExternalId: '',
         awsRegion: 'us-east-1',
         awsAccessKeyId: '',
         awsSecretAccessKey: '',
         bedrockModelId: 'mistral.mistral-large-2402-v1:0'
       };
+      config.bedrockAuthMode = config.bedrockAuthMode === 'iam-role' ? 'iam-role' : 'access-keys';
       
       // Migrate old format (url + port) to new format (full URL)
       if (config.port && !config.url.includes('://')) {
@@ -129,7 +146,7 @@ function AIIntegration({ embedded = false }) {
         config.allowedUsersForAI = '';
       }
       
-      setAiConfig(config);
+      setAiConfig(normalizeAiConfigFromApi(config));
       setMessage('');
       setTestResult(null);
       setAvailableModels([]);
@@ -142,12 +159,26 @@ function AIIntegration({ embedded = false }) {
     }
   };
 
+  const buildBedrockModelsQuery = (region) => {
+    const params = new URLSearchParams({ region: region.trim() });
+    if ((aiConfig.bedrockAuthMode || 'access-keys') === 'iam-role') {
+      params.set('bedrockAuthMode', 'iam-role');
+      if (aiConfig.bedrockAssumeRoleArn?.trim()) {
+        params.set('bedrockAssumeRoleArn', aiConfig.bedrockAssumeRoleArn.trim());
+      }
+      if (aiConfig.bedrockExternalId?.trim()) {
+        params.set('bedrockExternalId', aiConfig.bedrockExternalId.trim());
+      }
+    }
+    return params.toString();
+  };
+
   const fetchBedrockModels = async (region) => {
     if (!region || !region.trim()) return;
     setBedrockModelsLoading(true);
     setBedrockModelsError('');
     try {
-      const response = await axios.get(`/api/ai/bedrock-models?region=${encodeURIComponent(region)}`, getAuthConfig());
+      const response = await axios.get(`/api/ai/bedrock-models?${buildBedrockModelsQuery(region)}`, getAuthConfig());
       setBedrockModels(response.data?.models || []);
     } catch (error) {
       const msg = error.response?.data?.error || error.message || 'Could not load Bedrock models.';
@@ -172,17 +203,19 @@ function AIIntegration({ embedded = false }) {
       // Validate based on provider
       if (aiConfig.enabled) {
         if (aiConfig.provider === 'aws-bedrock') {
-          // AWS Bedrock validation (credentials may be in pass vault, so accept non-empty string or _pass)
-          if (!aiConfig.awsRegion || !aiConfig.awsRegion.trim()) {
+          if (!getEffectiveAwsRegion(aiConfig)) {
             throw new Error('AWS region is required for AWS Bedrock');
           }
-          const hasAccessKey = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) || aiConfig.awsAccessKeyId?._pass;
-          const hasSecretKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) || aiConfig.awsSecretAccessKey?._pass;
-          if (!hasAccessKey) {
-            throw new Error('AWS Access Key ID is required for AWS Bedrock');
-          }
-          if (!hasSecretKey) {
-            throw new Error('AWS Secret Access Key is required for AWS Bedrock');
+          const iamRoleMode = isIamRoleBedrockMode(aiConfig);
+          if (!iamRoleMode) {
+            const hasAccessKey = hasCredentialValue(aiConfig.awsAccessKeyId);
+            const hasSecretKey = hasCredentialValue(aiConfig.awsSecretAccessKey);
+            if (!hasAccessKey) {
+              throw new Error('AWS Access Key ID is required for AWS Bedrock (access key mode)');
+            }
+            if (!hasSecretKey) {
+              throw new Error('AWS Secret Access Key is required for AWS Bedrock (access key mode)');
+            }
           }
           if (!aiConfig.bedrockModelId || !aiConfig.bedrockModelId.trim()) {
             throw new Error('Bedrock Model ID is required for AWS Bedrock');
@@ -235,18 +268,24 @@ function AIIntegration({ embedded = false }) {
   };
 
   const handleTestConnection = async () => {
+    const effectiveRegion = getEffectiveAwsRegion(aiConfig);
     // Validate based on provider (uses current form values; Save is not required first)
     if (aiConfig.provider === 'aws-bedrock') {
-      const hasAccessKey = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
-        (aiConfig.awsAccessKeyId && typeof aiConfig.awsAccessKeyId === 'object' && aiConfig.awsAccessKeyId._pass);
-      const hasSecretKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
-        (aiConfig.awsSecretAccessKey && typeof aiConfig.awsSecretAccessKey === 'object' && aiConfig.awsSecretAccessKey._pass);
-      if (!aiConfig.awsRegion || !hasAccessKey || !hasSecretKey) {
+      if (!effectiveRegion) {
         setTestResult({
           success: false,
-          message: 'Configure AWS region and credentials in this form to test (or use Pass vault entries already saved on the server).'
+          message: 'Configure AWS region to test Bedrock.'
         });
         return;
+      }
+      if (!isIamRoleBedrockMode(aiConfig)) {
+        if (!hasCredentialValue(aiConfig.awsAccessKeyId) || !hasCredentialValue(aiConfig.awsSecretAccessKey)) {
+          setTestResult({
+            success: false,
+            message: 'Configure AWS access keys in this form to test (or use credentials already saved on the server).'
+          });
+          return;
+        }
       }
     } else {
       if (!aiConfig.url?.trim()) {
@@ -269,15 +308,18 @@ function AIIntegration({ embedded = false }) {
 
       // Add provider-specific parameters
       if (aiConfig.provider === 'aws-bedrock') {
-        requestBody.awsRegion = aiConfig.awsRegion;
-        // Send credentials only if they are real values (not masked/stored); backend will use pass-resolved config when masked
-        const mask = '********';
-        requestBody.awsAccessKeyId = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId !== mask)
-          ? aiConfig.awsAccessKeyId
-          : (aiConfig.awsAccessKeyId?._pass ? mask : '');
-        requestBody.awsSecretAccessKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey !== mask)
-          ? aiConfig.awsSecretAccessKey
-          : (aiConfig.awsSecretAccessKey?._pass ? mask : '');
+        requestBody.awsRegion = effectiveRegion;
+        requestBody.bedrockAuthMode = aiConfig.bedrockAuthMode || 'access-keys';
+        requestBody.bedrockAssumeRoleArn = aiConfig.bedrockAssumeRoleArn || '';
+        requestBody.bedrockExternalId = aiConfig.bedrockExternalId || '';
+        if (!isIamRoleBedrockMode(aiConfig)) {
+          requestBody.awsAccessKeyId = (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId !== CREDENTIAL_MASK)
+            ? aiConfig.awsAccessKeyId
+            : (hasCredentialValue(aiConfig.awsAccessKeyId) ? CREDENTIAL_MASK : '');
+          requestBody.awsSecretAccessKey = (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey !== CREDENTIAL_MASK)
+            ? aiConfig.awsSecretAccessKey
+            : (hasCredentialValue(aiConfig.awsSecretAccessKey) ? CREDENTIAL_MASK : '');
+        }
         requestBody.bedrockModelId = aiConfig.bedrockModelId;
       } else {
         requestBody.url = aiConfig.url;
@@ -521,7 +563,7 @@ function AIIntegration({ embedded = false }) {
                   </label>
                   <select
                     className="form-control"
-                    value={aiConfig.awsRegion || 'us-east-1'}
+                    value={getEffectiveAwsRegion(aiConfig)}
                     onChange={(e) => setAiConfig({ ...aiConfig, awsRegion: e.target.value })}
                     disabled={isReadOnly}
                   >
@@ -543,38 +585,92 @@ function AIIntegration({ embedded = false }) {
                 </div>
                 <div className="form-group">
                   <label>
-                    AWS Access Key ID *
-                    <small>Your AWS IAM access key with Bedrock permissions</small>
+                    AWS credential mode *
+                    <small>Access keys for local/dev; IAM role uses EC2 instance profile or cross-account assume role (see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md)</small>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     className="form-control"
-                    value={typeof aiConfig.awsAccessKeyId === 'string' ? aiConfig.awsAccessKeyId : (aiConfig.awsAccessKeyId?._pass ? '********' : '')}
-                    onChange={(e) => setAiConfig({ ...aiConfig, awsAccessKeyId: e.target.value })}
-                    placeholder={aiConfig.awsAccessKeyId?._pass ? '' : 'AKIAIOSFODNN7EXAMPLE'}
+                    value={aiConfig.bedrockAuthMode || 'access-keys'}
+                    onChange={(e) => setAiConfig({ ...aiConfig, bedrockAuthMode: e.target.value })}
                     disabled={isReadOnly}
-                  />
-                  {(typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId === '********') || aiConfig.awsAccessKeyId?._pass ? (
-                    <small className="form-text text-muted">Stored in pass vault</small>
-                  ) : null}
+                  >
+                    <option value="access-keys">Access key ID and secret</option>
+                    <option value="iam-role">IAM role (instance profile / assume role)</option>
+                  </select>
                 </div>
-                <div className="form-group">
-                  <label>
-                    AWS Secret Access Key *
-                    <small>Your AWS IAM secret key (stored securely)</small>
-                  </label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    value={typeof aiConfig.awsSecretAccessKey === 'string' ? aiConfig.awsSecretAccessKey : (aiConfig.awsSecretAccessKey?._pass ? '********' : '')}
-                    onChange={(e) => setAiConfig({ ...aiConfig, awsSecretAccessKey: e.target.value })}
-                    placeholder={aiConfig.awsSecretAccessKey?._pass ? '' : 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'}
-                    disabled={isReadOnly}
-                  />
-                  {(typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey === '********') || aiConfig.awsSecretAccessKey?._pass ? (
-                    <small className="form-text text-muted">Stored in pass vault</small>
-                  ) : null}
-                </div>
+                {(aiConfig.bedrockAuthMode || 'access-keys') === 'access-keys' && (
+                  <>
+                    <div className="form-group">
+                      <label>
+                        AWS Access Key ID *
+                        <small>IAM access key with Bedrock permissions</small>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={credentialFieldDisplayValue(aiConfig.awsAccessKeyId)}
+                        onChange={(e) => setAiConfig({ ...aiConfig, awsAccessKeyId: e.target.value })}
+                        placeholder={credentialFieldHasVaultStorage(aiConfig.awsAccessKeyId) ? '' : 'AKIAIOSFODNN7EXAMPLE'}
+                        disabled={isReadOnly}
+                      />
+                      {credentialFieldHasVaultStorage(aiConfig.awsAccessKeyId) ? (
+                        <small className="form-text text-muted">Stored in server secrets (pass or Secrets Manager)</small>
+                      ) : null}
+                    </div>
+                    <div className="form-group">
+                      <label>
+                        AWS Secret Access Key *
+                        <small>Stored securely (pass vault or Secrets Manager when available)</small>
+                      </label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        value={credentialFieldDisplayValue(aiConfig.awsSecretAccessKey)}
+                        onChange={(e) => setAiConfig({ ...aiConfig, awsSecretAccessKey: e.target.value })}
+                        placeholder={credentialFieldHasVaultStorage(aiConfig.awsSecretAccessKey) ? '' : 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'}
+                        disabled={isReadOnly}
+                      />
+                      {credentialFieldHasVaultStorage(aiConfig.awsSecretAccessKey) ? (
+                        <small className="form-text text-muted">Stored in server secrets (pass or Secrets Manager)</small>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+                {(aiConfig.bedrockAuthMode || 'access-keys') === 'iam-role' && (
+                  <>
+                    <div className="form-group">
+                      <label>
+                        Assume role ARN
+                        <small>Optional. Cross-account Bedrock role in Account B. Leave empty to use the EC2/instance profile only.</small>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={aiConfig.bedrockAssumeRoleArn || ''}
+                        onChange={(e) => setAiConfig({ ...aiConfig, bedrockAssumeRoleArn: e.target.value })}
+                        placeholder="arn:aws:iam::123456789012:role/OSCAL-BedrockCrossAccount"
+                        disabled={isReadOnly}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>
+                        External ID
+                        <small>Optional STS external ID (must match Account B trust policy). Can also be set via BEDROCK_EXTERNAL_ID on the server.</small>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={aiConfig.bedrockExternalId || ''}
+                        onChange={(e) => setAiConfig({ ...aiConfig, bedrockExternalId: e.target.value })}
+                        placeholder="Optional external ID"
+                        disabled={isReadOnly}
+                      />
+                    </div>
+                    <p className="form-text text-muted">
+                      IAM role mode uses the AWS default credential chain on the server (instance profile). If an assume role ARN is set, the app calls STS AssumeRole before invoking Bedrock.
+                    </p>
+                  </>
+                )}
                 <div className="form-group">
                   <label>
                     Bedrock Model ID *
@@ -616,7 +712,7 @@ function AIIntegration({ embedded = false }) {
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-secondary mt-1"
-                      onClick={() => fetchBedrockModels(aiConfig.awsRegion || 'us-east-1')}
+                      onClick={() => fetchBedrockModels(getEffectiveAwsRegion(aiConfig))}
                       disabled={isReadOnly}
                     >
                       Refresh models
@@ -715,13 +811,7 @@ function AIIntegration({ embedded = false }) {
                   testing ||
                   isReadOnly ||
                   (aiConfig.provider === 'aws-bedrock'
-                    ? (!aiConfig.awsRegion || !(
-                        (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
-                        (aiConfig.awsAccessKeyId?._pass)
-                      ) || !(
-                        (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
-                        (aiConfig.awsSecretAccessKey?._pass)
-                      ))
+                    ? !bedrockCredentialsReadyForTest(aiConfig)
                     : !aiConfig.url?.trim())
                 }
               >
@@ -733,13 +823,9 @@ function AIIntegration({ embedded = false }) {
                 disabled={
                   isReadOnly ||
                   (aiConfig.provider === 'aws-bedrock'
-                    ? (!aiConfig.awsRegion && !(
-                        (typeof aiConfig.awsAccessKeyId === 'string' && aiConfig.awsAccessKeyId.trim()) ||
-                        aiConfig.awsAccessKeyId?._pass
-                      ) && !(
-                        (typeof aiConfig.awsSecretAccessKey === 'string' && aiConfig.awsSecretAccessKey.trim()) ||
-                        aiConfig.awsSecretAccessKey?._pass
-                      ))
+                    ? (!getEffectiveAwsRegion(aiConfig) &&
+                        !hasCredentialValue(aiConfig.awsAccessKeyId) &&
+                        !hasCredentialValue(aiConfig.awsSecretAccessKey))
                     : !aiConfig.url)
                 }
               >

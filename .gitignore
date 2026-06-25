@@ -2,7 +2,7 @@
 node_modules/
 package-lock.json
 !backend/package-lock.json
-frontend/package-lock.json
+!frontend/package-lock.json
 
 # Build artifacts
 dist/
@@ -17,9 +17,20 @@ build/
 .env.development
 
 # Sensitive configuration files (CRITICAL - DO NOT COMMIT)
+# config/app — runtime only; *.example templates stay tracked
 config/app/config.json
 config/app/users.json
+config/app/config.json.backup
+config/app/users.json.backup
+config/app/*.backup
+config/app/config.json.tmp.*
+config/app/users.json.tmp.*
 config/app/okta_oidc_state.json
+config/app/local.oscal-report-generator.status.yml
+config/app/email_blocklist.json
+config/app/email_blacklist.json
+config/app/email_blocklist.json.backup
+config/app/email_blacklist.json.backup
 backend/okta-debug.ndjson
 backend/auth/users.json
 backend/config.json
@@ -99,12 +110,17 @@ volumes/
 *.bak
 *.backup
 *~
+backups/
+data/
 
-# SSL certificates (if any)
+# SSL certificates (if any) — keep CSRs/keys outside repo (e.g. ../OSCAL_Reports_data/tls/)
 *.pem
 # Public AWS RDS CA bundle (not a secret; used by backend for RDS TLS verification)
 !backend/database/rds-global-bundle.pem
+*.csr
 *.key
+oscal.csr
+oscal-private.key
 *.crt
 *.p12
 *.pfx
