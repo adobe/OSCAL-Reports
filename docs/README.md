@@ -36,6 +36,8 @@
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
+**Current release:** **1.7.21** (2026-06-25) — MRC export reliability and unified `generate-ssp` path, richer AI control suggestions, Generic OIDC `tlsRelaxed` for Docker/NAS. See [CHANGELOG.md](CHANGELOG.md#1721---2026-06-25).
+
 ---
 
 ### ☁️ AWS & cloud
@@ -161,4 +163,4 @@ To regenerate merged files from historical sources (only if those sources exist 
 
 ---
 
-**Version:** 1.7.20 · **Last updated:** June 2026
+**Version:** 1.7.21 · **Last updated:** June 2026

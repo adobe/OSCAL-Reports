@@ -153,8 +153,11 @@ Set **`TERRAFORM_DIR`** to your env (e.g. `export TERRAFORM_DIR=$PWD/terraform/e
 
 ```bash
 export TERRAFORM_DIR=$PWD/terraform/envs/aws4403   # if not already the default
-./scripts/deploy-to-ec2.sh
+./scripts/deploy-to-ec2.sh --update-s3   # upload repo to s3://<bucket>/installer/ (once per release)
+./scripts/deploy-to-ec2.sh --both        # Green + Blue pull installer/, build, restart (1.7.21+)
 ```
+
+**Release 1.7.21:** Installer manifest `.installer-build.json` on S3 records package version; instances reconcile `package.json` on pull. Before deploy, ensure SSO/config backups under `config/active/` are current—force sync on deploy can overwrite local `config.json` with the newest S3 copy.
 
 **Amazon Linux 2023 (Image Factory or native):** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 

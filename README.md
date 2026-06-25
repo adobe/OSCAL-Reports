@@ -96,10 +96,21 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ---
 
+## What's new in 1.7.21
+
+- **Multi-Report Comparison:** Export uses the same `generate-ssp` path as the main app; fixes gateway timeouts, validation modal dismiss, and `_ComplianceReport` filenames.
+- **AI suggestions:** Per-control prompts (catalog description, statement parts) so Gemma/Mistral outputs vary by control.
+- **Generic OIDC (Docker/NAS):** `tlsRelaxed` when Authentik TLS chain fails Node verification; EC2 production remains Okta-first.
+- **Deploy:** `keekar/oscal_reports:v1.7.21` on Docker Hub; EC2 via `./scripts/deploy-to-ec2.sh --update-s3` then `--both`.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1721---2026-06-25).
+
+---
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.20 (see root `package.json`) · **Last updated:** June 2026
+**Version:** 1.7.21 (see root `package.json`) · **Last updated:** June 2026

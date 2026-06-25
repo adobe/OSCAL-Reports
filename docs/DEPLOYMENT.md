@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.20  
+**Version**: 1.7.21  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -255,7 +255,7 @@ For TrueNAS deployments, we use:
 
 ```bash
 # SSH into TrueNAS
-ssh mkesharw@NAS01
+ssh mkesharw@nas.keekar.au
 cd /mnt/pool1/Documents/KACI-Apps
 
 # Clone Blue instance (Port 3020)
@@ -282,8 +282,8 @@ chmod +x scripts/install_from_dockerhub.sh
 - ✅ High availability (never both down)
 
 **Ports**:
-- Blue: http://nas.keekar.com:3020
-- Green: http://nas.keekar.com:3019
+- Blue: http://nas.keekar.au:3020
+- Green: http://nas.keekar.au:3019
 
 **Deployment Pattern**:
 ```
@@ -315,8 +315,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.20 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.20
+# ✓ Current version: 1.7.21 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.21
 # ✓ Versions match - no build needed
 ```
 
@@ -441,7 +441,7 @@ For **Blue**, use the same steps with container name `oscal-report-generator-blu
 
 After first deployment, configure via web UI:
 
-1. **Access Application**: http://nas.keekar.com:3020 (or :3019)
+1. **Access Application**: http://nas.keekar.au:3020 (or :3019)
 2. **Default Admin**: 
    - Username: `admin`
    - Password: `admin` (⚠️ Change immediately!)
@@ -451,6 +451,8 @@ After first deployment, configure via web UI:
    - API Gateways
 
 **Multi-Report Comparison URLs:** Report source URLs are entered on the **Multi-Report Comparison** screen (URL or file per slot). Last-used URLs are stored in the **user’s browser** (`localStorage`, keyed by user id)—not in Platform Settings or on the server. Other users do not see your saved URLs.
+
+**Multi-Report Comparison export (1.7.21):** Export uses the same **`generate-ssp`** pipeline as the main SSP workflow (`POST /api/prepare-ssp-export` then `POST /api/generate-ssp`) so edited controls and catalogue metadata are preserved. Work-in-progress slots are autosaved in the browser before export; validation is optional and no longer blocks export (avoids ALB 504 timeouts on large reports). Export filenames use the `_ComplianceReport` suffix.
 
 ### Configuration Files
 

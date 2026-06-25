@@ -1,8 +1,50 @@
 # Changelog
 
-## [1.7.20] - Unreleased
+## [1.7.21] - 2026-06-25
 
-Development baseline for release **1.7.20**. Add entries under Added / Changed / Fixed / Documentation as work lands.
+Release **1.7.21** ships Multi-Report Comparison (MRC) export reliability, unified SSP export with the main application, richer AI control suggestions, and Generic OIDC TLS options for Docker/NAS. EC2 (AMS Gov Cloud) continues Okta-first SSO; Docker image `keekar/oscal_reports:v1.7.21` is multi-arch (`linux/amd64`, `linux/arm64`).
+
+### Added
+
+- **`backend/utils/controlPromptContext.js`:** Shared helpers to build per-control prompt context (catalog title/description, statement parts, implementation status) for AI services.
+- **`frontend/src/utils/exportSsp.js`:** Shared client for `POST /api/generate-ssp` and `POST /api/prepare-ssp-export` used by the main app and MRC.
+- **`POST /api/prepare-ssp-export`:** Accepts baseline SSP JSON plus MRC control edits; returns the same payload shape the main export path uses before `generate-ssp`.
+- **`backend/sspComparisonV3.js`:** `buildCatalogControlsForExport`, `applyMrcControlEdits`, `prepareSspExportPayload` for full-fidelity MRC exports.
+- **`frontend/src/utils/comparisonReportPrefs.js`:** Browser-local MRC work-session autosave (`oscal_mrc_work_v1_<userId>`) so export can proceed without re-uploading slots.
+- **Generic_OIDC `tlsRelaxed`:** Provider flag and `OSCAL_GENERIC_OIDC_TLS_RELAXED` env override (`backend/utils/oidcHttpsAgent.js`) when the IdP serves an incomplete TLS chain (common with some Let's Encrypt deployments in Node.js Alpine).
+- **Unit tests:** `controlPromptContext.test.js`, `prepareSspExport.test.js`.
+
+### Fixed
+
+- **MRC export 504 / gateway timeout:** Export no longer blocks on full OSCAL validation; work session is autosaved before export; client timeout extended to five minutes.
+- **MRC validation modal:** Close (X), Escape, and backdrop dismiss work after validation (`ValidationStatus` `onClose` wired in MRC).
+- **MRC export filename:** Restored `_ComplianceReport` suffix (e.g. `ReportName_ComplianceReport_2026-06-25.json`).
+- **MRC export fidelity:** MRC uses the same `generate-ssp` pipeline as the main SSP workflow so catalog metadata and edited controls are not dropped on export.
+- **Generic OIDC on Docker/NAS:** Discovery and token calls succeed when `tlsRelaxed: true` is set for Authentik (`sso.keekar.au`) where Node/OpenSSL cannot verify the issuer chain.
+- **EC2 SSO / config retention:** Follow-up to 1.7.20 shared S3 config sync and AWS Secrets Manager bundle behaviour so Okta SSO settings persist across deploy and cron sync (operators should keep `config/active/` backups current before force deploy).
+
+### Changed
+
+- **AI suggestions (`gemmaService.js`, `mistralService.js`, `controlSuggestionEngine.js`):** Prompts include catalog description, control parts, and diverse implementation examples so suggestions vary by control instead of generic boilerplate.
+- **Mistral:** Reuses shared prompt context from `controlPromptContext.js` (aligned with Gemma).
+
+### Documentation
+
+- Version footers, deployment examples, and Docker Hub tags updated to **1.7.21**.
+- **`docs/OIDC_SSO_INTEGRATION.md`:** `tlsRelaxed` troubleshooting for Generic_OIDC.
+- **`docs/AI_INTEGRATION.md`:** Per-control prompt context (1.7.21).
+- **`docs/CHANGELOG.md`:** This release entry.
+
+### Deployment
+
+- **EC2:** `./scripts/deploy-to-ec2.sh --update-s3` then `./scripts/deploy-to-ec2.sh --both` (installer manifest **1.7.21**).
+- **Docker Hub:** `./scripts/build-and-push-dockerhub.sh v1.7.21` → `keekar/oscal_reports:v1.7.21` and `latest`.
+
+---
+
+## [1.7.20] - 2026-06-03
+
+Development baseline for release **1.7.20**.
 
 ### Added
 
@@ -27,7 +69,7 @@ Development baseline for release **1.7.20**. Add entries under Added / Changed /
 ### Documentation
 
 - **`docs/OIDC_SSO_INTEGRATION.md`:** Generic_OIDC (Authentik) and login-page policy.
-- **`docs/AWS_OPERATIONS.md`**, **`scripts/README.md`:** EC2 secrets, debug script inventory, version **1.7.20** footers.
+- **`docs/AWS_OPERATIONS.md`**, **`scripts/README.md`:** EC2 secrets, debug script inventory, version footers.
 
 ## [1.7.19] - 2026-06-03
 

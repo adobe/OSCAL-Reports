@@ -13,7 +13,7 @@ import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
 import { generateCCMExport } from './ccmExport.js';
 import { generatePDFReport } from './pdfExport.js';
-import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV3.js';
+import { compareWithExistingSSP, extractControlsFromSSP, prepareSspExportPayload } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
 import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigForSave, getConfigDir, applyDatabaseEnvOverrides } from './configManager.js';
@@ -4526,6 +4526,24 @@ function filterOSCALImplementedRequirement(implementedReq) {
   return filtered;
 }
 
+// Prepare export payload from baseline SSP (Multi-Report Comparison and other SSP-only flows)
+app.post('/api/prepare-ssp-export', async (req, res) => {
+  try {
+    const { existingSSP, controlEdits = {} } = req.body;
+    if (!existingSSP || typeof existingSSP !== 'object') {
+      return res.status(400).json({ error: 'existingSSP is required' });
+    }
+    const payload = prepareSspExportPayload(existingSSP, controlEdits);
+    return res.json(payload);
+  } catch (error) {
+    console.error('Error preparing SSP export:', error.message);
+    return res.status(500).json({
+      error: 'Failed to prepare SSP export',
+      details: error.message,
+    });
+  }
+});
+
 // Generate OSCAL SSP
 // OWASP API Security: Implements request size limits to prevent DoS attacks
 app.post('/api/generate-ssp', async (req, res) => {
@@ -4780,8 +4798,8 @@ app.post('/api/generate-ssp', async (req, res) => {
             
             // Add catalog control title and description as props only if "No Additional Properties" is NOT selected
             if (!validationOptions.additionalProperties) {
-              const titleValue = sanitizeOSCALString(control.title, true);
-              const descValue = sanitizeOSCALString(control.description, true);
+              const titleValue = sanitizeOSCALString(control.title || control.catalogTitle, true);
+              const descValue = sanitizeOSCALString(control.description || control.catalogDescription, true);
               
               // Only add if not placeholder (meaningful data)
               if (titleValue && titleValue !== OSCAL_EMPTY_PLACEHOLDER) {

@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.20**)  
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.21**)  
 **Last Updated**: April 2026
 
 ---
@@ -1234,9 +1234,8 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 - Cryptographic verification
 
 #### 10. **Multi-Report Comparison Enhancements**
-- Establish links between controls in edit mode
-- Track changes across multiple reports
-- Visual diff highlighting
+- **Shipped in 1.7.21:** Unified export via `generate-ssp`, work-session autosave, validation modal fixes, `_ComplianceReport` filenames.
+- **Future:** Establish links between controls in edit mode; track changes across multiple reports; visual diff highlighting.
 
 ---
 
@@ -1271,6 +1270,12 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 1.7.21 (June 2026)
+- Multi-Report Comparison export reliability and shared SSP export path
+- Per-control AI suggestion prompts (`controlPromptContext.js`)
+- Generic OIDC `tlsRelaxed` for Docker/NAS TLS chain issues
+- Docker image `keekar/oscal_reports:v1.7.21` (multi-arch)
 
 ### Version 2.0.0 (December 2025)
 - Mistral 7B AI integration for implementation text generation

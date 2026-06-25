@@ -27,6 +27,7 @@ import IntegrityWarning from './components/IntegrityWarning';
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
 import buildInfo from './utils/buildInfo';
 import { exportErrorMessage } from './utils/exportErrorMessage';
+import { exportSspJsonDownload, complianceReportFileName } from './utils/exportSsp.js';
 import './App.css';
 
 function App() {
@@ -487,12 +488,7 @@ function App() {
   };
 
   // Helper function to generate filename with system name and date
-  const generateFileName = (extension) => {
-    const systemName = systemInfo.systemName || 'System';
-    const sanitizedName = systemName.replace(/[^a-zA-Z0-9]/g, '_'); // Replace special chars with underscore
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    return `${sanitizedName}_ComplianceReport_${today}.${extension}`;
-  };
+  const generateFileName = (extension) => complianceReportFileName(systemInfo.systemName, extension);
 
   const handleExportSSP = async (validationOptions = {}) => {
     setExportingType('oscal');
@@ -500,25 +496,15 @@ function App() {
     setError('');
     
     try {
-      const response = await axios.post('/api/generate-ssp', {
+      await exportSspJsonDownload({
         metadata: catalogue?.catalog?.metadata || catalogue?.metadata,
         controls,
         systemInfo: {
           ...systemInfo,
-          catalogueUrl  // Include catalogueUrl so it can be saved in import-profile.href
+          catalogueUrl,
         },
-        validationOptions  // Pass validation options to backend
+        validationOptions,
       });
-
-      const blob = new Blob([JSON.stringify(response.data, null, 2)], {
-        type: 'application/json'
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = generateFileName('json');
-      link.click();
-      window.URL.revokeObjectURL(url);
     } catch (err) {
       if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
         setExportingType(null);

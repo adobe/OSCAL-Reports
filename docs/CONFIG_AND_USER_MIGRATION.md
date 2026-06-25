@@ -86,7 +86,7 @@ Green and Blue are **separate EC2 instances**; both use the **same app port** (*
 
 ### TrueNAS / Docker (legacy, same host)
 
-On TrueNAS (e.g. truenas.keekar.com) or any host running **multiple OSCAL containers on one machine**, the deploy scripts historically used **different host ports** so two containers could bind simultaneously:
+On TrueNAS (e.g. truenas.keekar.au) or any host running **multiple OSCAL containers on one machine**, the deploy scripts historically used **different host ports** so two containers could bind simultaneously:
 
 | Port | Instance | Container name                 | Data directory / volume      |
 |------|----------|--------------------------------|------------------------------|
@@ -188,7 +188,7 @@ BLUE_PASSWORD='...' GREEN_PASSWORD='...' ./scripts/consolidate-users.sh --auto
 
 ## Recovery After Accidental Rollback
 
-If Blue (or Green) was rolled back to an old version and **config and users were wiped**, you can recover in one of two ways. Run these steps **on the host** where the instance runs (e.g. 192.168.1.200 for blue.oscal.keekar.com), from the **deployment directory** that contains `scripts/` and `data-blue/` (or `data-green/`).
+If Blue (or Green) was rolled back to an old version and **config and users were wiped**, you can recover in one of two ways. Run these steps **on the host** where the instance runs (e.g. 192.168.1.200 for blue.oscal.keekar.au), from the **deployment directory** that contains `scripts/` and `data-blue/` (or `data-green/`).
 
 ### Option 1: Restore from deploy backup
 
@@ -222,7 +222,7 @@ If you have a backup tarball or files elsewhere:
 
 ### Verification
 
-- Open https://blue.oscal.keekar.com (or http://192.168.1.200:3020).
+- Open https://blue.oscal.keekar.au (or http://192.168.1.200:3020).
 - Log in with an existing user.
 - Check Admin → Configuration and user list.
 
