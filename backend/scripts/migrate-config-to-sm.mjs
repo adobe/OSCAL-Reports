@@ -25,6 +25,7 @@ import {
   getSecret,
 } from '../utils/secretsManager.js';
 import { isPassPointer, passShow } from '../utils/passResolver.js';
+import { isCfgEncPointer, decryptConfigSecret } from '../utils/configFieldCrypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +46,14 @@ function readPlainSecret(value, smEntry) {
   if (isPassPointer(value)) {
     const resolved = (passShow(value._pass) || '').trim();
     return resolved || null;
+  }
+  if (isCfgEncPointer(value)) {
+    try {
+      const plain = decryptConfigSecret(value).trim();
+      return plain || null;
+    } catch (_) {
+      return null;
+    }
   }
   return null;
 }

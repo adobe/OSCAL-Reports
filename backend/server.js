@@ -9,14 +9,13 @@ import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import axios from './utils/safeAxios.js';
 import https from 'https';
-import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
-import { generateCCMExport } from './ccmExport.js';
+import { generateAcscExcelExport, UNIFIED_ACSC_EXCEL_FILENAME } from './acscExcelExport.js';
 import { generatePDFReport } from './pdfExport.js';
 import { compareWithExistingSSP, extractControlsFromSSP, prepareSspExportPayload } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
-import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigForSave, getConfigDir, applyDatabaseEnvOverrides } from './configManager.js';
+import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigForSave, getConfigDir, applyDatabaseEnvOverrides, ensureConfigSecretsProtected } from './configManager.js';
 import { testConnection, connectPgClient, ensureAdobeTeamsTable, getAdobeTeamOptions } from './database/dbClient.js';
 import { syncExportToDatabase } from './database/exportSync.js';
 import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
@@ -24,6 +23,7 @@ import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMappi
 import { initializeSecretsCache, resolveSecretPointer, isAwsSmMode } from './utils/secretsManager.js';
 import { MASK, isSecretPointer } from './utils/sensitiveConfigKeys.js';
 import { isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
+import { isStoredSecretEnvelope, resolveStoredSecretValue, coalesceSecretForTest, maskSensitiveConfigForClient } from './utils/resolveStoredSecret.js';
 import { oidcAxiosRequestOptions } from './utils/oidcHttpsAgent.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
@@ -2306,6 +2306,11 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
     const secretWarnings = [...(passErrors || []), ...(smErrors || [])];
     if (secretWarnings.length > 0) {
       console.warn('⚠️ Secret store warnings for SSO config:', secretWarnings);
+      return res.status(503).json({
+        error: 'Unable to store secrets securely',
+        message: 'Secret storage is temporarily unavailable. Configuration was not saved.',
+        secretWarnings,
+      });
     }
     const saveResult = await saveConfig(toSave);
 
@@ -2925,12 +2930,15 @@ app.post('/api/messaging/test-email', authenticate, requireRole(ROLES.PLATFORM_A
       });
     }
     const resolved = getResolvedConfig();
+    const raw = loadConfig();
     const emailConfig = {
       ...resolved.messagingConfig?.email,
       ...bodyEmailConfig,
-      smtpPassword: isSecretPointer(bodyEmailConfig.smtpPassword)
-        ? (resolved.messagingConfig?.email?.smtpPassword ?? '')
-        : (bodyEmailConfig.smtpPassword ?? resolved.messagingConfig?.email?.smtpPassword ?? '')
+      smtpPassword: coalesceSecretForTest(
+        bodyEmailConfig.smtpPassword,
+        resolved.messagingConfig?.email?.smtpPassword,
+        raw.messagingConfig?.email?.smtpPassword
+      ),
     };
     const { testEmailConfig } = await import('./messagingService.js');
     const result = await testEmailConfig(emailConfig);
@@ -2958,12 +2966,15 @@ app.post('/api/messaging/test-slack', authenticate, requireRole(ROLES.PLATFORM_A
       });
     }
     const resolved = getResolvedConfig();
+    const raw = loadConfig();
     const slackConfig = {
       ...resolved.messagingConfig?.slack,
       ...bodySlackConfig,
-      webhookUrl: isSecretPointer(bodySlackConfig.webhookUrl)
-        ? (resolved.messagingConfig?.slack?.webhookUrl ?? '')
-        : (bodySlackConfig.webhookUrl ?? resolved.messagingConfig?.slack?.webhookUrl ?? '')
+      webhookUrl: coalesceSecretForTest(
+        bodySlackConfig.webhookUrl,
+        resolved.messagingConfig?.slack?.webhookUrl,
+        raw.messagingConfig?.slack?.webhookUrl
+      ),
     };
     const { testSlackConfig } = await import('./messagingService.js');
     const result = await testSlackConfig(slackConfig);
@@ -3148,17 +3159,7 @@ app.get('/api/settings', optionalAuth, (req, res) => {
   try {
     const raw = loadConfig();
     const config = JSON.parse(JSON.stringify(raw));
-    // Mask Bedrock credentials for client when stored in pass/SM (pointer or plaintext).
-    // Do not require vault resolve at read time — empty resolve must not clear stored pointers or the UI disables Test Connection.
     if (config.aiConfig) {
-      for (const key of ['awsAccessKeyId', 'awsSecretAccessKey']) {
-        const v = config.aiConfig[key];
-        if (typeof v === 'string' && v.trim()) {
-          config.aiConfig[key] = MASK;
-        } else if (isSecretPointer(v)) {
-          config.aiConfig[key] = MASK;
-        }
-      }
       if (!config.aiConfig.awsRegion || !String(config.aiConfig.awsRegion).trim()) {
         config.aiConfig.awsRegion = 'us-east-1';
       }
@@ -3166,26 +3167,17 @@ app.get('/api/settings', optionalAuth, (req, res) => {
         config.aiConfig.bedrockAuthMode = 'access-keys';
       }
     }
-    // Merge OSCAL_DATABASE_* env (e.g. Terraform EC2) so GUI reflects IAM / host without editing config.json
     applyDatabaseEnvOverrides(config);
-    // Mask database password for client (IAM mode does not use a static password)
-    if (config.databaseConfig) {
-      if (config.databaseConfig.authMode === 'iam') {
-        config.databaseConfig.password = '';
-      } else {
-        const v = config.databaseConfig.password;
-        if (typeof v === 'string' && v.trim()) {
-          config.databaseConfig.password = MASK;
-        } else if (isSecretPointer(v)) {
-          try {
-            const resolved = resolveSecretPointer(v);
-            config.databaseConfig.password = (resolved && resolved.trim()) ? MASK : '';
-          } catch {
-            config.databaseConfig.password = '';
-          }
-        }
-      }
+    if (config.databaseConfig?.authMode === 'iam') {
+      config.databaseConfig.password = '';
     }
+    const skipMask = config.databaseConfig?.authMode === 'iam'
+      ? ['databaseConfig.password']
+      : [];
+    if (config.aiConfig?.bedrockAuthMode === 'iam-role') {
+      skipMask.push('aiConfig.awsAccessKeyId', 'aiConfig.awsSecretAccessKey');
+    }
+    maskSensitiveConfigForClient(config, { skipPaths: skipMask });
     console.log('📖 Settings loaded and sent to client');
     res.json(config);
   } catch (error) {
@@ -3272,6 +3264,11 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
     const secretWarnings = [...(passErrors || []), ...(smErrors || [])];
     if (secretWarnings.length > 0) {
       console.warn('⚠️ Secret store warnings for settings:', secretWarnings);
+      return res.status(503).json({
+        error: 'Unable to store secrets securely',
+        message: 'Secret storage is temporarily unavailable. Settings were not saved.',
+        secretWarnings,
+      });
     }
     
     // Save configuration with disk verification
@@ -3616,7 +3613,7 @@ app.post('/api/fetch-catalogue', async (req, res) => {
     const catalogue = response.data;
     
     // Extract controls from the catalogue
-    const controls = extractControls(catalogue);
+    const controls = extractControlsWithIsmMetadata(catalogue);
     
     res.json({
       catalogue,
@@ -4215,82 +4212,9 @@ app.post('/api/import-ccm', async (req, res) => {
   }
 });
 
-// Extract controls from OSCAL catalogue
+// Extract controls from OSCAL catalogue (includes ISM metadata from catalog props)
 function extractControls(catalogue) {
-  const controls = [];
-  const catalog = catalogue.catalog || catalogue;
-  
-  if (!catalog) {
-    return controls;
-  }
-
-  // Process groups and controls
-  const processGroup = (group, parentId = null) => {
-    if (group.controls) {
-      group.controls.forEach(control => {
-        controls.push({
-          id: control.id,
-          class: control.class,
-          title: control.title,
-          description: extractControlDescription(control),
-          params: control.params || [],
-          props: control.props || [],
-          parts: control.parts || [],
-          groupId: group.id,
-          groupTitle: group.title,
-          parentId: parentId
-        });
-
-        // Process sub-controls
-        if (control.controls) {
-          control.controls.forEach(subControl => {
-            controls.push({
-              id: subControl.id,
-              class: subControl.class,
-              title: subControl.title,
-              description: extractControlDescription(subControl),
-              params: subControl.params || [],
-              props: subControl.props || [],
-              parts: subControl.parts || [],
-              groupId: group.id,
-              groupTitle: group.title,
-              parentId: control.id
-            });
-          });
-        }
-      });
-    }
-
-    // Process nested groups
-    if (group.groups) {
-      group.groups.forEach(nestedGroup => processGroup(nestedGroup, group.id));
-    }
-  };
-
-  // Process all groups
-  if (catalog.groups) {
-    catalog.groups.forEach(group => processGroup(group));
-  }
-
-  // Process controls at root level
-  if (catalog.controls) {
-    catalog.controls.forEach(control => {
-      controls.push({
-        id: control.id,
-        class: control.class,
-        title: control.title,
-        description: extractControlDescription(control),
-        params: control.params || [],
-        props: control.props || [],
-        parts: control.parts || [],
-        groupId: null,
-        groupTitle: null,
-        parentId: null
-      });
-    });
-  }
-
-  return controls;
+  return extractControlsWithIsmMetadata(catalogue);
 }
 
 // Helper function to extract control description from parts
@@ -5076,7 +5000,7 @@ app.post('/api/generate-sar', async (req, res) => {
 // Generate Cloud Control Matrix export
 app.post('/api/generate-ccm', async (req, res) => {
   try {
-    const { controls, systemInfo } = req.body;
+    const { controls, systemInfo, includeExtensions = true } = req.body;
 
     const limitErr = validateExportGenerationLimits(controls, undefined);
     if (limitErr) {
@@ -5100,13 +5024,13 @@ app.post('/api/generate-ccm', async (req, res) => {
       throw syncErr;
     }
 
-    const workbook = await generateCCMExport(controls, systemInfo);
+    const workbook = await generateAcscExcelExport(controls, systemInfo, { includeExtensions });
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=cloud-control-matrix.xlsx');
+    res.setHeader('Content-Disposition', `attachment; filename=${UNIFIED_ACSC_EXCEL_FILENAME}`);
     res.send(buffer);
   } catch (error) {
     console.error('Error generating CCM:', error.message);
@@ -5161,7 +5085,7 @@ app.post('/api/generate-pdf', async (req, res) => {
 // Generate Excel export
 app.post('/api/generate-excel', async (req, res) => {
   try {
-    const { controls, systemInfo } = req.body;
+    const { controls, systemInfo, includeExtensions = true } = req.body;
 
     const limitErr = validateExportGenerationLimits(controls, undefined);
     if (limitErr) {
@@ -5185,73 +5109,12 @@ app.post('/api/generate-excel', async (req, res) => {
       throw syncErr;
     }
 
-    const workbook = new ExcelJS.Workbook();
-    
-    // System Information sheet
-    const systemSheet = workbook.addWorksheet('System Information');
-    systemSheet.columns = [
-      { header: 'Field', key: 'field', width: 30 },
-      { header: 'Value', key: 'value', width: 50 }
-    ];
+    const workbook = await generateAcscExcelExport(controls, systemInfo, { includeExtensions });
 
-    systemSheet.addRows([
-      { field: 'System Name', value: systemInfo.systemName || '' },
-      { field: 'System ID', value: systemInfo.systemId || '' },
-      { field: 'Description', value: systemInfo.description || '' },
-      { field: 'Organisation', value: systemInfo.organization || '' },
-      { field: 'System Owner', value: systemInfo.systemOwner || '' },
-      { field: 'Assessor Details', value: systemInfo.assessorDetails || '' },
-      { field: 'CSP IaaS Provider', value: systemInfo.cspIaaS || '' },
-      { field: 'CSP PaaS Provider', value: systemInfo.cspPaaS || '' },
-      { field: 'CSP SaaS Provider', value: systemInfo.cspSaaS || '' },
-      { field: 'Security Level', value: systemInfo.securityLevel || '' },
-      { field: 'Status', value: systemInfo.status || '' },
-      { field: 'Catalogue URL', value: systemInfo.catalogueUrl || '' }
-    ]);
-
-    // Style the header
-    systemSheet.getRow(1).font = { bold: true };
-    systemSheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }
-    };
-
-    // Controls sheet
-    const controlsSheet = workbook.addWorksheet('Controls Implementation');
-    controlsSheet.columns = [
-      { header: 'Control ID', key: 'id', width: 15 },
-      { header: 'Control Title', key: 'title', width: 40 },
-      { header: 'Group', key: 'group', width: 20 },
-      { header: 'Implementation Status', key: 'status', width: 20 },
-      { header: 'Implementation Description', key: 'implementation', width: 50 },
-      { header: 'Remarks', key: 'remarks', width: 30 }
-    ];
-
-    controls.forEach(control => {
-      controlsSheet.addRow({
-        id: control.id,
-        title: control.title,
-        group: control.groupTitle || '',
-        status: control.status || 'Not Assessed',
-        implementation: control.implementation || '',
-        remarks: control.remarks || ''
-      });
-    });
-
-    // Style the header
-    controlsSheet.getRow(1).font = { bold: true };
-    controlsSheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }
-    };
-
-    // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=ssp-export.xlsx');
+    res.setHeader('Content-Disposition', `attachment; filename=${UNIFIED_ACSC_EXCEL_FILENAME}`);
     res.send(buffer);
   } catch (error) {
     console.error('Error generating Excel:', error.message);
@@ -5462,12 +5325,12 @@ app.get('/api/jobs/:jobId/download', (req, res) => {
         
       case JOB_TYPE.EXCEL_EXPORT:
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        filename = 'ssp-export.xlsx';
+        filename = UNIFIED_ACSC_EXCEL_FILENAME;
         break;
         
       case JOB_TYPE.CCM_EXPORT:
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        filename = 'cloud-control-matrix.xlsx';
+        filename = UNIFIED_ACSC_EXCEL_FILENAME;
         break;
         
       default:
@@ -6691,6 +6554,34 @@ const startServer = async () => {
         }
       } catch (secretsErr) {
         console.warn('⚠️ Secrets Manager cache init error:', secretsErr.message);
+      }
+
+      if (process.env.NODE_ENV !== 'test') {
+        try {
+          const protection = await ensureConfigSecretsProtected({
+            refusePlaintext: isAwsSmMode(),
+            logger: (level, message, attrs) => {
+              const line = attrs ? `${message} ${JSON.stringify(attrs)}` : message;
+              if (level === 'error') console.error(line);
+              else if (level === 'warn') console.warn(line);
+              else console.log(line);
+            },
+          });
+          if (!protection.ok) {
+            const msg = 'Plaintext secrets detected in config and could not be migrated securely';
+            console.error(`❌ ${msg}`, protection.errors);
+            if (isAwsSmMode()) {
+              throw new Error(msg);
+            }
+          } else if (protection.migrated?.length > 0) {
+            console.log(`✅ Migrated ${protection.migrated.length} config secret(s) to secure storage`);
+          }
+        } catch (protectErr) {
+          console.error('❌ Config secrets protection failed:', protectErr.message);
+          if (isAwsSmMode()) {
+            throw protectErr;
+          }
+        }
       }
       
       // Set server timeout to allow for long-running AI requests

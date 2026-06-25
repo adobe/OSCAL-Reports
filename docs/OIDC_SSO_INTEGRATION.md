@@ -77,9 +77,9 @@ This section summarizes the **SSO/OIDC patterns and best practices** implemented
 
 | Practice | Implementation |
 |----------|-----------------|
-| **Pass vault (preferred)** | When [pass](https://www.passwordstore.org/) is available, saving the Okta client secret in the GUI stores it in pass; only a `_pass` pointer is written to config. At runtime the app resolves the pointer. |
-| **Fallback (no pass)** | If pass is not installed or unavailable, the secret is stored as plaintext in config; the API may warn. |
-| **Env override** | `OSCAL_OKTA_CLIENT_SECRET` on the server overrides config/pass (e.g. for EC2 or containers where pass is not used). |
+| **Encrypted config (_cfgenc)** | Default for local/Docker: saving secrets in the GUI writes `{ "_cfgenc": "v1$..." }` to config (requires `OSCAL_CONFIG_FIELD_SECRET` or `SESSION_SECRET`). |
+| **AWS SM (EC2)** | Production uses `{ "_sm": "..." }` pointers; secrets live in the SM bundle. Saves fail if SM is unavailable. |
+| **Legacy pass (optional)** | `_pass` pointers are migrated to `_cfgenc` or SM on startup; pass sync scripts are operator-only. |
 | **API masking** | Client secrets are never returned to the client; the Settings API returns masked values or placeholders. |
 
 ---
@@ -285,9 +285,9 @@ The app reads groups from the **userinfo** response and from the **access token*
 
 ### How secrets are stored
 
-- **With pass:** If the server has [pass](https://www.passwordstore.org/) and the store is available, saving the Okta client secret in the GUI stores it in pass and only a `_pass` pointer is written to config. At runtime the app resolves the pointer and uses the secret.
-- **Without pass (e.g. EC2):** If pass is not installed or not available, saving the client secret in the GUI stores it as **plaintext in config**. The API may return a warning that the secret was stored in config.
-- **Env override:** Setting `OSCAL_OKTA_CLIENT_SECRET` on the server overrides the config/pass value (e.g. systemd `Environment=OSCAL_OKTA_CLIENT_SECRET=...`).
+- **With _cfgenc (local/Docker):** Saving the Okta client secret in the GUI encrypts it into config (`_cfgenc` envelope). Requires `OSCAL_CONFIG_FIELD_SECRET` or `SESSION_SECRET`.
+- **With AWS SM (EC2):** Saving stores the secret in the SM bundle; config holds `{ "_sm": "OSCAL/sso-oauth-okta-client-secret" }` only.
+- **Env override:** Setting `OSCAL_OKTA_CLIENT_SECRET` on the server overrides the config value (e.g. systemd `Environment=OSCAL_OKTA_CLIENT_SECRET=...`).
 - **Okta domain:** You can enter the domain with or without `https://` in the GUI; the app normalizes it to hostname only when saving.
 
 ---
@@ -314,16 +314,15 @@ Any **backend** OIDC-related HTTP client code that uses **Axios** must import **
 
 ---
 
-## Local pass bundle (1.7.22)
+## Local _cfgenc and optional pass sync
 
-On the **operator laptop** (and local/Docker with `OSCAL_SECRETS_MODE=config`), OAuth client secrets and other sensitive config values are stored in a **single pass entry** **`PROD/OSCAL/AWS_SM`** — the same `{ entries, _meta }` JSON shape as the AWS Secrets Manager bundle on EC2. `config.json` still uses logical pointers such as `{ "_pass": "OSCAL/sso-oauth-okta-client-secret" }`; the backend resolves them from the bundle via **`backend/utils/passBundle.js`**.
+On **local/Docker** (`OSCAL_SECRETS_MODE=config`), OAuth client secrets and other sensitive config values are stored as **`_cfgenc`** envelopes in `config.json` (same PBKDF2 + AES-256-GCM stack as user password hashing). Set **`OSCAL_CONFIG_FIELD_SECRET`** or **`SESSION_SECRET`**.
 
-- **Migrate legacy entries:** `./scripts/debug/migrate-pass-entries-to-bundle.sh --dry-run` then `--apply`
-- **Sync laptop ↔ SM:** `./scripts/debug/push-pass-to-secrets-manager.sh`, `./scripts/debug/pull-secrets-manager-to-pass.sh`
-- **Override entry name:** `OSCAL_PASS_BUNDLE_ENTRY` (default `PROD/OSCAL/AWS_SM`)
-- **EC2 production:** Unchanged — AWS SM only; no per-instance pass vault
+- **Migrate legacy plaintext/_pass:** `node backend/scripts/migrate-config-to-cfgenc.mjs` (runs automatically in Docker entrypoint)
+- **Optional laptop ↔ SM sync:** `./scripts/debug/push-pass-to-secrets-manager.sh`, `./scripts/debug/pull-secrets-manager-to-pass.sh` (operators only; pass not required for app runtime)
+- **EC2 production:** AWS SM only; startup auto-migrates plaintext/`_cfgenc`/`_pass` to SM
 
-See [DEPLOYMENT.md](DEPLOYMENT.md#sensitive-settings-and-pass) and [AWS_OPERATIONS.md](AWS_OPERATIONS.md).
+See [DEPLOYMENT.md](DEPLOYMENT.md#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) and [AWS_OPERATIONS.md](AWS_OPERATIONS.md).
 
 ---
 

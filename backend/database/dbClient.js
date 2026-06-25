@@ -160,7 +160,9 @@ export function getClientConfig(config) {
     port,
     database: config.database.trim(),
     user: (config.user || '').trim() || undefined,
-    password: (config.password || '').trim() || undefined,
+    password: typeof config.password === 'string'
+      ? (config.password.trim() || undefined)
+      : undefined,
     connectionTimeoutMillis,
     ssl
   };
