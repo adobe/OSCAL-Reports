@@ -79,9 +79,16 @@ jobs:
     name: Push Quality to Adobe Pre_Prod (personal)
     if: github.repository == 'keekar2022/OSCAL-Reports' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: [self-hosted, oscal-mirror]
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
+      - name: Self-hosted runner context
+        run: |
+          echo "Using self-hosted runner labels: self-hosted, oscal-mirror"
+          echo "If this job queues longer than 30 minutes, the runner is offline."
+          echo "Fallback: AdobeManagedServices/OSCAL-Reports → Actions → Sync Quality to Adobe Pre_Prod → Run workflow"
+
       - name: Checkout Quality
         uses: actions/checkout@v4
         with:
@@ -98,9 +105,32 @@ jobs:
           ADOBE_REPO_PUSH_TOKEN: ${{ secrets.ADOBE_REPO_PUSH_TOKEN }}
         run: |
           if [ -z "${ADOBE_REPO_PUSH_TOKEN}" ]; then
-            echo "ADOBE_REPO_PUSH_TOKEN is not set; cannot push to Adobe." >&2
+            echo "::error::ADOBE_REPO_PUSH_TOKEN is not set. Add it under Settings → Secrets and variables → Actions, or use Adobe-side workflow_dispatch (Sync Quality to Adobe Pre_Prod on AdobeManagedServices/OSCAL-Reports)."
             exit 1
           fi
           git remote remove adobe 2>/dev/null || true
           git remote add adobe "https://x-access-token:${ADOBE_REPO_PUSH_TOKEN}@github.com/AdobeManagedServices/OSCAL-Reports.git"
           git push adobe HEAD:Pre_Prod
+
+  sync-fallback-hint:
+    name: Adobe sync fallback instructions
+    runs-on: ubuntu-latest
+    needs: [push-from-personal]
+    if: always() && github.repository == 'keekar2022/OSCAL-Reports' && github.event_name == 'push'
+
+    steps:
+      - name: Post sync guidance
+        run: |
+          {
+            echo "## Quality → Adobe Pre_Prod sync"
+            if [ "${{ needs.push-from-personal.result }}" = "success" ]; then
+              echo "Self-hosted mirror push succeeded."
+            else
+              echo "Self-hosted mirror push result: **${{ needs.push-from-personal.result }}**"
+              echo ""
+              echo "If the mirror job was **queued** or **timed out**, use the Adobe-side pull sync instead:"
+              echo "1. Open **AdobeManagedServices/OSCAL-Reports** → Actions"
+              echo "2. Run **Sync Quality to Adobe Pre_Prod** (workflow_dispatch)"
+              echo "3. Ensure \`PERSONAL_REPO_READ_TOKEN\` and \`ADOBE_REPO_PUSH_TOKEN\` are set on the Adobe repo"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

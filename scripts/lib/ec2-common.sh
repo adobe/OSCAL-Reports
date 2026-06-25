@@ -80,6 +80,8 @@ get_asg_oscal_ip() {
     asg_name=$("$RUN_WITH_AWS_PASS" output -raw "oscal_${which}_autoscaling_group_name" 2>/dev/null | tr -d '\r\n') || true
   fi
   [ -z "$asg_name" ] && return 1
+  # JMESPath backticks in --query are literals, not command substitution (SC2016).
+  # shellcheck disable=SC2016
   instance_id=$(aws autoscaling describe-auto-scaling-groups \
     --auto-scaling-group-names "$asg_name" \
     --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId | [0]' \
