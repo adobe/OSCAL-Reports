@@ -96,4 +96,4 @@ InfraSec tickets for AMS-OSCAL-Reporter Non-Prod (account **442277170733**) requ
 
 ---
 
-**Version:** 1.7.20 · **Last updated:** June 2026
+**Version:** 1.7.21 · **Last updated:** June 2026
