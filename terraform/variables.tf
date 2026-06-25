@@ -44,8 +44,14 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "oscal_app_port" {
+  description = "TCP port for OSCAL Report Generator on Green and Blue EC2 instances (same port on both; matches backend PORT / deploy scripts)."
+  type        = number
+  default     = 3020
+}
+
 variable "default_allowed_cidr_blocks" {
-  description = "Default CIDR ranges allowed for ingress (ALB HTTP testing, SSH, direct Green/Blue 3019/3020). Set in tfvars; do not use 0.0.0.0/0 (PCL custom-config-ec2-sg-port-check). In stage accounts, PCL may treat blocks larger than /32 as \"broad\" and revert the ALB SG; prefer /32 or smallest necessary."
+  description = "Default CIDR ranges allowed for ingress (ALB HTTP testing, SSH, direct Green/Blue app port). Set in tfvars; do not use 0.0.0.0/0 (PCL custom-config-ec2-sg-port-check). In stage accounts, PCL may treat blocks larger than /32 as \"broad\" and revert the ALB SG; prefer /32 or smallest necessary."
   type        = list(string)
   default     = ["130.248.32.17/32", "203.191.182.150/32"]
 
@@ -74,7 +80,7 @@ variable "alb_allow_443_from_all" {
 }
 
 variable "instance_allow_app_ports_from_all" {
-  description = "Deprecated: ingress for 3019/3020 always uses default_allowed_cidr_blocks (no 0.0.0.0/0 per PCL). Kept for backward compatibility; has no effect."
+  description = "Deprecated: ingress for the OSCAL app port always uses default_allowed_cidr_blocks (no 0.0.0.0/0 per PCL). Kept for backward compatibility; has no effect."
   type        = bool
   default     = false
 }
@@ -257,13 +263,13 @@ variable "alb_ssl_policy" {
 }
 
 variable "alb_blue_hostname" {
-  description = "Hostname for Blue deployment (e.g. blue.oscal.example.com). When set, ALB routes requests with this Host header to Blue (port 3020). Create a CNAME pointing to the ALB DNS."
+  description = "Hostname for Blue deployment (e.g. blue.oscal.example.com). When set, ALB routes requests with this Host header to Blue. Create a CNAME pointing to the ALB DNS."
   type        = string
   default     = null
 }
 
 variable "alb_green_hostname" {
-  description = "Hostname for Green deployment (e.g. green.oscal.example.com). When set, ALB routes requests with this Host header to Green (port 3019). Create a CNAME pointing to the ALB DNS."
+  description = "Hostname for Green deployment (e.g. green.oscal.example.com). When set, ALB routes requests with this Host header to Green. Create a CNAME pointing to the ALB DNS."
   type        = string
   default     = null
 }
@@ -282,9 +288,9 @@ variable "create_rds_postgres" {
 }
 
 variable "rds_engine_version" {
-  description = "PostgreSQL major.minor for RDS (e.g. 16.6). Check AWS for supported versions in your region."
+  description = "PostgreSQL major.minor for RDS initial create (e.g. 16.13). After deploy, AWS auto minor upgrades may advance engine_version_actual; rds.tf ignores engine_version drift on update."
   type        = string
-  default     = "16.6"
+  default     = "16.13"
 }
 
 variable "rds_instance_class" {

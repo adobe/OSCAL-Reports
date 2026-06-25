@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.18  
+**Version**: 1.7.22  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -255,7 +255,7 @@ For TrueNAS deployments, we use:
 
 ```bash
 # SSH into TrueNAS
-ssh mkesharw@NAS01
+ssh mkesharw@nas.keekar.au
 cd /mnt/pool1/Documents/KACI-Apps
 
 # Clone Blue instance (Port 3020)
@@ -282,8 +282,8 @@ chmod +x scripts/install_from_dockerhub.sh
 - ✅ High availability (never both down)
 
 **Ports**:
-- Blue: http://nas.keekar.com:3020
-- Green: http://nas.keekar.com:3019
+- Blue: http://nas.keekar.au:3020
+- Green: http://nas.keekar.au:3019
 
 **Deployment Pattern**:
 ```
@@ -315,8 +315,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.18 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.18
+# ✓ Current version: 1.7.22 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.22
 # ✓ Versions match - no build needed
 ```
 
@@ -441,7 +441,7 @@ For **Blue**, use the same steps with container name `oscal-report-generator-blu
 
 After first deployment, configure via web UI:
 
-1. **Access Application**: http://nas.keekar.com:3020 (or :3019)
+1. **Access Application**: http://nas.keekar.au:3020 (or :3019)
 2. **Default Admin**: 
    - Username: `admin`
    - Password: `admin` (⚠️ Change immediately!)
@@ -451,6 +451,8 @@ After first deployment, configure via web UI:
    - API Gateways
 
 **Multi-Report Comparison URLs:** Report source URLs are entered on the **Multi-Report Comparison** screen (URL or file per slot). Last-used URLs are stored in the **user’s browser** (`localStorage`, keyed by user id)—not in Platform Settings or on the server. Other users do not see your saved URLs.
+
+**Multi-Report Comparison export (1.7.21):** Export uses the same **`generate-ssp`** pipeline as the main SSP workflow (`POST /api/prepare-ssp-export` then `POST /api/generate-ssp`) so edited controls and catalogue metadata are preserved. Work-in-progress slots are autosaved in the browser before export; validation is optional and no longer blocks export (avoids ALB 504 timeouts on large reports). Export filenames use the `_ComplianceReport` suffix.
 
 ### Configuration Files
 
@@ -491,13 +493,18 @@ mv config.backup.20260122 config
 docker restart oscal-report-generator-blue
 ```
 
-### Sensitive settings and pass
+### Sensitive settings and _cfgenc (local/Docker) or AWS SM (EC2)
 
-Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token, AWS Bedrock keys, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager. `config.json` holds only pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. The app resolves these at runtime and never persists plaintext secrets in config.
+Passwords, tokens, and API keys are **never** persisted as plaintext in `config.json`.
 
-**Pass entry names:**
+| Environment | On-disk format | Backend |
+|-------------|----------------|---------|
+| **EC2** | `{ "_sm": "OSCAL/..." }` | AWS Secrets Manager (`OSCAL_SECRETS_MODE=aws-sm`) |
+| **Local / Docker** | `{ "_cfgenc": "v1$..." }` | `OSCAL_CONFIG_FIELD_SECRET` or `SESSION_SECRET` |
 
-| Setting | Pass entry |
+**Logical keys** (same names in SM bundle `entries`):
+
+| Setting | Logical key |
 |--------|------------|
 | SMTP password | `OSCAL/smtp-password` |
 | Slack webhook URL | `OSCAL/slack-webhook-url` |
@@ -508,10 +515,10 @@ Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token,
 | SSO Google client secret | `OSCAL/sso-oauth-google-client-secret` |
 | SSO Okta client secret | `OSCAL/sso-oauth-okta-client-secret` |
 | SSO GitHub client secret | `OSCAL/sso-oauth-github-client-secret` |
+| SSO Generic OIDC client secret | `OSCAL/sso-oauth-generic-oidc-client-secret` |
 
-- **Local (laptop):** Install and initialize `pass`; create entries with `pass insert OSCAL/smtp-password` etc. Set `OSCAL_PASS_DISABLED=1` to skip pass (secrets then empty; useful for dev without pass). Optional: `PASSWORD_STORE_DIR` for store location.
-- **TrueNAS / Docker:** For pass-backed secrets, either install pass inside the container and mount the host’s `~/.password-store` (or a dedicated store) into the container, or run pass on the host and use a script to inject resolved values. Prefer mounting a volume for `~/.password-store` and running `pass insert OSCAL/...` on the host (or copying the store into the volume).
-- **EC2 (direct run):** Pass is set up for the service account `svc_ams-oscal`. Ensure the app runs as that user and config is under `/opt/oscal/data`. Add secrets with `sudo -u svc_ams-oscal pass insert OSCAL/smtp-password` etc. on the instance.
+- **Local / Docker:** Set `OSCAL_CONFIG_FIELD_SECRET` or `SESSION_SECRET`. Docker entrypoint auto-generates `/data/.field-secret` and `/data/.session-secret`. Run `node backend/scripts/migrate-config-to-cfgenc.mjs` to encrypt legacy plaintext/`_pass`. `OSCAL_PASS_DISABLED=1` in Docker (pass optional for operator SM sync only).
+- **EC2 production:** AWS SM only; GUI save fails if SM unavailable; startup auto-migrates plaintext/`_cfgenc`/`_pass` to SM.
 
 ### Environment Variables
 
@@ -529,7 +536,7 @@ docker run -d \
   oscal-report-generator:latest
 ```
 
-Sensitive Platform Settings (SMTP password, AI tokens, SSO client secrets) are stored in pass; see [Sensitive settings and pass](#sensitive-settings-and-pass) above.
+Sensitive Platform Settings (SMTP password, AI tokens, SSO client secrets) use _cfgenc locally or AWS SM on EC2; see [Sensitive settings and _cfgenc (local/Docker) or AWS SM (EC2)](#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) above.
 
 ---
 
