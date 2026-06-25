@@ -38,6 +38,23 @@ _config_s3_json_config_ok() {
   jq -e 'type == "object" and (.ssoConfig != null or .messagingConfig != null or .aiConfig != null)' "$file" >/dev/null 2>&1
 }
 
+_config_s3_config_secrets_ok() {
+  local file="$1"
+  local check_script
+  check_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config-secrets-plaintext-check.mjs"
+  if [ ! -f "$file" ]; then
+    return 0
+  fi
+  if [ -f "$check_script" ] && command -v node >/dev/null 2>&1; then
+    if node "$check_script" "$file" 2>/dev/null; then
+      return 0
+    fi
+    echo "config-s3-sync: refusing upload — plaintext secrets in config.json (event.action=s3_config_plaintext_blocked)" >&2
+    return 1
+  fi
+  return 0
+}
+
 _config_s3_object_ok() {
   local bucket="$1"
   local key="$2"
@@ -192,6 +209,7 @@ config_s3_backup_to_active() {
     key="${prefix}/config.json"
     cfg_min=$(_config_s3_min_bytes "config.json")
     if [ "$(wc -c <"$config_path" | tr -d ' ')" -ge "$cfg_min" ]; then
+      _config_s3_config_secrets_ok "$config_path" || return 0
       if aws s3 cp "$config_path" "s3://${bucket}/${key}" --region "$region" --quiet 2>/dev/null; then
         epoch=$(_config_s3_lastmod_epoch "$bucket" "$key" "$region") || epoch=$(date +%s)
         _config_s3_write_state "config.json" "$key" "$epoch"
@@ -258,6 +276,9 @@ config_s3_backup_to_default() {
     return 1
   fi
   if ! _config_s3_json_config_ok "$config_path"; then
+    return 1
+  fi
+  if ! _config_s3_config_secrets_ok "$config_path"; then
     return 1
   fi
 

@@ -41,6 +41,37 @@ fi
 
 echo "✅ Data directory: $DATA_DIR (writable)"
 
+# Bootstrap _cfgenc master key and session secret (persisted on volume; pass vault not required)
+FIELD_SECRET_FILE="$DATA_DIR/.field-secret"
+if [ -z "${OSCAL_CONFIG_FIELD_SECRET:-}" ]; then
+  if [ -f "$FIELD_SECRET_FILE" ]; then
+    OSCAL_CONFIG_FIELD_SECRET=$(cat "$FIELD_SECRET_FILE")
+    export OSCAL_CONFIG_FIELD_SECRET
+  else
+    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" > "$FIELD_SECRET_FILE"
+    chmod 600 "$FIELD_SECRET_FILE"
+    OSCAL_CONFIG_FIELD_SECRET=$(cat "$FIELD_SECRET_FILE")
+    export OSCAL_CONFIG_FIELD_SECRET
+    echo "🔐 Generated OSCAL_CONFIG_FIELD_SECRET in $FIELD_SECRET_FILE"
+  fi
+fi
+
+SESSION_SECRET_FILE="$DATA_DIR/.session-secret"
+if [ -z "${SESSION_SECRET:-}" ]; then
+  if [ -f "$SESSION_SECRET_FILE" ]; then
+    SESSION_SECRET=$(cat "$SESSION_SECRET_FILE")
+    export SESSION_SECRET
+  else
+    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" > "$SESSION_SECRET_FILE"
+    chmod 600 "$SESSION_SECRET_FILE"
+    SESSION_SECRET=$(cat "$SESSION_SECRET_FILE")
+    export SESSION_SECRET
+    echo "🔐 Generated SESSION_SECRET in $SESSION_SECRET_FILE"
+  fi
+fi
+
+export OSCAL_PASS_DISABLED=1
+
 # Initialize config.json if it doesn't exist
 if [ ! -f "$VOLUME_CONFIG" ]; then
     echo "📝 Initializing config.json from defaults..."
@@ -105,6 +136,12 @@ echo "   ✅ $CONFIG_APP_DIR/users.json -> $VOLUME_USERS"
 export CONFIG_PATH="$VOLUME_CONFIG"
 export USERS_PATH="$VOLUME_USERS"
 export DATA_VOLUME_PATH="$DATA_DIR"
+
+# Migrate any plaintext secrets to _cfgenc before app start
+if [ -f "$VOLUME_CONFIG" ] && command -v node >/dev/null 2>&1; then
+  node "$APP_DIR/scripts/migrate-config-to-cfgenc.mjs" 2>/dev/null || \
+    echo "ℹ️  Config secret migration skipped or not needed"
+fi
 
 echo ""
 echo "=================================="

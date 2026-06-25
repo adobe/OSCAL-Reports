@@ -571,7 +571,8 @@ function App() {
     try {
       const response = await axios.post('/api/generate-excel', {
         controls,
-        systemInfo
+        systemInfo,
+        includeExtensions: true,
       }, {
         responseType: 'blob'
       });
@@ -579,7 +580,7 @@ function App() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.download = generateFileName('xlsx');
+      link.download = 'soa-ssp-ccm-june-2026.xlsx';
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
@@ -637,39 +638,6 @@ function App() {
       status: 'under-development'
     });
     setLastSaveTime(null);
-  };
-
-  const handleExportCCM = async () => {
-    setExportingType('ccm');
-    setLoading(true);
-    setError('');
-    
-    try {
-      const response = await axios.post('/api/generate-ccm', {
-        controls,
-        systemInfo
-      }, {
-        responseType: 'blob'
-      });
-
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = generateFileName('xlsx').replace('ComplianceReport', 'CCM');
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
-        setExportingType(null);
-        setLoading(false);
-        setShowDatabaseUnavailableModal(true);
-        return;
-      }
-      setError(await exportErrorMessage(err, 'Failed to generate Cloud Control Matrix'));
-    } finally {
-      setExportingType(null);
-      setLoading(false);
-    }
   };
 
   const handleExportPDF = async () => {
@@ -950,7 +918,6 @@ function App() {
                   onExportSSP={handleExportSSP}
                   onExportSAR={handleExportSAR}
                   onExportExcel={handleExportExcel}
-                  onExportCCM={handleExportCCM}
                   onExportPDF={handleExportPDF}
                   loading={loading}
                   exportingType={exportingType}
