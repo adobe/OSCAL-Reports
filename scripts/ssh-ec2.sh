@@ -23,9 +23,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 export TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
 RUN_WITH_AWS_PASS="${RUN_WITH_AWS_PASS:-$REPO_ROOT/terraform/run-with-aws-pass.sh}"
 SVC_USER="${OSCAL_SVC_USER:-svc_ams-oscal}"
-SVC_HOME="${OSCAL_SVC_HOME:-/var/lib/svc_ams-oscal}"
 # shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
+SSH_USER="${SSH_USER:-ec2-user}"
 
 resolve_ssh_key
 [ ! -x "$RUN_WITH_AWS_PASS" ] && {
@@ -48,8 +48,8 @@ do_list() {
   echo "  $0 blue svc"
   echo ""
   echo "Raw ssh (with key from Pass):"
-  [ -n "$green" ] && echo "  ssh -i \$(pass show $PASS_ENTRY | cat) -o StrictHostKeyChecking=accept-new ${SSH_USER}@${green}"
-  [ -n "$blue"  ] && echo "  ssh -i \$(pass show $PASS_ENTRY | cat) -o StrictHostKeyChecking=accept-new ${SSH_USER}@${blue}"
+  [ -n "$green" ] && echo "  ssh -i \$(pass show $PASS_ENTRY) -o StrictHostKeyChecking=accept-new ${SSH_USER}@${green}"
+  [ -n "$blue"  ] && echo "  ssh -i \$(pass show $PASS_ENTRY) -o StrictHostKeyChecking=accept-new ${SSH_USER}@${blue}"
 }
 
 do_ssh() {

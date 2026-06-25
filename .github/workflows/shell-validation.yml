@@ -126,3 +126,12 @@ jobs:
           else
             echo "✅ **Shell gates passed.**" >> $GITHUB_STEP_SUMMARY
           fi
+          if [ "${{ needs.ec2-automation-pass-sync-tests.result }}" != "success" ]; then
+            echo "❌ **Pass/Secrets sync tests failed.**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: ❌ Fail workflow when shell gates failed
+        if: needs.shell-gates.result != 'success' || needs.ec2-automation-pass-sync-tests.result != 'success'
+        run: |
+          echo "Shell validation failed (shell-gates=${{ needs.shell-gates.result }}, pass-sync=${{ needs.ec2-automation-pass-sync-tests.result }})" >&2
+          exit 1
