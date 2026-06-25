@@ -85,6 +85,12 @@ if [ -f "$SYNC_LIB" ]; then
   . "$SYNC_LIB"
   config_s3_backup_to_active "$S3_BUCKET" "$CONFIG_PATH" "$USERS_PATH" "$REGION"
   ok "Backup complete (config/active/). Peers pull newest among active/green/blue on cron or deploy."
+  if config_s3_default_available "$S3_BUCKET" "$REGION"; then
+    info "Golden restore point exists: s3://${S3_BUCKET}/${CONFIG_S3_DEFAULT_PREFIX:-config/default}/ (config.default)"
+    info "  Refresh: publish-config-default-to-s3.sh | Restore: restore-config-from-s3-default.sh"
+  else
+    info "No config.default yet — after verifying SSO/SMTP, publish: sudo bash /opt/oscal/scripts/debug/publish-config-default-to-s3.sh"
+  fi
 else
   aws s3 cp "$CONFIG_PATH" "s3://${S3_BUCKET}/${PREFIX}/config.json" --region "$REGION"
   ok "Uploaded config.json"

@@ -24,10 +24,11 @@ export function createOidcHttpsAgent(tlsRelaxed) {
  * @returns {boolean}
  */
 export function isGenericOidcTlsRelaxed(provider) {
-  if (provider?.tlsRelaxed === true) return true;
-  if (provider?.tlsRelaxed === false) return false;
   const env = (process.env.OSCAL_GENERIC_OIDC_TLS_RELAXED || process.env.OSCAL_OIDC_TLS_RELAXED || '').trim();
   if (env === '1' || env.toLowerCase() === 'true') return true;
+  if (env === '0' || env.toLowerCase() === 'false') return false;
+  if (provider?.tlsRelaxed === true) return true;
+  if (provider?.tlsRelaxed === false) return false;
   return false;
 }
 

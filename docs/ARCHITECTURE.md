@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.21**)  
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.22**)  
 **Last Updated**: April 2026
 
 ---
@@ -1270,6 +1270,11 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 1.7.22 (June 2026)
+- Laptop pass bundle `PROD/OSCAL/AWS_SM` (`passBundle.js`); EC2 deploy config hardening and golden `config/default/` on S3
+- Generic OIDC orphan `_sm` fix; safer SM migration on deploy
+- Docker image `keekar/oscal_reports:v1.7.22` (multi-arch)
 
 ### Version 1.7.21 (June 2026)
 - Multi-Report Comparison export reliability and shared SSP export path

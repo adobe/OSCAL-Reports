@@ -10,14 +10,9 @@ import {
   PutSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
+import { getPassBundleSecret } from './passBundle.js';
+import { normalizeSecretValueForKey, mergePartialIntoBundle, parseBundle, canonicalBundleJson } from './bundleSchema.js';
 import { passShow } from './passResolver.js';
-
-const OAUTH_CLIENT_SECRET_ENTRIES = new Set([
-  'OSCAL/sso-oauth-okta-client-secret',
-  'OSCAL/sso-oauth-azure-client-secret',
-  'OSCAL/sso-oauth-google-client-secret',
-  'OSCAL/sso-oauth-github-client-secret',
-]);
 
 /** @type {Map<string, string>} */
 let cache = new Map();
@@ -56,40 +51,11 @@ export function entryKeyToConfigPointer(entryKey) {
   return { _sm: String(entryKey).trim() };
 }
 
-function normalizeSecretValue(entryKey, value) {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.replace(/^\uFEFF/, '').trim();
-  if (!trimmed) return '';
-  if (OAUTH_CLIENT_SECRET_ENTRIES.has(entryKey) && trimmed.includes('\n')) {
-    const lines = trimmed.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    return lines.length ? lines[lines.length - 1] : trimmed;
-  }
-  return trimmed;
-}
-
-function parseBundle(secretString) {
-  if (!secretString || typeof secretString !== 'string') {
-    return { entries: {}, _meta: { keys: {} } };
-  }
-  try {
-    const parsed = JSON.parse(secretString);
-    if (!parsed || typeof parsed !== 'object' || !parsed.entries || typeof parsed.entries !== 'object') {
-      return { entries: {}, _meta: { keys: {} } };
-    }
-    return {
-      entries: { ...parsed.entries },
-      _meta: parsed._meta && typeof parsed._meta === 'object' ? { ...parsed._meta, keys: { ...(parsed._meta.keys || {}) } } : { keys: {} },
-    };
-  } catch {
-    return { entries: {}, _meta: { keys: {} } };
-  }
-}
-
 function applyBundleToCache(bundle) {
   cache = new Map();
   for (const [key, val] of Object.entries(bundle.entries || {})) {
     if (val != null && String(val).trim() !== '') {
-      cache.set(key, normalizeSecretValue(key, String(val)));
+      cache.set(key, normalizeSecretValueForKey(key, String(val)));
     }
   }
   cacheLoaded = true;
@@ -162,30 +128,6 @@ export function isSecretCached(entryKey) {
   return cache.has(String(entryKey || '').trim());
 }
 
-function mergePartialIntoBundle(remote, partialEntries) {
-  const now = Math.floor(Date.now() / 1000);
-  const merged = {
-    entries: { ...(remote.entries || {}) },
-    _meta: { keys: { ...(remote._meta?.keys || {}) } },
-  };
-  for (const [key, value] of Object.entries(partialEntries)) {
-    const k = String(key).trim();
-    if (!k) continue;
-    if (value == null || String(value).trim() === '') {
-      delete merged.entries[k];
-      if (merged._meta.keys[k]) delete merged._meta.keys[k];
-    } else {
-      merged.entries[k] = String(value).trim();
-      merged._meta.keys[k] = { t: now };
-    }
-  }
-  return merged;
-}
-
-function canonicalJson(obj) {
-  return JSON.stringify(obj, Object.keys(obj).sort());
-}
-
 /**
  * Merge partial entries into the SM bundle (CAS). Updates in-memory cache on success.
  * @param {Record<string, string>} partialEntries
@@ -227,8 +169,8 @@ export async function mergeAndPutBundle(partialEntries, client) {
       continue;
     }
 
-    const canonRemote = canonicalJson(remote2);
-    const canonMerged = canonicalJson(merged);
+    const canonRemote = canonicalBundleJson(remote2);
+    const canonMerged = canonicalBundleJson(merged);
     if (canonRemote === canonMerged) {
       applyBundleToCache(merged);
       return { success: true };
@@ -272,7 +214,7 @@ export function resolveSmPointers(obj) {
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
       if (isSmPointer(obj[i])) {
-        obj[i] = getSecret(obj[i]._sm);
+        obj[i] = resolveSecretPointer(obj[i]);
       } else if (obj[i] && typeof obj[i] === 'object') {
         resolveSmPointers(obj[i]);
       }
@@ -284,7 +226,7 @@ export function resolveSmPointers(obj) {
     for (const key of Object.keys(obj)) {
       const v = obj[key];
       if (isSmPointer(v)) {
-        obj[key] = getSecret(v._sm);
+        obj[key] = resolveSecretPointer(v);
       } else if (v && typeof v === 'object') {
         resolveSmPointers(v);
       }
@@ -296,7 +238,12 @@ export function resolveSmPointers(obj) {
 export function resolveSecretPointer(v) {
   if (v == null) return '';
   if (typeof v === 'string') return v.trim();
-  if (isSmPointer(v)) return getSecret(v._sm);
+  if (isSmPointer(v)) {
+    const fromSm = getSecret(v._sm);
+    if (fromSm) return fromSm;
+    // Local testing: SM cache empty — fall back to laptop pass bundle (PROD/OSCAL/AWS_SM).
+    return (getPassBundleSecret(v._sm) || '').trim();
+  }
   if (v && typeof v === 'object' && typeof v._pass === 'string' && v._pass.trim()) {
     return (passShow(v._pass) || '').trim();
   }
@@ -315,3 +262,5 @@ export function __setSecretsCacheForTests(entries) {
   cache = new Map(Object.entries(entries || {}));
   cacheLoaded = true;
 }
+
+export { parseBundle, mergePartialIntoBundle };

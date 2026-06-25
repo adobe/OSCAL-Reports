@@ -34,6 +34,12 @@
 - **HTTPS** in production; secure cookies: `httpOnly`, `sameSite: 'strict'`, `secure` in production.
 - No sensitive data in cookies; session timeout configured.
 
+#### Config secrets (pass bundle and AWS SM)
+
+- **EC2 (production):** Sensitive platform settings (SMTP, AI tokens, SSO client secrets) use **`OSCAL_SECRETS_MODE=aws-sm`** and a single AWS Secrets Manager JSON bundle; `config.json` holds `{ "_sm": "OSCAL/..." }` pointers only. See **`backend/utils/secretsManager.js`**.
+- **Local / laptop (1.7.22+):** Same logical keys resolved from one pass entry **`PROD/OSCAL/AWS_SM`** via **`backend/utils/passBundle.js`**. GUI save merges into the bundle in one operation; legacy per-key `OSCAL/*` pass files are deprecated.
+- **Never commit** plaintext secrets; use `config.json.example` and pass/SM pointers. Set **`OSCAL_PASS_DISABLED=1`** only for dev without pass.
+
 #### Password storage (PBKDF2 and legacy SHA-256 migration)
 
 - **Current storage format**: New and rotated passwords are stored as **PBKDF2-SHA256** with random salt and **100,000 iterations** (`pbkdf2$sha256$...` prefix). Implementation: `backend/auth/userManager.js` (`hashPassword` / `verifyPassword`).
@@ -90,4 +96,4 @@
 
 ---
 
-**Version:** 1.7.21 · **Last updated:** June 2026
+**Version:** 1.7.22 · **Last updated:** June 2026

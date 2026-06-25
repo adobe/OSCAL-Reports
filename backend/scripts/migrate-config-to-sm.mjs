@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { atomicWriteJSON } from '../utils/atomicWrite.js';
 import {
   SENSITIVE_CONFIG_KEYS,
   getByPath,
@@ -21,6 +22,7 @@ import {
   isSmPointer,
   reloadSecretsFromAws,
   initializeSecretsCache,
+  getSecret,
 } from '../utils/secretsManager.js';
 import { isPassPointer, passShow } from '../utils/passResolver.js';
 
@@ -63,7 +65,14 @@ async function main() {
     process.exit(1);
   }
 
+  const fileStat = fs.statSync(configPath);
+  if (fileStat.size < 256) {
+    console.error(`Refusing migration: ${configPath} is too small (${fileStat.size} bytes)`);
+    process.exit(1);
+  }
+
   const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  await initializeSecretsCache();
   const partial = {};
   let changed = false;
 
@@ -74,7 +83,9 @@ async function main() {
       partial[smEntry] = plain;
       changed = true;
     }
-    if (!isSmPointer(current)) {
+    const inSm = (getSecret(smEntry) || '').trim();
+    const willHaveInSm = plain || inSm;
+    if (willHaveInSm && !isSmPointer(current)) {
       setByPath(raw, keyPath, entryKeyToConfigPointer(smEntry));
       changed = true;
     }
@@ -95,7 +106,7 @@ async function main() {
     console.log(`Merged ${Object.keys(partial).length} secret(s) into AWS Secrets Manager bundle.`);
   }
 
-  fs.writeFileSync(configPath, `${JSON.stringify(raw, null, 2)}\n`, { mode: 0o600 });
+  await atomicWriteJSON(configPath, raw, { backup: true });
   console.log(`Rewrote ${configPath} with _sm pointers only.`);
 }
 
