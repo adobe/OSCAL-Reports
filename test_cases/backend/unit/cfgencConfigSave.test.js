@@ -4,12 +4,6 @@
  */
 import { jest } from '@jest/globals';
 
-const mockMergePassBundlePartial = jest.fn(() => ({ success: true }));
-
-jest.unstable_mockModule('../../../backend/utils/passBundle.js', () => ({
-  mergePassBundlePartial: mockMergePassBundlePartial,
-}));
-
 jest.unstable_mockModule('../../../backend/utils/passResolver.js', () => ({
   resolvePassPointers: jest.fn((obj) => obj),
   passShow: jest.fn(() => ''),
@@ -31,15 +25,19 @@ jest.unstable_mockModule('../../../backend/utils/secretsManager.js', () => ({
 
 jest.resetModules();
 const { prepareConfigForSave } = await import('../../../backend/configManager.js');
+const { isCfgEncPointer, decryptConfigSecret } = await import('../../../backend/utils/configFieldCrypto.js');
 
-describe('prepareConfigForSave (config mode pass bundle)', () => {
+describe('prepareConfigForSave (config mode _cfgenc)', () => {
   beforeEach(() => {
     delete process.env.OSCAL_SECRETS_MODE;
-    mockMergePassBundlePartial.mockReset();
-    mockMergePassBundlePartial.mockReturnValue({ success: true });
+    process.env.OSCAL_CONFIG_FIELD_SECRET = 'test-field-secret-for-unit-tests';
   });
 
-  it('batches secrets into single mergePassBundlePartial call', async () => {
+  afterEach(() => {
+    delete process.env.OSCAL_CONFIG_FIELD_SECRET;
+  });
+
+  it('stores new secrets as _cfgenc envelopes', async () => {
     const incoming = {
       messagingConfig: { email: { smtpPassword: 'new-smtp-pass' } },
       aiConfig: { apiToken: 'ai-token-123' },
@@ -48,12 +46,9 @@ describe('prepareConfigForSave (config mode pass bundle)', () => {
 
     const { config, passErrors } = await prepareConfigForSave(incoming, existing);
     expect(passErrors).toEqual([]);
-    expect(mockMergePassBundlePartial).toHaveBeenCalledTimes(1);
-    expect(mockMergePassBundlePartial).toHaveBeenCalledWith({
-      'OSCAL/smtp-password': 'new-smtp-pass',
-      'OSCAL/ai-api-token': 'ai-token-123',
-    });
-    expect(config.messagingConfig.email.smtpPassword).toEqual({ _pass: 'OSCAL/smtp-password' });
-    expect(config.aiConfig.apiToken).toEqual({ _pass: 'OSCAL/ai-api-token' });
+    expect(isCfgEncPointer(config.messagingConfig.email.smtpPassword)).toBe(true);
+    expect(isCfgEncPointer(config.aiConfig.apiToken)).toBe(true);
+    expect(decryptConfigSecret(config.messagingConfig.email.smtpPassword)).toBe('new-smtp-pass');
+    expect(decryptConfigSecret(config.aiConfig.apiToken)).toBe('ai-token-123');
   });
 });

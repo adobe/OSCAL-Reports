@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased] - Secrets hardening (_cfgenc / SM-only)
+
+### Added
+
+- **`backend/utils/configSecretMigration.js`:** Startup and CLI migration of plaintext / legacy `_pass` to `_cfgenc` (local) or `_sm` (EC2); S3 upload validation helper.
+- **`backend/scripts/migrate-config-to-cfgenc.mjs`:** Offline migration for local/Docker config.
+- **`scripts/debug/audit-config-secrets.sh`:** Audit config secret storage shapes on S3 or local path (no secret values printed).
+- **`scripts/lib/config-secrets-plaintext-check.mjs`:** Blocks S3 backup when `config.json` contains plaintext secrets.
+- **Unit tests:** `cfgencConfigSave.test.js`, `configSecretMigration.test.js`, `failSecureSmSave.test.js`.
+
+### Changed
+
+- **Local/Docker:** GUI save stores secrets as **`_cfgenc`** (PBKDF2 + AES-256-GCM); pass vault **not required**. Docker entrypoint bootstraps `OSCAL_CONFIG_FIELD_SECRET` and `SESSION_SECRET` under `/data/`.
+- **EC2:** Removed plaintext fallback when AWS SM put fails; settings/SSO save returns **503**; startup auto-migrates plaintext secrets to SM (refuses start on EC2 if migration fails).
+- **Dockerfile:** Removed pass/gnupg and build-time `credentials.txt` (default user passwords generated at runtime in app logs).
+- **Docs:** SECURITY, DEPLOYMENT, AWS_OPERATIONS, OIDC updated for _cfgenc-first model.
+
 ## [1.7.22] - 2026-06-26
 
 Release **1.7.22** hardens EC2 deploy and config retention, consolidates laptop pass secrets into a single bundle entry (`PROD/OSCAL/AWS_SM`), and fixes Generic OIDC / SSO config edge cases. EC2 production remains AWS Secrets Manager primary; Docker image `keekar/oscal_reports:v1.7.22` is multi-arch (`linux/amd64`, `linux/arm64`).

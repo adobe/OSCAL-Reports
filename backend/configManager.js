@@ -9,7 +9,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { atomicWriteJSON } from './utils/atomicWrite.js';
 import { resolvePassPointers, passShow, isPassPointer } from './utils/passResolver.js';
-import { mergePassBundlePartial } from './utils/passBundle.js';
 import {
   isAwsSmMode,
   isSmPointer,
@@ -29,7 +28,9 @@ import {
   isSecretPointer,
 } from './utils/sensitiveConfigKeys.js';
 import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
-import { resolveCfgEncPointers, isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
+import { resolveCfgEncPointers, isCfgEncPointer, decryptConfigSecret, encryptConfigSecret } from './utils/configFieldCrypto.js';
+import { resolveStoredSecretValue } from './utils/resolveStoredSecret.js';
+import { ensureConfigSecretsProtected as runConfigSecretsProtection } from './utils/configSecretMigration.js';
 import { DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS } from './auth/genericOidc.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -360,7 +361,34 @@ function getResolvedDatabaseConfigForTest(formDatabaseConfig) {
     db.sslMode = 'require';
   }
 
+  db.password = coalesceDatabasePasswordForTest(
+    f.password,
+    clone.databaseConfig?.password,
+    raw.databaseConfig?.password
+  );
+
   return db;
+}
+
+/**
+ * Pick database password for connection test: form plaintext, resolved pointers, or stored config.
+ * @param {*} formPassword
+ * @param {*} resolvedStored
+ * @param {*} rawStored
+ * @returns {string}
+ */
+function coalesceDatabasePasswordForTest(formPassword, resolvedStored, rawStored) {
+  const fromFormString = typeof formPassword === 'string' ? formPassword.trim() : '';
+  if (fromFormString && fromFormString !== '********') {
+    return fromFormString;
+  }
+  const fromFormEnvelope = resolveStoredSecretValue(formPassword);
+  if (fromFormEnvelope) return fromFormEnvelope;
+  if (typeof resolvedStored === 'string') {
+    const t = resolvedStored.trim();
+    if (t && t !== '********') return t;
+  }
+  return resolveStoredSecretValue(rawStored ?? resolvedStored) || '';
 }
 
 /**
@@ -391,8 +419,8 @@ function resolveSecretsInConfig(clone) {
     resolveSmPointers(clone);
     resolvePassPointers(clone);
   } else {
-    resolvePassPointers(clone);
     resolveSmPointers(clone);
+    resolvePassPointers(clone);
   }
 }
 
@@ -407,15 +435,34 @@ async function getResolvedConfigAsync() {
     await ensureSmCacheReady();
   }
   resolveSecretsInConfig(clone);
+  normalizeSensitiveSecretsInConfig(clone, raw);
   applyDatabaseEnvOverrides(clone);
   applyBedrockEnvOverrides(clone);
   return clone;
+}
+
+/**
+ * Ensure sensitive paths are plain strings after pointer resolution (runtime + tests).
+ * @param {Object} clone
+ * @param {Object} raw
+ */
+function normalizeSensitiveSecretsInConfig(clone, raw) {
+  for (const { path: keyPath } of SENSITIVE_CONFIG_KEYS) {
+    if (shouldSkipSensitiveKey(keyPath, clone)) {
+      setByPath(clone, keyPath, '');
+      continue;
+    }
+    const val = getByPath(clone, keyPath);
+    if (typeof val === 'string') continue;
+    setByPath(clone, keyPath, resolveStoredSecretValue(getByPath(raw, keyPath) ?? val));
+  }
 }
 
 function getResolvedConfig() {
   const raw = loadConfig();
   const clone = JSON.parse(JSON.stringify(raw));
   resolveSecretsInConfig(clone);
+  normalizeSensitiveSecretsInConfig(clone, raw);
   applyDatabaseEnvOverrides(clone);
   applyBedrockEnvOverrides(clone);
   return clone;
@@ -435,11 +482,12 @@ function shouldSkipSensitiveKey(keyPath, configToSave) {
   return false;
 }
 
-function pointerFromExisting(existing, smEntry, passEntry) {
+function pointerFromExisting(existing, smEntry, _passEntry) {
   if (existing === undefined || existing === null) {
-    return isAwsSmMode() ? entryKeyToConfigPointer(smEntry) : { _pass: passEntry };
+    return isAwsSmMode() ? entryKeyToConfigPointer(smEntry) : '';
   }
   if (isSmPointer(existing)) return existing;
+  if (isCfgEncPointer(existing)) return existing;
   if (existing && typeof existing === 'object' && existing._pass) {
     return isAwsSmMode() ? entryKeyToConfigPointer(smEntry) : existing;
   }
@@ -455,7 +503,6 @@ async function prepareConfigForSave(configToSave, existingRaw) {
   const passErrors = [];
   const smErrors = [];
   const smPartial = {};
-  const passPartial = {};
 
   for (const { path: keyPath, smEntry, passEntry } of SENSITIVE_CONFIG_KEYS) {
     if (shouldSkipSensitiveKey(keyPath, configToSave)) {
@@ -466,15 +513,29 @@ async function prepareConfigForSave(configToSave, existingRaw) {
     const existing = getByPath(existingRaw, keyPath);
 
     if (isMaskedOrEmpty(incoming)) {
-      const pointer = pointerFromExisting(existing, smEntry, passEntry);
       if (isAwsSmMode() && !isSecretCached(smEntry)) {
         if (isPassPointer(existing)) {
           const fromPass = passShow(existing._pass) || '';
           if (fromPass.trim()) smPartial[smEntry] = fromPass.trim();
+        } else if (isCfgEncPointer(existing)) {
+          const fromCfg = tryDecryptCfgEncSecret(existing);
+          if (fromCfg) smPartial[smEntry] = fromCfg;
         } else if (typeof existing === 'string' && !isMaskedOrEmpty(existing)) {
           smPartial[smEntry] = existing.trim();
         }
       }
+      if (!isAwsSmMode() && isPassPointer(existing)) {
+        const fromPass = (passShow(existing._pass) || '').trim();
+        if (fromPass) {
+          try {
+            setByPath(result, keyPath, encryptConfigSecret(fromPass));
+            continue;
+          } catch (err) {
+            passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
+          }
+        }
+      }
+      const pointer = pointerFromExisting(existing, smEntry, passEntry);
       setByPath(result, keyPath, pointer);
       continue;
     }
@@ -485,40 +546,32 @@ async function prepareConfigForSave(configToSave, existingRaw) {
         smPartial[smEntry] = trimmed;
         setByPath(result, keyPath, entryKeyToConfigPointer(smEntry));
       } else {
-        passPartial[passEntry] = trimmed;
-        setByPath(result, keyPath, { _pass: passEntry });
+        try {
+          setByPath(result, keyPath, encryptConfigSecret(trimmed));
+        } catch (err) {
+          passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
+          setByPath(result, keyPath, pointerFromExisting(existing, smEntry, passEntry));
+        }
       }
       continue;
     }
 
-    if (isSecretPointer(incoming)) {
+    if (isSecretPointer(incoming) || isCfgEncPointer(incoming)) {
       setByPath(result, keyPath, pointerFromExisting(incoming, smEntry, passEntry));
     }
   }
 
   migrateGenericOidcSecretForAwsSm(result, configToSave, existingRaw, smPartial);
 
-  if (!isAwsSmMode() && Object.keys(passPartial).length > 0) {
-    const bundleResult = mergePassBundlePartial(passPartial);
-    if (!bundleResult.success) {
-      for (const [passEntry, secretVal] of Object.entries(passPartial)) {
-        const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.passEntry === passEntry);
-        if (keyDef && secretVal != null && String(secretVal).trim() !== '') {
-          setByPath(result, keyDef.path, String(secretVal).trim());
-          passErrors.push(`${keyDef.path}: pass bundle unavailable (${bundleResult.error}); secret stored in config`);
-        }
-      }
-    }
-  }
-
   if (isAwsSmMode() && Object.keys(smPartial).length > 0) {
     const putResult = await mergeAndPutBundle(smPartial);
     if (!putResult.success) {
       smErrors.push(`secrets_manager: ${putResult.error || 'put_failed'}`);
-      for (const [entryKey, secretVal] of Object.entries(smPartial)) {
+      for (const [entryKey] of Object.entries(smPartial)) {
         const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.smEntry === entryKey);
-        if (keyDef && secretVal != null && String(secretVal).trim() !== '') {
-          setByPath(result, keyDef.path, String(secretVal).trim());
+        if (keyDef) {
+          const prior = getByPath(existingRaw, keyDef.path);
+          setByPath(result, keyDef.path, prior !== undefined ? prior : '');
         }
       }
     } else {
@@ -612,34 +665,34 @@ function prepareConfigWithPassPointers(configToSave, existingRaw) {
   }
   const result = JSON.parse(JSON.stringify(configToSave));
   const passErrors = [];
-  const passPartial = {};
-  for (const { path: keyPath, passEntry } of SENSITIVE_CONFIG_KEYS) {
+  for (const { path: keyPath } of SENSITIVE_CONFIG_KEYS) {
     if (shouldSkipSensitiveKey(keyPath, configToSave)) {
       setByPath(result, keyPath, '');
       continue;
     }
     const incoming = getByPath(configToSave, keyPath);
+    const existing = getByPath(existingRaw, keyPath);
     if (isMaskedOrEmpty(incoming)) {
-      const existing = getByPath(existingRaw, keyPath);
-      setByPath(result, keyPath, existing !== undefined ? existing : { _pass: passEntry });
+      setByPath(result, keyPath, existing !== undefined ? existing : '');
     } else if (typeof incoming === 'string' && incoming.trim() !== '') {
-      passPartial[passEntry] = incoming.trim();
-      setByPath(result, keyPath, { _pass: passEntry });
-    }
-  }
-  if (Object.keys(passPartial).length > 0) {
-    const bundleResult = mergePassBundlePartial(passPartial);
-    if (!bundleResult.success) {
-      for (const [passEntry, secretVal] of Object.entries(passPartial)) {
-        const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.passEntry === passEntry);
-        if (keyDef) {
-          setByPath(result, keyDef.path, secretVal);
-          passErrors.push(`${keyDef.path}: pass bundle unavailable (${bundleResult.error}); secret stored in config`);
-        }
+      try {
+        setByPath(result, keyPath, encryptConfigSecret(incoming.trim()));
+      } catch (err) {
+        passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
+        setByPath(result, keyPath, existing !== undefined ? existing : '');
       }
     }
   }
   return { config: result, passErrors };
+}
+
+/**
+ * On startup: migrate plaintext / legacy _pass secrets to _sm or _cfgenc.
+ * @param {{ logger?: Function, refusePlaintext?: boolean }} [options]
+ */
+async function ensureConfigSecretsProtected(options = {}) {
+  const configPath = getConfigPath();
+  return runConfigSecretsProtection(configPath, options);
 }
 
 /**
@@ -934,6 +987,7 @@ export {
   getResolvedDatabaseConfigForTest,
   prepareConfigForSave,
   prepareConfigWithPassPointers,
+  ensureConfigSecretsProtected,
   saveConfig,
   updateConfig,
   getConfigValue,

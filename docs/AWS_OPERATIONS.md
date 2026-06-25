@@ -1216,7 +1216,8 @@ Use a **strict layout** so config is never confused with app code:
 - **EC2 secrets (1.7.19+):** The Node app reads and writes a **single AWS Secrets Manager JSON bundle** (`entries` + `_meta`). `config.json` stores only `{ "_sm": "OSCAL/..." }` pointers — never plaintext. Systemd sets `OSCAL_SECRETS_MODE=aws-sm` and `OSCAL_SECRETS_MANAGER_ARN` (from Terraform output `oscal_pass_secrets_sync_secret_arn`). Secrets are cached **in memory** at startup and after GUI save; they are not written to `process.env` or disk.
 - **GUI save:** Settings merges changed keys into the SM bundle (compare-and-swap) and rewrites config with `_sm` pointers. Green and Blue share one bundle — concurrent saves retry on version conflict.
 - **One-time migration:** If config still has plaintext or legacy `_pass` pointers, deploy runs `backend/scripts/migrate-config-to-sm.mjs`, or run `./scripts/debug/migrate-config-secrets-to-sm.sh green|blue` from the laptop.
-- **Local / Docker:** Default `OSCAL_SECRETS_MODE=config` — secrets in `config.json` with `{ "_pass": "OSCAL/..." }` pointers (logical keys inside the bundle). On the **operator laptop**, all OSCAL app secrets live in one pass entry **`PROD/OSCAL/AWS_SM`** (same JSON shape as SM). Override with `OSCAL_PASS_BUNDLE_ENTRY`. Migrate legacy per-key `OSCAL/*` entries with `./scripts/debug/migrate-pass-entries-to-bundle.sh --dry-run` then `--apply`. Sync laptop ↔ SM with `push-pass-to-secrets-manager.sh` / `pull-secrets-manager-to-pass.sh`. Set `OSCAL_PASS_DISABLED=1` to skip pass I/O.
+- **Local / Docker:** Default `OSCAL_SECRETS_MODE=config` — secrets stored as **`{ "_cfgenc": "v1$..." }`** in `config.json` (PBKDF2 + AES-256-GCM via `backend/utils/configFieldCrypto.js`). Set **`OSCAL_CONFIG_FIELD_SECRET`** or **`SESSION_SECRET`**; Docker entrypoint auto-generates persisted keys under `/data/`. Run **`backend/scripts/migrate-config-to-cfgenc.mjs`** to encrypt legacy plaintext/`_pass`. **Pass vault is optional** (operator SM sync only): `push-pass-to-secrets-manager.sh`, `OSCAL_PASS_DISABLED=1` in Docker.
+- **S3 backups:** `config-s3-sync.sh` **blocks upload** of `config.json` containing plaintext secrets. Audit with `./scripts/debug/audit-config-secrets.sh`.
 - **Deprecated:** Per-key `OSCAL/*` pass files on the laptop (superseded by `PROD/OSCAL/AWS_SM`). On EC2: `pass` vault, `PASSWORD_STORE_DIR`, and cron Pass ↔ SM sync remain disabled; laptop `pass` still used for Terraform/AWS SSH (`run-with-aws-pass.sh`).
 
 ---
@@ -1348,7 +1349,7 @@ Use a **strict layout** so config is never confused with app code:
 ### Summary checklist
 
 - [ ] Config and users only in `/opt/oscal/data`; no duplicate under `/opt/oscal/app`.
-- [ ] App and cron run as `svc_ams-oscal`; Pass vault used for secrets.
+- [ ] App and cron run as `svc_ams-oscal`; EC2 secrets via AWS SM (`_sm` pointers only); S3 config backups contain no plaintext secrets.
 - [ ] Deploy via `./scripts/deploy-to-ec2.sh`; Terraform via `run-with-aws-pass.sh`.
 - [ ] Green and Blue: cron every 10 min by default (S3 backup + Pass/SM sync; optional S3 `installer/` sync every 100 runs unless `DEPLOY_ENABLE_S3_INSTALLER_UPDATE=0`). Blue manual-only: deploy with `DEPLOY_BLUE_AUTO_UPDATE=0`.
 - [ ] Health verified after deploy; troubleshoot with SSH, `journalctl`, S3 backup paths, and Pass as needed.

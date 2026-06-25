@@ -493,11 +493,16 @@ mv config.backup.20260122 config
 docker restart oscal-report-generator-blue
 ```
 
-### Sensitive settings and pass
+### Sensitive settings and _cfgenc (local/Docker) or AWS SM (EC2)
 
-Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token, AWS Bedrock keys, SSO client secrets) use **logical keys** in `config.json` pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. On the operator laptop, values are stored in a **single pass JSON bundle** at **`PROD/OSCAL/AWS_SM`** (same `{ entries, _meta }` shape as AWS Secrets Manager). The app resolves pointers from that bundle at runtime and never persists plaintext secrets in config.
+Passwords, tokens, and API keys are **never** persisted as plaintext in `config.json`.
 
-**Logical keys (inside `PROD/OSCAL/AWS_SM` → `entries`):**
+| Environment | On-disk format | Backend |
+|-------------|----------------|---------|
+| **EC2** | `{ "_sm": "OSCAL/..." }` | AWS Secrets Manager (`OSCAL_SECRETS_MODE=aws-sm`) |
+| **Local / Docker** | `{ "_cfgenc": "v1$..." }` | `OSCAL_CONFIG_FIELD_SECRET` or `SESSION_SECRET` |
+
+**Logical keys** (same names in SM bundle `entries`):
 
 | Setting | Logical key |
 |--------|------------|
@@ -512,9 +517,8 @@ Passwords, tokens, and API keys (SMTP password, Slack webhook URL, AI API token,
 | SSO GitHub client secret | `OSCAL/sso-oauth-github-client-secret` |
 | SSO Generic OIDC client secret | `OSCAL/sso-oauth-generic-oidc-client-secret` |
 
-- **Local (laptop):** Install and initialize `pass`. Populate the bundle via Settings save (GUI) or `./scripts/debug/migrate-pass-entries-to-bundle.sh --apply` (one-time from legacy `OSCAL/*` entries). Optional: `OSCAL_PASS_BUNDLE_ENTRY` (default `PROD/OSCAL/AWS_SM`), `PASSWORD_STORE_DIR` for store location. Set `OSCAL_PASS_DISABLED=1` to skip pass (secrets empty; useful for dev).
-- **TrueNAS / Docker:** Mount the host pass store (or pre-populated bundle JSON) and set `PASSWORD_STORE_DIR` if non-default. Same bundle entry name applies.
-- **EC2 production:** Uses AWS SM only (`OSCAL_SECRETS_MODE=aws-sm`); do not rely on per-instance pass entries.
+- **Local / Docker:** Set `OSCAL_CONFIG_FIELD_SECRET` or `SESSION_SECRET`. Docker entrypoint auto-generates `/data/.field-secret` and `/data/.session-secret`. Run `node backend/scripts/migrate-config-to-cfgenc.mjs` to encrypt legacy plaintext/`_pass`. `OSCAL_PASS_DISABLED=1` in Docker (pass optional for operator SM sync only).
+- **EC2 production:** AWS SM only; GUI save fails if SM unavailable; startup auto-migrates plaintext/`_cfgenc`/`_pass` to SM.
 
 ### Environment Variables
 
@@ -532,7 +536,7 @@ docker run -d \
   oscal-report-generator:latest
 ```
 
-Sensitive Platform Settings (SMTP password, AI tokens, SSO client secrets) are stored in pass; see [Sensitive settings and pass](#sensitive-settings-and-pass) above.
+Sensitive Platform Settings (SMTP password, AI tokens, SSO client secrets) use _cfgenc locally or AWS SM on EC2; see [Sensitive settings and _cfgenc (local/Docker) or AWS SM (EC2)](#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) above.
 
 ---
 
