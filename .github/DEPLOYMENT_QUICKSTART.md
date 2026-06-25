@@ -15,12 +15,12 @@
 4. 🔐 Credentials available in artifacts
 
 **Access:**
-- Blue: http://nas.keekar.com:3020
-- Green: http://nas.keekar.com:3019
+- Blue: http://nas.keekar.au:3020
+- Green: http://nas.keekar.au:3019
 
 **Deploy to TrueNAS:**
 ```bash
-ssh mkesharw@NAS01
+ssh mkesharw@nas.keekar.au
 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 git pull origin main
 ./scripts/install_from_dockerhub.sh
@@ -89,7 +89,7 @@ docker-compose logs -f
 
 ```bash
 # Health check
-curl http://nas.keekar.com:3020/health
+curl http://nas.keekar.au:3020/health
 
 # Container status
 docker ps | grep oscal
@@ -98,7 +98,7 @@ docker ps | grep oscal
 docker logs oscal-report-generator-green
 
 # Access UI
-open http://nas.keekar.com:3020
+open http://nas.keekar.au:3020
 ```
 
 ---

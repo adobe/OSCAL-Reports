@@ -21,6 +21,8 @@ export default defineConfig({
         target: 'http://localhost:3020',
         // Keep changeOrigin so the upstream connection works; backend uses X-Forwarded-* to build Okta redirect_uri
         changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
             const host = req.headers.host;

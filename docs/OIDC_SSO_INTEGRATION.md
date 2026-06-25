@@ -116,6 +116,18 @@ Release **1.7.20** adds a built-in OIDC provider **`Generic_OIDC`** for **Authen
 
 See **`config/app/config.json.example`** for the default `Generic_OIDC` block and **`docs/CHANGELOG.md`** for release notes.
 
+### TLS and `tlsRelaxed` (1.7.21)
+
+Some IdPs (including Authentik on `sso.keekar.au` with certain Let's Encrypt chains) serve a certificate chain that **browsers and curl accept** but **Node.js 20 / OpenSSL in Alpine** rejects with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` during OIDC discovery.
+
+| Approach | When to use |
+|----------|-------------|
+| **Fix IdP chain (preferred)** | Serve the full chain to ISRG Root X1 on the reverse proxy; then leave `tlsRelaxed: false`. |
+| **`tlsRelaxed: true`** | Set on `ssoConfig.oauth.providers.Generic_OIDC` in `config.json` (Docker/NAS bind-mount) when you cannot change the IdP chain immediately. Discovery/token/userinfo calls skip strict TLS verification for that provider only. |
+| **`OSCAL_GENERIC_OIDC_TLS_RELAXED=1`** | Container/env override when config is not writable. |
+
+SSO Integration → Test connection surfaces whether `tlsRelaxed` is active. **Do not enable on EC2 production** unless Adobe security approves; EC2 production sign-in remains **Okta**.
+
 ---
 
 ## Application URLs by Environment
@@ -311,4 +323,4 @@ Any **backend** OIDC-related HTTP client code that uses **Axios** must import **
 
 ---
 
-**Version:** 1.7.20 · **Last updated:** June 2026
+**Version:** 1.7.21 · **Last updated:** June 2026

@@ -6,11 +6,11 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Copy frontend package files (frontend/package-lock.json is gitignored; use npm install)
-COPY frontend/package.json ./
+# Copy frontend package files (lockfile pins Vite/Rolldown; npm install without it breaks vite.config bundling)
+COPY frontend/package.json frontend/package-lock.json ./
 
 # Install frontend dependencies (including dev deps needed for build)
-RUN npm install
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./

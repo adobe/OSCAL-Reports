@@ -24,7 +24,7 @@
 #       with SSL/TLS certificate mismatch errors if hostname != certificate CN/SAN.
 #
 #   ✓ RECOMMENDED: --blue-url http://192.168.1.200:3020
-#   ✗ MAY FAIL:    --blue-url https://blue.oscal.keekar.com (if cert doesn't match)
+#   ✗ MAY FAIL:    --blue-url https://blue.oscal.keekar.au (if cert doesn't match)
 #
 # Features:
 #   - Bi-directional user synchronization (default)
@@ -43,7 +43,7 @@ set -e
 BLUE_URL="${BLUE_URL:-http://44.201.190.106:3020}"
 GREEN_URL="${GREEN_URL:-http://192.168.1.200:3020}"
 # BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
-# GREEN_URL="${GREEN_URL:-http://nas.keekar.com:3019/}"
+# GREEN_URL="${GREEN_URL:-http://nas.keekar.au:3019/}"
 # BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
 # GREEN_URL="${GREEN_URL:-https://keekar.3utilities.com}"
 
@@ -109,8 +109,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --auto                    Automatic bi-directional sync (recommended)"
       echo "  --blue-to-green           One-way sync: Blue → Green only"
       echo "  --green-to-blue           One-way sync: Green → Blue only"
-      echo "  --blue-url URL            Blue instance URL (default: http://blue.oscal.keekar.com)"
-      echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.com)"
+      echo "  --blue-url URL            Blue instance URL (default: http://blue.oscal.keekar.au)"
+      echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.au)"
       echo "  --blue-password PASS      Blue admin password (for automation)"
       echo "  --green-password PASS     Green admin password (for automation)"
       echo "  --import-mode MODE        merge (skip duplicates) | replace-by-username (default, sync same user across Blue/Green)"
@@ -133,10 +133,10 @@ while [[ $# -gt 0 ]]; do
   echo "  ⚠️  IMPORTANT: TLS Certificate Compatibility"
       echo "  When defining instance URLs, use INTERNAL IP ADDRESSES instead of hostnames"
       echo "  if TLS certificates don't match the hostname. APIs may fail with certificate"
-      echo "  mismatch errors (e.g., certificate for 'keekar.ddns.net' vs hostname 'green.oscal.keekar.com')."
+      echo "  mismatch errors (e.g., certificate for 'keekar.ddns.net' vs hostname 'green.oscal.keekar.au')."
       echo ""
       echo "  ✓ RECOMMENDED: http://192.168.1.200:3020  (internal IP, no TLS issues)"
-      echo "  ✗ MAY FAIL:    https://green.oscal.keekar.com  (TLS certificate mismatch)"
+      echo "  ✗ MAY FAIL:    https://green.oscal.keekar.au  (TLS certificate mismatch)"
       echo ""
       echo "Examples:"
       echo "  $0 --auto"
@@ -332,7 +332,7 @@ echo "  hostnames if TLS certificates don't match. API authentication may fail w
 echo "  certificate mismatch errors (e.g., cert for 'example.com' vs 'subdomain.example.com')."
 echo ""
 echo -e "  ${GREEN}✓ RECOMMENDED:${NC} http://192.168.1.200:3020  (internal IP, no TLS issues)"
-echo -e "  ${RED}✗ MAY FAIL:${NC}    https://green.oscal.keekar.com  (TLS certificate mismatch)"
+echo -e "  ${RED}✗ MAY FAIL:${NC}    https://green.oscal.keekar.au  (TLS certificate mismatch)"
 echo ""
 echo "  Current configuration:"
 echo "    Blue:  $BLUE_URL"

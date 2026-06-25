@@ -6,7 +6,7 @@ contact: mukesh.kesharwani@adobe.com
 # Project summary — OSCAL Report Generator
 
 **Application:** Keekar’s OSCAL SOA / SSP / CCM Generator (npm: `keekars-oscal-soa-ssp-ccm-generator`).  
-**Version:** See root `package.json` (currently **1.7.20**).  
+**Version:** See root `package.json` (currently **1.7.21**).  
 **Last updated:** June 2026
 
 ---
@@ -29,6 +29,19 @@ Full-stack web app that helps teams produce **Statement of Applicability (SOA)**
 | Deploy | Docker; AWS via Terraform (ALB, Green/Blue EC2, S3); see deploy scripts under `scripts/` |
 
 Default local ports: backend **3020**, frontend dev **3021**.
+
+---
+
+## Recent release (1.7.21)
+
+| Area | What changed | Why |
+|------|----------------|-----|
+| **Multi-Report Comparison** | Shared `generate-ssp` export, work-session autosave, non-blocking validation | Fix ALB 504 timeouts and match main-app export fidelity |
+| **AI suggestions** | Per-control prompts via `controlPromptContext.js` | Reduce generic duplicate suggestion text across controls |
+| **Generic OIDC** | `tlsRelaxed` for Docker/NAS | Node/OpenSSL TLS chain verification vs Authentik Let's Encrypt |
+| **EC2 deploy** | Installer manifest version check | Confirm instances run the intended release after S3 pull |
+
+Full notes: [CHANGELOG.md](CHANGELOG.md#1721---2026-06-25).
 
 ---
 

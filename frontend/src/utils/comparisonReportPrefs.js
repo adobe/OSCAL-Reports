@@ -6,12 +6,21 @@
  */
 
 export const PREFS_KEY_PREFIX = 'oscal_mrc_prefs_v1_';
+export const WORK_SESSION_KEY_PREFIX = 'oscal_mrc_work_v1_';
 export const MAX_URL_LENGTH = 2048;
+/** Stay under typical ~5MB localStorage quota per origin. */
+export const MAX_WORK_SESSION_BYTES = 4_500_000;
 
 const DEFAULT_REPORT_TYPES = {
   baseline: 'PaaS',
   csp1: 'IaaS',
   csp2: 'SaaS',
+};
+
+const DEFAULT_REPORT_NAMES = {
+  baseline: 'Assessment Subject Report',
+  csp1: 'Cloud Service Provider Report 1',
+  csp2: 'Cloud Service Provider Report 2',
 };
 
 const SLOT_KEYS = ['baseline', 'csp1', 'csp2'];
@@ -200,4 +209,161 @@ export function defaultSlotInputMode(prefs, slot) {
     return 'url';
   }
   return slot === 'baseline' ? 'url' : 'file';
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number}
+ */
+export function estimateJsonBytes(value) {
+  try {
+    return new Blob([JSON.stringify(value)]).size;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+/**
+ * @param {string} userId
+ * @param {Storage | null} [storage]
+ * @returns {string | null}
+ */
+export function getWorkSessionStorageKey(userId, storage = getDefaultStorage()) {
+  if (!userId || typeof userId !== 'string' || !storage) {
+    return null;
+  }
+  return `${WORK_SESSION_KEY_PREFIX}${userId}`;
+}
+
+const DEFAULT_EXPORT_VALIDATION_OPTIONS = {
+  requiredFields: true,
+  stringPatterns: false,
+  enums: false,
+  formats: false,
+  lengthRestrictions: false,
+  additionalProperties: false,
+};
+
+/**
+ * Sanitize persisted comparison work session (browser-only; no secrets).
+ * @param {unknown} raw
+ */
+export function sanitizeWorkSession(raw) {
+  const exportValidationOptions = { ...DEFAULT_EXPORT_VALIDATION_OPTIONS };
+  if (raw?.exportValidationOptions && typeof raw.exportValidationOptions === 'object') {
+    for (const key of Object.keys(DEFAULT_EXPORT_VALIDATION_OPTIONS)) {
+      if (typeof raw.exportValidationOptions[key] === 'boolean') {
+        exportValidationOptions[key] = raw.exportValidationOptions[key];
+      }
+    }
+  }
+
+  const reportNames = { ...DEFAULT_REPORT_NAMES };
+  if (raw?.reportNames && typeof raw.reportNames === 'object') {
+    for (const key of SLOT_KEYS) {
+      if (typeof raw.reportNames[key] === 'string' && raw.reportNames[key].trim()) {
+        reportNames[key] = raw.reportNames[key].trim().slice(0, 256);
+      }
+    }
+  }
+
+  const reportTypes = { ...DEFAULT_REPORT_TYPES };
+  if (raw?.reportTypes && typeof raw.reportTypes === 'object') {
+    for (const key of SLOT_KEYS) {
+      if (typeof raw.reportTypes[key] === 'string' && raw.reportTypes[key]) {
+        reportTypes[key] = raw.reportTypes[key];
+      }
+    }
+  }
+
+  const baselineControls = {};
+  if (raw?.baselineControls && typeof raw.baselineControls === 'object' && !Array.isArray(raw.baselineControls)) {
+    for (const [id, control] of Object.entries(raw.baselineControls)) {
+      if (typeof id === 'string' && id && control && typeof control === 'object') {
+        baselineControls[id] = control;
+      }
+    }
+  }
+
+  return {
+    baselineControls,
+    exportValidationOptions,
+    reportNames,
+    reportTypes,
+    updatedAt: typeof raw?.updatedAt === 'string' ? raw.updatedAt : null,
+  };
+}
+
+/**
+ * Load saved comparison edits and export options for this user (browser localStorage only).
+ * @param {string} userId
+ * @param {Storage | null} [storage]
+ */
+export function loadComparisonWorkSession(userId, storage = getDefaultStorage()) {
+  const key = getWorkSessionStorageKey(userId, storage);
+  if (!key) {
+    return sanitizeWorkSession(null);
+  }
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) {
+      return sanitizeWorkSession(null);
+    }
+    return sanitizeWorkSession(JSON.parse(raw));
+  } catch {
+    return sanitizeWorkSession(null);
+  }
+}
+
+/**
+ * Persist comparison edits and export options (browser-only; never sent to server).
+ * @param {string} userId
+ * @param {object} partial
+ * @param {Storage | null} [storage]
+ * @returns {{ saved: boolean, reason?: string }}
+ */
+export function saveComparisonWorkSession(userId, partial, storage = getDefaultStorage()) {
+  const key = getWorkSessionStorageKey(userId, storage);
+  if (!key) {
+    return { saved: false, reason: 'no_storage' };
+  }
+
+  const existing = loadComparisonWorkSession(userId, storage);
+  const next = sanitizeWorkSession({
+    baselineControls: partial.baselineControls ?? existing.baselineControls,
+    exportValidationOptions: partial.exportValidationOptions ?? existing.exportValidationOptions,
+    reportNames: partial.reportNames ?? existing.reportNames,
+    reportTypes: partial.reportTypes ?? existing.reportTypes,
+    updatedAt: new Date().toISOString(),
+  });
+
+  const bytes = estimateJsonBytes(next);
+  if (bytes > MAX_WORK_SESSION_BYTES) {
+    return { saved: false, reason: 'too_large' };
+  }
+
+  try {
+    storage.setItem(key, JSON.stringify(next));
+    return { saved: true };
+  } catch {
+    return { saved: false, reason: 'quota' };
+  }
+}
+
+/**
+ * Overlay saved control edits onto API-derived baseline controls map.
+ * @param {Record<string, object>} apiMap
+ * @param {Record<string, object>} savedMap
+ */
+export function mergeBaselineControlsFromSession(apiMap, savedMap) {
+  if (!savedMap || typeof savedMap !== 'object') {
+    return apiMap;
+  }
+  const merged = { ...apiMap };
+  for (const [id, saved] of Object.entries(savedMap)) {
+    if (merged[id] && saved && typeof saved === 'object') {
+      merged[id] = { ...merged[id], ...saved, id };
+    }
+  }
+  return merged;
 }

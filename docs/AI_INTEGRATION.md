@@ -17,7 +17,7 @@
 
 **Date:** 2026-01-23  
 **Status:** Production-Ready  
-**Version:** 1.1 (guide revision; application release: root **`package.json`**, currently **1.7.20**)
+**Version:** 1.2 (guide revision; application release: root **`package.json`**, currently **1.7.21**)
 
 ---
 
@@ -517,6 +517,18 @@ Control Suggestion Engine → AI Model Router → Mistral Service / Gemma Servic
 ```
 
 The router uses `aiConfig.model` (and `bedrockModelId` for AWS) to detect the family. No code change is needed to switch models—only configuration.
+
+#### Per-control prompt context (1.7.21)
+
+Release **1.7.21** improves suggestion quality by passing **catalog and control-specific context** into every AI call:
+
+| Component | Role |
+|-----------|------|
+| **`backend/utils/controlPromptContext.js`** | Builds prompt fragments from catalog title/description, control statement parts, implementation status, and responsible parties. |
+| **`controlSuggestionEngine.js`** | Uses full catalog text for keyword matching and fallbacks before calling the router. |
+| **`gemmaService.js` / `mistralService.js`** | Include diverse style examples in prompts so outputs differ per control instead of repeating generic boilerplate. |
+
+No settings change is required; ensure the active catalogue/profile is loaded so the backend has OSCAL metadata available when suggestions run.
 
 **API Endpoints:**
 - `GET /api/ai/status` – Status for currently configured model (recommended)

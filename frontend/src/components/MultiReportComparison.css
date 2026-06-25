@@ -867,6 +867,12 @@
   justify-content: center;
 }
 
+.mrc-work-session-note {
+  font-size: 0.85rem;
+  color: #2e7d32;
+  margin: 0.5rem 0 0;
+}
+
 .mrc-export-buttons .export-btn {
   max-width: 320px;
 }
