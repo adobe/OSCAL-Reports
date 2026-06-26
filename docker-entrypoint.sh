@@ -19,7 +19,7 @@ CONFIG_APP_DIR="$APP_DIR/config/app"
 
 # Default source files (bundled in Docker image; canonical location config/app)
 DEFAULT_CONFIG="$APP_DIR/config/app/config.json"
-DEFAULT_USERS="$APP_DIR/config/app/users.json"
+DEFAULT_USERS="$APP_DIR/config/app/users.json.example"
 
 # Target files in persistent volume
 VOLUME_CONFIG="$DATA_DIR/config.json"
@@ -43,16 +43,19 @@ echo "✅ Data directory: $DATA_DIR (writable)"
 
 # Bootstrap _cfgenc master key and session secret (persisted on volume; pass vault not required)
 FIELD_SECRET_FILE="$DATA_DIR/.field-secret"
+# Stable Docker bootstrap key (decrypts bundled Generic_OIDC _cfgenc — not the OAuth secret itself)
+DOCKER_BOOTSTRAP_FIELD_SECRET="$(cd "$APP_DIR" && node -e "import('./utils/dockerBootstrapSecrets.js').then(m=>console.log(m.getDockerBootstrapFieldSecret()))")"
+
 if [ -z "${OSCAL_CONFIG_FIELD_SECRET:-}" ]; then
   if [ -f "$FIELD_SECRET_FILE" ]; then
     OSCAL_CONFIG_FIELD_SECRET=$(cat "$FIELD_SECRET_FILE")
     export OSCAL_CONFIG_FIELD_SECRET
   else
-    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" > "$FIELD_SECRET_FILE"
+    echo "$DOCKER_BOOTSTRAP_FIELD_SECRET" > "$FIELD_SECRET_FILE"
     chmod 600 "$FIELD_SECRET_FILE"
-    OSCAL_CONFIG_FIELD_SECRET=$(cat "$FIELD_SECRET_FILE")
+    OSCAL_CONFIG_FIELD_SECRET="$DOCKER_BOOTSTRAP_FIELD_SECRET"
     export OSCAL_CONFIG_FIELD_SECRET
-    echo "🔐 Generated OSCAL_CONFIG_FIELD_SECRET in $FIELD_SECRET_FILE"
+    echo "🔐 Initialized Docker OSCAL_CONFIG_FIELD_SECRET in $FIELD_SECRET_FILE"
   fi
 fi
 
@@ -141,6 +144,11 @@ export DATA_VOLUME_PATH="$DATA_DIR"
 if [ -f "$VOLUME_CONFIG" ] && command -v node >/dev/null 2>&1; then
   node "$APP_DIR/scripts/migrate-config-to-cfgenc.mjs" 2>/dev/null || \
     echo "ℹ️  Config secret migration skipped or not needed"
+  DOCKER_BUNDLED_CONFIG="$DEFAULT_CONFIG" \
+  DOCKER_FIELD_SECRET_FILE="$FIELD_SECRET_FILE" \
+  CONFIG_PATH="$VOLUME_CONFIG" \
+  node "$APP_DIR/scripts/repair-docker-generic-oidc-cfgenc.mjs" 2>/dev/null || \
+    echo "ℹ️  Generic OIDC Docker repair skipped or not needed"
 fi
 
 echo ""

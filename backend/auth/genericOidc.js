@@ -11,6 +11,11 @@ import { isCfgEncPointer, decryptConfigSecret } from '../utils/configFieldCrypto
 import { isSecretPointer } from '../utils/sensitiveConfigKeys.js';
 import { resolveSecretPointer } from '../utils/secretsManager.js';
 import { isGenericOidcTlsRelaxed, oidcAxiosRequestOptions } from '../utils/oidcHttpsAgent.js';
+import {
+  getDockerBootstrapFieldSecret,
+  isDockerRuntime,
+} from '../utils/dockerBootstrapSecrets.js';
+import fs from 'fs';
 
 export const GENERIC_OIDC_PROVIDER_ID = 'Generic_OIDC';
 export const GENERIC_OIDC_STATE_TTL_MS = 15 * 60 * 1000;
@@ -234,6 +239,42 @@ export async function fetchOidcDiscovery(discoveryUrl, options = {}) {
 export { isGenericOidcTlsRelaxed };
 
 /**
+ * @param {{ _cfgenc?: string }|string} enc
+ * @param {string} [fieldSecret]
+ * @returns {string}
+ */
+function decryptCfgEncWithFieldSecret(enc, fieldSecret) {
+  if (!isCfgEncPointer(enc)) return '';
+  const prev = process.env.OSCAL_CONFIG_FIELD_SECRET;
+  if (fieldSecret) process.env.OSCAL_CONFIG_FIELD_SECRET = fieldSecret;
+  try {
+    return decryptConfigSecret(enc).trim();
+  } catch (_) {
+    return '';
+  } finally {
+    if (prev === undefined) delete process.env.OSCAL_CONFIG_FIELD_SECRET;
+    else process.env.OSCAL_CONFIG_FIELD_SECRET = prev;
+  }
+}
+
+/**
+ * Docker bundled config fallback when volume _cfgenc was encrypted with a mismatched field key.
+ * @returns {string}
+ */
+function resolveDockerBundledGenericOidcSecret() {
+  if (!isDockerRuntime()) return '';
+  const bundledPath = (process.env.DOCKER_BUNDLED_CONFIG || '/app/config/app/config.json').trim();
+  try {
+    if (!fs.existsSync(bundledPath)) return '';
+    const bundled = JSON.parse(fs.readFileSync(bundledPath, 'utf8'));
+    const enc = bundled?.ssoConfig?.oauth?.providers?.Generic_OIDC?.clientSecret;
+    return decryptCfgEncWithFieldSecret(enc, getDockerBootstrapFieldSecret());
+  } catch (_) {
+    return '';
+  }
+}
+
+/**
  * @param {Object|null|undefined} provider
  */
 export function getEffectiveGenericOidcClientSecret(provider) {
@@ -242,17 +283,23 @@ export function getEffectiveGenericOidcClientSecret(provider) {
     return provider.clientSecret.trim();
   }
   if (isCfgEncPointer(provider.clientSecret)) {
-    try {
-      return decryptConfigSecret(provider.clientSecret).trim();
-    } catch (_) {
-      return '';
-    }
+    const direct = decryptCfgEncWithFieldSecret(provider.clientSecret);
+    if (direct) return direct;
+    const withBootstrap = decryptCfgEncWithFieldSecret(
+      provider.clientSecret,
+      getDockerBootstrapFieldSecret(),
+    );
+    if (withBootstrap) return withBootstrap;
+    const bundled = resolveDockerBundledGenericOidcSecret();
+    if (bundled) return bundled;
+    return '';
   }
   if (isSecretPointer(provider.clientSecret)) {
     return resolveSecretPointer(provider.clientSecret);
   }
   const fromEnv = (process.env.GENERIC_OIDC_CLIENT_SECRET || process.env.OSCAL_GENERIC_OIDC_CLIENT_SECRET || '').trim();
-  return fromEnv;
+  if (fromEnv) return fromEnv;
+  return resolveDockerBundledGenericOidcSecret();
 }
 
 /**

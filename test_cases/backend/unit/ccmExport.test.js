@@ -34,6 +34,34 @@ const sampleControls = [
 ];
 
 describe('ccmExport', () => {
+  test('Info sheet lists system metadata in Field/Value table', async () => {
+    const systemInfo = {
+      systemName: 'AEMGovAu',
+      systemId: '04fbd24b-4c5d-47f2-9f22-916597341429',
+      description: 'AEM Gov Cloud Australia',
+      organization: 'Adobe',
+      systemOwner: 'Mukesh Kesharwani',
+      assessorDetails: 'No_Input_Recorded',
+      cspIaaS: 'AWS, Azure',
+      cspPaaS: 'Not Applicable',
+      cspSaaS: 'Okta, Trend Micro',
+      securityLevel: 'Protected',
+      status: 'operational',
+      catalogueUrl:
+        'https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/heads/main/ISM_PROTECTED-baseline-resolved-profile_catalog.json',
+    };
+    const workbook = await generateCCMExport(sampleControls, systemInfo);
+    const info = workbook.getWorksheet('Info');
+    expect(info.getCell(1, 1).value).toBe('Field');
+    expect(info.getCell(1, 2).value).toBe('Value');
+    expect(info.getCell(2, 1).value).toBe('System Name');
+    expect(info.getCell(2, 2).value).toBe('AEMGovAu');
+    expect(info.getCell(3, 1).value).toBe('System ID');
+    expect(info.getCell(3, 2).value).toBe(systemInfo.systemId);
+    expect(info.getCell(13, 1).value).toBe('Catalogue URL');
+    expect(info.getCell(13, 2).value).toBe(systemInfo.catalogueUrl);
+  });
+
   test('creates ACSC June 2026 workbook sheets', async () => {
     const workbook = await generateCCMExport(sampleControls, { systemName: 'Test CSP' });
     expect(workbook.getWorksheet('Info')).toBeTruthy();

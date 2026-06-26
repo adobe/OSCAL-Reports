@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generatePDFReport } from './pdfExport.js';
-import { generateAcscExcelExport, UNIFIED_ACSC_EXCEL_FILENAME } from './acscExcelExport.js';
+import { generateAcscExcelExport } from './acscExcelExport.js';
 import { syncExportToDatabase } from './database/exportSync.js';
 
 const __filename = fileURLToPath(import.meta.url);

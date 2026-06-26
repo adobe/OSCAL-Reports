@@ -6,9 +6,6 @@
  */
 import { generateCCMExport } from './ccmExport.js';
 
-/** One filename for all SOA/SSP/CCM Excel exports (same control dataset). */
-export const UNIFIED_ACSC_EXCEL_FILENAME = 'soa-ssp-ccm-june-2026.xlsx';
-
 /**
  * ACSC Cloud Controls Matrix June 2026 is the superset layout (Principles + Controls +
  * provider/consumer columns). The same in-app controls[] populate SOA, SSP, and CCM views.
