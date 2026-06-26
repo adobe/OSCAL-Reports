@@ -15,6 +15,7 @@ import {
   normalizeHeader,
 } from './utils/acscTemplateSchemas.js';
 import { isIsmPrinciple } from './utils/acscControlClassifier.js';
+import { INFO_SHEET_SYSTEM_FIELDS } from './utils/acscExcelBuilder.js';
 
 /**
  * @param {Buffer} buffer
@@ -128,6 +129,13 @@ function extractSystemInfoFromInfoSheet(workbook) {
     systemId: '',
     securityLevel: '',
     description: '',
+    organization: '',
+    systemOwner: '',
+    assessorDetails: '',
+    cspIaaS: '',
+    cspPaaS: '',
+    cspSaaS: '',
+    catalogueUrl: '',
     status: 'under-development',
     confidentiality: 'moderate',
     integrity: 'moderate',
@@ -137,6 +145,38 @@ function extractSystemInfoFromInfoSheet(workbook) {
   const infoSheet = workbook.getWorksheet('Info');
   if (!infoSheet) return systemInfo;
 
+  const labelToKey = Object.fromEntries(
+    INFO_SHEET_SYSTEM_FIELDS.map(({ label, key }) => [label.toLowerCase(), key])
+  );
+  labelToKey.organization = 'organization';
+
+  let tableStartRow = null;
+  const maxScanRow = Math.min(infoSheet.rowCount || 0, 40);
+  for (let rowNumber = 1; rowNumber <= maxScanRow; rowNumber += 1) {
+    const fieldHeader = normalizeHeader(getCellValue(infoSheet.getCell(rowNumber, 1)));
+    const valueHeader = normalizeHeader(getCellValue(infoSheet.getCell(rowNumber, 2)));
+    if (fieldHeader === 'field' && valueHeader === 'value') {
+      tableStartRow = rowNumber + 1;
+      break;
+    }
+  }
+
+  if (tableStartRow) {
+    for (let rowNumber = tableStartRow; rowNumber <= (infoSheet.rowCount || 0); rowNumber += 1) {
+      const label = getCellValue(infoSheet.getCell(rowNumber, 1))?.trim();
+      const value = getCellValue(infoSheet.getCell(rowNumber, 2))?.trim();
+      if (!label) {
+        continue;
+      }
+      const key = labelToKey[label.toLowerCase()];
+      if (key) {
+        systemInfo[key] = value || '';
+      }
+    }
+    return systemInfo;
+  }
+
+  // Legacy Info sheet: free-text lines in column B ("System: …", "System ID: …")
   infoSheet.eachRow((row) => {
     const value = getCellValue(row.getCell(2));
     if (!value) return;

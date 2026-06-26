@@ -5,19 +5,11 @@
  * Shared OSCAL JSON export — same generate-ssp path for all use cases.
  */
 import axios from './safeAxios.js';
+import { complianceReportFileName } from './complianceReportFileName.js';
+
+export { complianceReportFileName };
 
 const DEFAULT_GENERATE_TIMEOUT_MS = 300000;
-
-/**
- * @param {string} systemName
- * @param {string} [extension]
- * @returns {string}
- */
-export function complianceReportFileName(systemName, extension = 'json') {
-  const sanitizedName = (systemName || 'System').replace(/[^a-zA-Z0-9]/g, '_');
-  const today = new Date().toISOString().split('T')[0];
-  return `${sanitizedName}_ComplianceReport_${today}.${extension}`;
-}
 
 /**
  * @param {object} sspJson

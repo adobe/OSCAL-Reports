@@ -15,6 +15,9 @@ RUN npm ci
 # Copy frontend source
 COPY frontend/ ./
 
+# Catalogue preset manifest (imported from src/catalogues/sampleCatalogues.js via ../../../config/...)
+COPY config/catalogues/sample-catalogues.json ../config/catalogues/sample-catalogues.json
+
 # Build frontend
 RUN npm run build
 
@@ -32,6 +35,14 @@ COPY backend/ ./
 
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder /app/frontend/dist ./public
+
+# Bundled config with Generic OIDC _cfgenc (Docker bootstrap field key; OAuth secret not plaintext)
+COPY config/app/config.json.example /tmp/config.json.example
+RUN node scripts/prepare-docker-bundled-config.mjs /tmp/config.json.example /app/config/app/config.json \
+  && rm -f /tmp/config.json.example
+
+# Optional default users (volume init copies when missing)
+COPY config/app/users.json.example /app/config/app/users.json.example
 
 # Create config directory structure
 RUN mkdir -p /app/config/app
@@ -57,6 +68,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=${PORT}
+ENV OSCAL_DOCKER_IMAGE=1
+ENV OSCAL_PASS_DISABLED=1
 
 # Use entrypoint script to handle volume initialization
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
