@@ -96,6 +96,16 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ---
 
+## What's new in 1.7.23
+
+- **Dependencies:** Dependabot updates merged into Quality — AWS SDK, `express-rate-limit` 8.x, `pdfkit` 0.19, `pg`, React 19.2.7, and related security/toolchain bumps (#45–#61).
+- **CI / tests:** Quality Gates action updates; OIDC and Docker bootstrap unit tests stable in CI; optional live OIDC probe via `OSCAL_RUN_OIDC_PROBE=1`.
+- **Deploy:** `keekar/oscal_reports:v1.7.23` when published to Docker Hub.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1723---2026-06-29).
+
+---
+
 ## What's new in 1.7.22
 
 - **Pass bundle (laptop):** All OSCAL app secrets in one pass entry `PROD/OSCAL/AWS_SM` (same JSON as AWS SM); migrate legacy `OSCAL/*` with `migrate-pass-entries-to-bundle.sh`.
@@ -124,4 +134,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.22 (see root `package.json`) · **Last updated:** June 2026
+**Version:** 1.7.23 (see root `package.json`) · **Last updated:** June 2026

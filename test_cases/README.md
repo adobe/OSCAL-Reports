@@ -1,6 +1,6 @@
 # OSCAL Report Generator - Test Suite
 
-**Version:** 1.7.22  
+**Version:** 1.7.23  
 **Last Updated:** April 2026  
 **Maintained By:** Mukesh Kesharwani
 
@@ -265,7 +265,7 @@ open test_cases/backend/coverage/lcov-report/index.html
  * 
  * Description of what this test suite covers
  * 
- * Version: 1.7.22+
+ * Version: 1.7.23+
  * Location: test_cases/backend/[type]/[name].test.js
  */
 
