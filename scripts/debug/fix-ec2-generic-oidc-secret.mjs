@@ -60,7 +60,7 @@ console.log(
     success: true,
     configPath: CONFIG_PATH,
     smEntry: SM_ENTRY,
-    smResolvedLen: smResolved.length,
+    smResolvedLen: resolvedLen,
     storedPlaintextFallback: !smResolved,
     storedPointer: !!smResolved,
   }),
