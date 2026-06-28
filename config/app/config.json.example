@@ -13,14 +13,14 @@
       "smtpPort": 587,
       "smtpSecure": false,
       "smtpUser": "",
-      "smtpPassword": { "_pass": "OSCAL/smtp-password" },
+      "smtpPassword": { "_sm": "OSCAL/smtp-password" },
       "fromEmail": "",
       "fromName": "OSCAL Report Generator",
       "loginUrl": ""
     },
     "slack": {
       "enabled": false,
-      "webhookUrl": { "_pass": "OSCAL/slack-webhook-url" },
+      "webhookUrl": { "_sm": "OSCAL/slack-webhook-url" },
       "channel": "#general"
     }
   },
@@ -28,14 +28,17 @@
     "enabled": false,
     "provider": "aws-bedrock",
     "url": "",
-    "apiToken": { "_pass": "OSCAL/ai-api-token" },
+    "apiToken": { "_sm": "OSCAL/ai-api-token" },
     "model": "mistral:7b",
     "timeout": 180000,
     "organizationName": "Your Organization",
     "awsRegion": "us-east-1",
+    "bedrockAuthMode": "access-keys",
+    "bedrockAssumeRoleArn": "",
+    "bedrockExternalId": "",
     "bedrockModelId": "mistral.mistral-large-2402-v1:0",
-    "awsAccessKeyId": { "_pass": "OSCAL/ai-aws-access-key-id" },
-    "awsSecretAccessKey": { "_pass": "OSCAL/ai-aws-secret-access-key" },
+    "awsAccessKeyId": { "_sm": "OSCAL/ai-aws-access-key-id" },
+    "awsSecretAccessKey": { "_sm": "OSCAL/ai-aws-secret-access-key" },
     "extensiveLogging": false,
     "allowedUsersForAI": "",
     "maxTokens": {
@@ -54,6 +57,68 @@
     "authMode": "password",
     "sslMode": "disable",
     "connectionTimeout": 10000
+  },
+  "ssoConfig": {
+    "oauth": {
+      "enabled": true,
+      "jitProvisioning": true,
+      "jitDefaultRole": "User",
+      "syncRoleFromGroups": true,
+      "groupToRoleMapping": {
+        "Assessor": "Assessor",
+        "Platform Admin": "Platform Admin",
+        "Adobe_MS_IDP_Admin": "Platform Admin",
+        "GRP-TECHGRC-ALL": "Assessor",
+        "DL-AMS-Security": "User",
+        "GRP-TECHGRC-ASSURANCE-MANAGERS": "Assessor",
+        "GRP-TGRC-DEXTER": "User",
+        "GRP-AMS-GUTENBERG-TECH": "User",
+        "GRP-ALLADOBECOMMISSIONABLES": "User",
+        "DL-CSM-ManServ": "User"
+      },
+      "providers": {
+        "Generic_OIDC": {
+          "enabled": true,
+          "displayName": "Generic SSO",
+          "issuerUrl": "https://sso.keekar.au/application/o/oscal-report-generator/",
+          "discoveryUrl": "https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration",
+          "clientId": "oscal-report-generator",
+          "clientSecret": {
+            "_cfgenc": "v1$zCkoUHduWfK-Jx-JXToepQ$nTLppYu_rebzwx1t$Wsheakg0AdszPtsHi9Q6iQ$TAaz35ixMrnc2zRMQZs4QxeDZgWxtrq4iP_MlRfbqk5_VWammPT3NAokXQ"
+          },
+          "callbackPath": "/auth/callback",
+          "scope": "openid profile email",
+          "endSessionUrl": "https://sso.keekar.au/application/o/oscal-report-generator/end-session/",
+          "redirectUriPatterns": [
+            { "matchingMode": "strict", "url": "http://localhost:3021/auth/callback" },
+            { "matchingMode": "strict", "url": "http://127.0.0.1:3020/auth/callback" },
+            { "matchingMode": "strict", "url": "http://192.168.1.200:3020/auth/callback" },
+            { "matchingMode": "strict", "url": "https://oscal.keekar.au/auth/callback" },
+            { "matchingMode": "strict", "url": "http://oscal.keekar.au/auth/callback" },
+            { "matchingMode": "strict", "url": "https://blue.oscal.keekar.au/auth/callback" },
+            { "matchingMode": "strict", "url": "http://blue.oscal.keekar.au/auth/callback" },
+            { "matchingMode": "strict", "url": "https://oscal.amsgovcloud.com.au/auth/callback" },
+            { "matchingMode": "strict", "url": "http://oscal.amsgovcloud.com.au/auth/callback" },
+            { "matchingMode": "regex", "url": "http://localhost:\\d+/auth/callback" },
+            { "matchingMode": "regex", "url": "http://127\\.0\\.0\\.1:\\d+/auth/callback" },
+            { "matchingMode": "regex", "url": "http://192\\.168\\.\\d+\\.\\d+:\\d+/auth/callback" },
+            { "matchingMode": "regex", "url": "https?://([a-z0-9-]+\\.)*keekar\\.au(:\\d+)?/auth/callback" },
+            { "matchingMode": "regex", "url": "https?://([a-z0-9-]+\\.)*oscal\\.keekar\\.au(:\\d+)?/auth/callback" },
+            { "matchingMode": "regex", "url": "https?://oscal\\.amsgovcloud\\.com\\.au(:\\d+)?/auth/callback" }
+          ],
+          "tlsRelaxed": true
+        },
+        "okta": {
+          "enabled": false,
+          "domain": "",
+          "authServerId": "",
+          "clientId": "",
+          "clientSecret": "",
+          "redirectUri": "",
+          "scope": "openid profile email"
+        }
+      }
+    }
   },
   "lastModified": "",
   "version": "1.0.0"

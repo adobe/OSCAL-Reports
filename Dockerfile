@@ -6,14 +6,17 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Copy frontend package files (frontend/package-lock.json is gitignored; use npm install)
-COPY frontend/package.json ./
+# Copy frontend package files (lockfile pins Vite/Rolldown; npm install without it breaks vite.config bundling)
+COPY frontend/package.json frontend/package-lock.json ./
 
 # Install frontend dependencies (including dev deps needed for build)
-RUN npm install
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
+
+# Catalogue preset manifest (imported from src/catalogues/sampleCatalogues.js via ../../../config/...)
+COPY config/catalogues/sample-catalogues.json ../config/catalogues/sample-catalogues.json
 
 # Build frontend
 RUN npm run build
@@ -33,60 +36,16 @@ COPY backend/ ./
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder /app/frontend/dist ./public
 
+# Bundled config with Generic OIDC _cfgenc (Docker bootstrap field key; OAuth secret not plaintext)
+COPY config/app/config.json.example /tmp/config.json.example
+RUN node scripts/prepare-docker-bundled-config.mjs /tmp/config.json.example /app/config/app/config.json \
+  && rm -f /tmp/config.json.example
+
+# Optional default users (volume init copies when missing)
+COPY config/app/users.json.example /app/config/app/users.json.example
+
 # Create config directory structure
 RUN mkdir -p /app/config/app
-
-# Install pass (password-store) and gnupg for config secret resolution (_pass pointers).
-# Key generation is not run at build time (GPG needs a TTY/entropy; causes "Not a tty" in Docker build).
-# To initialize pass in a running container: see docs or run:
-#   docker exec -it <container> sh -c 'gpg --batch --quick-generate-key "OSCAL Docker" default default 0 && pass init $(gpg -k --with-colons "OSCAL Docker" | awk -F: "/^pub:/{print \$5;exit}")'
-RUN apk add --no-cache pass gnupg \
-    && mkdir -p /root/.password-store
-
-# Build argument for build timestamp (used for password generation)
-ARG BUILD_TIMESTAMP=""
-
-# Generate credentials file with timestamp-based passwords
-# Format: username#DDMMYYHH (DD=day, MM=month, YY=year, HH=hour in UTC)
-# Use Node.js to parse BUILD_TIMESTAMP for cross-platform compatibility
-# IMPORTANT: Uses UTC time to ensure consistency across all timezones
-RUN BUILD_DATE_RAW="${BUILD_TIMESTAMP:-$(date -Iseconds)}" && \
-    BUILD_DATE=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCDate()).padStart(2,'0'))") && \
-    BUILD_MONTH=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCMonth()+1).padStart(2,'0'))") && \
-    BUILD_YEAR=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCFullYear()).slice(-2))") && \
-    BUILD_HOUR=$(node -e "let d=new Date('$BUILD_DATE_RAW'); if(isNaN(d.getTime())){d=new Date();} console.log(String(d.getUTCHours()).padStart(2,'0'))") && \
-    ADMIN_PASSWORD="admin#${BUILD_DATE}${BUILD_MONTH}${BUILD_YEAR}${BUILD_HOUR}" && \
-    USER_PASSWORD="user#${BUILD_DATE}${BUILD_MONTH}${BUILD_YEAR}${BUILD_HOUR}" && \
-    ASSESSOR_PASSWORD="assessor#${BUILD_DATE}${BUILD_MONTH}${BUILD_YEAR}${BUILD_HOUR}" && \
-    echo "================================================================================" > credentials.txt && \
-    echo "OSCAL Report Generator - Default Credentials" >> credentials.txt && \
-    echo "================================================================================" >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "IMPORTANT: These are the default credentials generated during build." >> credentials.txt && \
-    echo "Please change them immediately after first login for security purposes." >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "Password Format: username#DDMMYYHH" >> credentials.txt && \
-    echo "(DD=Day, MM=Month, YY=Year, HH=Hour of build time)" >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "Build Timestamp: ${BUILD_DATE_RAW}" >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "Platform Admin Credentials:" >> credentials.txt && \
-    echo "  Username: admin" >> credentials.txt && \
-    echo "  Password: ${ADMIN_PASSWORD}" >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "Standard User Credentials:" >> credentials.txt && \
-    echo "  Username: user" >> credentials.txt && \
-    echo "  Password: ${USER_PASSWORD}" >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "Assessor Credentials:" >> credentials.txt && \
-    echo "  Username: assessor" >> credentials.txt && \
-    echo "  Password: ${ASSESSOR_PASSWORD}" >> credentials.txt && \
-    echo "" >> credentials.txt && \
-    echo "================================================================================" >> credentials.txt && \
-    echo "This file is generated during the build process." >> credentials.txt && \
-    echo "Keep this file secure and do not commit it to version control." >> credentials.txt && \
-    echo "Delete this file after changing the default credentials." >> credentials.txt && \
-    echo "================================================================================" >> credentials.txt
 
 # Copy entrypoint script for volume initialization
 COPY docker-entrypoint.sh /usr/local/bin/
@@ -109,6 +68,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=${PORT}
+ENV OSCAL_DOCKER_IMAGE=1
+ENV OSCAL_PASS_DISABLED=1
 
 # Use entrypoint script to handle volume initialization
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

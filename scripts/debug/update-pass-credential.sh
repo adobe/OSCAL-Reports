@@ -8,6 +8,9 @@
 # or delete an existing entry (with confirmation).
 # Credentials are read from stdin (paste then Ctrl+D); they are not written to disk.
 #
+# This script does NOT read AWS Secrets Manager. To pull SM → pass on EC2 use:
+#   pull-secrets-manager-to-pass.sh  (or ec2_automation pass_secrets_sync_run via cron)
+#
 # Usage:
 #   ./scripts/debug/update-pass-credential.sh
 #

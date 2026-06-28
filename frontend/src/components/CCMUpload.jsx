@@ -100,7 +100,7 @@ function CCMUpload({ onImportComplete, onSkip, catalogueUrl }) {
           }
         } catch (err) {
           console.error('Error importing CCM:', err);
-          setError(err.response?.data?.details || 'Failed to import CCM file. Please ensure it\'s a valid CCM export.');
+          setError(err.response?.data?.details || 'Failed to import Excel file. Use an ACSC June 2026 SSP Annex or CCM workbook.');
         } finally {
           setLoading(false);
         }
@@ -120,10 +120,10 @@ function CCMUpload({ onImportComplete, onSkip, catalogueUrl }) {
     <div className="ccm-upload-container">
       <div className="ccm-upload-card">
         <div className="card-header">
-          <h2>📊 Import Existing CCM (Optional)</h2>
+          <h2>📊 Import ACSC Excel (Optional)</h2>
           <p className="text-muted">
-            Have an existing Cloud Control Matrix Excel file? Upload it to pre-populate all control data.
-            You can review and validate before saving.
+            Have an existing ACSC June 2026 SSP Annex or Cloud Controls Matrix Excel file? Upload it to
+            pre-populate principles, controls, and OSCAL extension fields. You can review and validate before saving.
           </p>
         </div>
 
@@ -138,7 +138,7 @@ function CCMUpload({ onImportComplete, onSkip, catalogueUrl }) {
             {!file ? (
               <>
                 <div className="upload-icon">📊</div>
-                <p className="upload-text">Drag & drop your CCM Excel file here</p>
+                <p className="upload-text">Drag & drop your ACSC Excel file here (SSP Annex or CCM)</p>
                 <p className="text-muted">or</p>
                 <label htmlFor="ccm-file-upload" className="btn btn-secondary">
                   Browse Files
@@ -181,11 +181,10 @@ function CCMUpload({ onImportComplete, onSkip, catalogueUrl }) {
           <div className="info-box">
             <h4>ℹ️ What gets imported?</h4>
             <ul>
-              <li><strong>System Information:</strong> System name, ID, and classification level</li>
-              <li><strong>Control Data:</strong> Implementation status, details, and responsible parties</li>
-              <li><strong>Testing Evidence:</strong> Control types, evidence locations, and API URLs</li>
-              <li><strong>Risk Assessment:</strong> Risk ratings, compensating controls, and exceptions</li>
-              <li className="warning-item"><strong>⚠️ Important:</strong> Apologies this function is not working we are debugging it.</li>
+              <li><strong>Info sheet:</strong> System metadata (name, ID, organisation, CSP providers, catalogue URL, etc.)</li>
+              <li><strong>Principles sheet:</strong> ISM principles with responsibility and implementation status</li>
+              <li><strong>Controls sheet:</strong> ISM controls with guideline, section, classification columns, and implementation data</li>
+              <li><strong>OSCAL Extensions:</strong> Testing evidence, risk ratings, API fields, and other tool-specific columns when present</li>
             </ul>
             <p className="text-muted">
               After import, you can review, validate, and update any fields before saving locally.

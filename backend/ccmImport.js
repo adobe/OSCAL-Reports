@@ -3,293 +3,394 @@
  * Copyright (c) 2025 Mukesh Kesharwani
  *
  * Licensed under the MIT License. See LICENSE file for details.
+ *
+ * Concept: Mukesh Kesharwani
+ * Contact: mukesh.kesharwani@adobe.com
  */
 import ExcelJS from 'exceljs';
+import {
+  CCM_JUNE_2026,
+  SSP_ANNEX_JUNE_2026,
+  OSCAL_EXTENSION_COLUMNS,
+  normalizeHeader,
+} from './utils/acscTemplateSchemas.js';
+import { isIsmPrinciple } from './utils/acscControlClassifier.js';
+import { INFO_SHEET_SYSTEM_FIELDS } from './utils/acscExcelBuilder.js';
+
+/**
+ * @param {Buffer} buffer
+ * @returns {Promise<{ systemInfo: Object, controls: Array<Object>, statistics: Object, templateType: string }>}
+ */
 export async function parseCCMExcel(buffer) {
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
-    
-    // Log available sheets
-    const sheetNames = workbook.worksheets.map(ws => ws.name);
+
+    const sheetNames = workbook.worksheets.map((ws) => ws.name);
     console.log('Available sheets in workbook:', sheetNames);
-    
-    // Try to find the CCM sheet by trying multiple names
-    let ccmSheet = null;
-    const possibleNames = ['Cloud Control Matrix', 'CCM', 'Controls', 'Control Matrix'];
-    
-    for (const name of possibleNames) {
-      ccmSheet = workbook.getWorksheet(name);
-      if (ccmSheet) {
-        console.log(`Found CCM sheet: "${name}"`);
-        break;
-      }
-    }
-    
-    // If still not found, try to find by detecting CCM headers
-    if (!ccmSheet) {
-      ccmSheet = findCCMSheetByHeaders(workbook);
-      if (ccmSheet) {
-        console.log(`Found CCM sheet by headers: "${ccmSheet.name}"`);
-      }
-    }
-    
-    if (!ccmSheet) {
+
+    const templateType = detectTemplateType(workbook);
+    const schema = templateType === 'ssp-annex' ? SSP_ANNEX_JUNE_2026 : CCM_JUNE_2026;
+    const isCcm = templateType === 'ccm';
+
+    const principlesSheet = findSheet(workbook, [schema.sheets.principles, 'Principles']);
+    const controlsSheet = findSheet(workbook, [schema.sheets.controls, 'Controls']);
+
+    if (!controlsSheet && !principlesSheet) {
       throw new Error(
-        `Invalid CCM file: Could not find CCM sheet. ` +
-        `Available sheets: ${sheetNames.join(', ')}. ` +
-        `Expected one of: ${possibleNames.join(', ')}, or a sheet with CCM-like headers.`
+        `Invalid ACSC workbook: could not find Principles or Controls sheets. Available: ${sheetNames.join(', ')}`
       );
     }
-    
-    // Get the summary sheet for system info
-    const summarySheet = workbook.getWorksheet('Summary');
-    
-    // Extract system info from summary sheet
-    const systemInfo = extractSystemInfo(summarySheet);
-    
-    // Extract controls from CCM sheet
-    const controls = extractControls(ccmSheet);
-    
+
+    const systemInfo = extractSystemInfoFromInfoSheet(workbook);
+    const controls = [];
+
+    if (principlesSheet) {
+      const headerRow = schema.principles.groupHeaders ? 2 : 1;
+      controls.push(
+        ...extractSheetRows(principlesSheet, schema.principles.columns, headerRow, isCcm, true)
+      );
+    }
+
+    if (controlsSheet) {
+      controls.push(...extractSheetRows(controlsSheet, schema.controls.columns, 1, isCcm, false));
+    }
+
     return {
       systemInfo,
       controls,
+      templateType,
       statistics: {
         totalControls: controls.length,
-        withImplementation: controls.filter(c => c.implementation && c.implementation.trim()).length,
-        withStatus: controls.filter(c => c.status && c.status !== 'not-assessed').length
-      }
+        principles: controls.filter((c) => isIsmPrinciple(c)).length,
+        ismControls: controls.filter((c) => !isIsmPrinciple(c)).length,
+        withImplementation: controls.filter((c) => c.implementation && c.implementation.trim()).length,
+        withStatus: controls.filter((c) => c.status && c.status !== 'not-assessed').length,
+      },
     };
   } catch (error) {
-    console.error('Error parsing CCM Excel:', error);
-    throw new Error(`Failed to parse CCM Excel file: ${error.message}`);
+    console.error('Error parsing ACSC Excel:', error);
+    throw new Error(`Failed to parse ACSC Excel file: ${error.message}`);
   }
 }
 
 /**
- * Extract system information from Summary sheet
+ * @param {import('exceljs').Workbook} workbook
+ * @returns {'ccm'|'ssp-annex'}
  */
-function extractSystemInfo(summarySheet) {
+function detectTemplateType(workbook) {
+  const names = workbook.worksheets.map((ws) => ws.name.toLowerCase());
+  if (names.some((n) => n.includes('cloud controls') || n.includes('ccm'))) {
+    return 'ccm';
+  }
+
+  const controlsSheet = findSheet(workbook, ['Controls - June 2026', 'Controls']);
+  if (controlsSheet) {
+    const headers = readHeaderMap(controlsSheet, 1);
+    if (headers['administration environment'] || headers['provider responsibility']) {
+      return 'ccm';
+    }
+  }
+
+  return 'ssp-annex';
+}
+
+/**
+ * @param {import('exceljs').Workbook} workbook
+ * @param {string[]} candidates
+ * @returns {import('exceljs').Worksheet|null}
+ */
+function findSheet(workbook, candidates) {
+  for (const name of candidates) {
+    const sheet = workbook.getWorksheet(name);
+    if (sheet) return sheet;
+  }
+  for (const worksheet of workbook.worksheets) {
+    const lower = worksheet.name.toLowerCase();
+    if (candidates.some((c) => lower.includes(c.toLowerCase().split(' ')[0]))) {
+      if (lower.includes('principle') && candidates.some((c) => c.toLowerCase().includes('principle'))) {
+        return worksheet;
+      }
+      if (lower.includes('control') && candidates.some((c) => c.toLowerCase().includes('control'))) {
+        return worksheet;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * @param {import('exceljs').Workbook} workbook
+ * @returns {Object}
+ */
+function extractSystemInfoFromInfoSheet(workbook) {
   const systemInfo = {
     systemName: '',
     systemId: '',
     securityLevel: '',
     description: '',
+    organization: '',
+    systemOwner: '',
+    assessorDetails: '',
+    cspIaaS: '',
+    cspPaaS: '',
+    cspSaaS: '',
+    catalogueUrl: '',
     status: 'under-development',
     confidentiality: 'moderate',
     integrity: 'moderate',
-    availability: 'moderate'
+    availability: 'moderate',
   };
-  
-  if (!summarySheet) {
+
+  const infoSheet = workbook.getWorksheet('Info');
+  if (!infoSheet) return systemInfo;
+
+  const labelToKey = Object.fromEntries(
+    INFO_SHEET_SYSTEM_FIELDS.map(({ label, key }) => [label.toLowerCase(), key])
+  );
+  labelToKey.organization = 'organization';
+
+  let tableStartRow = null;
+  const maxScanRow = Math.min(infoSheet.rowCount || 0, 40);
+  for (let rowNumber = 1; rowNumber <= maxScanRow; rowNumber += 1) {
+    const fieldHeader = normalizeHeader(getCellValue(infoSheet.getCell(rowNumber, 1)));
+    const valueHeader = normalizeHeader(getCellValue(infoSheet.getCell(rowNumber, 2)));
+    if (fieldHeader === 'field' && valueHeader === 'value') {
+      tableStartRow = rowNumber + 1;
+      break;
+    }
+  }
+
+  if (tableStartRow) {
+    for (let rowNumber = tableStartRow; rowNumber <= (infoSheet.rowCount || 0); rowNumber += 1) {
+      const label = getCellValue(infoSheet.getCell(rowNumber, 1))?.trim();
+      const value = getCellValue(infoSheet.getCell(rowNumber, 2))?.trim();
+      if (!label) {
+        continue;
+      }
+      const key = labelToKey[label.toLowerCase()];
+      if (key) {
+        systemInfo[key] = value || '';
+      }
+    }
     return systemInfo;
   }
-  
-  // Read summary rows (starting from row 2, skipping header)
-  summarySheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= 1) return; // Skip header
-    
-    const metric = getCellValue(row.getCell(1));
+
+  // Legacy Info sheet: free-text lines in column B ("System: …", "System ID: …")
+  infoSheet.eachRow((row) => {
     const value = getCellValue(row.getCell(2));
-    
-    if (!metric || !value) return;
-    
-    switch (metric.toLowerCase()) {
-      case 'system name':
-        systemInfo.systemName = value;
-        break;
-      case 'system id':
-        systemInfo.systemId = value;
-        break;
-      case 'security level':
-      case 'data sensitivity/classification level':
-        systemInfo.securityLevel = value;
-        break;
+    if (!value) return;
+    if (value.startsWith('System:')) {
+      systemInfo.systemName = value.replace(/^System:\s*/i, '').trim();
+    } else if (value.startsWith('System ID:')) {
+      systemInfo.systemId = value.replace(/^System ID:\s*/i, '').trim();
     }
   });
-  
+
   return systemInfo;
 }
 
 /**
- * Extract controls from CCM sheet
+ * @param {import('exceljs').Worksheet} sheet
+ * @param {number} headerRowNumber
+ * @returns {Record<string, number>}
  */
-function extractControls(ccmSheet) {
-  const controls = [];
+function readHeaderMap(sheet, headerRowNumber) {
   const headers = {};
-  
-  // Read header row to map column indices
-  const headerRow = ccmSheet.getRow(1);
-  headerRow.eachCell((cell, colNumber) => {
-    const headerName = getCellValue(cell);
-    if (headerName) {
-      headers[headerName.toLowerCase().trim()] = colNumber;
+  const row = sheet.getRow(headerRowNumber);
+  row.eachCell((cell, colNumber) => {
+    const name = normalizeHeader(getCellValue(cell));
+    if (name && name !== 'oscal extensions') {
+      headers[name] = colNumber;
     }
   });
-  
-  console.log('CCM Headers detected:', Object.keys(headers));
-  
-  // Validate required headers
-  const requiredHeaders = ['control id'];
-  const missingHeaders = requiredHeaders.filter(h => !headers[h]);
-  
-  if (missingHeaders.length > 0) {
-    console.error('Missing required headers:', missingHeaders);
-    console.log('Available headers:', Object.keys(headers));
-    throw new Error(
-      `Missing required headers: ${missingHeaders.join(', ')}. ` +
-      `Available headers: ${Object.keys(headers).join(', ')}`
-    );
-  }
-  
-  // Helper function to safely get cell value by header name
-  const safeGetCell = (row, headerName) => {
-    const colIndex = headers[headerName];
-    if (colIndex === undefined) return '';
-    try {
-      return getCellValue(row.getCell(colIndex)) || '';
-    } catch (error) {
-      console.warn(`Error getting cell for header "${headerName}":`, error.message);
-      return '';
+  return headers;
+}
+
+/**
+ * @param {import('exceljs').Worksheet} sheet
+ * @param {Array<{header: string, key: string}>} schemaColumns
+ * @param {number} headerRowNumber
+ * @param {boolean} isCcm
+ * @param {boolean} isPrinciplesSheet
+ * @returns {Array<Object>}
+ */
+function extractSheetRows(sheet, schemaColumns, headerRowNumber, isCcm, isPrinciplesSheet) {
+  const headerMap = readHeaderMap(sheet, headerRowNumber);
+  const extensionMap = {};
+
+  OSCAL_EXTENSION_COLUMNS.forEach((col) => {
+    const idx = headerMap[normalizeHeader(col.header)];
+    if (idx) extensionMap[col.key] = idx;
+  });
+
+  const controls = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= headerRowNumber) return;
+
+    const identifier = getByHeaders(row, headerMap, ['identifier']);
+    if (!identifier) return;
+
+    const control = mapRowToControl(row, headerMap, extensionMap, isCcm, isPrinciplesSheet);
+    control.id = identifier;
+    control.title = control.topic || getByHeaders(row, headerMap, ['topic']) || identifier;
+    if (!control.ismReference) {
+      control.ismReference = identifier;
     }
-  };
-  
-  // Read data rows (starting from row 2)
-  ccmSheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= 1) return; // Skip header
-    
-    const controlId = safeGetCell(row, 'control id');
-    if (!controlId) return; // Skip empty rows
-    
-    const control = {
-      id: controlId,
-      title: safeGetCell(row, 'control title'),
-      groupTitle: safeGetCell(row, 'control domain'),
-      
-      // Parse parts for control description
-      parts: [],
-      
-      // Implementation details
-      status: parseStatus(safeGetCell(row, 'implementation status')),
-      implementation: safeGetCell(row, 'implementation details'),
-      
-      // Responsible parties
-      responsibleParty: safeGetCell(row, 'responsible party'),
-      adobeTeamResponsible: parseAdobeTeamResponsible(safeGetCell(row, 'adobe team responsible')),
-      consumerGuidance: safeGetCell(row, 'consumer guidance'),
-      controlOwner: safeGetCell(row, 'cloud provider responsibility'),
-      
-      // Dates
-      implementationDate: safeGetCell(row, 'implementation date'),
-      reviewDate: safeGetCell(row, 'review date'),
-      nextReviewDate: safeGetCell(row, 'next review date'),
-      
-      // Control Type and Testing
-      controlType: safeGetCell(row, 'control type'),
-      evidence: safeGetCell(row, 'evidence location'),
-      testingObjective: safeGetCell(row, 'assessment/testing objective'),
-      testingProcedure: safeGetCell(row, 'testing method'),
-      testingFrequency: safeGetCell(row, 'testing frequency'),
-      lastTestDate: safeGetCell(row, 'last test date'),
-      
-      // API fields
-      apiUrl: safeGetCell(row, 'api url'),
-      apiCredentialId: safeGetCell(row, 'api credential id'),
-      apiResponseData: parseJSON(safeGetCell(row, 'api response data')),
-      apiDataHistory: parseJSON(safeGetCell(row, 'api data history')),
-      
-      // Risk assessment
-      riskRating: safeGetCell(row, 'risk level'),
-      residualRisk: safeGetCell(row, 'residual risk'),
-      
-      // Additional fields
-      frameworks: safeGetCell(row, 'related frameworks'),
-      compensatingControls: safeGetCell(row, 'compensating controls'),
-      exceptions: safeGetCell(row, 'exceptions/deviations'),
-      justification: safeGetCell(row, 'justification'),
-      remarks: safeGetCell(row, 'additional notes'),
-      
-      // ISM reference
-      ismReference: safeGetCell(row, 'ism reference') || controlId
-    };
-    
-    // Add control description as a part
-    const description = safeGetCell(row, 'control description');
-    if (description) {
+
+    if (control.description) {
       control.parts = [{
-        id: `${controlId}_smt`,
+        id: `${identifier}_smt`,
         name: 'statement',
-        prose: description
+        prose: control.description,
       }];
     }
-    
+
     controls.push(control);
   });
-  
-  console.log(`Extracted ${controls.length} controls from CCM`);
+
   return controls;
 }
 
 /**
- * Get cell value safely
+ * @param {import('exceljs').Row} row
+ * @param {Record<string, number>} headerMap
+ * @param {Record<string, number>} extensionMap
+ * @param {boolean} isCcm
+ * @param {boolean} isPrinciplesSheet
+ * @returns {Object}
+ */
+function mapRowToControl(row, headerMap, extensionMap, isCcm, isPrinciplesSheet) {
+  const get = (...names) => getByHeaders(row, headerMap, names);
+
+  const description = get('description');
+  const statusRaw = isPrinciplesSheet
+    ? (isCcm ? get('implementation status', 'implementation') : get('implementation'))
+    : (isCcm ? get('implementation status', 'implementation') : get('implementation'));
+
+  const control = {
+    topic: get('topic'),
+    description,
+    function: get('function'),
+    guideline: get('guideline'),
+    section: get('section'),
+    revision: get('revision'),
+    updated: get('updated'),
+    nc: get('nc'),
+    os: get('os'),
+    p: get('p'),
+    s: get('s'),
+    ts: get('ts'),
+    ml1: get('ml1'),
+    ml2: get('ml2'),
+    ml3: get('ml3'),
+    groupTitle: get('guideline', 'function', 'section'),
+    status: parseStatus(statusRaw),
+    implementation: get('implementation details') || '',
+    remarks: get('comments', 'provider comments', 'consumer comments') || '',
+    controlOwner: get('provider responsibility', 'responsibility', 'cloud provider responsibility') || '',
+    responsibleParty: get('responsible party', 'provider responsibility', 'responsibility') || '',
+    consumerResponsibility: get('consumer responsibility') || '',
+    consumerImplementationRequired: parseStatus(get('consumer implementation required')),
+    consumerConfigurationRequired: parseStatus(get('consumer configuration required')),
+    administrationEnvironment: get('administration environment') || '',
+    cloudProductionCommon: get('cloud production - common controls') || '',
+    cloudProductionServiceSpecific: get('cloud production - service specific') || '',
+    ismReference: get('ism reference') || '',
+  };
+
+  for (const [key, colIndex] of Object.entries(extensionMap)) {
+    const value = getCellValue(row.getCell(colIndex));
+    if (!value) continue;
+    if (key === 'adobeTeamResponsible') {
+      control[key] = value.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 3);
+    } else if (key === 'apiResponseData' || key === 'apiDataHistory') {
+      control[key] = parseJSON(value);
+    } else {
+      control[key] = value;
+    }
+  }
+
+  if (!control.ismReference) {
+    control.ismReference = '';
+  }
+
+  return control;
+}
+
+/**
+ * @param {import('exceljs').Row} row
+ * @param {Record<string, number>} headerMap
+ * @param {string[]} names
+ * @returns {string}
+ */
+function getByHeaders(row, headerMap, names) {
+  for (const name of names) {
+    const col = headerMap[normalizeHeader(name)];
+    if (col !== undefined) {
+      const value = getCellValue(row.getCell(col));
+      if (value) return value;
+    }
+  }
+  return '';
+}
+
+/**
+ * @param {import('exceljs').Cell|undefined} cell
+ * @returns {string}
  */
 function getCellValue(cell) {
   if (!cell) return '';
-  
-  // Handle different cell value types
+
   if (cell.value === null || cell.value === undefined) {
     return '';
   }
-  
-  // Handle formula cells
+
   if (cell.type === ExcelJS.ValueType.Formula && cell.result !== undefined) {
     return String(cell.result);
   }
-  
-  // Handle rich text
+
   if (typeof cell.value === 'object' && cell.value.richText) {
-    return cell.value.richText.map(rt => rt.text).join('');
+    return cell.value.richText.map((rt) => rt.text).join('');
   }
-  
-  // Handle hyperlinks
+
   if (typeof cell.value === 'object' && cell.value.text) {
     return cell.value.text;
   }
-  
-  // Handle dates
+
   if (cell.value instanceof Date) {
-    return cell.value.toISOString().split('T')[0]; // YYYY-MM-DD format
+    return cell.value.toISOString().split('T')[0];
   }
-  
+
   return String(cell.value).trim();
 }
 
 /**
- * Parse status from CCM format to internal format
+ * @param {string} status
+ * @returns {string}
  */
 function parseStatus(status) {
   if (!status) return 'not-assessed';
-  
+
   const statusMap = {
     'not assessed': 'not-assessed',
-    'effective': 'effective',
+    effective: 'effective',
     'alternate control': 'alternate-control',
-    'ineffective': 'ineffective',
+    ineffective: 'ineffective',
     'no visibility': 'no-visibility',
     'not implemented': 'not-implemented',
-    'not applicable': 'not-applicable'
+    'not applicable': 'not-applicable',
   };
-  
-  const normalized = status.toLowerCase().trim();
-  return statusMap[normalized] || 'not-assessed';
+
+  return statusMap[String(status).toLowerCase().trim()] || 'not-assessed';
 }
 
 /**
- * Safely parse JSON string
+ * @param {string} value
+ * @returns {Object|null}
  */
 function parseJSON(value) {
   if (!value) return null;
-  
   try {
     return JSON.parse(value);
   } catch {
@@ -298,58 +399,13 @@ function parseJSON(value) {
 }
 
 /**
- * Parse Adobe Team Responsible cell: comma-separated labels, max 3 entries.
- * @param {string} value - Cell value (e.g. "Adobe Corporate, Adobe SoC")
- * @returns {string[]} Array of up to 3 non-empty trimmed strings
- */
-function parseAdobeTeamResponsible(value) {
-  if (!value || typeof value !== 'string') return [];
-  const parts = value.split(',').map((s) => s.trim()).filter(Boolean);
-  return parts.slice(0, 3);
-}
-
-/**
- * Find CCM sheet by detecting expected headers
- */
-function findCCMSheetByHeaders(workbook) {
-  const expectedHeaders = ['control id', 'control title', 'control domain', 'implementation status'];
-  
-  for (const worksheet of workbook.worksheets) {
-    const headerRow = worksheet.getRow(1);
-    const headers = [];
-    
-    headerRow.eachCell((cell) => {
-      const value = getCellValue(cell);
-      if (value) {
-        headers.push(value.toLowerCase().trim());
-      }
-    });
-    
-    // Check if this sheet has at least 3 of the expected headers
-    const matchCount = expectedHeaders.filter(expected => 
-      headers.some(header => header.includes(expected) || expected.includes(header))
-    ).length;
-    
-    if (matchCount >= 3) {
-      console.log(`Sheet "${worksheet.name}" appears to be a CCM sheet (${matchCount}/${expectedHeaders.length} headers matched)`);
-      return worksheet;
-    }
-  }
-  
-  return null;
-}
-
-/**
- * Validate CCM structure
+ * @param {Buffer} buffer
+ * @returns {boolean}
  */
 export function validateCCMStructure(buffer) {
-  // This is a quick check before full parsing
-  // Returns true if the file appears to be a valid CCM file
   try {
-    // Basic checks can be done here
-    return true;
+    return Buffer.isBuffer(buffer) && buffer.length > 0;
   } catch {
     return false;
   }
 }
-

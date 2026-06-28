@@ -36,6 +36,8 @@
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
+**Current release:** **1.7.22** (2026-06-26) — Pass bundle consolidation (`PROD/OSCAL/AWS_SM`), EC2 deploy/config hardening (golden `config/default/`, safe deploy flags), Generic OIDC SSO fixes. See [CHANGELOG.md](CHANGELOG.md#1722---2026-06-26).
+
 ---
 
 ### ☁️ AWS & cloud
@@ -43,6 +45,7 @@
 | Document | Description |
 |----------|-------------|
 | [AWS_OPERATIONS.md](AWS_OPERATIONS.md) | **Consolidated:** Terraform (ALB, Green/Blue ASG + EBS, S3 `installer/`/`config`/`logs`, RDS), Image Factory AMIs, Amazon Bedrock setup, EC2/S3 deploy scripts, cost estimates |
+| [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md) | Corporate PKI / PLM CSR, `OSCAL_Reports_data/tls/` paths, ACM import, replace Let's Encrypt on ALB |
 | [CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md) | Cross-account Bedrock Phase 1: Account B IAM runbook, Terraform AssumeRole, validation (no app change) |
 | [TERRAFORM_NETWORK_PCL_AND_TAGS.md](TERRAFORM_NETWORK_PCL_AND_TAGS.md) | **Portability:** VPC segments, SG allow lists, Australia prefix lists, **ALB tags** (`Adobe:PublicPorts`, `Adobe:PortJustification`), PCL notes — copy to other projects |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platforms (Azure, AWS, GCP) |
@@ -71,7 +74,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO (Okta): flows, groups, role mapping |
+| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO: Okta (EC2/production), **Generic_OIDC / Authentik** (local/Docker), login page policy |
 
 ---
 
@@ -149,7 +152,7 @@ The following former files are merged (edit the **consolidated** doc only):
 | `AI_ARCHITECTURE_SECURITY.md`, `AI_MODELS_AND_CONFIG.md` | [AI_INTEGRATION.md](AI_INTEGRATION.md) |
 | `AWS_TERRAFORM.md`, `IMAGE_FACTORY.md`, `AWS_BEDROCK_SETUP.md`, `EC2_WEB_HOSTING_BEST_PRACTICES.md`, `AWS_COST_ESTIMATE.md` | [AWS_OPERATIONS.md](AWS_OPERATIONS.md) |
 
-To regenerate merged files from historical sources (only if those sources exist in a branch), use `python3 scripts/debug/build-consolidated-docs.py`.
+To regenerate merged files from historical sources (only if those sources exist in a branch), use git history on the consolidated docs listed above (the one-time `build-consolidated-docs.py` helper was removed in **1.7.20**).
 
 ---
 
@@ -160,4 +163,4 @@ To regenerate merged files from historical sources (only if those sources exist 
 
 ---
 
-**Version:** 1.7.17 · **Last updated:** April 2026
+**Version:** 1.7.22 · **Last updated:** June 2026

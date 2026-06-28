@@ -7,7 +7,7 @@ contact: mukesh.kesharwani@adobe.com
 
 **Account A:** OSCAL EC2/ASG (this repo’s Terraform). **Account B:** Bedrock models and billing.
 
-Phase 1 adds **IAM AssumeRole** on Account A and documents **Account B** setup. The application still uses **access keys** until Phase 2 (Settings: access keys **or** assume-role ARN).
+Phase 1 adds **IAM AssumeRole** on Account A and documents **Account B** setup. **Phase 2** (implemented) adds Settings → AI Integration **credential mode**: access keys **or** IAM role (instance profile / optional assume-role ARN).
 
 ---
 
@@ -346,14 +346,29 @@ output "bedrock_cross_account_configured" {
 
 ---
 
-## Phase 2 (future application)
+## Phase 2 (application — Settings)
 
-Settings → AI Integration: **Credential mode**
+**Settings → AI Integration → AWS credential mode**
 
-- **Access keys** (current) — `awsAccessKeyId` / `awsSecretAccessKey`
-- **Assume IAM role** — user supplies `bedrockAssumeRoleArn`; EC2 instance profile + `fromTemporaryCredentials`; optional `bedrockExternalId` or `BEDROCK_EXTERNAL_ID` from systemd
+| Mode | Config | Behavior |
+|------|--------|----------|
+| **Access keys** (default) | `bedrockAuthMode`: `access-keys`, `awsAccessKeyId`, `awsSecretAccessKey` | Static IAM user keys (pass vault supported). |
+| **IAM role** | `bedrockAuthMode`: `iam-role`, optional `bedrockAssumeRoleArn`, `bedrockExternalId` | EC2/instance profile via AWS default credential chain; if `bedrockAssumeRoleArn` is set, STS `AssumeRole` before Bedrock calls. |
 
-No change to existing deployments until users select assume-role mode.
+**Environment overrides** (Terraform/systemd on Account A EC2): `BEDROCK_ASSUME_ROLE_ARN`, `BEDROCK_EXTERNAL_ID` set `bedrockAuthMode` to `iam-role` and populate ARN/external ID without editing `config.json`.
+
+**Terraform (aws4403 example):** In `terraform/envs/aws4403/terraform.tfvars`:
+
+```hcl
+bedrock_cross_account_enabled = true
+bedrock_account_id            = "928475551084"
+bedrock_assume_role_arn       = "arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount"
+# bedrock_external_id         = "<from Account B trust policy, if required>"
+```
+
+Then `./terraform/run-with-aws-pass.sh apply`. **`./scripts/deploy-to-ec2.sh`** applies the same ARN to `config.json` and systemd on Green/Blue so Settings does not need re-entry after each deploy.
+
+Existing deployments keep **access-keys** until an admin selects **IAM role** in Settings (or env/terraform/deploy overrides apply).
 
 ---
 

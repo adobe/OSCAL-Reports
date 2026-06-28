@@ -9,19 +9,23 @@ import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import axios from './utils/safeAxios.js';
 import https from 'https';
-import ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid';
-import { generateCCMExport } from './ccmExport.js';
+import { generateAcscExcelExport } from './acscExcelExport.js';
+import { complianceReportContentDisposition } from './utils/complianceReportFileName.js';
 import { generatePDFReport } from './pdfExport.js';
-import { compareWithExistingSSP, extractControlsFromSSP } from './sspComparisonV3.js';
+import { compareWithExistingSSP, extractControlsFromSSP, prepareSspExportPayload } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
-import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigWithPassPointers, getConfigDir, applyDatabaseEnvOverrides } from './configManager.js';
+import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigForSave, getConfigDir, applyDatabaseEnvOverrides, ensureConfigSecretsProtected } from './configManager.js';
 import { testConnection, connectPgClient, ensureAdobeTeamsTable, getAdobeTeamOptions } from './database/dbClient.js';
 import { syncExportToDatabase } from './database/exportSync.js';
 import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
-import { isPassPointer, passShow } from './utils/passResolver.js';
-import { MASK } from './utils/sensitiveConfigKeys.js';
+import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
+import { initializeSecretsCache, resolveSecretPointer, isAwsSmMode } from './utils/secretsManager.js';
+import { isSecretPointer } from './utils/sensitiveConfigKeys.js';
+import { isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
+import { coalesceSecretForTest, maskSensitiveConfigForClient } from './utils/resolveStoredSecret.js';
+import { oidcAxiosRequestOptions } from './utils/oidcHttpsAgent.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
 import { checkGemmaAvailability, loadGemmaConfig } from './gemmaService.js';
@@ -29,6 +33,13 @@ import { checkAIAvailability, detectModelFamily } from './aiModelRouter.js';
 import { addIntegrityHash, verifyIntegrityHash, getIntegrityInfo } from './integrityService.js';
 import { getLogStats, cleanupOldLogs } from './aiLogger.js';
 import { isUserAllowedForAISuggestions } from './utils/aiAllowedUsers.js';
+import {
+  bedrockCredentialsConfigured,
+  buildBedrockAiConfigFromRequest,
+  createBedrockControlPlaneClient,
+  createBedrockRuntimeClient,
+  normalizeBedrockAuthMode
+} from './utils/bedrockCredentials.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -63,6 +74,22 @@ import {
   getLegacyPasswordHashMigrationStats,
 } from './auth/userManager.js';
 import { generateDefaultPasswordFromEnv } from './auth/passwordGenerator.js';
+import {
+  GENERIC_OIDC_PROVIDER_ID,
+  fetchOidcDiscovery as fetchGenericOidcDiscovery,
+  probeOidcDiscovery,
+  isGenericOidcTlsRelaxed,
+  generateCodeVerifier as generateGenericCodeVerifier,
+  computeCodeChallenge as computeGenericCodeChallenge,
+  createSignedOidcState as createSignedGenericOidcState,
+  verifySignedOidcState as verifySignedGenericOidcState,
+  resolveGenericOidcRedirectUri,
+  isRedirectUriAllowed,
+  getEffectiveGenericOidcClientSecret,
+  decodeGroupsFromJwt as decodeGenericGroupsFromJwt,
+  postAuthorizationCodeToken as postGenericAuthorizationCodeToken,
+  stripTrailingSlashes as stripGenericTrailingSlashes,
+} from './auth/genericOidc.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
 import { ROLES, PERMISSIONS } from './auth/roles.js';
 import { 
@@ -89,8 +116,10 @@ import { sendUserCredentials } from './messagingService.js';
 import { scheduleUserCleanup } from './jobs/userCleanup.js';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
-import csrf from 'csurf';
+import { csrfProtection } from './middleware/csrfProtection.js';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
+import { fetchCatalogueFromUrl } from './utils/fetchCatalogueFromUrl.js';
+import { extractCatalogUrlFromSsp, isValidCatalogHref } from './utils/extractCatalogUrlFromSsp.js';
 import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
 import { validateExportGenerationLimits } from './utils/exportLimits.js';
 
@@ -120,8 +149,8 @@ const volumeStatusRateLimiter = rateLimit({
   },
 });
 
-/** Throttle POST /api/auth/okta/exchange-token before Okta/network and session work. */
-const oktaExchangeTokenRateLimiter = rateLimit({
+/** Throttle OIDC exchange-token endpoints before IdP/network and session work. */
+const oidcExchangeTokenRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
@@ -134,6 +163,7 @@ const oktaExchangeTokenRateLimiter = rateLimit({
     });
   },
 });
+const oktaExchangeTokenRateLimiter = oidcExchangeTokenRateLimiter;
 
 // Configure CORS to allow authentication headers through reverse proxy
 app.use(cors({
@@ -198,12 +228,7 @@ app.use(session(SECURITY_CONFIG.session));
 // This is a tool limitation, not a security vulnerability.
 // ============================================================================
 
-// CSRF Protection
-const csrfProtection = csrf({ 
-  cookie: SECURITY_CONFIG.csrf.cookieOptions 
-});
-
-// Conditional CSRF middleware - exempt certain paths, enforce on CSRF_PROTECTED_PATHS
+// CSRF Protection (csrf package — replaces deprecated csurf) - exempt certain paths, enforce on CSRF_PROTECTED_PATHS
 app.use((req, res, next) => {
   // Skip CSRF for GET/HEAD/OPTIONS requests (safe methods)
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
@@ -658,7 +683,7 @@ app.post('/api/auth/self-register', registrationRateLimiter, async (req, res) =>
       });
     }
     
-    // 2. Check if email is blocklisted (45-day cooldown)
+    // 2. Check if email is blocklisted (30-day cooldown)
     const blocklistEntry = await isEmailBlocklisted(email);
     if (blocklistEntry) {
       const daysRemaining = Math.ceil((new Date(blocklistEntry.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
@@ -1048,7 +1073,12 @@ function decodeGroupsFromJwt(jwtString) {
  */
 function getEffectiveOktaClientSecret(okta) {
   if (!okta) return '';
-  const fromConfig = (okta.clientSecret != null && typeof okta.clientSecret === 'string') ? okta.clientSecret.trim() : '';
+  let fromConfig = '';
+  if (okta.clientSecret != null && typeof okta.clientSecret === 'string') {
+    fromConfig = okta.clientSecret.trim();
+  } else if (isSecretPointer(okta.clientSecret)) {
+    fromConfig = resolveSecretPointer(okta.clientSecret);
+  }
   const fromEnv = (process.env.OSCAL_OKTA_CLIENT_SECRET || '').trim();
   return fromConfig || fromEnv;
 }
@@ -1363,6 +1393,250 @@ app.post('/api/auth/okta/exchange-token', oktaExchangeTokenRateLimiter, async (r
     }
     console.error('❌ Okta exchange-token error:', err);
     res.status(500).json({ success: false, error: err.message || 'Okta sign-in failed.' });
+  }
+});
+
+/**
+ * Public list of enabled SSO login providers for the login page (no secrets).
+ */
+app.get('/api/auth/sso/login-providers', (req, res) => {
+  try {
+    const config = getResolvedConfig();
+    const oauth = config.ssoConfig?.oauth;
+    const providers = [];
+    if (oauth?.enabled) {
+      const okta = oauth.providers?.okta;
+      const oktaSecret = getEffectiveOktaClientSecret(okta);
+      if (okta?.enabled && okta?.domain?.trim() && okta?.clientId?.trim() && oktaSecret) {
+        providers.push({
+          id: 'okta',
+          displayName: 'Okta',
+          authorizeUrl: '/api/auth/okta/authorize',
+        });
+      }
+      const generic = oauth.providers?.[GENERIC_OIDC_PROVIDER_ID];
+      const genericSecret = getEffectiveGenericOidcClientSecret(generic);
+      if (
+        generic?.enabled &&
+        generic?.clientId?.trim() &&
+        generic?.discoveryUrl?.trim() &&
+        genericSecret
+      ) {
+        providers.push({
+          id: GENERIC_OIDC_PROVIDER_ID,
+          displayName: 'Generic SSO',
+          authorizeUrl: '/api/auth/oidc/generic-oidc/authorize',
+        });
+      }
+    }
+    res.json({
+      providers,
+      showExpeditedAccessPolicy: !isAwsSmMode(),
+    });
+  } catch (err) {
+    console.error('❌ login-providers error:', err);
+    res.status(500).json({ providers: [], showExpeditedAccessPolicy: false, error: 'Failed to load login providers' });
+  }
+});
+
+/**
+ * Start Generic_OIDC login: redirect browser to IdP authorization URL.
+ */
+app.get('/api/auth/oidc/generic-oidc/authorize', async (req, res) => {
+  try {
+    const config = getResolvedConfig();
+    const oauth = config.ssoConfig?.oauth;
+    const provider = oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
+    const clientSecret = getEffectiveGenericOidcClientSecret(provider);
+    if (
+      !oauth?.enabled ||
+      !provider?.enabled ||
+      !provider?.clientId?.trim() ||
+      !provider?.discoveryUrl?.trim() ||
+      !clientSecret
+    ) {
+      const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
+      return res.redirect(302, `${back}/?error=generic_oidc_not_configured`);
+    }
+    let redirectUri = resolveGenericOidcRedirectUri(req, provider);
+    if (!redirectUri || !isRedirectUriAllowed(redirectUri, provider.redirectUriPatterns)) {
+      const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
+      return res.redirect(302, `${back}/?error=generic_oidc_not_configured`);
+    }
+    const codeVerifier = generateGenericCodeVerifier();
+    const codeChallenge = computeGenericCodeChallenge(codeVerifier);
+    const state = createSignedGenericOidcState(redirectUri, clientSecret, codeVerifier);
+    const scope = (provider.scope || 'openid profile email').trim();
+    const tlsRelaxed = isGenericOidcTlsRelaxed(provider);
+    const discovery = await fetchGenericOidcDiscovery(provider.discoveryUrl, { tlsRelaxed });
+    if (!discovery?.authorization_endpoint) {
+      const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
+      return res.redirect(302, `${back}/?error=generic_oidc_not_configured`);
+    }
+    const params = new URLSearchParams({
+      client_id: provider.clientId.trim(),
+      response_type: 'code',
+      scope,
+      redirect_uri: redirectUri,
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    });
+    const authEndpoint = discovery.authorization_endpoint;
+    const sep = authEndpoint.includes('?') ? '&' : '?';
+    res.redirect(302, `${authEndpoint}${sep}${params.toString()}`);
+  } catch (err) {
+    console.error('❌ Generic_OIDC authorize error:', err);
+    res.status(500).json({ success: false, error: 'Sign-in could not be started.' });
+  }
+});
+
+/**
+ * Exchange Generic_OIDC authorization code for tokens and create app session.
+ */
+app.post('/api/auth/oidc/generic-oidc/exchange-token', oidcExchangeTokenRateLimiter, async (req, res) => {
+  try {
+    const { code, state } = req.body;
+    if (!code || !state) {
+      return res.status(400).json({ success: false, error: 'Missing code or state' });
+    }
+    const config = getResolvedConfig();
+    const oauth = config.ssoConfig?.oauth;
+    const provider = oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
+    const clientSecret = getEffectiveGenericOidcClientSecret(provider);
+    if (
+      !oauth?.enabled ||
+      !provider?.enabled ||
+      !provider?.clientId?.trim() ||
+      !provider?.discoveryUrl?.trim() ||
+      !clientSecret
+    ) {
+      return res.status(400).json({ success: false, error: 'Generic OIDC is not configured.' });
+    }
+    const stateData = verifySignedGenericOidcState(state, clientSecret);
+    if (!stateData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired state. Please try signing in again.',
+      });
+    }
+    const redirectUri = stripGenericTrailingSlashes(stateData.redirectUri || '');
+    if (!redirectUri || !isRedirectUriAllowed(redirectUri, provider.redirectUriPatterns)) {
+      return res.status(400).json({ success: false, error: 'Invalid redirect URI for this sign-in.' });
+    }
+    const tlsRelaxed = isGenericOidcTlsRelaxed(provider);
+    const discovery = await fetchGenericOidcDiscovery(provider.discoveryUrl, { tlsRelaxed });
+    if (!discovery?.token_endpoint || !discovery?.userinfo_endpoint) {
+      return res.status(400).json({ success: false, error: 'OIDC discovery failed.' });
+    }
+    const codeVerifier = stateData.codeVerifier || '';
+    const { response: tokenRes } = await postGenericAuthorizationCodeToken(discovery.token_endpoint, {
+      clientId: provider.clientId.trim(),
+      clientSecret,
+      code,
+      redirectUri,
+      codeVerifier,
+      tlsRelaxed,
+    });
+    const accessToken = tokenRes.data?.access_token;
+    if (!accessToken) {
+      const idpError = tokenRes.data?.error_description || tokenRes.data?.error || '';
+      console.error('❌ Generic_OIDC token response missing access_token:', {
+        'service.name': 'oscal-report-generator',
+        'event.action': 'generic_oidc_token_exchange_failed',
+        'event.outcome': 'failure',
+        idpError: idpError || '(none in body)',
+        status: tokenRes.status,
+      });
+      return res.status(401).json({
+        success: false,
+        error: idpError || 'Identity provider did not return an access token.',
+      });
+    }
+    const userinfoRes = await axios.get(
+      discovery.userinfo_endpoint,
+      oidcAxiosRequestOptions(discovery.userinfo_endpoint, tlsRelaxed, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
+      }),
+    );
+    const profile = userinfoRes.data || {};
+    let groups = Array.isArray(profile.groups) ? [...profile.groups] : (profile.groups ? [profile.groups] : null);
+    const tokenGroups = decodeGenericGroupsFromJwt(accessToken);
+    if (tokenGroups?.length) {
+      groups = groups ? [...new Set([...groups, ...tokenGroups])] : tokenGroups;
+    }
+    const idToken = tokenRes.data?.id_token;
+    if (idToken) {
+      const idGroups = decodeGenericGroupsFromJwt(idToken);
+      if (idGroups?.length) {
+        groups = groups ? [...new Set([...groups, ...idGroups])] : idGroups;
+      }
+    }
+    if (groups?.length) profile.groups = groups;
+    const email = profile.email || profile.sub;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Identity provider did not return user email.' });
+    }
+    const jitProvisioning = oauth.jitProvisioning === true;
+    const rawDefault = (oauth.jitDefaultRole || 'User').trim();
+    const jitDefaultRole = [ROLES.PLATFORM_ADMIN, ROLES.ASSESSOR, ROLES.USER].includes(rawDefault)
+      ? rawDefault
+      : ROLES.USER;
+    const groupToRoleMapping =
+      oauth.groupToRoleMapping && typeof oauth.groupToRoleMapping === 'object' ? oauth.groupToRoleMapping : {};
+    const syncRoleFromGroups = oauth.syncRoleFromGroups !== false;
+    const user = await findOrCreateOidcUser(email, profile, {
+      jitProvisioning,
+      jitDefaultRole,
+      groupToRoleMapping,
+      syncRoleFromGroups,
+    });
+    if (!user) {
+      return res.status(403).json({
+        success: false,
+        error:
+          'No application user found for this account. Ask an admin to add your email, enable JIT provisioning, or sign in with username/password.',
+      });
+    }
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+      },
+      sessionToken: user.sessionToken,
+    });
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response) {
+      const status = err.response.status;
+      const idpError = err.response?.data?.error_description || err.response?.data?.error;
+      console.error('❌ Generic_OIDC token exchange failed:', {
+        'service.name': 'oscal-report-generator',
+        'event.action': 'generic_oidc_token_exchange_failed',
+        idpStatus: status,
+        idpError: idpError || err.response?.data,
+        message: err.message,
+      });
+      if (status === 400) {
+        const message = idpError || 'Token exchange failed. Code may be expired.';
+        return res.status(400).json({
+          success: false,
+          error: typeof message === 'string' ? message : 'Token exchange failed. Code may be expired.',
+        });
+      }
+      if (status === 401) {
+        return res.status(401).json({
+          success: false,
+          error: idpError || 'Identity provider rejected client credentials.',
+        });
+      }
+    }
+    console.error('❌ Generic_OIDC exchange-token error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Sign-in failed.' });
   }
 });
 
@@ -1985,7 +2259,7 @@ app.get('/api/sso/config', authenticate, (req, res) => {
     const isPlatformAdmin = req.user?.role === ROLES.PLATFORM_ADMIN;
     if (!isPlatformAdmin && ssoConfig.oauth?.providers) {
       const masked = JSON.parse(JSON.stringify(ssoConfig));
-      for (const p of ['azure', 'google', 'okta', 'github']) {
+      for (const p of ['azure', 'google', 'okta', 'github', GENERIC_OIDC_PROVIDER_ID]) {
         if (masked.oauth.providers[p]?.clientSecret) {
           masked.oauth.providers[p].clientSecret = '********';
         }
@@ -2010,16 +2284,36 @@ app.get('/api/sso/config', authenticate, (req, res) => {
 app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
   try {
     const ssoConfig = typeof req.body === 'object' && req.body !== null ? JSON.parse(JSON.stringify(req.body)) : req.body;
+    applyDefaultOidcGroupMappingsToConfig({ ssoConfig });
     // Normalize Okta domain: hostname only (no https:// or trailing slash) so it works like backend expects
     const okta = ssoConfig?.oauth?.providers?.okta;
     if (okta?.domain && typeof okta.domain === 'string') {
       okta.domain = stripTrailingSlashes(okta.domain.replace(/^https?:\/\//i, '')).trim() || okta.domain;
     }
     const existingRaw = loadConfig();
+    const mergedGeneric = existingRaw.ssoConfig?.oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
+    if (mergedGeneric) {
+      ssoConfig.oauth = ssoConfig.oauth || {};
+      ssoConfig.oauth.providers = ssoConfig.oauth.providers || {};
+      const incomingGeneric = ssoConfig.oauth.providers[GENERIC_OIDC_PROVIDER_ID];
+      ssoConfig.oauth.providers[GENERIC_OIDC_PROVIDER_ID] = {
+        ...mergedGeneric,
+        enabled:
+          typeof incomingGeneric?.enabled === 'boolean'
+            ? incomingGeneric.enabled
+            : mergedGeneric.enabled,
+      };
+    }
     const currentConfig = { ...existingRaw, ssoConfig };
-    const { config: toSave, passErrors } = prepareConfigWithPassPointers(currentConfig, existingRaw);
-    if (passErrors.length > 0) {
-      console.warn('⚠️ Pass insert warnings for SSO config:', passErrors);
+    const { config: toSave, passErrors, smErrors } = await prepareConfigForSave(currentConfig, existingRaw);
+    const secretWarnings = [...(passErrors || []), ...(smErrors || [])];
+    if (secretWarnings.length > 0) {
+      console.warn('⚠️ Secret store warnings for SSO config:', secretWarnings);
+      return res.status(503).json({
+        error: 'Unable to store secrets securely',
+        message: 'Secret storage is temporarily unavailable. Configuration was not saved.',
+        secretWarnings,
+      });
     }
     const saveResult = await saveConfig(toSave);
 
@@ -2034,8 +2328,9 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
           discrepancies: saveResult.discrepancies
         }
       };
-      if (passErrors.length > 0) {
-        response.passWarnings = passErrors;
+      if (secretWarnings.length > 0) {
+        response.secretWarnings = secretWarnings;
+        response.passWarnings = secretWarnings;
       }
       res.json(response);
     } else {
@@ -2085,8 +2380,125 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
 
     const providerSlug = provider.toLowerCase().replace(/\s+/g, '');
     // UI sends "Azure AD" → "azuread"; stored config key is "azure"
-    const provKey = providerSlug === 'azuread' ? 'azure' : providerSlug;
+    let provKey = providerSlug === 'azuread' ? 'azure' : providerSlug;
+    if (providerSlug === 'generic_oidc' || provider === GENERIC_OIDC_PROVIDER_ID) {
+      provKey = GENERIC_OIDC_PROVIDER_ID;
+    }
     const prov = config.providers?.[provKey];
+
+    if (provKey === GENERIC_OIDC_PROVIDER_ID && prov) {
+      const checks = [];
+      const pushCheck = (id, label, passed, detail) => {
+        checks.push({ id, label, passed: !!passed, detail: String(detail || '') });
+      };
+      const errors = [];
+      const resolvedGeneric = getResolvedConfig()?.ssoConfig?.oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
+      const provMerged = { ...resolvedGeneric, ...prov };
+      const tlsRelaxed = isGenericOidcTlsRelaxed(provMerged);
+      const discoveryUrl = (provMerged.discoveryUrl && typeof provMerged.discoveryUrl === 'string') ? provMerged.discoveryUrl.trim() : '';
+      const clientId = (provMerged.clientId && typeof provMerged.clientId === 'string') ? provMerged.clientId.trim() : '';
+      if (!discoveryUrl) errors.push('Missing OIDC discovery URL');
+      if (!clientId) errors.push('Missing Client ID');
+      const clientSecretStr = (provMerged.clientSecret && typeof provMerged.clientSecret === 'string') ? provMerged.clientSecret.trim() : '';
+      const secretPointer = isSecretPointer(provMerged.clientSecret) ? provMerged.clientSecret : null;
+      const cfgEncPointer = isCfgEncPointer(provMerged.clientSecret) ? provMerged.clientSecret : null;
+      if (!clientSecretStr && !secretPointer && !cfgEncPointer) {
+        errors.push('Missing Client Secret (_cfgenc or resolved secret required)');
+      }
+      if (errors.length > 0) {
+        pushCheck('required_fields', 'Required Generic OIDC settings', false, errors.join('; '));
+        return res.json({ success: false, error: errors.join('; '), checks });
+      }
+      const probeResult = await probeOidcDiscovery(discoveryUrl, tlsRelaxed);
+      const discovery = probeResult.discovery;
+      pushCheck(
+        'oidc_discovery',
+        'OIDC discovery',
+        !!discovery,
+        discovery
+          ? `Reached OIDC metadata; authorization and token endpoints present.${tlsRelaxed ? ' (tlsRelaxed enabled for this provider)' : ''}`
+          : probeResult.error || `Could not load discovery document at ${discoveryUrl}`,
+      );
+      if (!discovery) {
+        return res.json({ success: false, error: 'OIDC discovery failed', checks });
+      }
+      let secretForProbe = clientSecretStr;
+      if (!secretForProbe && secretPointer) {
+        secretForProbe = resolveSecretPointer(secretPointer);
+      }
+      if (!secretForProbe && cfgEncPointer) {
+        try {
+          secretForProbe = decryptConfigSecret(cfgEncPointer).trim();
+        } catch (_) {
+          secretForProbe = '';
+        }
+      }
+      if (!secretForProbe) {
+        const resolved = getResolvedConfig()?.ssoConfig?.oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
+        secretForProbe = getEffectiveGenericOidcClientSecret(resolved);
+      }
+      pushCheck(
+        'client_secret_value',
+        'Client Secret available for server-side validation',
+        !!secretForProbe,
+        secretForProbe ? 'Client secret resolved on this server.' : 'No client secret available.',
+      );
+      const redirectForProbe = resolveGenericOidcRedirectUri(req, provMerged);
+      const redirectOk = redirectForProbe && isRedirectUriAllowed(redirectForProbe, provMerged.redirectUriPatterns);
+      pushCheck(
+        'redirect_uri',
+        'Redirect URI (must match IdP registration)',
+        redirectOk,
+        redirectOk
+          ? `Redirect URI valid: ${stripGenericTrailingSlashes(redirectForProbe)}`
+          : 'Could not infer a redirect URI allowed by redirectUriPatterns.',
+      );
+      if (secretForProbe && redirectOk && discovery.token_endpoint) {
+        try {
+          const { response: probeRes } = await postGenericAuthorizationCodeToken(discovery.token_endpoint, {
+            clientId,
+            clientSecret: secretForProbe,
+            code: '__oscal_invalid_probe_code__',
+            redirectUri: stripGenericTrailingSlashes(redirectForProbe),
+            codeVerifier: '',
+            tlsRelaxed,
+          });
+          const e = probeRes.data?.error;
+          if (e === 'invalid_grant') {
+            pushCheck(
+              'token_endpoint_credentials',
+              'Client ID and Client Secret accepted (token endpoint)',
+              true,
+              'Passed: invalid_grant for probe code (expected).',
+            );
+            const allPassed = checks.every((c) => c.passed);
+            return res.json({
+              success: allPassed,
+              message: allPassed ? 'All Generic OIDC checks passed.' : 'Some checks failed.',
+              checks,
+            });
+          }
+          pushCheck(
+            'token_endpoint_credentials',
+            'Client ID and Client Secret accepted (token endpoint)',
+            false,
+            `Token endpoint response: ${e || probeRes.status}`,
+          );
+        } catch (probeErr) {
+          pushCheck(
+            'token_endpoint_credentials',
+            'Client ID and Client Secret accepted (token endpoint)',
+            false,
+            probeErr.message || String(probeErr),
+          );
+        }
+      }
+      return res.json({
+        success: checks.every((c) => c.passed),
+        error: checks.some((c) => !c.passed) ? 'Generic OIDC test did not pass all checks.' : undefined,
+        checks,
+      });
+    }
 
     if (provKey === 'okta' && prov) {
       const checks = [];
@@ -2124,8 +2536,8 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       const clientId = (prov.clientId && typeof prov.clientId === 'string') ? prov.clientId.trim() : '';
       if (!clientId) errors.push('Missing Client ID');
       const clientSecretStr = (prov.clientSecret && typeof prov.clientSecret === 'string') ? prov.clientSecret.trim() : '';
-      const passPointer = prov.clientSecret && typeof prov.clientSecret === 'object' && prov.clientSecret._pass && typeof prov.clientSecret._pass === 'string' && prov.clientSecret._pass.trim();
-      if (!clientSecretStr && !passPointer) errors.push('Missing Client Secret (enter value or save with Pass vault entry)');
+      const secretPointer = isSecretPointer(prov.clientSecret) ? prov.clientSecret : null;
+      if (!clientSecretStr && !secretPointer) errors.push('Missing Client Secret (enter value or save with Secrets Manager / Pass vault entry)');
 
       if (errors.length > 0) {
         pushCheck('required_fields', 'Required Okta settings (domain, Client ID, Client Secret, etc.)', false, errors.join('; '));
@@ -2184,9 +2596,11 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       ].filter(Boolean).join(' ');
       pushCheck('authorization_server_metadata', 'Authorization Server (discovery data for this ID)', true, metadataDetail);
 
-      const gtr = config.groupToRoleMapping && typeof config.groupToRoleMapping === 'object' && !Array.isArray(config.groupToRoleMapping)
-        ? config.groupToRoleMapping
-        : {};
+      const gtr = mergeDefaultOidcGroupToRoleMapping(
+        config.groupToRoleMapping && typeof config.groupToRoleMapping === 'object' && !Array.isArray(config.groupToRoleMapping)
+          ? config.groupToRoleMapping
+          : {},
+      );
       const mappingEntries = Object.entries(gtr).filter(([k, v]) => (k || '').trim() && (v != null && String(v).trim() !== ''));
       const configuredScope = (prov.scope && typeof prov.scope === 'string' ? prov.scope : 'openid profile email').trim();
       const scopeTokens = configuredScope.split(/\s+/).filter(Boolean);
@@ -2210,12 +2624,18 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
         gParts.push(`Okta Scope in this form: "${configuredScope || 'openid profile email'}".`);
         if (!requestGroupsScope) {
           gParts.push('The scope string does not request the OAuth scope "groups".');
-          if (serverListsGroupsScope) {
-            groupsPassed = false;
-            gParts.push('Failed: this Authorization Server advertises the "groups" scope in discovery but the app is not requesting it — add groups to the Scope field (and ensure the Okta app is allowed that scope) so access/id tokens can carry group membership.');
+          if (serverListsGroupsScope && mappingEntries.length > 0 && syncRoleFromGroups) {
+            gParts.push(
+              'Advisory: this Authorization Server advertises the "groups" scope. Sign-in can still succeed without it if Okta emits a groups claim (Include in: Always). If users sign in but get the wrong app role, add groups to Scope (e.g. openid profile email groups) and allow that scope on the Okta application.',
+            );
           }
         } else {
           gParts.push('The scope string includes "groups" (required when your server issues group membership via that scope).');
+        }
+        if (scopes.length > 0 && !serverListsGroupsScope && requestGroupsScope) {
+          gParts.push(
+            'Advisory: Scope requests "groups" but discovery scopes_supported does not list it for this Authorization Server. Sign-in may still work if Okta emits a groups claim (Include in: Always). If authorization fails at login, remove groups from Scope or add a "groups" scope on the Authorization Server in Okta Admin.',
+          );
         }
         if (scopes.length > 0 && !serverListsGroupsScope) {
           gParts.push('Discovery scopes_supported does not list "groups". If you rely on a custom Authorization Server, confirm in Okta (Security → API → Authorization Servers) that a "groups" scope exists, or use an ID/access token claim configured to "Always" include groups (tokens may still contain groups even when discovery omits the scope).');
@@ -2240,16 +2660,16 @@ app.post('/api/sso/test', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async
       };
 
       let secretForProbe = clientSecretStr;
-      if (!secretForProbe && passPointer) {
-        secretForProbe = (passShow(String(passPointer)) || '').trim();
+      if (!secretForProbe && secretPointer) {
+        secretForProbe = resolveSecretPointer(secretPointer);
       }
       if (!secretForProbe) {
         const ro = getResolvedConfig()?.ssoConfig?.oauth?.providers?.okta;
         secretForProbe = getEffectiveOktaClientSecret(ro);
       }
       const secretDetail = secretForProbe
-        ? 'A client secret value is available (form entry, Pass store lookup on this server, saved SSO config, or OSCAL_OKTA_CLIENT_SECRET).'
-        : 'No client secret value is available. Enter the secret in the form, ensure the Pass entry resolves on this server, save SSO settings with a stored secret, or set OSCAL_OKTA_CLIENT_SECRET for this host.';
+        ? 'A client secret value is available (form entry, Secrets Manager / Pass lookup on this server, saved SSO config, or OSCAL_OKTA_CLIENT_SECRET).'
+        : 'No client secret value is available. Enter the secret in the form, ensure the stored secret resolves on this server, save SSO settings with a stored secret, or set OSCAL_OKTA_CLIENT_SECRET for this host.';
       pushCheck('client_secret_value', 'Client Secret available for server-side validation', !!secretForProbe, secretDetail);
 
       const redirectForProbeRaw = redirectFormRaw || resolveOktaRedirectUri(req, prov);
@@ -2513,12 +2933,15 @@ app.post('/api/messaging/test-email', authenticate, requireRole(ROLES.PLATFORM_A
       });
     }
     const resolved = getResolvedConfig();
+    const raw = loadConfig();
     const emailConfig = {
       ...resolved.messagingConfig?.email,
       ...bodyEmailConfig,
-      smtpPassword: (typeof bodyEmailConfig.smtpPassword === 'object' && bodyEmailConfig.smtpPassword?._pass)
-        ? (resolved.messagingConfig?.email?.smtpPassword ?? '')
-        : (bodyEmailConfig.smtpPassword ?? resolved.messagingConfig?.email?.smtpPassword ?? '')
+      smtpPassword: coalesceSecretForTest(
+        bodyEmailConfig.smtpPassword,
+        resolved.messagingConfig?.email?.smtpPassword,
+        raw.messagingConfig?.email?.smtpPassword
+      ),
     };
     const { testEmailConfig } = await import('./messagingService.js');
     const result = await testEmailConfig(emailConfig);
@@ -2546,12 +2969,15 @@ app.post('/api/messaging/test-slack', authenticate, requireRole(ROLES.PLATFORM_A
       });
     }
     const resolved = getResolvedConfig();
+    const raw = loadConfig();
     const slackConfig = {
       ...resolved.messagingConfig?.slack,
       ...bodySlackConfig,
-      webhookUrl: (typeof bodySlackConfig.webhookUrl === 'object' && bodySlackConfig.webhookUrl?._pass)
-        ? (resolved.messagingConfig?.slack?.webhookUrl ?? '')
-        : (bodySlackConfig.webhookUrl ?? resolved.messagingConfig?.slack?.webhookUrl ?? '')
+      webhookUrl: coalesceSecretForTest(
+        bodySlackConfig.webhookUrl,
+        resolved.messagingConfig?.slack?.webhookUrl,
+        raw.messagingConfig?.slack?.webhookUrl
+      ),
     };
     const { testSlackConfig } = await import('./messagingService.js');
     const result = await testSlackConfig(slackConfig);
@@ -2736,42 +3162,25 @@ app.get('/api/settings', optionalAuth, (req, res) => {
   try {
     const raw = loadConfig();
     const config = JSON.parse(JSON.stringify(raw));
-    // Mask Bedrock credentials for client when stored in pass (so GUI shows placeholder and Test Connection can use resolved config)
     if (config.aiConfig) {
-      for (const key of ['awsAccessKeyId', 'awsSecretAccessKey']) {
-        const v = config.aiConfig[key];
-        if (typeof v === 'string' && v.trim()) {
-          config.aiConfig[key] = MASK;
-        } else if (isPassPointer(v)) {
-          try {
-            const resolved = passShow(v._pass);
-            config.aiConfig[key] = (resolved && resolved.trim()) ? MASK : '';
-          } catch {
-            config.aiConfig[key] = '';
-          }
-        }
+      if (!config.aiConfig.awsRegion || !String(config.aiConfig.awsRegion).trim()) {
+        config.aiConfig.awsRegion = 'us-east-1';
+      }
+      if (!config.aiConfig.bedrockAuthMode) {
+        config.aiConfig.bedrockAuthMode = 'access-keys';
       }
     }
-    // Merge OSCAL_DATABASE_* env (e.g. Terraform EC2) so GUI reflects IAM / host without editing config.json
     applyDatabaseEnvOverrides(config);
-    // Mask database password for client (IAM mode does not use a static password)
-    if (config.databaseConfig) {
-      if (config.databaseConfig.authMode === 'iam') {
-        config.databaseConfig.password = '';
-      } else {
-        const v = config.databaseConfig.password;
-        if (typeof v === 'string' && v.trim()) {
-          config.databaseConfig.password = MASK;
-        } else if (isPassPointer(v)) {
-          try {
-            const resolved = passShow(v._pass);
-            config.databaseConfig.password = (resolved && resolved.trim()) ? MASK : '';
-          } catch {
-            config.databaseConfig.password = '';
-          }
-        }
-      }
+    if (config.databaseConfig?.authMode === 'iam') {
+      config.databaseConfig.password = '';
     }
+    const skipMask = config.databaseConfig?.authMode === 'iam'
+      ? ['databaseConfig.password']
+      : [];
+    if (config.aiConfig?.bedrockAuthMode === 'iam-role') {
+      skipMask.push('aiConfig.awsAccessKeyId', 'aiConfig.awsSecretAccessKey');
+    }
+    maskSensitiveConfigForClient(config, { skipPaths: skipMask });
     console.log('📖 Settings loaded and sent to client');
     res.json(config);
   } catch (error) {
@@ -2854,9 +3263,15 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
     }
 
     // Store new secrets in pass and replace with pointers for persist
-    const { config: toSave, passErrors } = prepareConfigWithPassPointers(newConfig, existingConfig);
-    if (passErrors.length > 0) {
-      console.warn('⚠️ Pass insert warnings for settings:', passErrors);
+    const { config: toSave, passErrors, smErrors } = await prepareConfigForSave(newConfig, existingConfig);
+    const secretWarnings = [...(passErrors || []), ...(smErrors || [])];
+    if (secretWarnings.length > 0) {
+      console.warn('⚠️ Secret store warnings for settings:', secretWarnings);
+      return res.status(503).json({
+        error: 'Unable to store secrets securely',
+        message: 'Secret storage is temporarily unavailable. Settings were not saved.',
+        secretWarnings,
+      });
     }
     
     // Save configuration with disk verification
@@ -2878,8 +3293,9 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
           configPath: saveResult.configPath
         }
       };
-      if (passErrors.length > 0) {
-        response.passWarnings = passErrors;
+      if (secretWarnings.length > 0) {
+        response.secretWarnings = secretWarnings;
+        response.passWarnings = secretWarnings;
       }
       
       // Include discrepancies if verification found issues
@@ -3158,60 +3574,46 @@ app.post('/api/proxy-fetch', async (req, res) => {
 app.post('/api/fetch-catalogue', async (req, res) => {
   try {
     const { url } = req.body;
-    
-    if (!url) {
-      return res.status(400).json({ error: 'URL is required' });
-    }
-
-    // SECURITY: Validate URL to prevent SSRF attacks
-    const urlValidation = await validateUrl(url, {
+    const result = await fetchCatalogueFromUrl(url, {
       allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
       allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
     });
-
-    if (!urlValidation.valid) {
-      console.warn('🚫 SSRF attempt blocked in fetch-catalogue:', url, urlValidation.error);
-      
-      // Return 403 for blocked URLs (security restriction)
-      if (urlValidation.blocked) {
-        return res.status(403).json({ 
-          error: 'Access to this URL is forbidden',
-          details: urlValidation.error,
-          code: 'SSRF_BLOCKED',
-        });
-      }
-      
-      // Return 400 for invalid URLs (bad request)
-      return res.status(400).json({ 
-        error: 'Invalid URL',
-        details: urlValidation.error,
+    res.json(result);
+  } catch (error) {
+    if (error.statusCode === 400) {
+      return res.status(400).json({
+        error: error.message,
+        details: error.details,
       });
     }
-
-    const response = await axios.get(urlValidation.url, {
-      headers: {
-        'Accept': 'application/json'
-      },
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: false
-      })
+    if (error.statusCode === 403) {
+      console.warn('🚫 SSRF attempt blocked in fetch-catalogue:', req.body?.url, error.details);
+      return res.status(403).json({
+        error: error.message,
+        details: error.details,
+        code: error.code,
+      });
+    }
+    if (error.statusCode === 404) {
+      return res.status(404).json({
+        error: error.message,
+        details: error.details,
+      });
+    }
+    console.error('Error fetching catalogue:', error.message, {
+      'event.action': 'fetch_catalogue_failed',
+      'url.host': (() => {
+        try {
+          return new URL(String(req.body?.url || '')).hostname;
+        } catch {
+          return undefined;
+        }
+      })(),
+      'http.response.status_code': error.httpStatus,
     });
-
-    const catalogue = response.data;
-    
-    // Extract controls from the catalogue
-    const controls = extractControls(catalogue);
-    
-    res.json({
-      catalogue,
-      controls,
-      metadata: catalogue.catalog?.metadata || catalogue.metadata
-    });
-  } catch (error) {
-    console.error('Error fetching catalogue:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to fetch catalogue',
-      details: error.message 
+    res.status(500).json({
+      error: error.message || 'Failed to fetch catalogue',
+      details: error.details || error.message,
     });
   }
 });
@@ -3257,52 +3659,34 @@ app.post('/api/extract-catalog-from-ssp', async (req, res) => {
       console.log('✅ File integrity verified successfully');
     }
     
-    let catalogUrl = null;
-    
-    // Try to find the catalog URL in various OSCAL SSP structures
-    if (sspData['system-security-plan']) {
-      const ssp = sspData['system-security-plan'];
-      if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Found system-security-plan');
-        console.log('📊 SSP keys:', Object.keys(ssp));
-        console.log('📊 import-profile structure:', JSON.stringify(ssp['import-profile'], null, 2));
-      }
-      
-      catalogUrl = ssp['import-profile']?.href || ssp['import-profile']?.['#']?.href;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Extracted catalogUrl from import-profile:', catalogUrl);
-      }
-    } else {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('❌ No system-security-plan found');
-      }
-    }
-    
-    // Fallback: check if it's stored in metadata or at top level
-    if (!catalogUrl && sspData.catalogueUrl) {
-      catalogUrl = sspData.catalogueUrl;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Found catalogUrl from sspData.catalogueUrl:', catalogUrl);
-      }
-    }
-    
-    if (!catalogUrl || catalogUrl === '#') {
+    const catalogUrl = extractCatalogUrlFromSsp(sspData);
+    const rawImportHref = sspData['system-security-plan']?.['import-profile']?.href
+      || sspData['import-profile']?.href;
+
+    if (!catalogUrl) {
       console.error('❌ Could not extract valid catalog URL');
-      console.error('   - catalogUrl value:', catalogUrl);
+      console.error('   - import-profile href:', rawImportHref);
       console.error('   - Available SSP structure:', JSON.stringify({
         hasSSP: !!sspData['system-security-plan'],
         hasImportProfile: !!sspData['system-security-plan']?.['import-profile'],
-        hasCatalogueUrl: !!sspData.catalogueUrl
+        hasCatalogueUrl: !!sspData.catalogueUrl,
+        hasSourceCatalogLink: !!sspData['system-security-plan']?.metadata?.links?.some(
+          (link) => link.rel === 'source-catalog' || link.rel === 'catalog'
+        ),
       }, null, 2));
-      
-      return res.status(400).json({ 
-        error: 'Could not extract catalog URL from SSP. Please ensure the SSP was generated by this tool or contains a valid import-profile with href.',
+
+      const placeholderHint = rawImportHref === 'No_Input_Recorded' || rawImportHref === '#'
+        ? ' The exported SSP is missing a catalogue URL — export again after selecting a catalog, or choose a new catalog below.'
+        : '';
+
+      return res.status(400).json({
+        error: `Could not extract catalog URL from SSP.${placeholderHint} Ensure import-profile.href or metadata.links (rel=source-catalog) contains a valid HTTPS catalogue JSON URL.`,
         debug: {
           foundStructure: !!sspData['system-security-plan'],
           foundImportProfile: !!sspData['system-security-plan']?.['import-profile'],
-          catalogUrlValue: catalogUrl
+          catalogUrlValue: rawImportHref || null,
         },
-        integrityWarning: integrityWarning
+        integrityWarning: integrityWarning,
       });
     }
     
@@ -3799,82 +4183,9 @@ app.post('/api/import-ccm', async (req, res) => {
   }
 });
 
-// Extract controls from OSCAL catalogue
+// Extract controls from OSCAL catalogue (includes ISM metadata from catalog props)
 function extractControls(catalogue) {
-  const controls = [];
-  const catalog = catalogue.catalog || catalogue;
-  
-  if (!catalog) {
-    return controls;
-  }
-
-  // Process groups and controls
-  const processGroup = (group, parentId = null) => {
-    if (group.controls) {
-      group.controls.forEach(control => {
-        controls.push({
-          id: control.id,
-          class: control.class,
-          title: control.title,
-          description: extractControlDescription(control),
-          params: control.params || [],
-          props: control.props || [],
-          parts: control.parts || [],
-          groupId: group.id,
-          groupTitle: group.title,
-          parentId: parentId
-        });
-
-        // Process sub-controls
-        if (control.controls) {
-          control.controls.forEach(subControl => {
-            controls.push({
-              id: subControl.id,
-              class: subControl.class,
-              title: subControl.title,
-              description: extractControlDescription(subControl),
-              params: subControl.params || [],
-              props: subControl.props || [],
-              parts: subControl.parts || [],
-              groupId: group.id,
-              groupTitle: group.title,
-              parentId: control.id
-            });
-          });
-        }
-      });
-    }
-
-    // Process nested groups
-    if (group.groups) {
-      group.groups.forEach(nestedGroup => processGroup(nestedGroup, group.id));
-    }
-  };
-
-  // Process all groups
-  if (catalog.groups) {
-    catalog.groups.forEach(group => processGroup(group));
-  }
-
-  // Process controls at root level
-  if (catalog.controls) {
-    catalog.controls.forEach(control => {
-      controls.push({
-        id: control.id,
-        class: control.class,
-        title: control.title,
-        description: extractControlDescription(control),
-        params: control.params || [],
-        props: control.props || [],
-        parts: control.parts || [],
-        groupId: null,
-        groupTitle: null,
-        parentId: null
-      });
-    });
-  }
-
-  return controls;
+  return extractControlsWithIsmMetadata(catalogue);
 }
 
 // Helper function to extract control description from parts
@@ -4110,6 +4421,24 @@ function filterOSCALImplementedRequirement(implementedReq) {
   return filtered;
 }
 
+// Prepare export payload from baseline SSP (Multi-Report Comparison and other SSP-only flows)
+app.post('/api/prepare-ssp-export', async (req, res) => {
+  try {
+    const { existingSSP, controlEdits = {} } = req.body;
+    if (!existingSSP || typeof existingSSP !== 'object') {
+      return res.status(400).json({ error: 'existingSSP is required' });
+    }
+    const payload = prepareSspExportPayload(existingSSP, controlEdits);
+    return res.json(payload);
+  } catch (error) {
+    console.error('Error preparing SSP export:', error.message);
+    return res.status(500).json({
+      error: 'Failed to prepare SSP export',
+      details: error.message,
+    });
+  }
+});
+
 // Generate OSCAL SSP
 // OWASP API Security: Implements request size limits to prevent DoS attacks
 app.post('/api/generate-ssp', async (req, res) => {
@@ -4186,6 +4515,18 @@ app.post('/api/generate-ssp', async (req, res) => {
     if (!sspMetadata.links) {
       sspMetadata.links = [];
     }
+
+    // Record the catalogue JSON URL for reliable re-import (distinct from source-profile XML links)
+    const catalogueHref = sanitizeOSCALString(systemInfo.catalogueUrl, false);
+    if (isValidCatalogHref(catalogueHref)) {
+      sspMetadata.links = sspMetadata.links.filter(
+        (link) => link.rel !== 'source-catalog' && link.rel !== 'catalog'
+      );
+      sspMetadata.links.unshift({
+        href: catalogueHref,
+        rel: 'source-catalog',
+      });
+    }
     
     // Ensure roles array exists
     if (!sspMetadata.roles) {
@@ -4250,7 +4591,9 @@ app.post('/api/generate-ssp', async (req, res) => {
         uuid: uuidv4(),
         metadata: sspMetadata,
         "import-profile": {
-          href: sanitizeOSCALString(systemInfo.catalogueUrl) || "#"
+          href: isValidCatalogHref(systemInfo.catalogueUrl)
+            ? sanitizeOSCALString(systemInfo.catalogueUrl)
+            : "#"
         },
         "system-characteristics": {
           "system-ids": [
@@ -4364,8 +4707,8 @@ app.post('/api/generate-ssp', async (req, res) => {
             
             // Add catalog control title and description as props only if "No Additional Properties" is NOT selected
             if (!validationOptions.additionalProperties) {
-              const titleValue = sanitizeOSCALString(control.title, true);
-              const descValue = sanitizeOSCALString(control.description, true);
+              const titleValue = sanitizeOSCALString(control.title || control.catalogTitle, true);
+              const descValue = sanitizeOSCALString(control.description || control.catalogDescription, true);
               
               // Only add if not placeholder (meaningful data)
               if (titleValue && titleValue !== OSCAL_EMPTY_PLACEHOLDER) {
@@ -4642,7 +4985,7 @@ app.post('/api/generate-sar', async (req, res) => {
 // Generate Cloud Control Matrix export
 app.post('/api/generate-ccm', async (req, res) => {
   try {
-    const { controls, systemInfo } = req.body;
+    const { controls, systemInfo, includeExtensions = true } = req.body;
 
     const limitErr = validateExportGenerationLimits(controls, undefined);
     if (limitErr) {
@@ -4666,13 +5009,13 @@ app.post('/api/generate-ccm', async (req, res) => {
       throw syncErr;
     }
 
-    const workbook = await generateCCMExport(controls, systemInfo);
+    const workbook = await generateAcscExcelExport(controls, systemInfo, { includeExtensions });
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=cloud-control-matrix.xlsx');
+    res.setHeader('Content-Disposition', complianceReportContentDisposition(systemInfo?.systemName, 'xlsx'));
     res.send(buffer);
   } catch (error) {
     console.error('Error generating CCM:', error.message);
@@ -4713,7 +5056,7 @@ app.post('/api/generate-pdf', async (req, res) => {
     const pdfBuffer = await generatePDFReport(controls, systemInfo, metadata);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=compliance-report.pdf');
+    res.setHeader('Content-Disposition', complianceReportContentDisposition(systemInfo?.systemName, 'pdf'));
     res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating PDF:', error.message);
@@ -4727,7 +5070,7 @@ app.post('/api/generate-pdf', async (req, res) => {
 // Generate Excel export
 app.post('/api/generate-excel', async (req, res) => {
   try {
-    const { controls, systemInfo } = req.body;
+    const { controls, systemInfo, includeExtensions = true } = req.body;
 
     const limitErr = validateExportGenerationLimits(controls, undefined);
     if (limitErr) {
@@ -4751,73 +5094,12 @@ app.post('/api/generate-excel', async (req, res) => {
       throw syncErr;
     }
 
-    const workbook = new ExcelJS.Workbook();
-    
-    // System Information sheet
-    const systemSheet = workbook.addWorksheet('System Information');
-    systemSheet.columns = [
-      { header: 'Field', key: 'field', width: 30 },
-      { header: 'Value', key: 'value', width: 50 }
-    ];
+    const workbook = await generateAcscExcelExport(controls, systemInfo, { includeExtensions });
 
-    systemSheet.addRows([
-      { field: 'System Name', value: systemInfo.systemName || '' },
-      { field: 'System ID', value: systemInfo.systemId || '' },
-      { field: 'Description', value: systemInfo.description || '' },
-      { field: 'Organisation', value: systemInfo.organization || '' },
-      { field: 'System Owner', value: systemInfo.systemOwner || '' },
-      { field: 'Assessor Details', value: systemInfo.assessorDetails || '' },
-      { field: 'CSP IaaS Provider', value: systemInfo.cspIaaS || '' },
-      { field: 'CSP PaaS Provider', value: systemInfo.cspPaaS || '' },
-      { field: 'CSP SaaS Provider', value: systemInfo.cspSaaS || '' },
-      { field: 'Security Level', value: systemInfo.securityLevel || '' },
-      { field: 'Status', value: systemInfo.status || '' },
-      { field: 'Catalogue URL', value: systemInfo.catalogueUrl || '' }
-    ]);
-
-    // Style the header
-    systemSheet.getRow(1).font = { bold: true };
-    systemSheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }
-    };
-
-    // Controls sheet
-    const controlsSheet = workbook.addWorksheet('Controls Implementation');
-    controlsSheet.columns = [
-      { header: 'Control ID', key: 'id', width: 15 },
-      { header: 'Control Title', key: 'title', width: 40 },
-      { header: 'Group', key: 'group', width: 20 },
-      { header: 'Implementation Status', key: 'status', width: 20 },
-      { header: 'Implementation Description', key: 'implementation', width: 50 },
-      { header: 'Remarks', key: 'remarks', width: 30 }
-    ];
-
-    controls.forEach(control => {
-      controlsSheet.addRow({
-        id: control.id,
-        title: control.title,
-        group: control.groupTitle || '',
-        status: control.status || 'Not Assessed',
-        implementation: control.implementation || '',
-        remarks: control.remarks || ''
-      });
-    });
-
-    // Style the header
-    controlsSheet.getRow(1).font = { bold: true };
-    controlsSheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }
-    };
-
-    // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=ssp-export.xlsx');
+    res.setHeader('Content-Disposition', complianceReportContentDisposition(systemInfo?.systemName, 'xlsx'));
     res.send(buffer);
   } catch (error) {
     console.error('Error generating Excel:', error.message);
@@ -5018,31 +5300,34 @@ app.get('/api/jobs/:jobId/download', (req, res) => {
     }
     
     // Set appropriate content type and filename based on job type
-    let contentType, filename;
-    
+    let contentType;
+    let contentDisposition;
+
+    const jobSystemName = job.data?.systemInfo?.systemName;
+
     switch (job.type) {
       case JOB_TYPE.PDF_EXPORT:
         contentType = 'application/pdf';
-        filename = 'compliance-report.pdf';
+        contentDisposition = complianceReportContentDisposition(jobSystemName, 'pdf');
         break;
-        
+
       case JOB_TYPE.EXCEL_EXPORT:
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        filename = 'ssp-export.xlsx';
+        contentDisposition = complianceReportContentDisposition(jobSystemName, 'xlsx');
         break;
-        
+
       case JOB_TYPE.CCM_EXPORT:
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        filename = 'cloud-control-matrix.xlsx';
+        contentDisposition = complianceReportContentDisposition(jobSystemName, 'xlsx');
         break;
-        
+
       default:
         contentType = 'application/octet-stream';
-        filename = 'download';
+        contentDisposition = 'attachment; filename="download"';
     }
-    
+
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    res.setHeader('Content-Disposition', contentDisposition);
     res.send(result);
   } catch (error) {
     console.error('Error downloading job result:', error);
@@ -5634,19 +5919,17 @@ app.get('/api/ai/bedrock-models', authenticate, authorize(PERMISSIONS.EDIT_SETTI
         error: `Could not load config: ${resolveErr?.message || resolveErr}. Ensure pass entries exist or save AI settings first.`
       });
     }
-    const region = (req.query.region && String(req.query.region).trim()) || resolved.aiConfig?.awsRegion || 'us-east-1';
-    const accessKeyId = (resolved.aiConfig?.awsAccessKeyId && String(resolved.aiConfig.awsAccessKeyId).trim()) || '';
-    const secretAccessKey = (resolved.aiConfig?.awsSecretAccessKey && typeof resolved.aiConfig.awsSecretAccessKey === 'string' && resolved.aiConfig.awsSecretAccessKey.trim()) || '';
-    if (!accessKeyId || !secretAccessKey || accessKeyId === MASK || secretAccessKey === MASK) {
+    const aiForBedrock = buildBedrockAiConfigFromRequest(resolved.aiConfig, { query: req.query });
+    const region = (req.query.region && String(req.query.region).trim()) || aiForBedrock.awsRegion || 'us-east-1';
+    aiForBedrock.awsRegion = region;
+    if (!bedrockCredentialsConfigured(aiForBedrock)) {
       return res.status(400).json({
-        error: 'AWS credentials required. Save Access Key ID and Secret Access Key in AI settings (or pass vault) first, then load models.'
+        error:
+          'AWS credentials required. For access keys, save Access Key ID and Secret in AI settings (or pass vault). For IAM role, save settings with IAM role mode or use instance profile / assume-role ARN.'
       });
     }
-    const { BedrockClient, ListFoundationModelsCommand } = await import('@aws-sdk/client-bedrock');
-    const client = new BedrockClient({
-      region,
-      credentials: { accessKeyId, secretAccessKey }
-    });
+    const { ListFoundationModelsCommand } = await import('@aws-sdk/client-bedrock');
+    const client = await createBedrockControlPlaneClient(aiForBedrock);
     const command = new ListFoundationModelsCommand({ byOutputModality: 'TEXT' });
     const response = await client.send(command);
     const summaries = response.modelSummaries || [];
@@ -5700,7 +5983,13 @@ app.get('/api/ai/bedrock-models', authenticate, authorize(PERMISSIONS.EDIT_SETTI
  */
 app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), async (req, res) => {
   try {
-    const { provider = 'aws-bedrock', url, apiToken = '', awsRegion, awsAccessKeyId, awsSecretAccessKey, bedrockModelId } = req.body;
+    const {
+      provider = 'aws-bedrock',
+      url,
+      apiToken = '',
+      awsRegion,
+      bedrockModelId
+    } = req.body;
     
     // Load config for maxTokens and fallback credentials (resolved from pass when stored there)
     const config = getResolvedConfig();
@@ -5722,51 +6011,31 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
             error: `Could not load credentials from config/pass: ${resolveErr?.message || resolveErr}. Ensure pass entries OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key exist, or enter credentials in the form.`
           });
         }
-        const useBodyCreds = typeof awsAccessKeyId === 'string' && typeof awsSecretAccessKey === 'string' &&
-          awsAccessKeyId.trim() && awsSecretAccessKey.trim() &&
-          awsAccessKeyId !== MASK && awsSecretAccessKey !== MASK;
-        const accessKeyId = useBodyCreds ? awsAccessKeyId : (resolved.aiConfig?.awsAccessKeyId || '');
-        const secretAccessKey = useBodyCreds ? awsSecretAccessKey : (resolved.aiConfig?.awsSecretAccessKey || '');
-
-        if (!accessKeyId || !secretAccessKey) {
-          return res.status(400).json({
-            success: false,
-            error: 'AWS credentials required (Access Key ID and Secret Access Key). Enter them in the form or ensure they are stored in pass vault (OSCAL/ai-aws-access-key-id and OSCAL/ai-aws-secret-access-key).'
-          });
+        const aiForBedrock = buildBedrockAiConfigFromRequest(resolved.aiConfig, { body: req.body });
+        if (awsRegion && String(awsRegion).trim()) {
+          aiForBedrock.awsRegion = String(awsRegion).trim();
         }
-
-        if (!awsRegion) {
+        if (!aiForBedrock.awsRegion) {
           return res.status(400).json({
             success: false,
             error: 'AWS region required'
           });
         }
+        if (!bedrockCredentialsConfigured(aiForBedrock)) {
+          return res.status(400).json({
+            success: false,
+            error:
+              'AWS credentials required. For access keys, enter Access Key ID and Secret (or pass vault). For IAM role, use EC2 instance profile or configure assume-role ARN in settings.'
+          });
+        }
 
-        // Dynamically import AWS SDK and Node.js https
-        const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
-        const { Agent: HttpsAgent } = await import('https');
-        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-
-        // Create custom HTTPS agent to handle SSL certificate issues
-        // In production, you should use proper SSL certificates
-        const httpsAgent = new HttpsAgent({
-          rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
-          keepAlive: true
+        const { ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
+        const client = await createBedrockRuntimeClient(aiForBedrock, {
+          connectionTimeout: 10000,
+          socketTimeout: 30000
         });
-
-        // Create Bedrock client with custom request handler
-        const client = new BedrockRuntimeClient({
-          region: awsRegion,
-          credentials: {
-            accessKeyId,
-            secretAccessKey
-          },
-          requestHandler: new NodeHttpHandler({
-            httpsAgent: httpsAgent,
-            connectionTimeout: 10000,
-            socketTimeout: 30000
-          })
-        });
+        const testRegion = aiForBedrock.awsRegion;
+        const authMode = normalizeBedrockAuthMode(aiForBedrock);
         
         // Test with a simple prompt
         const modelId = bedrockModelId || 'mistral.mistral-large-2402-v1:0';
@@ -5787,7 +6056,8 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         const response = await client.send(command);
         
         console.log(`✅ AWS Bedrock connection successful`);
-        console.log(`   Region: ${awsRegion}`);
+        console.log(`   Region: ${testRegion}`);
+        console.log(`   Auth: ${authMode}`);
         console.log(`   Model: ${modelId}`);
         
         return res.json({
@@ -5795,7 +6065,8 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
           message: 'AWS Bedrock connection successful',
           details: {
             provider: 'aws-bedrock',
-            region: awsRegion,
+            region: testRegion,
+            bedrockAuthMode: authMode,
             modelId: modelId,
             testResponse: response.output?.message?.content?.[0]?.text || 'Response received'
           }
@@ -6257,6 +6528,44 @@ const startServer = async () => {
       
       // Initialize default users on startup
       await initializeDefaultUsers();
+
+      // Load AWS Secrets Manager bundle into in-memory cache (EC2 aws-sm mode)
+      try {
+        const secretsInit = await initializeSecretsCache();
+        if (secretsInit?.success === false && !secretsInit?.skipped) {
+          console.warn('⚠️ Secrets Manager cache init did not complete successfully');
+        }
+      } catch (secretsErr) {
+        console.warn('⚠️ Secrets Manager cache init error:', secretsErr.message);
+      }
+
+      if (process.env.NODE_ENV !== 'test') {
+        try {
+          const protection = await ensureConfigSecretsProtected({
+            refusePlaintext: isAwsSmMode(),
+            logger: (level, message, attrs) => {
+              const line = attrs ? `${message} ${JSON.stringify(attrs)}` : message;
+              if (level === 'error') console.error(line);
+              else if (level === 'warn') console.warn(line);
+              else console.log(line);
+            },
+          });
+          if (!protection.ok) {
+            const msg = 'Plaintext secrets detected in config and could not be migrated securely';
+            console.error(`❌ ${msg}`, protection.errors);
+            if (isAwsSmMode()) {
+              throw new Error(msg);
+            }
+          } else if (protection.migrated?.length > 0) {
+            console.log(`✅ Migrated ${protection.migrated.length} config secret(s) to secure storage`);
+          }
+        } catch (protectErr) {
+          console.error('❌ Config secrets protection failed:', protectErr.message);
+          if (isAwsSmMode()) {
+            throw protectErr;
+          }
+        }
+      }
       
       // Set server timeout to allow for long-running AI requests
       server.timeout = serverTimeout;
@@ -6319,7 +6628,7 @@ const startServer = async () => {
         
         scheduleAutoCleanup();
         
-        // Schedule inactive user cleanup (runs daily, checks for 45-day inactivity)
+        // Schedule inactive user cleanup (runs daily, checks for 30-day inactivity)
         scheduleUserCleanup(); // Runs every 24 hours
       }
       
