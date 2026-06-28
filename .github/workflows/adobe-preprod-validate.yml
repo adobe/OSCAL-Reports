@@ -225,9 +225,8 @@ jobs:
 
       - name: 🔍 Validate YAML syntax
         run: |
-          for file in .github/workflows/*.yml; do
-            python3 -c "import yaml, sys; yaml.safe_load(open('$file'))" || { echo "❌ Invalid YAML: $file"; exit 1; }
-          done
+          python3 -m pip install --quiet pyyaml
+          python3 scripts/ci/validate_workflow_yaml.py
           echo "✅ All workflow YAML files valid"
 
       - name: 🔍 Check for hardcoded version numbers
