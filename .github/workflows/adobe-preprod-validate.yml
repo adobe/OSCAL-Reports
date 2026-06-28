@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -147,7 +147,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -201,7 +201,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🔍 Check version consistency
         run: |
@@ -221,7 +221,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🔍 Validate YAML syntax
         run: |
@@ -245,7 +245,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🔍 Check tar command syntax in release.yml
         run: |
@@ -287,7 +287,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🔍 ESLint config files
         run: |
@@ -302,7 +302,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🔍 Required docs
         run: |
@@ -345,7 +345,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
