@@ -4,21 +4,24 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
+import { isCfgEncPointer } from './configFieldCrypto.js';
+
 /**
  * List of sensitive config paths (dot-notation) and their pass entry names.
  * Order: messaging, ai, then SSO (nested under ssoConfig.oauth.providers).
  */
 export const SENSITIVE_CONFIG_KEYS = [
-  { path: 'messagingConfig.email.smtpPassword', passEntry: 'OSCAL/smtp-password' },
-  { path: 'messagingConfig.slack.webhookUrl', passEntry: 'OSCAL/slack-webhook-url' },
-  { path: 'aiConfig.apiToken', passEntry: 'OSCAL/ai-api-token' },
-  { path: 'aiConfig.awsAccessKeyId', passEntry: 'OSCAL/ai-aws-access-key-id' },
-  { path: 'aiConfig.awsSecretAccessKey', passEntry: 'OSCAL/ai-aws-secret-access-key' },
-  { path: 'ssoConfig.oauth.providers.azure.clientSecret', passEntry: 'OSCAL/sso-oauth-azure-client-secret' },
-  { path: 'ssoConfig.oauth.providers.google.clientSecret', passEntry: 'OSCAL/sso-oauth-google-client-secret' },
-  { path: 'ssoConfig.oauth.providers.okta.clientSecret', passEntry: 'OSCAL/sso-oauth-okta-client-secret' },
-  { path: 'ssoConfig.oauth.providers.github.clientSecret', passEntry: 'OSCAL/sso-oauth-github-client-secret' },
-  { path: 'databaseConfig.password', passEntry: 'OSCAL/database-password' }
+  { path: 'messagingConfig.email.smtpPassword', smEntry: 'OSCAL/smtp-password', passEntry: 'OSCAL/smtp-password' },
+  { path: 'messagingConfig.slack.webhookUrl', smEntry: 'OSCAL/slack-webhook-url', passEntry: 'OSCAL/slack-webhook-url' },
+  { path: 'aiConfig.apiToken', smEntry: 'OSCAL/ai-api-token', passEntry: 'OSCAL/ai-api-token' },
+  { path: 'aiConfig.awsAccessKeyId', smEntry: 'OSCAL/ai-aws-access-key-id', passEntry: 'OSCAL/ai-aws-access-key-id' },
+  { path: 'aiConfig.awsSecretAccessKey', smEntry: 'OSCAL/ai-aws-secret-access-key', passEntry: 'OSCAL/ai-aws-secret-access-key' },
+  { path: 'ssoConfig.oauth.providers.azure.clientSecret', smEntry: 'OSCAL/sso-oauth-azure-client-secret', passEntry: 'OSCAL/sso-oauth-azure-client-secret' },
+  { path: 'ssoConfig.oauth.providers.google.clientSecret', smEntry: 'OSCAL/sso-oauth-google-client-secret', passEntry: 'OSCAL/sso-oauth-google-client-secret' },
+  { path: 'ssoConfig.oauth.providers.okta.clientSecret', smEntry: 'OSCAL/sso-oauth-okta-client-secret', passEntry: 'OSCAL/sso-oauth-okta-client-secret' },
+  { path: 'ssoConfig.oauth.providers.github.clientSecret', smEntry: 'OSCAL/sso-oauth-github-client-secret', passEntry: 'OSCAL/sso-oauth-github-client-secret' },
+  { path: 'ssoConfig.oauth.providers.Generic_OIDC.clientSecret', smEntry: 'OSCAL/sso-oauth-generic-oidc-client-secret', passEntry: 'OSCAL/sso-oauth-generic-oidc-client-secret' },
+  { path: 'databaseConfig.password', smEntry: 'OSCAL/database-password', passEntry: 'OSCAL/database-password' }
 ];
 
 const MASK = '********';
@@ -65,11 +68,16 @@ export function setByPath(obj, path, value) {
  * @param {*} value - Incoming value
  * @returns {boolean}
  */
+export function isSecretPointer(value) {
+  if (!value || typeof value !== 'object') return false;
+  return (typeof value._sm === 'string' && value._sm.trim() !== '')
+    || (typeof value._pass === 'string' && value._pass.trim() !== '');
+}
+
 export function isMaskedOrEmpty(value) {
   if (value == null) return true;
   if (typeof value !== 'string') {
-    // Pointer object { _pass: "..." } means keep existing
-    if (typeof value === 'object' && value._pass) return true;
+    if (isSecretPointer(value) || isCfgEncPointer(value)) return true;
     return false;
   }
   const s = value.trim();

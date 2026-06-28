@@ -4,19 +4,44 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import './ValidationStatus.css';
 
 function ValidationStatus({ result, onClose }) {
+  const handleClose = useCallback(() => {
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!result) {
+      return undefined;
+    }
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [result, handleClose]);
+
   if (!result) return null;
 
   const { valid, validated, message, errors, output, executionTime, framework, type } = result;
 
   return (
-    <div className="validation-overlay">
-      <div className="validation-modal">
+    <div className="validation-overlay" onClick={handleClose} role="presentation">
+      <div
+        className="validation-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="validation-modal-title"
+      >
         <div className="validation-header">
-          <h3>
+          <h3 id="validation-modal-title">
             {validated ? (
               <>
                 <span className={`validation-icon ${valid ? 'valid' : 'invalid'}`}>
@@ -31,7 +56,7 @@ function ValidationStatus({ result, onClose }) {
               </>
             )}
           </h3>
-          <button className="close-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="close-btn" onClick={handleClose} aria-label="Close">
             ✕
           </button>
         </div>
@@ -111,7 +136,7 @@ function ValidationStatus({ result, onClose }) {
         </div>
 
         <div className="validation-footer">
-          <button className="btn btn-primary" onClick={onClose}>
+          <button type="button" className="btn btn-primary" onClick={handleClose}>
             Close
           </button>
         </div>

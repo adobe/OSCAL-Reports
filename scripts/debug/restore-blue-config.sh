@@ -134,7 +134,7 @@ else
 fi
 
 echo ""
-print_success "Blue recovery complete. Verify at http://192.168.1.200:${BLUE_PORT} or https://blue.oscal.keekar.com"
+print_success "Blue recovery complete. Verify at http://192.168.1.200:${BLUE_PORT} or https://blue.oscal.keekar.au"
 echo "  - Log in with an existing user"
 echo "  - Check Admin → Configuration and user list"
 echo ""

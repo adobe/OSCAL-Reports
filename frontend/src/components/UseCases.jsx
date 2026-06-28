@@ -105,7 +105,8 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
         'Compare baseline with IaaS, PaaS, SaaS providers',
         'Identify control differences across platforms',
         'Track catalog version changes',
-        'Fetch published SOA/CCM from configured URL'
+        'Load reports via URL or file upload (per user)',
+        'Last-used URLs remembered in this browser only (not on server)',
       ],
       workflow: [
         { step: 1, action: 'Load Baseline Report', icon: '📄' },

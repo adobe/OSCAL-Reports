@@ -16,8 +16,9 @@
 # - Documentation structure
 # - Deployment validation (optional)
 #
-# Usage: ./test_cases/scripts/run-all-tests.sh [--skip-deployment] [--ec2-pass-sync-only]
+# Usage: ./test_cases/scripts/run-all-tests.sh [--skip-deployment] [--skip-catalogue-fetch] [--ec2-pass-sync-only]
 #   --ec2-pass-sync-only  Run only mocked ec2_automation Pass ↔ Secrets Manager sync tests (for CI); exits 0/1.
+#   --skip-catalogue-fetch  Skip live OSCAL catalogue URL fetches (faster local runs; not for release sign-off).
 #
 # Version: 1.6.5
 # Author: Mukesh Kesharwani
@@ -38,11 +39,16 @@ NC='\033[0m'
 
 # Parse arguments
 SKIP_DEPLOYMENT=false
+SKIP_CATALOGUE_FETCH=false
 EC2_PASS_SYNC_ONLY=false
 for arg in "$@"; do
     case $arg in
         --skip-deployment)
             SKIP_DEPLOYMENT=true
+            shift
+            ;;
+        --skip-catalogue-fetch)
+            SKIP_CATALOGUE_FETCH=true
             shift
             ;;
         --ec2-pass-sync-only)
@@ -257,6 +263,31 @@ run_integration_tests() {
     run_check "CSRF & API Security Tests (v1.6.5)" \
         npm test -- --testPathPattern='csrf-api.test.js' --silent
     
+    cd .. || exit
+}
+
+###############################################################################
+# PHASE 3b: OSCAL Catalogue Fetch (mandatory release gate)
+###############################################################################
+
+run_catalogue_fetch_tests() {
+    if [ "$SKIP_CATALOGUE_FETCH" = true ]; then
+        print_section "Phase 3b: OSCAL Catalogue Fetch (Skipped)"
+        echo -e "${YELLOW}⚠${NC}  Live catalogue fetch skipped (--skip-catalogue-fetch)"
+        echo -e "${YELLOW}⚠${NC}  Do not use this skip for version release sign-off"
+        return 0
+    fi
+
+    print_section "Phase 3b: OSCAL Catalogue Fetch (Release Gate)"
+
+    cd backend || exit
+
+    run_check "Catalogue manifest validation" \
+        npm test -- --testPathPatterns=sampleCatalogues.test.js --silent
+
+    run_check "Defined & custom catalogue URL live fetch (mandatory)" \
+        npm test -- --testPathPatterns=catalogue-fetch-release.test.js --silent
+
     cd .. || exit
 }
 
@@ -581,6 +612,7 @@ main() {
     check_prerequisites  # This will exit if critical prereqs missing
     run_unit_tests || true
     run_integration_tests || true
+    run_catalogue_fetch_tests || true
     run_e2e_tests || true
     run_security_validation || true
     run_check "ec2_automation Pass ↔ Secrets Manager sync" \
@@ -921,17 +953,17 @@ test_pull_from_aws_into_pass() {
   write_mock_aws
   write_mock_jq
   write_mock_pass
-  bundle=$(jq -n --arg v 'from-aws-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  bundle=$(jq -n --arg v 'from-aws-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 9999999}}}}' -c)
   jq -n --arg s "$bundle" --arg vid 'vid-1' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
   PASS_SYNC_TEST_EPOCH=3000000
   pass_secrets_sync_run
-  assert_file_contains "$TELEMETRY_LOG" "updated pass from AWS only"
+  assert_file_contains "$TELEMETRY_LOG" "updated pass bundle from AWS"
   local got
-  got=$(cat "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg")
-  if [ "$got" != "from-aws-secret" ]; then
-    die "pull: expected pass file content from-aws-secret, got $got"
+  got=$(cat "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg")
+  if ! echo "$got" | jq -e '.entries["OSCAL/smtp-password"] == "from-aws-secret"' >/dev/null; then
+    die "pull: expected bundle JSON with from-aws-secret, got $got"
   fi
   assert_file_contains "$TELEMETRY_LOG" '"outcome":"success"'
 }
@@ -943,9 +975,10 @@ test_put_local_wins_calls_put() {
   write_mock_pass
   empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
   jq -n --arg s "$empty_bundle" --arg vid 'vid-same' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
-  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
-  echo "local-only-secret" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
-  touch -d '2000-01-01' "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg" 2>/dev/null || touch "$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  local_bundle=$(jq -n --arg v 'local-only-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  mkdir -p "$PASSWORD_STORE_DIR/PROD/OSCAL"
+  echo "$local_bundle" >"$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
+  touch "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
   PASS_SYNC_TEST_EPOCH=4000000
@@ -967,8 +1000,10 @@ test_put_failure_logs_put_false() {
   write_mock_pass
   empty_bundle=$(jq -n '{entries: {}, _meta: {keys: {}}}' -c)
   jq -n --arg s "$empty_bundle" --arg vid 'vid-same' '{SecretString: $s, VersionId: $vid}' >"$PASS_SYNC_TEST_GET_FILE"
-  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
-  echo "local-secret" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  local_bundle=$(jq -n --arg v 'local-secret' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  mkdir -p "$PASSWORD_STORE_DIR/PROD/OSCAL"
+  echo "$local_bundle" >"$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
+  touch "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
   export PASS_SYNC_TEST_PUT_EXIT=1
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
@@ -1013,8 +1048,10 @@ if "$is_put"; then exit 0; fi
 exit 1
 EOS
   chmod +x "$WORKDIR/bin/aws"
-  mkdir -p "$PASSWORD_STORE_DIR/OSCAL"
-  echo "local" >"$PASSWORD_STORE_DIR/OSCAL/smtp-password.gpg"
+  local_bundle=$(jq -n --arg v 'local' '{entries: {"OSCAL/smtp-password": $v}, _meta: {keys: {"OSCAL/smtp-password": {t: 1}}}}' -c)
+  mkdir -p "$PASSWORD_STORE_DIR/PROD/OSCAL"
+  echo "$local_bundle" >"$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
+  touch "$PASSWORD_STORE_DIR/PROD/OSCAL/AWS_SM.gpg"
   source_lib
   PASS_SECRETS_SYNC_ENABLED=true
   PASS_SYNC_TEST_EPOCH=6000000

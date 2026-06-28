@@ -3,7 +3,7 @@
 #
 # Licensed under the MIT License. See LICENSE file for details.
 
-# OSCAL Green and Blue instances (always on), ports 3019 and 3020
+# OSCAL Green and Blue instances (always on), same app port on both (var.oscal_app_port, default 3020)
 # AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 / EMR (when resolved), 3) native Amazon Linux 2023 fallback.
 
 locals {
@@ -52,7 +52,7 @@ set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p 3019:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
   oscal_user_data_blue_docker  = <<-EOT
 #!/bin/bash
@@ -60,14 +60,14 @@ set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p 3020:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
   # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
   oscal_direct_user_data_green = <<-EOT
 #!/bin/bash
 set -e
 ${local.oscal_mount_snippet_green}
-PORT="3019"
+PORT="${var.oscal_app_port}"
 DATA_DIR="/opt/oscal/data"
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
@@ -130,7 +130,7 @@ EOT
 #!/bin/bash
 set -e
 ${local.oscal_mount_snippet_blue}
-PORT="3020"
+PORT="${var.oscal_app_port}"
 DATA_DIR="/opt/oscal/data"
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
