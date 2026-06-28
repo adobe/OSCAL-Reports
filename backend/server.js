@@ -5988,7 +5988,6 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       url,
       apiToken = '',
       awsRegion,
-      awsSecretAccessKey,
       bedrockModelId,
       bedrockExternalId
     } = req.body;
