@@ -181,7 +181,7 @@ function CCMUpload({ onImportComplete, onSkip, catalogueUrl }) {
           <div className="info-box">
             <h4>ℹ️ What gets imported?</h4>
             <ul>
-              <li><strong>Info sheet:</strong> System name and ID when present</li>
+              <li><strong>Info sheet:</strong> System metadata (name, ID, organisation, CSP providers, catalogue URL, etc.)</li>
               <li><strong>Principles sheet:</strong> ISM principles with responsibility and implementation status</li>
               <li><strong>Controls sheet:</strong> ISM controls with guideline, section, classification columns, and implementation data</li>
               <li><strong>OSCAL Extensions:</strong> Testing evidence, risk ratings, API fields, and other tool-specific columns when present</li>

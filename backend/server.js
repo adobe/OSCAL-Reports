@@ -10,7 +10,8 @@ import cors from 'cors';
 import axios from './utils/safeAxios.js';
 import https from 'https';
 import { v4 as uuidv4 } from 'uuid';
-import { generateAcscExcelExport, UNIFIED_ACSC_EXCEL_FILENAME } from './acscExcelExport.js';
+import { generateAcscExcelExport } from './acscExcelExport.js';
+import { complianceReportContentDisposition } from './utils/complianceReportFileName.js';
 import { generatePDFReport } from './pdfExport.js';
 import { compareWithExistingSSP, extractControlsFromSSP, prepareSspExportPayload } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
@@ -117,6 +118,8 @@ import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { csrfProtection } from './middleware/csrfProtection.js';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
+import { fetchCatalogueFromUrl } from './utils/fetchCatalogueFromUrl.js';
+import { extractCatalogUrlFromSsp, isValidCatalogHref } from './utils/extractCatalogUrlFromSsp.js';
 import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
 import { validateExportGenerationLimits } from './utils/exportLimits.js';
 
@@ -3571,60 +3574,46 @@ app.post('/api/proxy-fetch', async (req, res) => {
 app.post('/api/fetch-catalogue', async (req, res) => {
   try {
     const { url } = req.body;
-    
-    if (!url) {
-      return res.status(400).json({ error: 'URL is required' });
-    }
-
-    // SECURITY: Validate URL to prevent SSRF attacks
-    const urlValidation = await validateUrl(url, {
+    const result = await fetchCatalogueFromUrl(url, {
       allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
       allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
     });
-
-    if (!urlValidation.valid) {
-      console.warn('🚫 SSRF attempt blocked in fetch-catalogue:', url, urlValidation.error);
-      
-      // Return 403 for blocked URLs (security restriction)
-      if (urlValidation.blocked) {
-        return res.status(403).json({ 
-          error: 'Access to this URL is forbidden',
-          details: urlValidation.error,
-          code: 'SSRF_BLOCKED',
-        });
-      }
-      
-      // Return 400 for invalid URLs (bad request)
-      return res.status(400).json({ 
-        error: 'Invalid URL',
-        details: urlValidation.error,
+    res.json(result);
+  } catch (error) {
+    if (error.statusCode === 400) {
+      return res.status(400).json({
+        error: error.message,
+        details: error.details,
       });
     }
-
-    const response = await axios.get(urlValidation.url, {
-      headers: {
-        'Accept': 'application/json'
-      },
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: false
-      })
+    if (error.statusCode === 403) {
+      console.warn('🚫 SSRF attempt blocked in fetch-catalogue:', req.body?.url, error.details);
+      return res.status(403).json({
+        error: error.message,
+        details: error.details,
+        code: error.code,
+      });
+    }
+    if (error.statusCode === 404) {
+      return res.status(404).json({
+        error: error.message,
+        details: error.details,
+      });
+    }
+    console.error('Error fetching catalogue:', error.message, {
+      'event.action': 'fetch_catalogue_failed',
+      'url.host': (() => {
+        try {
+          return new URL(String(req.body?.url || '')).hostname;
+        } catch {
+          return undefined;
+        }
+      })(),
+      'http.response.status_code': error.httpStatus,
     });
-
-    const catalogue = response.data;
-    
-    // Extract controls from the catalogue
-    const controls = extractControlsWithIsmMetadata(catalogue);
-    
-    res.json({
-      catalogue,
-      controls,
-      metadata: catalogue.catalog?.metadata || catalogue.metadata
-    });
-  } catch (error) {
-    console.error('Error fetching catalogue:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to fetch catalogue',
-      details: error.message 
+    res.status(500).json({
+      error: error.message || 'Failed to fetch catalogue',
+      details: error.details || error.message,
     });
   }
 });
@@ -3670,52 +3659,34 @@ app.post('/api/extract-catalog-from-ssp', async (req, res) => {
       console.log('✅ File integrity verified successfully');
     }
     
-    let catalogUrl = null;
-    
-    // Try to find the catalog URL in various OSCAL SSP structures
-    if (sspData['system-security-plan']) {
-      const ssp = sspData['system-security-plan'];
-      if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Found system-security-plan');
-        console.log('📊 SSP keys:', Object.keys(ssp));
-        console.log('📊 import-profile structure:', JSON.stringify(ssp['import-profile'], null, 2));
-      }
-      
-      catalogUrl = ssp['import-profile']?.href || ssp['import-profile']?.['#']?.href;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Extracted catalogUrl from import-profile:', catalogUrl);
-      }
-    } else {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('❌ No system-security-plan found');
-      }
-    }
-    
-    // Fallback: check if it's stored in metadata or at top level
-    if (!catalogUrl && sspData.catalogueUrl) {
-      catalogUrl = sspData.catalogueUrl;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Found catalogUrl from sspData.catalogueUrl:', catalogUrl);
-      }
-    }
-    
-    if (!catalogUrl || catalogUrl === '#') {
+    const catalogUrl = extractCatalogUrlFromSsp(sspData);
+    const rawImportHref = sspData['system-security-plan']?.['import-profile']?.href
+      || sspData['import-profile']?.href;
+
+    if (!catalogUrl) {
       console.error('❌ Could not extract valid catalog URL');
-      console.error('   - catalogUrl value:', catalogUrl);
+      console.error('   - import-profile href:', rawImportHref);
       console.error('   - Available SSP structure:', JSON.stringify({
         hasSSP: !!sspData['system-security-plan'],
         hasImportProfile: !!sspData['system-security-plan']?.['import-profile'],
-        hasCatalogueUrl: !!sspData.catalogueUrl
+        hasCatalogueUrl: !!sspData.catalogueUrl,
+        hasSourceCatalogLink: !!sspData['system-security-plan']?.metadata?.links?.some(
+          (link) => link.rel === 'source-catalog' || link.rel === 'catalog'
+        ),
       }, null, 2));
-      
-      return res.status(400).json({ 
-        error: 'Could not extract catalog URL from SSP. Please ensure the SSP was generated by this tool or contains a valid import-profile with href.',
+
+      const placeholderHint = rawImportHref === 'No_Input_Recorded' || rawImportHref === '#'
+        ? ' The exported SSP is missing a catalogue URL — export again after selecting a catalog, or choose a new catalog below.'
+        : '';
+
+      return res.status(400).json({
+        error: `Could not extract catalog URL from SSP.${placeholderHint} Ensure import-profile.href or metadata.links (rel=source-catalog) contains a valid HTTPS catalogue JSON URL.`,
         debug: {
           foundStructure: !!sspData['system-security-plan'],
           foundImportProfile: !!sspData['system-security-plan']?.['import-profile'],
-          catalogUrlValue: catalogUrl
+          catalogUrlValue: rawImportHref || null,
         },
-        integrityWarning: integrityWarning
+        integrityWarning: integrityWarning,
       });
     }
     
@@ -4544,6 +4515,18 @@ app.post('/api/generate-ssp', async (req, res) => {
     if (!sspMetadata.links) {
       sspMetadata.links = [];
     }
+
+    // Record the catalogue JSON URL for reliable re-import (distinct from source-profile XML links)
+    const catalogueHref = sanitizeOSCALString(systemInfo.catalogueUrl, false);
+    if (isValidCatalogHref(catalogueHref)) {
+      sspMetadata.links = sspMetadata.links.filter(
+        (link) => link.rel !== 'source-catalog' && link.rel !== 'catalog'
+      );
+      sspMetadata.links.unshift({
+        href: catalogueHref,
+        rel: 'source-catalog',
+      });
+    }
     
     // Ensure roles array exists
     if (!sspMetadata.roles) {
@@ -4608,7 +4591,9 @@ app.post('/api/generate-ssp', async (req, res) => {
         uuid: uuidv4(),
         metadata: sspMetadata,
         "import-profile": {
-          href: sanitizeOSCALString(systemInfo.catalogueUrl) || "#"
+          href: isValidCatalogHref(systemInfo.catalogueUrl)
+            ? sanitizeOSCALString(systemInfo.catalogueUrl)
+            : "#"
         },
         "system-characteristics": {
           "system-ids": [
@@ -5030,7 +5015,7 @@ app.post('/api/generate-ccm', async (req, res) => {
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${UNIFIED_ACSC_EXCEL_FILENAME}`);
+    res.setHeader('Content-Disposition', complianceReportContentDisposition(systemInfo?.systemName, 'xlsx'));
     res.send(buffer);
   } catch (error) {
     console.error('Error generating CCM:', error.message);
@@ -5071,7 +5056,7 @@ app.post('/api/generate-pdf', async (req, res) => {
     const pdfBuffer = await generatePDFReport(controls, systemInfo, metadata);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=compliance-report.pdf');
+    res.setHeader('Content-Disposition', complianceReportContentDisposition(systemInfo?.systemName, 'pdf'));
     res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating PDF:', error.message);
@@ -5114,7 +5099,7 @@ app.post('/api/generate-excel', async (req, res) => {
     const buffer = await workbook.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${UNIFIED_ACSC_EXCEL_FILENAME}`);
+    res.setHeader('Content-Disposition', complianceReportContentDisposition(systemInfo?.systemName, 'xlsx'));
     res.send(buffer);
   } catch (error) {
     console.error('Error generating Excel:', error.message);
@@ -5315,31 +5300,34 @@ app.get('/api/jobs/:jobId/download', (req, res) => {
     }
     
     // Set appropriate content type and filename based on job type
-    let contentType, filename;
-    
+    let contentType;
+    let contentDisposition;
+
+    const jobSystemName = job.data?.systemInfo?.systemName;
+
     switch (job.type) {
       case JOB_TYPE.PDF_EXPORT:
         contentType = 'application/pdf';
-        filename = 'compliance-report.pdf';
+        contentDisposition = complianceReportContentDisposition(jobSystemName, 'pdf');
         break;
-        
+
       case JOB_TYPE.EXCEL_EXPORT:
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        filename = UNIFIED_ACSC_EXCEL_FILENAME;
+        contentDisposition = complianceReportContentDisposition(jobSystemName, 'xlsx');
         break;
-        
+
       case JOB_TYPE.CCM_EXPORT:
         contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        filename = UNIFIED_ACSC_EXCEL_FILENAME;
+        contentDisposition = complianceReportContentDisposition(jobSystemName, 'xlsx');
         break;
-        
+
       default:
         contentType = 'application/octet-stream';
-        filename = 'download';
+        contentDisposition = 'attachment; filename="download"';
     }
-    
+
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    res.setHeader('Content-Disposition', contentDisposition);
     res.send(result);
   } catch (error) {
     console.error('Error downloading job result:', error);

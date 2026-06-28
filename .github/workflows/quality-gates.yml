@@ -47,6 +47,31 @@ jobs:
         working-directory: backend
         run: npm run test:unit
 
+  catalogue-fetch-release:
+    name: OSCAL catalogue fetch (release gate)
+    runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run catalogue manifest + live fetch tests
+        working-directory: backend
+        run: npm run test:catalogues
+        timeout-minutes: 15
+
   frontend-build:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -122,6 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - backend-unit-tests
+      - catalogue-fetch-release
       - frontend-build
       - npm-audit
       - package-version-consistency
@@ -132,6 +158,7 @@ jobs:
         run: |
           echo "## Quality Gates Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "- Backend unit tests: ${{ needs.backend-unit-tests.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- OSCAL catalogue fetch: ${{ needs.catalogue-fetch-release.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Frontend build: ${{ needs.frontend-build.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- npm audit: ${{ needs.npm-audit.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Version consistency: ${{ needs.package-version-consistency.result }}" >> "$GITHUB_STEP_SUMMARY"
@@ -139,6 +166,7 @@ jobs:
       - name: Fail when any gate failed
         if: |
           needs.backend-unit-tests.result != 'success' ||
+          needs.catalogue-fetch-release.result != 'success' ||
           needs.frontend-build.result != 'success' ||
           needs.npm-audit.result != 'success' ||
           needs.package-version-consistency.result != 'success'

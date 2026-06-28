@@ -33,11 +33,15 @@ const sampleControls = [
 ];
 
 describe('ccmImport', () => {
-  test('round-trips CCM export preserving identifiers and status', async () => {
-    const workbook = await generateCCMExport(sampleControls, {
+  test('round-trips CCM export preserving identifiers, status, and Info sheet metadata', async () => {
+    const systemInfo = {
       systemName: 'Round Trip CSP',
       systemId: 'csp-001',
-    });
+      organization: 'Adobe',
+      securityLevel: 'Protected',
+      catalogueUrl: 'https://example.com/catalog.json',
+    };
+    const workbook = await generateCCMExport(sampleControls, systemInfo);
     const buffer = await workbook.xlsx.writeBuffer();
     const parsed = await parseCCMExcel(buffer);
 
@@ -50,6 +54,10 @@ describe('ccmImport', () => {
     expect(ism.evidence).toBe('Confluence/wiki/governance');
     expect(ism.riskRating).toBe('Low');
     expect(parsed.systemInfo.systemName).toBe('Round Trip CSP');
+    expect(parsed.systemInfo.systemId).toBe('csp-001');
+    expect(parsed.systemInfo.organization).toBe('Adobe');
+    expect(parsed.systemInfo.securityLevel).toBe('Protected');
+    expect(parsed.systemInfo.catalogueUrl).toBe('https://example.com/catalog.json');
   });
 
   test('round-trips SSP Annex export', async () => {

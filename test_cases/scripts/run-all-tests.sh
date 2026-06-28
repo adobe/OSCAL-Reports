@@ -16,8 +16,9 @@
 # - Documentation structure
 # - Deployment validation (optional)
 #
-# Usage: ./test_cases/scripts/run-all-tests.sh [--skip-deployment] [--ec2-pass-sync-only]
+# Usage: ./test_cases/scripts/run-all-tests.sh [--skip-deployment] [--skip-catalogue-fetch] [--ec2-pass-sync-only]
 #   --ec2-pass-sync-only  Run only mocked ec2_automation Pass ↔ Secrets Manager sync tests (for CI); exits 0/1.
+#   --skip-catalogue-fetch  Skip live OSCAL catalogue URL fetches (faster local runs; not for release sign-off).
 #
 # Version: 1.6.5
 # Author: Mukesh Kesharwani
@@ -38,11 +39,16 @@ NC='\033[0m'
 
 # Parse arguments
 SKIP_DEPLOYMENT=false
+SKIP_CATALOGUE_FETCH=false
 EC2_PASS_SYNC_ONLY=false
 for arg in "$@"; do
     case $arg in
         --skip-deployment)
             SKIP_DEPLOYMENT=true
+            shift
+            ;;
+        --skip-catalogue-fetch)
+            SKIP_CATALOGUE_FETCH=true
             shift
             ;;
         --ec2-pass-sync-only)
@@ -257,6 +263,31 @@ run_integration_tests() {
     run_check "CSRF & API Security Tests (v1.6.5)" \
         npm test -- --testPathPattern='csrf-api.test.js' --silent
     
+    cd .. || exit
+}
+
+###############################################################################
+# PHASE 3b: OSCAL Catalogue Fetch (mandatory release gate)
+###############################################################################
+
+run_catalogue_fetch_tests() {
+    if [ "$SKIP_CATALOGUE_FETCH" = true ]; then
+        print_section "Phase 3b: OSCAL Catalogue Fetch (Skipped)"
+        echo -e "${YELLOW}⚠${NC}  Live catalogue fetch skipped (--skip-catalogue-fetch)"
+        echo -e "${YELLOW}⚠${NC}  Do not use this skip for version release sign-off"
+        return 0
+    fi
+
+    print_section "Phase 3b: OSCAL Catalogue Fetch (Release Gate)"
+
+    cd backend || exit
+
+    run_check "Catalogue manifest validation" \
+        npm test -- --testPathPatterns=sampleCatalogues.test.js --silent
+
+    run_check "Defined & custom catalogue URL live fetch (mandatory)" \
+        npm test -- --testPathPatterns=catalogue-fetch-release.test.js --silent
+
     cd .. || exit
 }
 
@@ -581,6 +612,7 @@ main() {
     check_prerequisites  # This will exit if critical prereqs missing
     run_unit_tests || true
     run_integration_tests || true
+    run_catalogue_fetch_tests || true
     run_e2e_tests || true
     run_security_validation || true
     run_check "ec2_automation Pass ↔ Secrets Manager sync" \

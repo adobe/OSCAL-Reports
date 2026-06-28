@@ -105,6 +105,9 @@ cd backend && npm run test:e2e
 
 # Security tests only (v1.6.5)
 cd backend && npm run test:security
+
+# OSCAL catalogue release gate (live HTTPS — mandatory before version release)
+cd backend && npm run test:catalogues
 ```
 
 ### Individual Test Files
