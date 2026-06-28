@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.23] - 2026-06-29
+
+Release **1.7.23** merges Dependabot dependency updates into Quality, stabilizes CI unit tests, and aligns version markers across manifests and documentation. Docker image tag **`keekar/oscal_reports:v1.7.23`** when published.
+
+### Changed
+
+- **Dependencies (Dependabot #45–#61):** AWS SDK packages, `express-rate-limit` 8.x, `pdfkit` 0.19, `pg`, `react`/`react-dom`, `fast-xml-parser`, `ajv`, `uuid`, `qs`, frontend toolchain, and GitHub Actions (`checkout` v7, `setup-node` v6).
+- **Quality Gates:** Personal-fork workflow action versions aligned with Dependabot bumps.
+- **Tests:** CI-stable config paths for `dockerBootstrapSecrets` and `defaultGenericOidcConfig`; live Authentik OIDC probe gated behind `OSCAL_RUN_OIDC_PROBE=1`.
+
+### Documentation
+
+- Version footers, README release notes, and deployment examples updated to **1.7.23**.
+
 ## [Unreleased] - Secrets hardening (_cfgenc / SM-only)
 
 ### Added
