@@ -1,0 +1,51 @@
+# Personal repo only: notify Adobe repo to pull personal Quality after each push.
+# Requires secret ADOBE_REPO_DISPATCH_TOKEN (PAT with repo scope on AdobeManagedServices/OSCAL-Reports).
+
+name: Dispatch Adobe Quality sync
+
+on:
+  push:
+    branches:
+      - Quality
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Trigger Adobe Quality mirror sync
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository dispatch to Adobe
+        env:
+          ADOBE_REPO_DISPATCH_TOKEN: ${{ secrets.ADOBE_REPO_DISPATCH_TOKEN }}
+          ADOBE_REPO: AdobeManagedServices/OSCAL-Reports
+        run: |
+          set -euo pipefail
+          if [ -z "${ADOBE_REPO_DISPATCH_TOKEN}" ]; then
+            echo '::warning::ADOBE_REPO_DISPATCH_TOKEN is not set. Adobe Quality will not auto-sync until the secret is configured or you run Sync Quality to Adobe Quality manually on the Adobe repo.'
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/dispatch.json -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${ADOBE_REPO_DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${ADOBE_REPO}/dispatches" \
+            -d '{"event_type":"quality-sync","client_payload":{"source_ref":"'"${GITHUB_REF}"'","sha":"'"${GITHUB_SHA}"'"}}')"
+          if [ "${code}" != "204" ]; then
+            echo "::error::repository_dispatch failed with HTTP ${code}"
+            cat /tmp/dispatch.json
+            exit 1
+          fi
+          echo "Dispatched quality-sync to ${ADOBE_REPO}"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Adobe Quality sync dispatch"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- If \`ADOBE_REPO_DISPATCH_TOKEN\` is missing, use Adobe Actions → **Sync Quality to Adobe Quality** (workflow_dispatch) or wait for the hourly schedule."
+          } >> "$GITHUB_STEP_SUMMARY"
