@@ -1,6 +1,6 @@
 # Runs only on the personal fork for fast feedback (ShellCheck, hooks, pass-sync tests).
 # AdobeManagedServices/OSCAL-Reports: skipped — avoids duplicate minutes and waiting on Adobe
-# for checks that should fail first on personal Development / Quality.
+# for checks that should fail first on personal Quality.
 #
 # Consolidated: one job runs ShellCheck + hooks + best-practices + dry-run (single checkout);
 # ec2_automation tests stay parallel on a second runner.
@@ -9,7 +9,6 @@ name: Shell Script Validation
 on:
   pull_request:
     branches:
-      - Development
       - Quality
       - Quality_Test
       - Pre_Prod
@@ -20,7 +19,6 @@ on:
       - '.githooks/**'
   push:
     branches:
-      - Development
       - Quality
       - Quality_Test
       - Pre_Prod

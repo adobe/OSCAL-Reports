@@ -9,13 +9,11 @@ name: Quality Gates
 on:
   pull_request:
     branches:
-      - Development
       - Quality
       - Quality_Test
       - Pre_Prod
   push:
     branches:
-      - Development
       - Quality
 
 concurrency:

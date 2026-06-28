@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.7.24] - 2026-06-29
+
+### Changed
+- ci: Quality mirror sync and Adobe Development retirement
 ## [1.7.23] - 2026-06-29
 
 Release **1.7.23** merges Dependabot dependency updates into Quality, stabilizes CI unit tests, and aligns version markers across manifests and documentation. Docker image tag **`keekar/oscal_reports:v1.7.23`** when published.
