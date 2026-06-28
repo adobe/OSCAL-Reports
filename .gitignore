@@ -25,6 +25,7 @@ config/app/users.json.backup
 config/app/*.backup
 config/app/config.json.tmp.*
 config/app/users.json.tmp.*
+config/app/config.docker.json
 config/app/okta_oidc_state.json
 config/app/local.oscal-report-generator.status.yml
 config/app/email_blocklist.json
