@@ -97,4 +97,4 @@
 
 ---
 
-**Version:** 1.7.22 · **Last updated:** June 2026
+**Version:** 1.7.23 · **Last updated:** June 2026
