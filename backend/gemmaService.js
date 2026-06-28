@@ -1,18 +1,20 @@
 /**
- * Gemma Service
- * Provides AI-powered implementation text generation using Gemma models (Gemma, Gemma2, Gemma3)
- * Supports AWS Bedrock and Google AI API (cloud)
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import axios from './utils/safeAxios.js';
 import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
 import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
+import {
+  extractControlTitleForPrompt,
+  extractControlDescriptionText,
+  pickDiverseImplementationExamples,
+  controlFamilyFromId,
+} from './utils/controlPromptContext.js';
 
 let gemmaConfig = null;
 
@@ -402,12 +404,8 @@ function analyzeWritingStyle(existingControls) {
     return null;
   }
   
-  // Get implementations from existing controls
-  const implementations = existingControls
-    .filter(c => c.implementation && c.implementation.length > 50)
-    .map(c => c.implementation.trim())
-    .slice(0, 25); // Use up to 25 examples
-  
+  const implementations = pickDiverseImplementationExamples(existingControls);
+
   if (implementations.length === 0) {
     return null;
   }
@@ -457,67 +455,54 @@ function getRemarksExamples(existingControls) {
  * Build prompt for Gemma based on control information
  */
 function buildPrompt(control, existingControls = []) {
-  // Clean title
-  let controlTitle = (control.title || '').trim();
-  if (controlTitle.toLowerCase().startsWith('control:')) {
-    controlTitle = controlTitle.substring(8).trim();
-  }
-  
-  // Extract description from parts
-  let controlDescription = '';
-  if (control.parts && Array.isArray(control.parts) && control.parts.length > 0) {
-    const statementParts = control.parts.filter(p => 
-      p.name === 'statement' || p.name === 'objective' || p.name === 'item'
-    );
-    const partsToUse = statementParts.length > 0 ? statementParts : control.parts;
-    controlDescription = partsToUse
-      .map(part => (part.prose || part.title || ''))
-      .filter(text => text.length > 0)
-      .join('\n\n');
-  }
-  
-  if (!controlDescription && control.description) {
-    controlDescription = control.description;
-  }
-
-  // Build context
   const controlId = control.id || 'Unknown';
-  const controlFamily = controlId.split('-')[0];
-  
-  // Analyze existing controls for style guidance
+  const controlTitle = extractControlTitleForPrompt(control);
+  const controlDescription = extractControlDescriptionText(control);
+  const controlFamily = controlFamilyFromId(controlId);
+  const groupTitle = (control.groupTitle || '').trim();
+
   const styleAnalysis = analyzeWritingStyle(existingControls);
-  
-  // Build style guidance section
+
   let styleGuidance = '';
   if (styleAnalysis && styleAnalysis.examples.length > 0) {
     styleGuidance = `
 
-STYLE GUIDANCE - Match the writing style of these existing implementations:
-${styleAnalysis.examples.map((ex, idx) => `${idx + 1}. "${ex}"`).join('\n')}
+STYLE GUIDANCE - Match TONE and SENTENCE STRUCTURE only (not implementation content):
+${styleAnalysis.examples.map((ex, idx) => {
+      const preview = ex.length > 180 ? `${ex.substring(0, 180)}...` : ex;
+      return `${idx + 1}. "${preview}"`;
+    }).join('\n')}
 
-IMPORTANT: Your response should match the tone, structure, and terminology used in the examples above.`;
+IMPORTANT: Use the examples only for writing style. Your implementation MUST address the unique requirements of ${controlId} (${controlTitle}). Do NOT reuse boilerplate phrases from the examples unless they directly apply to this control.`;
   }
-  
+
+  const groupContext = groupTitle ? `\nControl Group: ${groupTitle}` : '';
+  const descriptionBlock = controlDescription
+    || `No detailed catalog statement was provided. Infer specifics from the control ID and title (${controlId}: ${controlTitle}) rather than generic security language.`;
+
   return `Generate a professional implementation description for the following security control:
 
 Control ID: ${controlId}
 Control Title: ${controlTitle}
-Control Family: ${controlFamily}
+Control Family: ${controlFamily}${groupContext}
 
-Control Description:
-${controlDescription || 'No description available'}${styleGuidance}
+Control Requirements (catalog statement):
+${descriptionBlock}${styleGuidance}
+
+UNIQUENESS: The implementation must be specific to ${controlId} — "${controlTitle}". Do NOT produce text that could apply equally to unrelated controls.
 
 Requirements:
 1. Write 2-3 concise sentences describing what HAS BEEN implemented (past/present perfect tense)
 2. Use descriptive language: "X is implemented by...", "We have implemented...", "The system uses...", "X are configured to..."
-3. Focus on practical, technical implementation details that exist
+3. Focus on practical, technical implementation details that exist for THIS control
 4. Use professional cybersecurity terminology
-5. Be specific about security measures, processes, or technologies that are in place
+5. Be specific about security measures, processes, or technologies relevant to the control statement above
 6. Do not include generic phrases like "Board of Directors" unless specifically relevant
 7. Do NOT use imperative/instructional language (avoid "Implement...", "Create...", "Ensure...")
 8. CRITICAL: Your response MUST be exactly 250 characters or less - count your characters carefully
 9. Be concise and precise - prioritize essential information, omit unnecessary words
-10. ${styleAnalysis ? 'Match the writing style, tone, and structure of the examples provided above.' : 'Keep the response aligned with standard OSCAL implementation descriptions'}
+10. Reference at least one requirement or concept from the control statement (or title when no statement is available)
+11. ${styleAnalysis ? 'Match writing style from examples without copying their implementation details.' : 'Keep the response aligned with standard OSCAL implementation descriptions'}
 
 ${styleAnalysis ? '' : 'Example format (exactly 250 characters): "Break Glass accounts are implemented by creating high-privileged, emergency-access accounts that are activated only when regular authentication processes fail or are compromised. These accounts have least privilege access and are monitored for usage."'}
 
@@ -540,19 +525,22 @@ ${remarksExamples.map((r, idx) => `${idx + 1}. "${r}"`).join('\n')}
 When relevant, suggest a brief additional note or consumer guidance in the same style as above; otherwise use empty string for "remarks".`
     : '';
 
+  const controlId = control.id || 'Unknown';
+  const controlTitle = extractControlTitleForPrompt(control);
+
   return `${basePrompt}
 
 Alternatively, respond with a JSON object containing all of the following (use this format so we can fill Implementation, Assessment/Testing Objective, Testing Method, and Additional Notes):${remarksGuidance}
 
 Respond with ONLY a valid JSON object, no other text. Use this exact structure:
 {
-  "implementation": "2-3 sentences, 250 chars or less, describing what has been implemented (past/present perfect tense).",
-  "testingObjective": "One sentence: the objective of assessing this control (e.g., Verify that...).",
-  "testingProcedure": "One sentence: how this control is tested (e.g., Manual review of...; Automated by tools).",
-  "remarks": "Optional brief additional notes or consumer guidance, or empty string if none."
+  "implementation": "2-3 sentences, 250 chars or less, describing what has been implemented for ${controlId} (past/present perfect tense).",
+  "testingObjective": "One sentence specific to ${controlId} (${controlTitle}): what to verify when assessing this control.",
+  "testingProcedure": "One sentence describing how to test ${controlId} specifically (e.g., review evidence of..., inspect configuration for...).",
+  "remarks": "Optional brief additional notes or consumer guidance for ${controlId}, or empty string if none."
 }
 
-Requirements for each field: implementation (250 chars or less); testingObjective and testingProcedure (one clear sentence each); remarks (short or empty; when you have example style above, prefer suggesting a brief note when it would help the assessor). Respond with ONLY the JSON object.`;
+Requirements for each field: implementation (250 chars or less, unique to this control); testingObjective and testingProcedure (must mention ${controlId} or its title, not generic assessment language); remarks (short or empty). Respond with ONLY the JSON object.`;
 }
 
 /**

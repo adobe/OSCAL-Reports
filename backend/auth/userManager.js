@@ -1,8 +1,9 @@
 /**
- * User Management System
- * Handles user CRUD operations and authentication
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

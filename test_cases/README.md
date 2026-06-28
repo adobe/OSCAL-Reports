@@ -1,6 +1,6 @@
 # OSCAL Report Generator - Test Suite
 
-**Version:** 1.7.12  
+**Version:** 1.7.23  
 **Last Updated:** April 2026  
 **Maintained By:** Mukesh Kesharwani
 
@@ -105,6 +105,9 @@ cd backend && npm run test:e2e
 
 # Security tests only (v1.6.5)
 cd backend && npm run test:security
+
+# OSCAL catalogue release gate (live HTTPS — mandatory before version release)
+cd backend && npm run test:catalogues
 ```
 
 ### Individual Test Files
@@ -262,7 +265,7 @@ open test_cases/backend/coverage/lcov-report/index.html
  * 
  * Description of what this test suite covers
  * 
- * Version: 1.7.12+
+ * Version: 1.7.23+
  * Location: test_cases/backend/[type]/[name].test.js
  */
 
@@ -469,4 +472,4 @@ npm run test:coverage
 
 **Last Updated:** April 2026  
 **Maintainer:** Mukesh Kesharwani <mukesh.kesharwani@adobe.com>  
-**License:** GPL-3.0-or-later
+**License:** MIT

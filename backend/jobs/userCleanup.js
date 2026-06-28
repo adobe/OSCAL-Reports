@@ -1,17 +1,14 @@
 /**
- * User Cleanup Job
- * Automatically deactivates self-registered users who haven't logged in for 45+ days
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { getAllUsers, deactivateUser } from '../auth/userManager.js';
-import { addToBlacklist, cleanupExpiredBlacklist } from '../auth/emailBlacklist.js';
+import { addToBlocklist, cleanupExpiredBlocklist } from '../auth/emailBlocklist.js';
 
-// Inactivity threshold: 45 days in milliseconds
-const INACTIVITY_THRESHOLD = 45 * 24 * 60 * 60 * 1000;
+// Inactivity threshold: 30 days
+export const INACTIVITY_DAYS = 30;
 
 /**
  * Calculate days since last login
@@ -38,7 +35,7 @@ function getDaysSinceLastLogin(user) {
 
 /**
  * Clean up inactive self-registered users
- * Deactivates users who haven't logged in for 45+ days
+ * Deactivates users who haven't logged in for 30+ days
  * Only affects users created via self-registration
  * 
  * @returns {Promise<Object>} - Cleanup results
@@ -46,14 +43,14 @@ function getDaysSinceLastLogin(user) {
 export async function cleanupInactiveUsers() {
   console.log('\n🧹 Starting user cleanup job...');
   console.log(`   Current time: ${new Date().toISOString()}`);
-  console.log(`   Inactivity threshold: 45 days`);
+  console.log(`   Inactivity threshold: ${INACTIVITY_DAYS} days`);
   
   const results = {
     totalUsers: 0,
     selfRegisteredUsers: 0,
     inactiveUsers: 0,
     deactivated: [],
-    blacklisted: [],
+    blocklisted: [],
     errors: [],
     timestamp: new Date().toISOString()
   };
@@ -86,8 +83,8 @@ export async function cleanupInactiveUsers() {
         console.log(`      Last login: ${user.lastLoginAt || 'Never'}`);
         console.log(`      Created: ${user.createdAt}`);
         
-        // Deactivate if inactive for 45+ days
-        if (daysSinceLastLogin >= 45) {
+        // Deactivate if inactive for threshold days or more
+        if (daysSinceLastLogin >= INACTIVITY_DAYS) {
           console.log(`   ⚠️ User is inactive (${daysSinceLastLogin} days), deactivating...`);
           results.inactiveUsers++;
           
@@ -104,21 +101,21 @@ export async function cleanupInactiveUsers() {
               createdAt: user.createdAt
             });
             
-            // Add email to blacklist (45-day cooldown)
+            // Add email to blocklist (30-day cooldown)
             try {
-              await addToBlacklist(user.email);
-              console.log(`   ✅ Email added to blacklist: ${user.email}`);
+              await addToBlocklist(user.email);
+              console.log(`   ✅ Email added to blocklist: ${user.email}`);
               
-              results.blacklisted.push({
+              results.blocklisted.push({
                 email: user.email,
-                expiresInDays: 45
+                expiresInDays: INACTIVITY_DAYS
               });
-            } catch (blacklistError) {
-              console.error(`   ❌ Failed to blacklist email ${user.email}:`, blacklistError.message);
+            } catch (blocklistError) {
+              console.error(`   ❌ Failed to blocklist email ${user.email}:`, blocklistError.message);
               results.errors.push({
                 email: user.email,
-                action: 'blacklist',
-                error: blacklistError.message
+                action: 'blocklist',
+                error: blocklistError.message
               });
             }
             
@@ -131,7 +128,7 @@ export async function cleanupInactiveUsers() {
             });
           }
         } else {
-          const daysRemaining = 45 - daysSinceLastLogin;
+          const daysRemaining = INACTIVITY_DAYS - daysSinceLastLogin;
           console.log(`   ✓ User is active (${daysRemaining} days until cleanup)`);
         }
         
@@ -145,15 +142,15 @@ export async function cleanupInactiveUsers() {
       }
     }
     
-    // Clean up expired blacklist entries
-    console.log('\n🧹 Cleaning up expired blacklist entries...');
+    // Clean up expired blocklist entries
+    console.log('\n🧹 Cleaning up expired blocklist entries...');
     try {
-      const removedCount = await cleanupExpiredBlacklist();
-      console.log(`   ✅ Removed ${removedCount} expired blacklist entry(ies)`);
+      const removedCount = await cleanupExpiredBlocklist();
+      console.log(`   ✅ Removed ${removedCount} expired blocklist entry(ies)`);
     } catch (cleanupError) {
-      console.error(`   ❌ Failed to cleanup blacklist:`, cleanupError.message);
+      console.error(`   ❌ Failed to cleanup blocklist:`, cleanupError.message);
       results.errors.push({
-        action: 'blacklist-cleanup',
+        action: 'blocklist-cleanup',
         error: cleanupError.message
       });
     }
@@ -164,7 +161,7 @@ export async function cleanupInactiveUsers() {
     console.log(`   Self-registered users: ${results.selfRegisteredUsers}`);
     console.log(`   Inactive users found: ${results.inactiveUsers}`);
     console.log(`   Users deactivated: ${results.deactivated.length}`);
-    console.log(`   Emails blacklisted: ${results.blacklisted.length}`);
+    console.log(`   Emails blocklisted: ${results.blocklisted.length}`);
     console.log(`   Errors: ${results.errors.length}`);
     
     if (results.deactivated.length > 0) {
@@ -222,4 +219,3 @@ export default {
   cleanupInactiveUsers,
   scheduleUserCleanup
 };
-

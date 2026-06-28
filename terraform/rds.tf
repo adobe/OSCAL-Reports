@@ -1,7 +1,12 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Optional Amazon RDS for PostgreSQL — Database Integration (extended_data, adobe_teams).
 # RDS lives in private subnets only (no route to IGW), publicly_accessible = false, private DNS → private IP.
 # Ingress: OSCAL EC2 security group only, plus optional rds_additional_ingress_ipv4_cidr_blocks (VPC-internal use).
-# IAM database authentication for the app user; master password in Secrets Manager (RDS-managed).
+# IAM database authentication for the app user; admin password in Secrets Manager (RDS-managed).
 # Default create_rds_postgres = true; set false in tfvars to omit RDS. EC2 user_data bootstraps the IAM DB user and injects OSCAL_DATABASE_* env vars when RDS is enabled.
 
 resource "aws_db_subnet_group" "oscal" {
@@ -66,6 +71,8 @@ resource "aws_db_instance" "oscal" {
   engine         = "postgres"
   engine_version = var.rds_engine_version
 
+  auto_minor_version_upgrade = true
+
   instance_class        = var.rds_instance_class
   allocated_storage     = var.rds_allocated_storage
   max_allocated_storage = var.rds_max_allocated_storage > 0 ? var.rds_max_allocated_storage : null
@@ -73,17 +80,18 @@ resource "aws_db_instance" "oscal" {
   storage_encrypted     = true
 
   db_name  = var.rds_database_name
-  username = var.rds_master_username
+  username = var.rds_admin_username
 
-  manage_master_user_password          = true
-  iam_database_authentication_enabled  = true
+  # AWS provider attribute name (manage_master_user_password)
+  manage_master_user_password         = true
+  iam_database_authentication_enabled = true
 
   db_subnet_group_name   = aws_db_subnet_group.oscal[0].name
   vpc_security_group_ids = [aws_security_group.rds[0].id]
   publicly_accessible    = false
 
-  backup_retention_period = var.rds_backup_retention_period
-  skip_final_snapshot     = var.rds_skip_final_snapshot
+  backup_retention_period   = var.rds_backup_retention_period
+  skip_final_snapshot       = var.rds_skip_final_snapshot
   final_snapshot_identifier = var.rds_skip_final_snapshot ? null : "${replace(var.project_name, "_", "-")}-pg-final"
 
   deletion_protection = var.rds_deletion_protection
@@ -94,5 +102,7 @@ resource "aws_db_instance" "oscal" {
 
   lifecycle {
     prevent_destroy = false
+    # AWS may patch engine_version_actual ahead of Terraform (auto minor upgrade); never downgrade.
+    ignore_changes = [engine_version]
   }
 }

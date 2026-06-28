@@ -1,4 +1,9 @@
 #!/bin/bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Sync consolidate-users.sh to Blue, Green (and optional other) script folders
 # so you can check in the same script from Local and deploy to Blue/Green.
 # Author: Mukesh Kesharwani

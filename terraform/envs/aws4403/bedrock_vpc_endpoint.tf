@@ -1,0 +1,1 @@
+../../bedrock_vpc_endpoint.tf

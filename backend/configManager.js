@@ -1,22 +1,37 @@
 /**
- * Configuration Manager - Server-side settings persistence
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { atomicWriteJSON } from './utils/atomicWrite.js';
-import { resolvePassPointers, passInsert } from './utils/passResolver.js';
+import { resolvePassPointers, passShow, isPassPointer } from './utils/passResolver.js';
+import {
+  isAwsSmMode,
+  isSmPointer,
+  entryKeyToConfigPointer,
+  mergeAndPutBundle,
+  reloadSecretsFromAws,
+  ensureSmCacheReady,
+  resolveSmPointers,
+  isSecretCached,
+  getSecret,
+} from './utils/secretsManager.js';
 import {
   SENSITIVE_CONFIG_KEYS,
   getByPath,
   setByPath,
-  isMaskedOrEmpty
+  isMaskedOrEmpty,
+  isSecretPointer,
 } from './utils/sensitiveConfigKeys.js';
+import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
+import { resolveCfgEncPointers, isCfgEncPointer, decryptConfigSecret, encryptConfigSecret } from './utils/configFieldCrypto.js';
+import { resolveStoredSecretValue } from './utils/resolveStoredSecret.js';
+import { ensureConfigSecretsProtected as runConfigSecretsProtection } from './utils/configSecretMigration.js';
+import { DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS } from './auth/genericOidc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -135,6 +150,9 @@ const DEFAULT_CONFIG = {
     organizationName: 'Adobe', // Default organization name
     extensiveLogging: false,    // When true, append AI telemetry to logs/ (e.g. ai-telemetry-*.jsonl)
     allowedUsersForAI: '',      // Comma-separated patterns for Get Suggestions (mistral-api/aws-bedrock only), max 5, e.g. *@adobe.com, mkesharw
+    bedrockAuthMode: 'access-keys', // 'access-keys' | 'iam-role' (instance profile / STS assume role)
+    bedrockAssumeRoleArn: '',
+    bedrockExternalId: '',
     maxTokens: {
       connectionTest: 10,        // Minimal response for testing connectivity
       controlGeneration: 150,    // Short responses for control implementations (~250 chars)
@@ -151,6 +169,37 @@ const DEFAULT_CONFIG = {
     authMode: 'password', // 'password' | 'iam' (RDS IAM DB authentication; token from instance/task role)
     sslMode: 'disable', // 'disable' | 'prefer' | 'require'
     connectionTimeout: 10000     // 10 seconds
+  },
+  ssoConfig: {
+    oauth: {
+      enabled: true,
+      jitProvisioning: true,
+      jitDefaultRole: 'User',
+      syncRoleFromGroups: true,
+      groupToRoleMapping: {
+        Assessor: 'Assessor',
+        'Platform Admin': 'Platform Admin',
+      },
+      providers: {
+        Generic_OIDC: {
+          enabled: true,
+          displayName: 'Generic SSO',
+          issuerUrl: 'https://sso.keekar.au/application/o/oscal-report-generator/',
+          discoveryUrl:
+            'https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration',
+          clientId: 'oscal-report-generator',
+          clientSecret: '',
+          callbackPath: '/auth/callback',
+          scope: 'openid profile email',
+          endSessionUrl: 'https://sso.keekar.au/application/o/oscal-report-generator/end-session/',
+          redirectUriPatterns: DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS,
+          tlsRelaxed: true,
+        },
+        okta: {
+          enabled: false,
+        },
+      },
+    },
   },
   lastModified: new Date().toISOString(),
   version: '1.0.0'
@@ -180,12 +229,32 @@ function loadConfig() {
     const data = fs.readFileSync(configPath, 'utf8');
     const loaded = JSON.parse(data);
     // Merge with defaults so new keys (e.g. aiConfig.allowedUsersForAI) exist when missing from file
+    const loadedOauth = loaded.ssoConfig?.oauth || {};
+    const loadedProviders = loadedOauth.providers && typeof loadedOauth.providers === 'object' ? loadedOauth.providers : {};
     const config = {
       ...DEFAULT_CONFIG,
       ...loaded,
       aiConfig: { ...DEFAULT_CONFIG.aiConfig, ...(loaded.aiConfig || {}) },
-      databaseConfig: { ...DEFAULT_CONFIG.databaseConfig, ...(loaded.databaseConfig || {}) }
+      databaseConfig: { ...DEFAULT_CONFIG.databaseConfig, ...(loaded.databaseConfig || {}) },
+      ssoConfig: {
+        ...DEFAULT_CONFIG.ssoConfig,
+        ...(loaded.ssoConfig || {}),
+        oauth: {
+          ...DEFAULT_CONFIG.ssoConfig.oauth,
+          ...loadedOauth,
+          groupToRoleMapping: mergeDefaultOidcGroupToRoleMapping(loadedOauth.groupToRoleMapping),
+          providers: {
+            ...DEFAULT_CONFIG.ssoConfig.oauth.providers,
+            ...loadedProviders,
+            Generic_OIDC: {
+              ...DEFAULT_CONFIG.ssoConfig.oauth.providers.Generic_OIDC,
+              ...(loadedProviders.Generic_OIDC || {}),
+            },
+          },
+        },
+      },
     };
+    applyDefaultOidcGroupMappingsToConfig(config);
     console.log(`✅ Configuration loaded successfully from ${configPath}`);
     return config;
   } catch (error) {
@@ -235,7 +304,7 @@ export function applyDatabaseEnvOverrides(config) {
 /**
  * Effective databaseConfig for POST /api/database/test-connection when the client sends
  * the current Platform Settings form. Does not apply OSCAL_DATABASE_AUTH=iam from the
- * environment, so admins can test the RDS master user (e.g. oscalmaster) and password.
+ * environment, so admins can test the RDS admin user (e.g. oscalmaster) and password.
  * Terraform OSCAL_DATABASE_HOST / PORT / NAME / SSL / ENABLED still fill blanks only.
  *
  * @param {Object|null|undefined} formDatabaseConfig - Fields from the UI (same shape as databaseConfig)
@@ -244,7 +313,7 @@ export function applyDatabaseEnvOverrides(config) {
 function getResolvedDatabaseConfigForTest(formDatabaseConfig) {
   const raw = loadConfig();
   const clone = JSON.parse(JSON.stringify(raw));
-  resolvePassPointers(clone);
+  resolveSecretsInConfig(clone);
   const base = { ...DEFAULT_CONFIG.databaseConfig, ...(clone.databaseConfig || {}) };
   const f = formDatabaseConfig && typeof formDatabaseConfig === 'object' ? formDatabaseConfig : {};
 
@@ -292,56 +361,338 @@ function getResolvedDatabaseConfigForTest(formDatabaseConfig) {
     db.sslMode = 'require';
   }
 
+  db.password = coalesceDatabasePasswordForTest(
+    f.password,
+    clone.databaseConfig?.password,
+    raw.databaseConfig?.password
+  );
+
   return db;
 }
 
 /**
- * Load config and resolve all _pass pointers (for server-side use only).
- * Returns a deep clone with secrets resolved from pass; do not send to client.
+ * Pick database password for connection test: form plaintext, resolved pointers, or stored config.
+ * @param {*} formPassword
+ * @param {*} resolvedStored
+ * @param {*} rawStored
+ * @returns {string}
  */
-function getResolvedConfig() {
+function coalesceDatabasePasswordForTest(formPassword, resolvedStored, rawStored) {
+  const fromFormString = typeof formPassword === 'string' ? formPassword.trim() : '';
+  if (fromFormString && fromFormString !== '********') {
+    return fromFormString;
+  }
+  const fromFormEnvelope = resolveStoredSecretValue(formPassword);
+  if (fromFormEnvelope) return fromFormEnvelope;
+  if (typeof resolvedStored === 'string') {
+    const t = resolvedStored.trim();
+    if (t && t !== '********') return t;
+  }
+  return resolveStoredSecretValue(rawStored ?? resolvedStored) || '';
+}
+
+/**
+ * Merge Bedrock IAM / assume-role settings from process env (Terraform systemd on EC2).
+ * @param {Object} config - Mutable config object
+ */
+export function applyBedrockEnvOverrides(config) {
+  if (!config?.aiConfig) return;
+  const ai = config.aiConfig;
+  const roleArn = process.env.BEDROCK_ASSUME_ROLE_ARN && String(process.env.BEDROCK_ASSUME_ROLE_ARN).trim();
+  if (roleArn) {
+    ai.bedrockAuthMode = 'iam-role';
+    ai.bedrockAssumeRoleArn = roleArn;
+  }
+  const externalId = process.env.BEDROCK_EXTERNAL_ID && String(process.env.BEDROCK_EXTERNAL_ID).trim();
+  if (externalId) {
+    ai.bedrockExternalId = externalId;
+  }
+}
+
+/**
+ * Resolve secret pointers in a mutable config clone (pass and/or SM per mode).
+ * @param {Object} clone
+ */
+function resolveSecretsInConfig(clone) {
+  resolveCfgEncPointers(clone);
+  if (isAwsSmMode()) {
+    resolveSmPointers(clone);
+    resolvePassPointers(clone);
+  } else {
+    resolveSmPointers(clone);
+    resolvePassPointers(clone);
+  }
+}
+
+/**
+ * Load config and resolve all secret pointers (for server-side use only).
+ * Returns a deep clone with secrets resolved; do not send to client.
+ */
+async function getResolvedConfigAsync() {
   const raw = loadConfig();
   const clone = JSON.parse(JSON.stringify(raw));
-  resolvePassPointers(clone);
+  if (isAwsSmMode()) {
+    await ensureSmCacheReady();
+  }
+  resolveSecretsInConfig(clone);
+  normalizeSensitiveSecretsInConfig(clone, raw);
   applyDatabaseEnvOverrides(clone);
+  applyBedrockEnvOverrides(clone);
   return clone;
 }
 
 /**
- * Prepare config for save: write new plaintext secrets to pass and replace with pointers.
- * For masked/empty/pointer values, keep existing value from current raw config.
- * Returns config object safe to persist (no plaintext secrets for sensitive keys).
- *
- * @param {Object} configToSave - Merged config (incoming from API)
- * @param {Object} existingRaw - Current raw config from loadConfig()
- * @returns {{ config: Object, passErrors: string[] }} config to pass to saveConfig(), and any pass insert errors
+ * Ensure sensitive paths are plain strings after pointer resolution (runtime + tests).
+ * @param {Object} clone
+ * @param {Object} raw
  */
-function prepareConfigWithPassPointers(configToSave, existingRaw) {
+function normalizeSensitiveSecretsInConfig(clone, raw) {
+  for (const { path: keyPath } of SENSITIVE_CONFIG_KEYS) {
+    if (shouldSkipSensitiveKey(keyPath, clone)) {
+      setByPath(clone, keyPath, '');
+      continue;
+    }
+    const val = getByPath(clone, keyPath);
+    if (typeof val === 'string') continue;
+    setByPath(clone, keyPath, resolveStoredSecretValue(getByPath(raw, keyPath) ?? val));
+  }
+}
+
+function getResolvedConfig() {
+  const raw = loadConfig();
+  const clone = JSON.parse(JSON.stringify(raw));
+  resolveSecretsInConfig(clone);
+  normalizeSensitiveSecretsInConfig(clone, raw);
+  applyDatabaseEnvOverrides(clone);
+  applyBedrockEnvOverrides(clone);
+  return clone;
+}
+
+function shouldSkipSensitiveKey(keyPath, configToSave) {
+  if (keyPath === 'databaseConfig.password' && getByPath(configToSave, 'databaseConfig.authMode') === 'iam') {
+    return true;
+  }
+  const bedrockAuthMode = getByPath(configToSave, 'aiConfig.bedrockAuthMode');
+  if (
+    (keyPath === 'aiConfig.awsAccessKeyId' || keyPath === 'aiConfig.awsSecretAccessKey') &&
+    bedrockAuthMode === 'iam-role'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function pointerFromExisting(existing, smEntry, _passEntry) {
+  if (existing === undefined || existing === null) {
+    return isAwsSmMode() ? entryKeyToConfigPointer(smEntry) : '';
+  }
+  if (isSmPointer(existing)) return existing;
+  if (isCfgEncPointer(existing)) return existing;
+  if (existing && typeof existing === 'object' && existing._pass) {
+    return isAwsSmMode() ? entryKeyToConfigPointer(smEntry) : existing;
+  }
+  return existing;
+}
+
+/**
+ * Prepare config for save: secrets go to AWS SM (EC2) or pass/config (local).
+ * @returns {{ config: Object, passErrors: string[], smErrors: string[] }}
+ */
+async function prepareConfigForSave(configToSave, existingRaw) {
   const result = JSON.parse(JSON.stringify(configToSave));
   const passErrors = [];
-  for (const { path: keyPath, passEntry } of SENSITIVE_CONFIG_KEYS) {
-    if (keyPath === 'databaseConfig.password' && getByPath(configToSave, 'databaseConfig.authMode') === 'iam') {
-      setByPath(result, 'databaseConfig.password', '');
+  const smErrors = [];
+  const smPartial = {};
+
+  for (const { path: keyPath, smEntry, passEntry } of SENSITIVE_CONFIG_KEYS) {
+    if (shouldSkipSensitiveKey(keyPath, configToSave)) {
+      setByPath(result, keyPath, '');
       continue;
     }
     const incoming = getByPath(configToSave, keyPath);
+    const existing = getByPath(existingRaw, keyPath);
+
     if (isMaskedOrEmpty(incoming)) {
-      const existing = getByPath(existingRaw, keyPath);
-      setByPath(result, keyPath, existing !== undefined ? existing : { _pass: passEntry });
-    } else if (typeof incoming === 'string' && incoming.trim() !== '') {
+      if (isAwsSmMode() && !isSecretCached(smEntry)) {
+        if (isPassPointer(existing)) {
+          const fromPass = passShow(existing._pass) || '';
+          if (fromPass.trim()) smPartial[smEntry] = fromPass.trim();
+        } else if (isCfgEncPointer(existing)) {
+          const fromCfg = tryDecryptCfgEncSecret(existing);
+          if (fromCfg) smPartial[smEntry] = fromCfg;
+        } else if (typeof existing === 'string' && !isMaskedOrEmpty(existing)) {
+          smPartial[smEntry] = existing.trim();
+        }
+      }
+      if (!isAwsSmMode() && isPassPointer(existing)) {
+        const fromPass = (passShow(existing._pass) || '').trim();
+        if (fromPass) {
+          try {
+            setByPath(result, keyPath, encryptConfigSecret(fromPass));
+            continue;
+          } catch (err) {
+            passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
+          }
+        }
+      }
+      const pointer = pointerFromExisting(existing, smEntry, passEntry);
+      setByPath(result, keyPath, pointer);
+      continue;
+    }
+
+    if (typeof incoming === 'string' && incoming.trim() !== '') {
       const trimmed = incoming.trim();
-      const insertResult = passInsert(passEntry, trimmed);
-      if (insertResult.success) {
-        setByPath(result, keyPath, { _pass: passEntry });
+      if (isAwsSmMode()) {
+        smPartial[smEntry] = trimmed;
+        setByPath(result, keyPath, entryKeyToConfigPointer(smEntry));
       } else {
-        // Pass unavailable (e.g. not installed on EC2): store plaintext in config so the app works
-        setByPath(result, keyPath, trimmed);
-        passErrors.push(`${keyPath}: pass unavailable (${insertResult.error}); secret stored in config`);
+        try {
+          setByPath(result, keyPath, encryptConfigSecret(trimmed));
+        } catch (err) {
+          passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
+          setByPath(result, keyPath, pointerFromExisting(existing, smEntry, passEntry));
+        }
+      }
+      continue;
+    }
+
+    if (isSecretPointer(incoming) || isCfgEncPointer(incoming)) {
+      setByPath(result, keyPath, pointerFromExisting(incoming, smEntry, passEntry));
+    }
+  }
+
+  migrateGenericOidcSecretForAwsSm(result, configToSave, existingRaw, smPartial);
+
+  if (isAwsSmMode() && Object.keys(smPartial).length > 0) {
+    const putResult = await mergeAndPutBundle(smPartial);
+    if (!putResult.success) {
+      smErrors.push(`secrets_manager: ${putResult.error || 'put_failed'}`);
+      for (const [entryKey] of Object.entries(smPartial)) {
+        const keyDef = SENSITIVE_CONFIG_KEYS.find((k) => k.smEntry === entryKey);
+        if (keyDef) {
+          const prior = getByPath(existingRaw, keyDef.path);
+          setByPath(result, keyDef.path, prior !== undefined ? prior : '');
+        }
+      }
+    } else {
+      await reloadSecretsFromAws();
+    }
+  }
+
+  preserveGenericOidcClientSecretOnSave(result, configToSave, existingRaw);
+
+  return { config: result, passErrors, smErrors };
+}
+
+const GENERIC_OIDC_SECRET_PATH = 'ssoConfig.oauth.providers.Generic_OIDC.clientSecret';
+const GENERIC_OIDC_SM_ENTRY = 'OSCAL/sso-oauth-generic-oidc-client-secret';
+
+function tryDecryptCfgEncSecret(value) {
+  if (!isCfgEncPointer(value)) return '';
+  try {
+    return decryptConfigSecret(value).trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+/**
+ * On EC2 (aws-sm), migrate Generic_OIDC secret from _cfgenc / plaintext into SM bundle.
+ * @param {Object} result
+ * @param {Object} configToSave
+ * @param {Object} existingRaw
+ * @param {Record<string, string>} smPartial
+ */
+function migrateGenericOidcSecretForAwsSm(result, configToSave, existingRaw, smPartial) {
+  if (!isAwsSmMode()) return;
+  const incoming = getByPath(configToSave, GENERIC_OIDC_SECRET_PATH);
+  const existing = getByPath(existingRaw, GENERIC_OIDC_SECRET_PATH);
+  const current = getByPath(result, GENERIC_OIDC_SECRET_PATH);
+  let plain = '';
+  if (typeof incoming === 'string' && !isMaskedOrEmpty(incoming)) {
+    plain = incoming.trim();
+  } else {
+    plain = tryDecryptCfgEncSecret(incoming)
+      || tryDecryptCfgEncSecret(existing)
+      || tryDecryptCfgEncSecret(current);
+  }
+  if (plain && !Object.prototype.hasOwnProperty.call(smPartial, GENERIC_OIDC_SM_ENTRY)) {
+    smPartial[GENERIC_OIDC_SM_ENTRY] = plain;
+  }
+  const cachedSecret = (getSecret(GENERIC_OIDC_SM_ENTRY) || '').trim();
+  const willHaveInSm =
+    !!plain
+    || !!cachedSecret
+    || Object.prototype.hasOwnProperty.call(smPartial, GENERIC_OIDC_SM_ENTRY);
+  if (willHaveInSm) {
+    setByPath(result, GENERIC_OIDC_SECRET_PATH, entryKeyToConfigPointer(GENERIC_OIDC_SM_ENTRY));
+    return;
+  }
+  // Orphan _sm pointer (SM empty) breaks login-providers — keep resolvable plaintext/_cfgenc.
+  if (isSmPointer(current) || isSmPointer(incoming)) {
+    if (typeof existing === 'string' && !isMaskedOrEmpty(existing)) {
+      setByPath(result, GENERIC_OIDC_SECRET_PATH, existing.trim());
+    } else if (isCfgEncPointer(existing)) {
+      setByPath(result, GENERIC_OIDC_SECRET_PATH, existing);
+    } else if (typeof current === 'string' && !isMaskedOrEmpty(current)) {
+      setByPath(result, GENERIC_OIDC_SECRET_PATH, current.trim());
+    }
+  }
+}
+
+/**
+ * Generic_OIDC client secret uses _cfgenc in local/config mode; preserve on masked UI saves.
+ * @param {Object} result
+ * @param {Object} configToSave
+ * @param {Object} existingRaw
+ */
+function preserveGenericOidcClientSecretOnSave(result, configToSave, existingRaw) {
+  if (isAwsSmMode()) return;
+  const incoming = getByPath(configToSave, GENERIC_OIDC_SECRET_PATH);
+  const existing = getByPath(existingRaw, GENERIC_OIDC_SECRET_PATH);
+  if (isMaskedOrEmpty(incoming) && (isCfgEncPointer(existing) || (typeof existing === 'string' && existing.trim()))) {
+    setByPath(result, GENERIC_OIDC_SECRET_PATH, existing);
+    return;
+  }
+  if (isCfgEncPointer(incoming)) {
+    setByPath(result, GENERIC_OIDC_SECRET_PATH, incoming);
+  }
+}
+
+function prepareConfigWithPassPointers(configToSave, existingRaw) {
+  if (isAwsSmMode()) {
+    throw new Error('prepareConfigWithPassPointers is sync; use prepareConfigForSave in aws-sm mode');
+  }
+  const result = JSON.parse(JSON.stringify(configToSave));
+  const passErrors = [];
+  for (const { path: keyPath } of SENSITIVE_CONFIG_KEYS) {
+    if (shouldSkipSensitiveKey(keyPath, configToSave)) {
+      setByPath(result, keyPath, '');
+      continue;
+    }
+    const incoming = getByPath(configToSave, keyPath);
+    const existing = getByPath(existingRaw, keyPath);
+    if (isMaskedOrEmpty(incoming)) {
+      setByPath(result, keyPath, existing !== undefined ? existing : '');
+    } else if (typeof incoming === 'string' && incoming.trim() !== '') {
+      try {
+        setByPath(result, keyPath, encryptConfigSecret(incoming.trim()));
+      } catch (err) {
+        passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
+        setByPath(result, keyPath, existing !== undefined ? existing : '');
       }
     }
-    // else: already a pointer or other type; leave as-is (setByPath from existing if needed)
   }
   return { config: result, passErrors };
+}
+
+/**
+ * On startup: migrate plaintext / legacy _pass secrets to _sm or _cfgenc.
+ * @param {{ logger?: Function, refusePlaintext?: boolean }} [options]
+ */
+async function ensureConfigSecretsProtected(options = {}) {
+  const configPath = getConfigPath();
+  return runConfigSecretsProtection(configPath, options);
 }
 
 /**
@@ -632,8 +983,11 @@ function configExists() {
 export {
   loadConfig,
   getResolvedConfig,
+  getResolvedConfigAsync,
   getResolvedDatabaseConfigForTest,
+  prepareConfigForSave,
   prepareConfigWithPassPointers,
+  ensureConfigSecretsProtected,
   saveConfig,
   updateConfig,
   getConfigValue,

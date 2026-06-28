@@ -1,14 +1,15 @@
 /**
- * Bedrock Gemma Service
- * AWS Bedrock Converse API for Gemma models only. Response extraction matches probe-validated shape.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
-import https from 'https';
 import { getResolvedConfig } from './configManager.js';
+import {
+  bedrockCredentialsConfigured,
+  createBedrockRuntimeClient,
+  normalizeBedrockAuthMode
+} from './utils/bedrockCredentials.js';
 import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
 import {
   buildPrompt,
@@ -55,6 +56,9 @@ export async function loadBedrockGemmaConfig() {
 
     return {
       enabled: true,
+      bedrockAuthMode: normalizeBedrockAuthMode(ai),
+      bedrockAssumeRoleArn: ai.bedrockAssumeRoleArn || '',
+      bedrockExternalId: ai.bedrockExternalId || '',
       awsRegion: ai.awsRegion || 'us-east-1',
       awsAccessKeyId: ai.awsAccessKeyId || '',
       awsSecretAccessKey: ai.awsSecretAccessKey || '',
@@ -137,8 +141,10 @@ export async function generateImplementationWithBedrockGemma(control, fallbackGe
     return fallback ? { text: fallback, aiGenerated: false, attempted: false } : null;
   }
 
-  if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
-    throw new Error('AWS credentials not configured. In Settings, enter Bedrock access key and secret.');
+  if (!bedrockCredentialsConfigured(config)) {
+    throw new Error(
+      'AWS credentials not configured. In Settings, enter Bedrock access keys or select IAM role / instance profile.'
+    );
   }
   if (!config.awsRegion) throw new Error('AWS region not configured');
   const modelId = (config.bedrockModelId || '').trim();
@@ -151,22 +157,9 @@ export async function generateImplementationWithBedrockGemma(control, fallbackGe
   const startTime = Date.now();
 
   try {
-    const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: process.env.NODE_ENV === 'production',
-      keepAlive: true
-    });
-    const client = new BedrockRuntimeClient({
-      region: config.awsRegion,
-      credentials: {
-        accessKeyId: config.awsAccessKeyId,
-        secretAccessKey: config.awsSecretAccessKey
-      },
-      requestHandler: new NodeHttpHandler({
-        httpsAgent,
-        connectionTimeout: 30000,
-        socketTimeout: config.timeout || 180000
-      })
+    const client = await createBedrockRuntimeClient(config, {
+      connectionTimeout: 30000,
+      socketTimeout: config.timeout || 180000
     });
 
     const command = new ConverseCommand({
@@ -325,11 +318,11 @@ export async function checkBedrockGemmaAvailability() {
         reason: 'Bedrock Gemma not configured (AI disabled or non-Gemma model selected)'
       };
     }
-    if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+    if (!bedrockCredentialsConfigured(config)) {
       return {
         available: false,
         provider: 'aws-bedrock',
-        reason: 'AWS credentials not configured'
+        reason: 'AWS credentials not configured (access keys or IAM role)'
       };
     }
     if (!config.awsRegion) {

@@ -1,7 +1,9 @@
 /**
- * safeAxios — outbound header CRLF rejection (CWE-113)
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, it, expect } from '@jest/globals';
 import axiosRoot from 'axios';
 import axios, { validateOutgoingHeadersForCrlf } from '../../../backend/utils/safeAxios.js';
@@ -53,13 +55,21 @@ describe('safeAxios — CRLF header hardening', () => {
     expect(typeof axios.isAxiosError).toBe('function');
   });
 
-  it('axios rejects CRLF at merge time for user-supplied headers (axios 1.15+)', async () => {
+  it('axios 1.16+ strips CR/LF from merged outbound headers (no Invalid character throw)', async () => {
+    const client = axiosRoot.create();
+    let mergedHeaders;
+    client.interceptors.request.use((config) => {
+      mergedHeaders = config.headers?.toJSON?.() ?? config.headers;
+      return Promise.reject(new Error('stop-before-network'));
+    });
     await expect(
-      axios.get('http://127.0.0.1:9/nope', {
+      client.get('http://127.0.0.1:9/nope', {
         timeout: 500,
         headers: { 'X-Injected': 'x\r\n\r\nGET / HTTP/1.1' },
         validateStatus: () => true,
       }),
-    ).rejects.toThrow(/Invalid character in header content/);
+    ).rejects.toThrow('stop-before-network');
+    expect(mergedHeaders['X-Injected']).toBe('xGET / HTTP/1.1');
+    expect(mergedHeaders['X-Injected']).not.toMatch(/[\r\n]/);
   });
 });

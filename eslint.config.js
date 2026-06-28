@@ -1,10 +1,9 @@
 /**
- * ESLint v9 Flat Configuration - Root
- * 
- * This is a minimal configuration to prevent ESLint errors.
- * Customize as needed for your coding standards.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 export default [
   {
     ignores: [

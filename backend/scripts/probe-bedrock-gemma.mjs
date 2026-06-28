@@ -1,3 +1,9 @@
+/**
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
+ */
 #!/usr/bin/env node
 /**
  * Probe Bedrock Converse API for Gemma: log raw response shape (content blocks).

@@ -1,15 +1,15 @@
 /**
- * Control Suggestion Engine
- * Provides automated suggestions for control implementations based on patterns, templates, and best practices
- * Enhanced with AI for implementation text generation (supports Mistral, Gemma, and other models)
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { generateImplementationWithAI } from './aiModelRouter.js';
 import { getResolvedConfig } from './configManager.js';
+import {
+  extractControlTitleForPrompt,
+  extractControlDescriptionText,
+} from './utils/controlPromptContext.js';
 
 /**
  * Helper function to truncate implementation text to 250 characters
@@ -203,32 +203,10 @@ export async function suggestControlImplementation(control, existingControls = [
     // Extract control family from ID (e.g., AC-1 -> AC, ism-1564 -> ism)
     const controlFamily = control.id ? control.id.split('-')[0].toUpperCase() : null;
     
-    // Clean up control title - remove "Control:" prefix if present
-    let controlTitle = (control.title || '').trim();
-    if (controlTitle.toLowerCase().startsWith('control:')) {
-      controlTitle = controlTitle.substring(8).trim();
-    }
-    controlTitle = controlTitle.toLowerCase();
-    
-    // Build description from parts if available, otherwise use description field
-    let controlDescription = '';
-    if (control.parts && Array.isArray(control.parts) && control.parts.length > 0) {
-      // Extract prose from parts, prioritizing statement/objective parts
-      const statementParts = control.parts.filter(p => 
-        p.name === 'statement' || p.name === 'objective' || p.name === 'item'
-      );
-      const partsToUse = statementParts.length > 0 ? statementParts : control.parts;
-      controlDescription = partsToUse
-        .map(part => (part.prose || part.title || part.name || ''))
-        .filter(text => text.length > 0)
-        .join(' ')
-        .toLowerCase();
-    }
-    
-    // Fallback to description field if no parts
-    if (!controlDescription && control.description) {
-      controlDescription = control.description.toLowerCase();
-    }
+    // Build description from catalog/parts for template and pattern matching
+    const descriptionText = extractControlDescriptionText(control);
+    const controlDescription = descriptionText.toLowerCase();
+    const controlTitle = extractControlTitleForPrompt(control).toLowerCase();
     
     const searchText = `${controlTitle} ${controlDescription}`.toLowerCase();
     
@@ -361,7 +339,8 @@ export async function suggestControlImplementation(control, existingControls = [
     suggestions.status = suggestions.status || 'not-assessed';
     suggestions.responsibleParty = suggestions.responsibleParty || 'Shared';
     suggestions.controlType = suggestions.controlType || 'Orchestrated';
-    suggestions.testingObjective = suggestions.testingObjective || 'Verify that the control is implemented and operating effectively as intended.';
+    suggestions.testingObjective = suggestions.testingObjective
+      || `Verify that ${extractControlTitleForPrompt(control)} (${control.id}) is implemented and operating as required.`;
     suggestions.testingMethod = suggestions.testingMethod || 'Manual Testing';
     suggestions.testingProcedure = suggestions.testingProcedure ?? suggestions.testingMethod;
     suggestions.testingFrequency = suggestions.testingFrequency || 'Quarterly';
@@ -678,40 +657,22 @@ function getDefaultSuggestion(control) {
  * Generate generic implementation text based on control content
  */
 function generateGenericImplementation(control) {
-  // Clean title
-  let controlTitle = (control.title || '').trim();
-  if (controlTitle.toLowerCase().startsWith('control:')) {
-    controlTitle = controlTitle.substring(8).trim();
-  }
-  if (!controlTitle || controlTitle === control.id) {
-    controlTitle = `control ${control.id || ''}`;
-  }
-  
-  // Extract key terms from description
-  let keyTerms = [];
-  if (control.parts && Array.isArray(control.parts)) {
-    const prose = control.parts
-      .map(part => (part.prose || ''))
-      .join(' ')
-      .toLowerCase();
-    
-    // Extract meaningful words (4+ characters, not common words)
-    const commonWords = ['the', 'and', 'for', 'are', 'with', 'this', 'that', 'from', 'have', 'been', 'will', 'should', 'must', 'shall'];
-    const words = prose.split(/\s+/)
-      .filter(word => word.length >= 4 && !commonWords.includes(word))
-      .slice(0, 5);
-    keyTerms = [...new Set(words)];
-  }
-  
-  // Build implementation text (limited to 250 characters)
-  // Use descriptive language (what has been done) not imperative (what to do)
+  const controlTitle = extractControlTitleForPrompt(control);
+  const descriptionText = extractControlDescriptionText(control).toLowerCase();
+
+  const commonWords = ['the', 'and', 'for', 'are', 'with', 'this', 'that', 'from', 'have', 'been', 'will', 'should', 'must', 'shall'];
+  const words = descriptionText.split(/\s+/)
+    .filter((word) => word.length >= 4 && !commonWords.includes(word.replace(/[^a-z0-9]/g, '')))
+    .slice(0, 5);
+  const keyTerms = [...new Set(words)];
+
   const MAX_LENGTH = 250;
   let implementation = '';
-  
+
   if (keyTerms.length > 0) {
-    implementation = `This control addresses ${keyTerms.slice(0, 3).join(', ')} requirements. The implementation is managed through established security processes and procedures. Regular monitoring ensures effectiveness.`;
+    implementation = `${control.id}: ${controlTitle} is addressed through ${keyTerms.slice(0, 3).join(', ')}. Controls are enforced via documented processes, technical safeguards, and periodic review.`;
   } else {
-    implementation = `The implementation of ${controlTitle} is managed through established processes and procedures. Regular reviews ensure the control remains effective and aligned with organizational requirements.`;
+    implementation = `${control.id} (${controlTitle}) is implemented through established security processes aligned with organizational requirements and monitored for effectiveness.`;
   }
   
   // Truncate if needed

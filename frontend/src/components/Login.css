@@ -1,7 +1,9 @@
 /**
- * Login Component Styles
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 .login-container {
   min-height: 100vh;
   display: flex;
@@ -15,7 +17,7 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  max-width: 450px;
+  max-width: 500px;
   width: 100%;
   overflow: hidden;
 }
@@ -126,165 +128,76 @@
   box-shadow: 0 2px 8px rgba(0, 125, 193, 0.2);
 }
 
-/* Self-Registration Panel */
-.self-registration-panel {
-  background: #f8f9fa;
-  padding: 1.5rem 2rem 2rem 2rem;
-  border-top: 1px solid #e0e0e0;
+/* Generic OIDC (Authentik) — brand accent #fd4b2d per https://goauthentik.io/press/ */
+.login-button.generic-oidc-login-btn {
+  background: #fd4b2d;
+  color: #ffffff;
+  border: 2px solid #fd4b2d;
+  box-shadow: 0 4px 12px rgba(253, 75, 45, 0.35);
 }
 
-.registration-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  font-weight: 600;
-  color: #555;
-  font-size: 0.95rem;
+.login-button.generic-oidc-login-btn:hover {
+  background: #e64428;
+  border-color: #e64428;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(253, 75, 45, 0.45);
 }
 
-.registration-header .close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: #999;
-  cursor: pointer;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-.registration-header .close-btn:hover {
-  background: #e0e0e0;
-  color: #333;
-}
-
-.registration-description {
+.login-divider {
+  margin: 1rem 0;
+  text-align: center;
   color: #666;
   font-size: 0.9rem;
-  margin-bottom: 1rem;
+}
+
+.login-sso-link {
+  display: block;
   text-align: center;
+  text-decoration: none;
+  margin-top: 0.5rem;
 }
 
-.registration-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+.login-sso-unavailable {
+  font-size: 0.85rem;
+  color: #888;
+  text-align: center;
+  margin-top: 0.5rem;
 }
 
-.registration-input {
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
+/* Generic SSO access policy panel (replaces self-registration) */
+.login-access-panel {
+  background: #f8f9fa;
+  padding: 1.5rem 2rem 2.25rem 2rem;
+  border-top: 1px solid #e0e0e0;
+  margin-top: 2rem;
 }
 
-.registration-input:focus {
-  outline: none;
-  border-color: #ED1C24;
-  box-shadow: 0 0 0 3px rgba(237, 28, 36, 0.1);
+.login-access-sso-btn {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  margin-top: 0;
 }
 
-.registration-btn {
-  padding: 0.75rem 1rem;
-  background: #ED1C24;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.registration-btn:hover:not(:disabled) {
-  background: #d11820;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(237, 28, 36, 0.2);
-}
-
-.registration-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.registration-info {
+.login-access-info {
   background: #e3f2fd;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   border-radius: 6px;
   border-left: 4px solid #2196f3;
   font-size: 0.85rem;
   color: #1565c0;
-  line-height: 1.5;
+  line-height: 1.55;
+  margin-top: 1.25rem;
+  text-align: justify;
 }
 
-.registration-message {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  text-align: center;
+.login-access-info p {
+  margin: 0 0 0.75rem 0;
+  text-align: justify;
 }
 
-.registration-message.success {
-  background: #e8f5e9;
-  border: 1px solid #4caf50;
-  color: #2e7d32;
-}
-
-.registration-message.error {
-  background: #ffebee;
-  border: 1px solid #f44336;
-  color: #c62828;
-}
-
-/* Beta Release Banner */
-.beta-release-banner {
-  margin-top: 1rem;
-  text-align: center;
-}
-
-.beta-link {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
-  color: white;
-  text-decoration: none;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
-  transition: all 0.3s ease;
-  animation: flash 2s ease-in-out infinite;
-}
-
-.beta-link:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
-  animation-play-state: paused;
-}
-
-.beta-link:active {
-  transform: translateY(0);
-}
-
-/* Flashing animation */
-@keyframes flash {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
-  }
-  50% {
-    opacity: 0.7;
-    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
-  }
+.login-access-info p:last-child {
+  margin-bottom: 0;
 }
 
 /* Responsive design */
@@ -309,13 +222,9 @@
     padding: 1.5rem;
   }
 
-  .self-registration-panel {
-    padding: 1rem 1.5rem 1.5rem 1.5rem;
-  }
-  
-  .beta-link {
-    font-size: 0.85rem;
-    padding: 0.65rem 1.25rem;
+  .login-access-panel {
+    padding: 1rem 1.5rem 1.75rem 1.5rem;
+    margin-top: 1.5rem;
   }
 }
 

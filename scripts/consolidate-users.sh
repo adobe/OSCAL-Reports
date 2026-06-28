@@ -1,4 +1,9 @@
 #!/bin/bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Consolidate Users Between Blue and Green Deployments
 # Author: Mukesh Kesharwani
 # Version: 2.0.2
@@ -19,7 +24,7 @@
 #       with SSL/TLS certificate mismatch errors if hostname != certificate CN/SAN.
 #
 #   ✓ RECOMMENDED: --blue-url http://192.168.1.200:3020
-#   ✗ MAY FAIL:    --blue-url https://blue.oscal.keekar.com (if cert doesn't match)
+#   ✗ MAY FAIL:    --blue-url https://blue.oscal.keekar.au (if cert doesn't match)
 #
 # Features:
 #   - Bi-directional user synchronization (default)
@@ -36,9 +41,9 @@ set -e
 
 # URL Configuration (can be overridden by environment variables)
 BLUE_URL="${BLUE_URL:-http://44.201.190.106:3020}"
-GREEN_URL="${GREEN_URL:-http://192.168.1.200:3019}"
+GREEN_URL="${GREEN_URL:-http://192.168.1.200:3020}"
 # BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
-# GREEN_URL="${GREEN_URL:-http://nas.keekar.com:3019/}"
+# GREEN_URL="${GREEN_URL:-http://nas.keekar.au:3019/}"
 # BLUE_URL="${BLUE_URL:-https://oscal.amsgovcloud.com.au}"
 # GREEN_URL="${GREEN_URL:-https://keekar.3utilities.com}"
 
@@ -104,8 +109,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --auto                    Automatic bi-directional sync (recommended)"
       echo "  --blue-to-green           One-way sync: Blue → Green only"
       echo "  --green-to-blue           One-way sync: Green → Blue only"
-      echo "  --blue-url URL            Blue instance URL (default: http://blue.oscal.keekar.com)"
-      echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.com)"
+      echo "  --blue-url URL            Blue instance URL (default: http://blue.oscal.keekar.au)"
+      echo "  --green-url URL           Green instance URL (default: http://green.oscal.keekar.au)"
       echo "  --blue-password PASS      Blue admin password (for automation)"
       echo "  --green-password PASS     Green admin password (for automation)"
       echo "  --import-mode MODE        merge (skip duplicates) | replace-by-username (default, sync same user across Blue/Green)"
@@ -128,15 +133,15 @@ while [[ $# -gt 0 ]]; do
   echo "  ⚠️  IMPORTANT: TLS Certificate Compatibility"
       echo "  When defining instance URLs, use INTERNAL IP ADDRESSES instead of hostnames"
       echo "  if TLS certificates don't match the hostname. APIs may fail with certificate"
-      echo "  mismatch errors (e.g., certificate for 'keekar.ddns.net' vs hostname 'green.oscal.keekar.com')."
+      echo "  mismatch errors (e.g., certificate for 'keekar.ddns.net' vs hostname 'green.oscal.keekar.au')."
       echo ""
-      echo "  ✓ RECOMMENDED: http://192.168.1.200:3019  (internal IP, no TLS issues)"
-      echo "  ✗ MAY FAIL:    https://green.oscal.keekar.com  (TLS certificate mismatch)"
+      echo "  ✓ RECOMMENDED: http://192.168.1.200:3020  (internal IP, no TLS issues)"
+      echo "  ✗ MAY FAIL:    https://green.oscal.keekar.au  (TLS certificate mismatch)"
       echo ""
       echo "Examples:"
       echo "  $0 --auto"
-      echo "  $0 --auto --blue-url http://localhost:3020 --green-url http://localhost:3019"
-      echo "  $0 --auto --blue-url http://192.168.1.200:3020 --green-url http://192.168.1.200:3019"
+      echo "  $0 --auto --blue-url http://localhost:3020 --green-url http://localhost:3020"
+      echo "  $0 --auto --blue-url http://192.168.1.200:3020 --green-url http://192.168.1.200:3020"
       echo "  BLUE_PASSWORD=secret GREEN_PASSWORD=secret $0 --auto"
       echo ""
       echo "Interactive mode (no flags): Prompts for sync direction"
@@ -326,8 +331,8 @@ echo "  When consolidating between instances, use INTERNAL IP ADDRESSES instead 
 echo "  hostnames if TLS certificates don't match. API authentication may fail with"
 echo "  certificate mismatch errors (e.g., cert for 'example.com' vs 'subdomain.example.com')."
 echo ""
-echo -e "  ${GREEN}✓ RECOMMENDED:${NC} http://192.168.1.200:3019  (internal IP, no TLS issues)"
-echo -e "  ${RED}✗ MAY FAIL:${NC}    https://green.oscal.keekar.com  (TLS certificate mismatch)"
+echo -e "  ${GREEN}✓ RECOMMENDED:${NC} http://192.168.1.200:3020  (internal IP, no TLS issues)"
+echo -e "  ${RED}✗ MAY FAIL:${NC}    https://green.oscal.keekar.au  (TLS certificate mismatch)"
 echo ""
 echo "  Current configuration:"
 echo "    Blue:  $BLUE_URL"
@@ -378,9 +383,9 @@ if [ "$BLUE_STATUS" = "000" ]; then
 fi
 
 if [ "$GREEN_STATUS" = "000" ]; then
-  LOCAL_GREEN=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 "http://127.0.0.1:3019/" 2>/dev/null || echo "000")
+  LOCAL_GREEN=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 "http://127.0.0.1:3020/" 2>/dev/null || echo "000")
   if [ "$LOCAL_GREEN" != "000" ]; then
-    GREEN_URL="http://127.0.0.1:3019"
+    GREEN_URL="http://127.0.0.1:3020"
     GREEN_STATUS="$LOCAL_GREEN"
     print_info "Using localhost for Green (script is running on Green server)"
   else
@@ -537,7 +542,7 @@ if [ "$GREEN_STATUS" != "000" ] && { [ "$DIRECTION" = "1" ] || [ "$DIRECTION" = 
     else
       print_error "Green authentication failed (password from environment/cli)!"
       print_login_failure "$GREEN_URL"
-      echo "  → If running on Green server, script will try http://127.0.0.1:3019 automatically."
+      echo "  → If running on Green server, script will try http://127.0.0.1:3020 automatically."
       exit 1
     fi
   else
@@ -824,7 +829,7 @@ echo ""
 echo "⚠️  If Green/Blue still show fewer users in the UI than above:"
 echo "   • Ensure --blue-url and --green-url match the EXACT URLs you use to access each instance"
 echo "   • Different hostnames (e.g. ALB vs direct IP) can point to different backends"
-echo "   • Use internal IPs: --blue-url http://IP:3020 --green-url http://IP:3019"
+echo "   • Use internal IPs: --blue-url http://IP:3020 --green-url http://IP:3020"
 echo ""
 echo "⚠️  TLS Certificate Reminder:"
 echo "   • Use internal IP addresses (http://192.168.1.x:port) for consolidation"

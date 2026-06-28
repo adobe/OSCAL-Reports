@@ -50,6 +50,8 @@ git config core.hooksPath   # Should output: .githooks
 Development → Quality_Test → Pre_Prod → main
 ```
 
+**Current application release:** **1.7.23** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` before promoting to Pre_Prod/main.
+
 **main** accepts PRs from **Development**, **Quality_Test**, or **Pre_Prod**. Feature/custom branches cannot target main. Recommended: use Pre_Prod for staging validation first.
 
 ---
@@ -58,7 +60,7 @@ Development → Quality_Test → Pre_Prod → main
 
 - **scripts/bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`.
 - **.githooks/pre-push** – Validates version increment and package consistency before push to Pre_Prod/main.
-- **.github/workflows/version-check.yml** – Validates on push/PR to Pre_Prod and main; auto-creates tags on Pre_Prod.
+- **.github/workflows/adobe-preprod-validate.yml** – Adobe repo only: one workflow for Pre_Prod/main (version vs tags, changelog hints, package consistency, YAML/tar/ESLint/docs gates, auto-tag on Pre_Prod push).
 
 ---
 
@@ -523,8 +525,8 @@ The project uses an automated version control workflow to ensure consistency. Se
 - ✅ Verifies changelog is updated
 - ❌ Blocks push if version not bumped
 
-**GitHub Actions** (`.github/workflows/version-check.yml`):
-- Runs automatically on Pre_Prod and main branches
+**GitHub Actions** (`.github/workflows/adobe-preprod-validate.yml`):
+- Runs automatically on Pre_Prod and main branches (Adobe org repo only)
 - Validates version increment from latest tag
 - Auto-creates version tags on Pre_Prod
 - Fails CI if version not properly bumped
@@ -622,10 +624,49 @@ git push
 
 #### GitHub Actions Configuration
 
-Workflows are configured in `.github/workflows/`:
-- `ci-cd.yml`: Main CI/CD pipeline (triggers on main and Pre_Prod)
-- `pr-validation.yml`: PR checks for Development and Quality_Test
-- `release.yml`: Automatic releases when tags are pushed
+Workflows live in `.github/workflows/`. The same files exist in **both** remotes; **each job is gated by `github.repository`** so checks run in one place only:
+
+| Workflow | Where it runs | Purpose |
+|----------|----------------|----------|
+| `shell-validation.yml` | **Personal** (`keekar2022/OSCAL-Reports`) | Single **shell-gates** job (ShellCheck, hook syntax, light best-practices, dry-run) plus **ec2_automation** pass-sync tests; `Development` / `Quality` / `Quality_Test` / `Pre_Prod` / `main` (PR). |
+| `adobe-preprod-validate.yml` | **Adobe** (`AdobeManagedServices/OSCAL-Reports`) | Merged Pre_Prod/main checks: version vs tags, changelog, package consistency, YAML/tar/ESLint config, docs, summary; auto-tag on `Pre_Prod` push. |
+| `release.yml` | **Adobe** | GitHub Release on version tags. |
+| `codacy.yml` | **Adobe** | Codacy + SARIF upload. |
+| `docker-publish.yml` | **Personal** | Docker Hub push (keekar image). |
+| `sync-personal-quality-to-adobe-preprod.yml` | **Both** (split jobs) | **Adobe:** `workflow_dispatch` → fast-forward `Pre_Prod` from personal `Quality`. **Personal:** push to `Quality` or `workflow_dispatch` → self-hosted push to Adobe `Pre_Prod`. |
+| **CodeQL** (enterprise default setup) | **Adobe** | GitHub-managed dynamic workflow; scans **JavaScript/TypeScript** (required) and **Python** if enabled in repo Code Security settings. |
+
+Develop on **personal** first: shell validation and Docker publish do not wait on Adobe Actions.
+
+#### Adobe CodeQL (enterprise default setup)
+
+OSCAL Report Generator is a **Node.js / React** project. Adobe enables **CodeQL default setup** on `AdobeManagedServices/OSCAL-Reports`, which may include **Python** even when the repo has little or no Python source. If the Python job fails with:
+
+```text
+CodeQL could not process any code written in Python
+Processed 0 modules
+```
+
+that is a **configuration mismatch**, not an application defect. JavaScript/TypeScript analysis can still pass.
+
+**Preferred fix (one-time, repo Settings — requires Code Security admin):**
+
+1. Open [Adobe repo → Settings → Code security and analysis](https://github.com/AdobeManagedServices/OSCAL-Reports/settings/security_analysis) (Adobe SSO).
+2. **Code scanning** → **CodeQL analysis** → **View configuration** → **Edit**.
+3. Under **Languages**, keep **JavaScript/TypeScript** only; **disable Python**.
+4. Save and re-run failed PR checks.
+
+Or run (with sufficient `gh` permissions):
+
+```bash
+./scripts/ci/configure-codeql-languages.sh
+```
+
+See [GitHub: Edit default setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/edit-default-setup) and [No source code seen during build](https://gh.io/troubleshooting-code-scanning/no-source-code-seen-during-build).
+
+**Repo-side mitigation (no admin required):** `scripts/ci/validate_workflow_yaml.py` is tracked Python used by `adobe-preprod-validate.yml` so CodeQL’s Python extractor has source to analyze when Python remains enabled. Scope is narrowed via `.github/codeql/codeql-config.yml`.
+
+**Before Adobe PRs:** run Quality Gates on the personal fork (`keekar2022/OSCAL-Reports`); Adobe skips those jobs by design.
 
 ---
 
@@ -676,13 +717,30 @@ This project is maintained in **two GitHub repositories** due to network access 
    - URL: `https://github.com/AdobeManagedServices/oscal`
    - Access: Requires Adobe VPN + SSO authentication
    - Purpose: Corporate codebase, collaboration, CI/CD
-   - Branch Protection: Enabled (requires Pull Requests)
+   - Branch protection: **Configured in GitHub** (Settings → Rules → Rulesets, or classic branch protection). It is **not** controlled by files in this repository.
 
 2. **Personal Repository** (Mirror/Public)
    - URL: `https://github.com/keekar2022/OSCAL-Reports`
    - Access: Public (no VPN required)
    - Purpose: TrueNAS deployment, backup, public access
    - Branch Protection: Disabled (direct push allowed)
+
+#### Why was `Pre_Prod` rejecting direct `git push`?
+
+If you see **`remote: GH013: ... Changes must be made through a pull request`** when pushing to **`Pre_Prod`**, that comes from a **GitHub ruleset or branch protection rule** on **AdobeManagedServices/OSCAL-Reports** that applies to `Pre_Prod` (for example “require a pull request before merging”).
+
+- **This repo’s** `.githooks/pre-push` only runs **locally**; it does not add that GitHub rule.
+- **Who can change it:** an org/repo **admin** in GitHub: **Settings → Rules → Rulesets** (or **Branches → Branch protection rules**), edit the rule that targets `Pre_Prod`.
+
+**Recommended policy (aligns with staging vs production):**
+
+| Branch | Suggested protection |
+|--------|----------------------|
+| **`Prod`** (and **`main`** if it is production) | Require PR, reviews, and status checks as needed. |
+| **`Pre_Prod`** | Allow **direct pushes** for release engineers / maintainers (or require PR only if you want every staging change reviewed). |
+| **`Development`**, **`Quality_Test`**, etc. | Match team policy; often lighter than production. |
+
+If `Pre_Prod` should accept **`git push adobe Pre_Prod`** after hooks pass, remove `Pre_Prod` from rules that mandate PRs, or add an exception for your role, and keep **strict PR-only flow on `Prod`** only.
 
 ---
 
@@ -908,7 +966,7 @@ grep '"version"' package.json
 # https://github.com/keekar2022/OSCAL-Reports/blob/main/package.json
 
 # TrueNAS version
-ssh mkesharw@NAS01 "cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && grep '\"version\"' package.json"
+ssh mkesharw@nas.keekar.au "cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && grep '\"version\"' package.json"
 ```
 
 **Sync personal repo from Adobe:**
@@ -1009,7 +1067,7 @@ For issues related to:
 
 **Version**: 1.4.2  
 **Last Updated**: April 2026  
-**License**: GPL-3.0-or-later
+**License**: MIT
 
 ---
 
