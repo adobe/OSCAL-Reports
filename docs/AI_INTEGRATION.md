@@ -17,7 +17,7 @@
 
 **Date:** 2026-01-23  
 **Status:** Production-Ready  
-**Version:** 1.2 (guide revision; application release: root **`package.json`**, currently **1.7.22**)
+**Version:** 1.2 (guide revision; application release: root **`package.json`**, currently **1.7.23**)
 
 ---
 

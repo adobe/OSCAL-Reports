@@ -36,7 +36,7 @@
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
-**Current release:** **1.7.22** (2026-06-26) — Pass bundle consolidation (`PROD/OSCAL/AWS_SM`), EC2 deploy/config hardening (golden `config/default/`, safe deploy flags), Generic OIDC SSO fixes. See [CHANGELOG.md](CHANGELOG.md#1722---2026-06-26).
+**Current release:** **1.7.23** (2026-06-29) — Dependabot dependency updates (#45–#61), CI/test stabilization, version alignment. See [CHANGELOG.md](CHANGELOG.md#1723---2026-06-29).
 
 ---
 
@@ -163,4 +163,4 @@ To regenerate merged files from historical sources (only if those sources exist 
 
 ---
 
-**Version:** 1.7.22 · **Last updated:** June 2026
+**Version:** 1.7.23 · **Last updated:** June 2026
