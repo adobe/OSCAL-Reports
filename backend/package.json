@@ -44,7 +44,7 @@
     "pdfkit": "^0.17.2",
     "pg": "^8.13.0",
     "qs": "^6.15.2",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@jest/globals": "^30.4.1",
