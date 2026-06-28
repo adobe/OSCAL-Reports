@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Pre_Prod
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: Pre_Prod
           fetch-depth: 0
@@ -90,7 +90,7 @@ jobs:
           echo "Fallback: AdobeManagedServices/OSCAL-Reports → Actions → Sync Quality to Adobe Pre_Prod → Run workflow"
 
       - name: Checkout Quality
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: Quality
           fetch-depth: 0
