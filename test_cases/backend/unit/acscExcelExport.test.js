@@ -3,17 +3,10 @@
  * Contact: mukesh.kesharwani@adobe.com
  */
 import { describe, test, expect } from '@jest/globals';
-import {
-  generateAcscExcelExport,
-  UNIFIED_ACSC_EXCEL_FILENAME,
-} from '../../../backend/acscExcelExport.js';
+import { generateAcscExcelExport } from '../../../backend/acscExcelExport.js';
 import { CCM_JUNE_2026 } from '../../../backend/utils/acscTemplateSchemas.js';
 
 describe('acscExcelExport', () => {
-  test('uses unified filename constant', () => {
-    expect(UNIFIED_ACSC_EXCEL_FILENAME).toBe('soa-ssp-ccm-june-2026.xlsx');
-  });
-
   test('produces ACSC CCM June 2026 workbook layout', async () => {
     const workbook = await generateAcscExcelExport(
       [{ id: 'ISM-1997', title: 'Test', status: 'not-assessed' }],

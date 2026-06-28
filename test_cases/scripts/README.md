@@ -11,6 +11,7 @@ This directory contains the unified test script for the OSCAL Report Generator.
 **What it tests:**
 - ✅ Unit Tests (auth, RBAC, URL validation, security config)
 - ✅ Integration Tests (API endpoints, CSRF, settings)
+- ✅ **OSCAL Catalogue Fetch (release gate)** — all preset + custom catalogue URLs must load live
 - ✅ End-to-End Tests (complete security workflows)
 - ✅ Security Validation (secrets, eval, SSRF, XSS)
 - ✅ Code Quality (console.log, debugger, error handling)
@@ -29,6 +30,9 @@ This directory contains the unified test script for the OSCAL Report Generator.
 
 # Skip deployment tests (faster)
 ./test_cases/scripts/run-all-tests.sh --skip-deployment
+
+# Skip live catalogue fetches (not for release sign-off)
+./test_cases/scripts/run-all-tests.sh --skip-catalogue-fetch
 
 # CI / quick check: only Pass ↔ Secrets Manager sync tests (no Node prerequisites beyond jq)
 ./test_cases/scripts/run-all-tests.sh --ec2-pass-sync-only

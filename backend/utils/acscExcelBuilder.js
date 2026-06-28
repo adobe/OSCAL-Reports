@@ -17,6 +17,33 @@ const EXTENSION_HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { ar
 const STATUS_LIST =
   '"Not Assessed,Effective,Alternate Control,Ineffective,No Visibility,Not Implemented,Not Applicable"';
 
+/** System metadata rows on the Info worksheet (column A = label, column B = value). */
+const INFO_SHEET_SYSTEM_FIELDS = [
+  { label: 'System Name', key: 'systemName' },
+  { label: 'System ID', key: 'systemId' },
+  { label: 'Description', key: 'description' },
+  { label: 'Organisation', key: 'organization' },
+  { label: 'System Owner', key: 'systemOwner' },
+  { label: 'Assessor Details', key: 'assessorDetails' },
+  { label: 'CSP IaaS Provider', key: 'cspIaaS' },
+  { label: 'CSP PaaS Provider', key: 'cspPaaS' },
+  { label: 'CSP SaaS Provider', key: 'cspSaaS' },
+  { label: 'Security Level', key: 'securityLevel' },
+  { label: 'Status', key: 'status' },
+  { label: 'Catalogue URL', key: 'catalogueUrl' },
+];
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function infoSheetDisplayValue(value) {
+  if (value == null || value === '') {
+    return '';
+  }
+  return String(value).trim();
+}
+
 /**
  * @param {string|undefined} status
  * @returns {string}
@@ -307,32 +334,42 @@ function writeDataRow(sheet, rowValues, acscColumns, rowNumber, includeExtension
 
 /**
  * @param {import('exceljs').Workbook} workbook
- * @param {Object} schema
  * @param {Object} systemInfo
  */
-export function addInfoSheet(workbook, schema, systemInfo) {
-  const sheet = workbook.addWorksheet('Info');
-  sheet.getColumn(1).width = 4;
-  sheet.getColumn(2).width = 100;
+export function addInfoSheet(workbook, _schema, systemInfo) {
+  const sheet = workbook.addWorksheet('Info', {
+    properties: { tabColor: { argb: 'FF00B050' } },
+  });
+  sheet.getColumn(1).width = 28;
+  sheet.getColumn(2).width = 90;
 
-  sheet.getCell('B1').value = schema.infoTitle;
-  sheet.getCell('B1').font = { bold: true, size: 14 };
-
-  sheet.getCell('B2').value = 'Overview';
-  sheet.getCell('B2').font = { bold: true, size: 12 };
-
-  sheet.getCell('B3').value = schema.infoOverview;
-  sheet.getCell('B3').alignment = { wrapText: true, vertical: 'top' };
-
-  sheet.getCell('B4').value = schema.infoSectionLabel;
-  sheet.getCell('B4').font = { bold: true, size: 12 };
-
-  if (systemInfo?.systemName) {
-    sheet.getCell('B5').value = `System: ${systemInfo.systemName}`;
+  const headerRow = 1;
+  const fieldHeader = sheet.getCell(headerRow, 1);
+  const valueHeader = sheet.getCell(headerRow, 2);
+  fieldHeader.value = 'Field';
+  valueHeader.value = 'Value';
+  for (const cell of [fieldHeader, valueHeader]) {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.fill = HEADER_FILL;
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.border = thinBorder();
   }
-  if (systemInfo?.systemId) {
-    sheet.getCell('B6').value = `System ID: ${systemInfo.systemId}`;
+
+  let rowNumber = headerRow + 1;
+  for (const { label, key } of INFO_SHEET_SYSTEM_FIELDS) {
+    const labelCell = sheet.getCell(rowNumber, 1);
+    const valueCell = sheet.getCell(rowNumber, 2);
+    labelCell.value = label;
+    valueCell.value = infoSheetDisplayValue(systemInfo?.[key]);
+    labelCell.font = { bold: true, size: 11 };
+    labelCell.alignment = { vertical: 'top', wrapText: true };
+    labelCell.border = thinBorder();
+    valueCell.alignment = { vertical: 'top', wrapText: true };
+    valueCell.border = thinBorder();
+    rowNumber += 1;
   }
+
+  sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
 }
 
 /**
@@ -488,4 +525,4 @@ export async function buildAcscWorkbook(schema, allControls, systemInfo, options
   return workbook;
 }
 
-export { OSCAL_EXTENSION_COLUMNS, normalizeHeader, buildExtensionRowValues };
+export { OSCAL_EXTENSION_COLUMNS, normalizeHeader, buildExtensionRowValues, INFO_SHEET_SYSTEM_FIELDS };

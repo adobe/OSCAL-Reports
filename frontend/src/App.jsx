@@ -295,12 +295,13 @@ function App() {
     } catch (err) {
       console.error('❌ Error in handleKeepExistingCatalog:', err);
       const errorMessage = err.response?.data?.error || 'Failed to load existing catalog';
+      const details = err.response?.data?.details;
       const warning = err.response?.data?.integrityWarning;
       
       if (warning) {
         setIntegrityWarning(warning);
       }
-      setError(errorMessage);
+      setError(details && !errorMessage.includes(details) ? `${errorMessage}: ${details}` : errorMessage);
     } finally {
       setLoading(false);
     }
@@ -400,7 +401,9 @@ function App() {
         errorMessage: err.response?.data?.error,
         fullError: err.message
       });
-      setError(err.response?.data?.error || `Failed to fetch catalogue: ${err.message}`);
+      const baseMessage = err.response?.data?.error || `Failed to fetch catalogue: ${err.message}`;
+      const details = err.response?.data?.details;
+      setError(details && !baseMessage.includes(details) ? `${baseMessage}: ${details}` : baseMessage);
     } finally {
       setLoading(false);
     }
@@ -571,7 +574,10 @@ function App() {
     try {
       const response = await axios.post('/api/generate-excel', {
         controls,
-        systemInfo,
+        systemInfo: {
+          ...systemInfo,
+          catalogueUrl,
+        },
         includeExtensions: true,
       }, {
         responseType: 'blob'
@@ -580,7 +586,7 @@ function App() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'soa-ssp-ccm-june-2026.xlsx';
+      link.download = generateFileName('xlsx');
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
