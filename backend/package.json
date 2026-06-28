@@ -41,7 +41,7 @@
     "express-session": "^1.19.0",
     "fast-xml-parser": "5.9.3",
     "nodemailer": "^9.0.1",
-    "pdfkit": "^0.17.2",
+    "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
     "qs": "^6.15.2",
     "uuid": "^14.0.1"
