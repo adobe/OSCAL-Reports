@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.22**)  
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.23**)  
 **Last Updated**: April 2026
 
 ---
@@ -1270,6 +1270,11 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 1.7.23 (June 2026)
+- Dependabot dependency updates merged into Quality (#45–#61)
+- CI-stable OIDC/Docker unit tests; Quality Gates action bumps
+- Docker image `keekar/oscal_reports:v1.7.23` (multi-arch) when published
 
 ### Version 1.7.22 (June 2026)
 - Laptop pass bundle `PROD/OSCAL/AWS_SM` (`passBundle.js`); EC2 deploy config hardening and golden `config/default/` on S3

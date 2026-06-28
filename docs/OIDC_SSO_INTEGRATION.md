@@ -335,4 +335,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md#sensitive-settings-and-_cfgenc-localdocker-or-
 
 ---
 
-**Version:** 1.7.22 · **Last updated:** June 2026
+**Version:** 1.7.23 · **Last updated:** June 2026
