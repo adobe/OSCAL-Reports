@@ -5988,8 +5988,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       url,
       apiToken = '',
       awsRegion,
-      bedrockModelId,
-      bedrockExternalId
+      bedrockModelId
     } = req.body;
     
     // Load config for maxTokens and fallback credentials (resolved from pass when stored there)
