@@ -9,9 +9,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generatePDFReport } from './pdfExport.js';
-import { generateCCMExport } from './ccmExport.js';
+import { generateAcscExcelExport } from './acscExcelExport.js';
 import { syncExportToDatabase } from './database/exportSync.js';
-import ExcelJS from 'exceljs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -251,7 +250,7 @@ async function processPDFExport(job) {
  * @returns {Buffer} Excel buffer
  */
 async function processExcelExport(job) {
-  const { controls, systemInfo } = job.data;
+  const { controls, systemInfo, includeExtensions = true } = job.data;
 
   const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
   if (!syncResult.skipped) {
@@ -261,80 +260,16 @@ async function processExcelExport(job) {
   job.progress = 30;
   saveJobToFile(job);
 
-  const workbook = new ExcelJS.Workbook();
-  
-  // System Information sheet
-  const systemSheet = workbook.addWorksheet('System Information');
-  systemSheet.columns = [
-    { header: 'Field', key: 'field', width: 30 },
-    { header: 'Value', key: 'value', width: 50 }
-  ];
+  const workbook = await generateAcscExcelExport(controls, systemInfo, { includeExtensions });
 
-  systemSheet.addRows([
-    { field: 'System Name', value: systemInfo.systemName || '' },
-    { field: 'System ID', value: systemInfo.systemId || '' },
-    { field: 'Description', value: systemInfo.description || '' },
-    { field: 'Organisation', value: systemInfo.organization || '' },
-    { field: 'System Owner', value: systemInfo.systemOwner || '' },
-    { field: 'Assessor Details', value: systemInfo.assessorDetails || '' },
-    { field: 'CSP IaaS Provider', value: systemInfo.cspIaaS || '' },
-    { field: 'CSP PaaS Provider', value: systemInfo.cspPaaS || '' },
-    { field: 'CSP SaaS Provider', value: systemInfo.cspSaaS || '' },
-    { field: 'Security Level', value: systemInfo.securityLevel || '' },
-    { field: 'Status', value: systemInfo.status || '' },
-    { field: 'Catalogue URL', value: systemInfo.catalogueUrl || '' }
-  ]);
-
-  // Style the header
-  systemSheet.getRow(1).font = { bold: true };
-  systemSheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF4472C4' }
-  };
-  
-  job.progress = 50;
-  saveJobToFile(job);
-
-  // Controls sheet
-  const controlsSheet = workbook.addWorksheet('Controls Implementation');
-  controlsSheet.columns = [
-    { header: 'Control ID', key: 'id', width: 15 },
-    { header: 'Control Title', key: 'title', width: 40 },
-    { header: 'Group', key: 'group', width: 20 },
-    { header: 'Implementation Status', key: 'status', width: 20 },
-    { header: 'Implementation Description', key: 'implementation', width: 50 },
-    { header: 'Remarks', key: 'remarks', width: 30 }
-  ];
-
-  controls.forEach(control => {
-    controlsSheet.addRow({
-      id: control.id,
-      title: control.title,
-      group: control.groupTitle || '',
-      status: control.status || 'Not Assessed',
-      implementation: control.implementation || '',
-      remarks: control.remarks || ''
-    });
-  });
-
-  // Style the header
-  controlsSheet.getRow(1).font = { bold: true };
-  controlsSheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF4472C4' }
-  };
-  
   job.progress = 80;
   saveJobToFile(job);
 
-  // Generate buffer
   const buffer = await workbook.xlsx.writeBuffer();
-  
+
   job.progress = 90;
   saveJobToFile(job);
-  
+
   return buffer;
 }
 
@@ -344,7 +279,7 @@ async function processExcelExport(job) {
  * @returns {Buffer} Excel buffer
  */
 async function processCCMExport(job) {
-  const { controls, systemInfo } = job.data;
+  const { controls, systemInfo, includeExtensions = true } = job.data;
 
   const syncResult = await syncExportToDatabase(controls || [], systemInfo || {});
   if (!syncResult.skipped) {
@@ -354,7 +289,7 @@ async function processCCMExport(job) {
   job.progress = 30;
   saveJobToFile(job);
 
-  const workbook = await generateCCMExport(controls, systemInfo);
+  const workbook = await generateAcscExcelExport(controls, systemInfo, { includeExtensions });
   
   job.progress = 80;
   saveJobToFile(job);

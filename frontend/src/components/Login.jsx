@@ -4,7 +4,7 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/safeAxios.js';
 import './Login.css';
@@ -15,19 +15,41 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showSelfRegistration, setShowSelfRegistration] = useState(true);
-  const [registerEmail, setRegisterEmail] = useState('');
-  const [registrationMessage, setRegistrationMessage] = useState('');
-  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [loginProviders, setLoginProviders] = useState([]);
+  const [showExpeditedAccessPolicy, setShowExpeditedAccessPolicy] = useState(false);
 
-  // Show error from URL (e.g. ?error=okta_not_configured after Okta redirect)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlError = params.get('error');
     if (urlError === 'okta_not_configured') {
       setError('Okta sign-in is not configured. Enable OAuth and Okta in Settings → SSO Integration.');
+    } else if (urlError === 'generic_oidc_not_configured') {
+      setError('Generic SSO is not configured or the redirect URI is not allowed for this host.');
     }
   }, []);
+
+  useEffect(() => {
+    axios
+      .get('/api/auth/sso/login-providers')
+      .then((res) => {
+        const list = Array.isArray(res.data?.providers) ? res.data.providers : [];
+        const order = { okta: 0, Generic_OIDC: 1 };
+        list.sort((a, b) => (order[a.id] ?? 99) - (order[b.id] ?? 99));
+        setLoginProviders(list);
+        setShowExpeditedAccessPolicy(res.data?.showExpeditedAccessPolicy === true);
+      })
+      .catch(() => setLoginProviders([]));
+  }, []);
+
+  const oktaProvider = useMemo(
+    () => loginProviders.find((p) => p.id === 'okta'),
+    [loginProviders],
+  );
+  const genericProvider = useMemo(
+    () => loginProviders.find((p) => p.id === 'Generic_OIDC'),
+    [loginProviders],
+  );
+  const showOktaDivider = Boolean(oktaProvider);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -35,39 +57,12 @@ const Login = () => {
     setLoading(true);
 
     const result = await login(username, password);
-    
+
     if (!result.success) {
       setError(result.error || 'Login failed');
     }
-    
-    setLoading(false);
-  };
 
-  const handleSelfRegister = async (e) => {
-    e.preventDefault();
-    setRegistrationMessage('');
-    setRegistrationSuccess(false);
-    setLoading(true);
-    
-    try {
-      const response = await axios.post('/api/auth/self-register', { 
-        email: registerEmail 
-      });
-      
-      if (response.data.success) {
-        setRegistrationSuccess(true);
-        setRegistrationMessage(response.data.message || '✅ Registration successful! Check your email for credentials.');
-        setRegisterEmail('');
-      } else {
-        setRegistrationSuccess(false);
-        setRegistrationMessage(response.data.message || 'Registration failed');
-      }
-    } catch (error) {
-      setRegistrationSuccess(false);
-      setRegistrationMessage(error.response?.data?.message || 'Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
   };
 
   return (
@@ -113,82 +108,65 @@ const Login = () => {
             </div>
           )}
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="login-button"
             disabled={loading}
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
 
-          <div className="login-divider" style={{ margin: '1rem 0', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
-            — or —
-          </div>
-          <a
-            href="/api/auth/okta/authorize"
-            className="login-button okta-login-btn"
-            style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '0.5rem' }}
-          >
-            Sign in with Okta
-          </a>
+          {showOktaDivider && (
+            <>
+              <div className="login-divider">— or —</div>
+              <a
+                href={oktaProvider.authorizeUrl}
+                className="login-button okta-login-btn login-sso-link"
+              >
+                Sign in with {oktaProvider.displayName || 'Okta'}
+              </a>
+            </>
+          )}
+          {!oktaProvider && loginProviders.length === 0 && (
+            <p className="login-sso-unavailable">
+              SSO providers are not enabled. Use username/password or ask an administrator.
+            </p>
+          )}
         </form>
 
-        {showSelfRegistration && (
-          <div className="self-registration-panel">
-            <div className="registration-header">
-              <span>📝 New User Registration</span>
-              <button 
-                className="close-btn"
-                onClick={() => setShowSelfRegistration(false)}
-                title="Close"
-              >
-                ×
-              </button>
+        {genericProvider && (
+          <div className="login-access-panel">
+            <a
+              href={genericProvider.authorizeUrl}
+              className="login-button generic-oidc-login-btn login-access-sso-btn"
+            >
+              Sign in with Generic SSO
+            </a>
+            <div className="login-access-info">
+              <p className="login-access-info-lead">
+                ℹ️ <strong>Access:</strong> Admission is limited to a modest cohort of fifteen concurrent
+                users.
+              </p>
+              <p>
+                <strong>Capacity constraint:</strong> The sixteenth aspirant must await vacancy,
+                occasioned only when an account lapses into dormancy after thirty days of inactivity.
+              </p>
+              <p>
+                <strong>Registration:</strong> The erstwhile regime of email-based self-registration
+                (with credentials ferried via SMTP) now yields to a sleeker orthodoxy—Generic SSO via
+                Authentik, enabling social sign-in and passwordless access. Correspondingly, messaging
+                and SMTP configurations shall soon be consigned to obsolescence.
+              </p>
+              {showExpeditedAccessPolicy && (
+                <p>
+                  <strong>Expedited entry (optional):</strong> Those disinclined to linger in the queue
+                  may solicit immediate admission from the application proprietor for an annual
+                  consideration of <strong>AUD $12</strong>—merely to defray the shared Authentik licence
+                  underpinning social SSO and passwordless capabilities. This is less a mercenary
+                  indulgence than a practical concession to finite resources.
+                </p>
+              )}
             </div>
-            <p className="registration-description">
-              Don't have an account? Register with your email:
-            </p>
-            
-            <form onSubmit={handleSelfRegister} className="registration-form">
-              <input 
-                type="email" 
-                placeholder="your.email@example.com"
-                value={registerEmail}
-                onChange={(e) => setRegisterEmail(e.target.value)}
-                disabled={loading}
-                required
-                className="registration-input"
-              />
-              <button 
-                type="submit" 
-                className="registration-btn"
-                disabled={loading}
-              >
-                {loading ? 'Registering...' : 'Register'}
-              </button>
-            </form>
-            
-            <div className="registration-info">
-              ℹ️ You will receive your password via email.<br/>
-              Accounts inactive for 45+ days are automatically deactivated.
-            </div>
-            
-            <div className="beta-release-banner">
-              <a 
-                href="https://keekar.3utilities.com/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="beta-link"
-              >
-                🚀 Try Beta Release & Give Feedback
-              </a>
-            </div>
-            
-            {registrationMessage && (
-              <div className={`registration-message ${registrationSuccess ? 'success' : 'error'}`}>
-                {registrationMessage}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -197,4 +175,3 @@ const Login = () => {
 };
 
 export default Login;
-

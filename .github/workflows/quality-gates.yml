@@ -1,0 +1,175 @@
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
+#
+# Personal fork quality gates: tests, build, and npm audit before Adobe promotion.
+# AdobeManagedServices/OSCAL-Reports: skipped (uses Adobe PreProd Validation instead).
+
+name: Quality Gates
+
+on:
+  pull_request:
+    branches:
+      - Development
+      - Quality
+      - Quality_Test
+      - Pre_Prod
+  push:
+    branches:
+      - Development
+      - Quality
+
+concurrency:
+  group: quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-unit-tests:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: backend
+        run: npm run test:unit
+
+  catalogue-fetch-release:
+    name: OSCAL catalogue fetch (release gate)
+    runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run catalogue manifest + live fetch tests
+        working-directory: backend
+        run: npm run test:catalogues
+        timeout-minutes: 15
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  npm-audit:
+    name: npm audit (high+)
+    runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Audit backend
+        working-directory: backend
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      - name: Audit frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+  package-version-consistency:
+    name: Package version consistency
+    runs-on: ubuntu-latest
+    if: github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          ROOT_VERSION=$(grep '"version":' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          BACKEND_VERSION=$(grep '"version":' backend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          FRONTEND_VERSION=$(grep '"version":' frontend/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+          if [ "$ROOT_VERSION" != "$BACKEND_VERSION" ] || [ "$ROOT_VERSION" != "$FRONTEND_VERSION" ]; then
+            echo "Version mismatch: root=$ROOT_VERSION backend=$BACKEND_VERSION frontend=$FRONTEND_VERSION" >&2
+            exit 1
+          fi
+          echo "Consistent version: $ROOT_VERSION"
+
+  quality-gates-summary:
+    name: Quality Gates Summary
+    runs-on: ubuntu-latest
+    needs:
+      - backend-unit-tests
+      - catalogue-fetch-release
+      - frontend-build
+      - npm-audit
+      - package-version-consistency
+    if: always() && github.repository == 'keekar2022/OSCAL-Reports'
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Quality Gates Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend unit tests: ${{ needs.backend-unit-tests.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- OSCAL catalogue fetch: ${{ needs.catalogue-fetch-release.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontend build: ${{ needs.frontend-build.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- npm audit: ${{ needs.npm-audit.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version consistency: ${{ needs.package-version-consistency.result }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail when any gate failed
+        if: |
+          needs.backend-unit-tests.result != 'success' ||
+          needs.catalogue-fetch-release.result != 'success' ||
+          needs.frontend-build.result != 'success' ||
+          needs.npm-audit.result != 'success' ||
+          needs.package-version-consistency.result != 'success'
+        run: |
+          echo "One or more quality gates failed." >&2
+          exit 1

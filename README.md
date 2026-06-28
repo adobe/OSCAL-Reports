@@ -96,10 +96,32 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ---
 
+## What's new in 1.7.22
+
+- **Pass bundle (laptop):** All OSCAL app secrets in one pass entry `PROD/OSCAL/AWS_SM` (same JSON as AWS SM); migrate legacy `OSCAL/*` with `migrate-pass-entries-to-bundle.sh`.
+- **EC2 deploy safety:** `DEPLOY_CONFIG_S3_SKIP=1` for code-only deploys; golden **`config/default/`** on S3 for restore; no more accidental SSO/config wipe from force S3 sync.
+- **Generic OIDC / SSO:** Fixes orphan `_sm` pointers when SM empty; login providers API returns Generic SSO when secret is resolvable.
+- **Deploy:** `keekar/oscal_reports:v1.7.22` on Docker Hub; EC2 via safe flags above.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1722---2026-06-26).
+
+---
+
+## What's new in 1.7.21 (previous)
+
+- **Multi-Report Comparison:** Export uses the same `generate-ssp` path as the main app; fixes gateway timeouts, validation modal dismiss, and `_ComplianceReport` filenames.
+- **AI suggestions:** Per-control prompts (catalog description, statement parts) so Gemma/Mistral outputs vary by control.
+- **Generic OIDC (Docker/NAS):** `tlsRelaxed` when Authentik TLS chain fails Node verification; EC2 production remains Okta-first.
+- **Deploy:** `keekar/oscal_reports:v1.7.21` on Docker Hub; EC2 via `./scripts/deploy-to-ec2.sh --update-s3` then `--both`.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1721---2026-06-25).
+
+---
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.17 (see root `package.json`) · **Last updated:** April 2026
+**Version:** 1.7.22 (see root `package.json`) · **Last updated:** June 2026

@@ -31,7 +31,7 @@ The official OSCAL JSON Schema defines **128 types** and **566 direct property f
 
 1. Open **Settings** (gear icon) → **Database** tab.
 2. Check **Enable Database Integration**.
-3. Set **Host** (e.g. `nas.keekar.com` or RDS endpoint), **Port** (default 5432), **Database name**, **User**, **Password**.
+3. Set **Host** (e.g. `nas.keekar.au` or RDS endpoint), **Port** (default 5432), **Database name**, **User**, **Password**.
 4. Optionally set **SSL mode** (Require recommended for RDS) and **Connection timeout**.
 5. Click **Save configuration**, then **Test connection** to verify.
 
@@ -158,4 +158,4 @@ Counts below are derived from `backend/oscal-schema.json` (OSCAL unified JSON Sc
 
 ---
 
-**Version:** 1.7.17 · **Last updated:** April 2026
+**Version:** 1.7.22 · **Last updated:** June 2026

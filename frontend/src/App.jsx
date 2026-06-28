@@ -9,6 +9,7 @@ import axios from './utils/safeAxios.js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import OktaCallback from './components/OktaCallback';
+import GenericOidcCallback from './components/GenericOidcCallback';
 import UserManagement from './components/UserManagement';
 import SettingsWithTabs from './components/SettingsWithTabs';
 import UseCases from './components/UseCases';
@@ -26,6 +27,7 @@ import IntegrityWarning from './components/IntegrityWarning';
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
 import buildInfo from './utils/buildInfo';
 import { exportErrorMessage } from './utils/exportErrorMessage';
+import { exportSspJsonDownload, complianceReportFileName } from './utils/exportSsp.js';
 import './App.css';
 
 function App() {
@@ -293,12 +295,13 @@ function App() {
     } catch (err) {
       console.error('❌ Error in handleKeepExistingCatalog:', err);
       const errorMessage = err.response?.data?.error || 'Failed to load existing catalog';
+      const details = err.response?.data?.details;
       const warning = err.response?.data?.integrityWarning;
       
       if (warning) {
         setIntegrityWarning(warning);
       }
-      setError(errorMessage);
+      setError(details && !errorMessage.includes(details) ? `${errorMessage}: ${details}` : errorMessage);
     } finally {
       setLoading(false);
     }
@@ -398,7 +401,9 @@ function App() {
         errorMessage: err.response?.data?.error,
         fullError: err.message
       });
-      setError(err.response?.data?.error || `Failed to fetch catalogue: ${err.message}`);
+      const baseMessage = err.response?.data?.error || `Failed to fetch catalogue: ${err.message}`;
+      const details = err.response?.data?.details;
+      setError(details && !baseMessage.includes(details) ? `${baseMessage}: ${details}` : baseMessage);
     } finally {
       setLoading(false);
     }
@@ -486,12 +491,7 @@ function App() {
   };
 
   // Helper function to generate filename with system name and date
-  const generateFileName = (extension) => {
-    const systemName = systemInfo.systemName || 'System';
-    const sanitizedName = systemName.replace(/[^a-zA-Z0-9]/g, '_'); // Replace special chars with underscore
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    return `${sanitizedName}_ComplianceReport_${today}.${extension}`;
-  };
+  const generateFileName = (extension) => complianceReportFileName(systemInfo.systemName, extension);
 
   const handleExportSSP = async (validationOptions = {}) => {
     setExportingType('oscal');
@@ -499,25 +499,15 @@ function App() {
     setError('');
     
     try {
-      const response = await axios.post('/api/generate-ssp', {
+      await exportSspJsonDownload({
         metadata: catalogue?.catalog?.metadata || catalogue?.metadata,
         controls,
         systemInfo: {
           ...systemInfo,
-          catalogueUrl  // Include catalogueUrl so it can be saved in import-profile.href
+          catalogueUrl,
         },
-        validationOptions  // Pass validation options to backend
+        validationOptions,
       });
-
-      const blob = new Blob([JSON.stringify(response.data, null, 2)], {
-        type: 'application/json'
-      });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = generateFileName('json');
-      link.click();
-      window.URL.revokeObjectURL(url);
     } catch (err) {
       if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
         setExportingType(null);
@@ -584,7 +574,11 @@ function App() {
     try {
       const response = await axios.post('/api/generate-excel', {
         controls,
-        systemInfo
+        systemInfo: {
+          ...systemInfo,
+          catalogueUrl,
+        },
+        includeExtensions: true,
       }, {
         responseType: 'blob'
       });
@@ -650,39 +644,6 @@ function App() {
       status: 'under-development'
     });
     setLastSaveTime(null);
-  };
-
-  const handleExportCCM = async () => {
-    setExportingType('ccm');
-    setLoading(true);
-    setError('');
-    
-    try {
-      const response = await axios.post('/api/generate-ccm', {
-        controls,
-        systemInfo
-      }, {
-        responseType: 'blob'
-      });
-
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = generateFileName('xlsx').replace('ComplianceReport', 'CCM');
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      if (err.response?.status === 503 || err.response?.data?.code === 'DATABASE_UNAVAILABLE') {
-        setExportingType(null);
-        setLoading(false);
-        setShowDatabaseUnavailableModal(true);
-        return;
-      }
-      setError(await exportErrorMessage(err, 'Failed to generate Cloud Control Matrix'));
-    } finally {
-      setExportingType(null);
-      setLoading(false);
-    }
   };
 
   const handleExportPDF = async () => {
@@ -963,7 +924,6 @@ function App() {
                   onExportSSP={handleExportSSP}
                   onExportSAR={handleExportSAR}
                   onExportExcel={handleExportExcel}
-                  onExportCCM={handleExportCCM}
                   onExportPDF={handleExportPDF}
                   loading={loading}
                   exportingType={exportingType}
@@ -1012,9 +972,12 @@ function AppWithUseCases() {
     );
   }
 
-  // Show Okta OIDC callback handler when returning from Okta
+  // Show OIDC callback handlers when returning from IdP
   if (!isAuthenticated && typeof window !== 'undefined' && window.location.pathname === '/auth/okta/callback') {
     return <OktaCallback />;
+  }
+  if (!isAuthenticated && typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
+    return <GenericOidcCallback />;
   }
   // Show login if not authenticated
   if (!isAuthenticated) {

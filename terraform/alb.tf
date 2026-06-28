@@ -3,8 +3,8 @@
 #
 # Licensed under the MIT License. See LICENSE file for details.
 
-# Application Load Balancer: Green (3019) and Blue (3020) target groups
-# Health check: /health on 3019 (green) and 3020 (blue).
+# Application Load Balancer: Green and Blue target groups (same app port on both instances).
+# Health check: /health on var.oscal_app_port (default 3020).
 # Traffic by User-Agent: Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11).
 # Default (including curl probe): 50% green, 50% blue. Host-based rules (green/blue hostnames) use priority 100/101 when set.
 # idle_timeout 300s avoids 504 Gateway Timeout when backend takes >60s (e.g. AI/report generation).
@@ -14,6 +14,9 @@
 locals {
   alb_use_https = (var.create_alb_certificate && var.alb_domain_name != null && var.alb_certificate_ready) || var.alb_ssl_certificate_arn != null
   alb_cert_arn  = var.create_alb_certificate && var.alb_domain_name != null ? aws_acm_certificate.alb[0].arn : var.alb_ssl_certificate_arn
+  # ELB target group name_prefix max 6 chars (AWS); suffix is added by Terraform/AWS.
+  alb_tg_prefix_green = "aogrn-"
+  alb_tg_prefix_blue  = "aoblu-"
 }
 
 # AMS PCL: ALB with port exposure must be tagged Adobe:PublicPorts (space-separated ports) and Adobe:PortJustification.
@@ -32,16 +35,21 @@ resource "aws_lb" "main" {
   }
 }
 
-# Green target group: ALB health check = http://<green-instance-ip>:3019/health (IP is each registered target)
+# Green target group: ALB health check = http://<green-instance-ip>:<oscal_app_port>/health
+# name_prefix + create_before_destroy: port changes replace the TG; listeners must keep using the old ARN until the new TG exists.
 resource "aws_lb_target_group" "green" {
-  name     = "${var.project_name}-green"
-  port     = 3019
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name_prefix = local.alb_tg_prefix_green
+  port        = var.oscal_app_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   health_check {
     path                = "/health"
-    port                = "3019"
+    port                = tostring(var.oscal_app_port)
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
@@ -57,16 +65,20 @@ resource "aws_lb_target_group" "green" {
   }
 }
 
-# Blue target group: ALB health check = http://<blue-instance-ip>:3020/health (IP is each registered target)
+# Blue target group: ALB health check = http://<blue-instance-ip>:<oscal_app_port>/health
 resource "aws_lb_target_group" "blue" {
-  name     = "${var.project_name}-blue"
-  port     = 3020
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name_prefix = local.alb_tg_prefix_blue
+  port        = var.oscal_app_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   health_check {
     path                = "/health"
-    port                = "3020"
+    port                = tostring(var.oscal_app_port)
     protocol            = "HTTP"
     healthy_threshold   = 2
     unhealthy_threshold = 3
