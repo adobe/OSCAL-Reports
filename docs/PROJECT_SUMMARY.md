@@ -6,7 +6,7 @@ contact: mukesh.kesharwani@adobe.com
 # Project summary — OSCAL Report Generator
 
 **Application:** Keekar’s OSCAL SOA / SSP / CCM Generator (npm: `keekars-oscal-soa-ssp-ccm-generator`).  
-**Version:** See root `package.json` (currently **1.7.22**).  
+**Version:** See root `package.json` (currently **1.7.23**).  
 **Last updated:** June 2026
 
 ---
@@ -32,7 +32,19 @@ Default local ports: backend **3020**, frontend dev **3021**.
 
 ---
 
-## Recent release (1.7.22)
+## Recent release (1.7.23)
+
+| Area | What changed | Why |
+|------|----------------|-----|
+| **Dependencies** | Dependabot #45–#61 merged (AWS SDK, express-rate-limit 8, pdfkit, pg, React) | Security patches and toolchain updates on Quality |
+| **CI / tests** | OIDC and Docker bootstrap unit tests CI-stable; optional live OIDC probe | Reliable Quality Gates on personal fork |
+| **Versioning** | Manifests and docs aligned to **1.7.23** | Release traceability before Adobe promotion |
+
+Full notes: [CHANGELOG.md](CHANGELOG.md#1723---2026-06-29).
+
+---
+
+## Previous release (1.7.22)
 
 | Area | What changed | Why |
 |------|----------------|-----|

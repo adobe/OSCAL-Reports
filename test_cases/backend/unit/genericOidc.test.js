@@ -52,11 +52,15 @@ describe('genericOidc', () => {
     expect(verifySignedOidcState(state, 'wrong-secret')).toBeNull();
   });
 
-  (process.env.CI ? it.skip : it)('probeOidcDiscovery reaches Authentik metadata with strict TLS verification', async () => {
-    const url =
-      'https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration';
-    const result = await probeOidcDiscovery(url, false);
-    expect(result.discovery).not.toBeNull();
-    expect(result.discovery?.authorization_endpoint).toContain('/authorize');
-  }, 15000);
+  (process.env.OSCAL_RUN_OIDC_PROBE === '1' ? it : it.skip)(
+    'probeOidcDiscovery reaches Authentik metadata with strict TLS verification',
+    async () => {
+      const url =
+        'https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration';
+      const result = await probeOidcDiscovery(url, false);
+      expect(result.discovery).not.toBeNull();
+      expect(result.discovery?.authorization_endpoint).toContain('/authorize');
+    },
+    15000,
+  );
 });
