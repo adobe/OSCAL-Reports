@@ -634,8 +634,39 @@ Workflows live in `.github/workflows/`. The same files exist in **both** remotes
 | `codacy.yml` | **Adobe** | Codacy + SARIF upload. |
 | `docker-publish.yml` | **Personal** | Docker Hub push (keekar image). |
 | `sync-personal-quality-to-adobe-preprod.yml` | **Both** (split jobs) | **Adobe:** `workflow_dispatch` → fast-forward `Pre_Prod` from personal `Quality`. **Personal:** push to `Quality` or `workflow_dispatch` → self-hosted push to Adobe `Pre_Prod`. |
+| **CodeQL** (enterprise default setup) | **Adobe** | GitHub-managed dynamic workflow; scans **JavaScript/TypeScript** (required) and **Python** if enabled in repo Code Security settings. |
 
 Develop on **personal** first: shell validation and Docker publish do not wait on Adobe Actions.
+
+#### Adobe CodeQL (enterprise default setup)
+
+OSCAL Report Generator is a **Node.js / React** project. Adobe enables **CodeQL default setup** on `AdobeManagedServices/OSCAL-Reports`, which may include **Python** even when the repo has little or no Python source. If the Python job fails with:
+
+```text
+CodeQL could not process any code written in Python
+Processed 0 modules
+```
+
+that is a **configuration mismatch**, not an application defect. JavaScript/TypeScript analysis can still pass.
+
+**Preferred fix (one-time, repo Settings — requires Code Security admin):**
+
+1. Open [Adobe repo → Settings → Code security and analysis](https://github.com/AdobeManagedServices/OSCAL-Reports/settings/security_analysis) (Adobe SSO).
+2. **Code scanning** → **CodeQL analysis** → **View configuration** → **Edit**.
+3. Under **Languages**, keep **JavaScript/TypeScript** only; **disable Python**.
+4. Save and re-run failed PR checks.
+
+Or run (with sufficient `gh` permissions):
+
+```bash
+./scripts/ci/configure-codeql-languages.sh
+```
+
+See [GitHub: Edit default setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/edit-default-setup) and [No source code seen during build](https://gh.io/troubleshooting-code-scanning/no-source-code-seen-during-build).
+
+**Repo-side mitigation (no admin required):** `scripts/ci/validate_workflow_yaml.py` is tracked Python used by `adobe-preprod-validate.yml` so CodeQL’s Python extractor has source to analyze when Python remains enabled. Scope is narrowed via `.github/codeql/codeql-config.yml`.
+
+**Before Adobe PRs:** run Quality Gates on the personal fork (`keekar2022/OSCAL-Reports`); Adobe skips those jobs by design.
 
 ---
 
