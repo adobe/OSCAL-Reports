@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # S3 bucket for logs, config, and users
 # Best practice (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform): bucket names must be lowercase; AMS prefix ams-oscal-<account-id>.
 # Terraform forces lowercase to satisfy S3 and avoid InvalidBucketName.
@@ -63,6 +68,15 @@ resource "aws_s3_object" "folder_config_green" {
 resource "aws_s3_object" "folder_config_blue" {
   bucket       = aws_s3_bucket.logs.id
   key          = "config/blue/"
+  content_type = "application/x-directory"
+  content      = ""
+  etag         = md5("")
+}
+
+# Operator golden restore point (config.default); populated by publish-config-default-to-s3.sh — not cron.
+resource "aws_s3_object" "folder_config_default" {
+  bucket       = aws_s3_bucket.logs.id
+  key          = "config/default/"
   content_type = "application/x-directory"
   content      = ""
   etag         = md5("")

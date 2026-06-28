@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # Obtain a Let's Encrypt certificate (manual DNS-01 in Route53), import it into AWS ACM,
 # and optionally update Terraform tfvars so the ALB uses it for HTTPS.
 #

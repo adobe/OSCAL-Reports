@@ -1,13 +1,8 @@
 #!/bin/bash
-#
-# OSCAL Report Generator V2 - Multi-Mode Setup Script
-#
-# Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+# Copyright 2025 Adobe. All rights reserved.
 # Copyright (c) 2025 Mukesh Kesharwani
-# License: MIT
 #
-# Usage: ./setup.sh [MODE]
-# Modes: install, reinstall, uninstall, fix, update, verify, debug, help
+# Licensed under the MIT License. See LICENSE file for details.
 
 set -e  # Exit on error
 

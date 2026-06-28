@@ -1,18 +1,25 @@
 /**
- * Mistral 7B Service
- * Provides AI-powered implementation text generation using Mistral 7B
- * Supports AWS Bedrock and Mistral AI API (cloud)
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import axios from './utils/safeAxios.js';
 import http from 'http';
 import https from 'https';
 import { getResolvedConfig } from './configManager.js';
+import {
+  bedrockCredentialsConfigured,
+  createBedrockRuntimeClient,
+  normalizeBedrockAuthMode
+} from './utils/bedrockCredentials.js';
 import { logAIInteraction, logAIError, buildLogContext } from './aiLogger.js';
+import {
+  buildPrompt,
+  buildExtendedPrompt,
+  cleanResponse,
+  parseStructuredResponse,
+} from './gemmaService.js';
 
 // AWS SDK imports (lazy loaded when needed)
 let BedrockRuntimeClient, ConverseCommand;
@@ -50,6 +57,9 @@ export async function loadMistralConfig() {
     let awsAccessKeyId = '';
     let awsSecretAccessKey = '';
     let bedrockModelId = 'mistral.mistral-large-2402-v1:0';
+    let bedrockAuthMode = 'access-keys';
+    let bedrockAssumeRoleArn = '';
+    let bedrockExternalId = '';
     
     if (config.aiConfig && config.aiConfig.enabled) {
       aiEnabled = true;
@@ -63,6 +73,9 @@ export async function loadMistralConfig() {
         awsAccessKeyId = config.aiConfig.awsAccessKeyId || '';
         awsSecretAccessKey = config.aiConfig.awsSecretAccessKey || '';
         bedrockModelId = config.aiConfig.bedrockModelId || 'mistral.mistral-large-2402-v1:0';
+        bedrockAuthMode = normalizeBedrockAuthMode(config.aiConfig);
+        bedrockAssumeRoleArn = config.aiConfig.bedrockAssumeRoleArn || '';
+        bedrockExternalId = config.aiConfig.bedrockExternalId || '';
         console.log(`🔧 Using AWS Bedrock in region: ${awsRegion}`);
         console.log(`   Model: ${bedrockModelId}`);
         console.log(`   Timeout: ${aiTimeout}ms (${aiTimeout/1000}s)`);
@@ -119,6 +132,9 @@ export async function loadMistralConfig() {
       awsRegion: awsRegion,
       awsAccessKeyId: awsAccessKeyId,
       awsSecretAccessKey: awsSecretAccessKey,
+      bedrockAuthMode,
+      bedrockAssumeRoleArn,
+      bedrockExternalId,
       bedrockModelId: bedrockModelId,
       timeout: aiTimeout || config.mistralConfig?.timeout || 180000, // 180 seconds default for model loading and processing
       maxRetries: config.mistralConfig?.maxRetries || 2,
@@ -427,8 +443,8 @@ async function generateWithAWSBedrock(control, config, existingControls = [], pr
     throw new Error('AWS SDK not installed. Install with: npm install @aws-sdk/client-bedrock-runtime');
   }
 
-  if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
-    throw new Error('AWS credentials not configured');
+  if (!bedrockCredentialsConfigured(config)) {
+    throw new Error('AWS credentials not configured (access keys or IAM role)');
   }
 
   if (!config.awsRegion) {
@@ -440,30 +456,9 @@ async function generateWithAWSBedrock(control, config, existingControls = [], pr
   
   try {
     console.log(`🔄 Connecting to AWS Bedrock in ${config.awsRegion}...`);
-    
-    // Import Node.js https and AWS SDK handler
-    const { Agent: HttpsAgent } = await import('https');
-    const { NodeHttpHandler } = await import('@smithy/node-http-handler');
-    
-    // Create custom HTTPS agent to handle SSL certificate issues
-    // In production, you should use proper SSL certificates
-    const httpsAgent = new HttpsAgent({
-      rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
-      keepAlive: true
-    });
-    
-    // Create Bedrock Runtime client with custom request handler
-    const client = new BedrockRuntimeClient({
-      region: config.awsRegion,
-      credentials: {
-        accessKeyId: config.awsAccessKeyId,
-        secretAccessKey: config.awsSecretAccessKey
-      },
-      requestHandler: new NodeHttpHandler({
-        httpsAgent: httpsAgent,
-        connectionTimeout: 30000,
-        socketTimeout: config.timeout || 180000
-      })
+    const client = await createBedrockRuntimeClient(config, {
+      connectionTimeout: 30000,
+      socketTimeout: config.timeout || 180000
     });
 
     // Set model ID (default to Mistral Large if not specified)
@@ -562,262 +557,6 @@ async function generateWithAWSBedrock(control, config, existingControls = [], pr
     console.error(`❌ AWS Bedrock error:`, error.message);
     throw error;
   }
-}
-
-/**
- * Analyze existing controls to extract writing style patterns
- */
-function analyzeWritingStyle(existingControls) {
-  if (!existingControls || existingControls.length === 0) {
-    return null;
-  }
-  
-  // Get implementations from existing controls
-  const implementations = existingControls
-    .filter(c => c.implementation && c.implementation.length > 50)
-    .map(c => c.implementation.trim())
-    .slice(0, 25); // Use up to 25 examples
-  
-  if (implementations.length === 0) {
-    return null;
-  }
-  
-  // Analyze common patterns
-  const styleNotes = [];
-  
-  // Check sentence structure
-  const avgLength = implementations.reduce((sum, impl) => sum + impl.length, 0) / implementations.length;
-  if (avgLength < 200) {
-    styleNotes.push('concise sentences');
-  }
-  
-  // Check for common phrases/patterns
-  const commonPhrases = [];
-  implementations.forEach(impl => {
-    // Extract key phrases (first part of sentences)
-    const sentences = impl.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    sentences.forEach(sentence => {
-      const firstPart = sentence.trim().split(/\s+/).slice(0, 5).join(' ');
-      if (firstPart.length > 10) {
-        commonPhrases.push(firstPart);
-      }
-    });
-  });
-  
-  return {
-    examples: implementations,
-    avgLength: Math.round(avgLength),
-    commonPhrases: commonPhrases.slice(0, 3)
-  };
-}
-
-/**
- * Extract non-empty Additional Notes / Consumer Guidance (remarks) from existing controls
- * so the AI can match style and suggest similar wording when relevant.
- */
-function getRemarksExamples(existingControls) {
-  if (!existingControls || existingControls.length === 0) return [];
-  return existingControls
-    .map(c => (c.remarks != null ? String(c.remarks).trim() : ''))
-    .filter(r => r.length > 10)
-    .slice(0, 15);
-}
-
-/**
- * Build prompt for Mistral based on control information
- */
-function buildPrompt(control, existingControls = []) {
-  // Clean title
-  let controlTitle = (control.title || '').trim();
-  if (controlTitle.toLowerCase().startsWith('control:')) {
-    controlTitle = controlTitle.substring(8).trim();
-  }
-  
-  // Extract description from parts
-  let controlDescription = '';
-  if (control.parts && Array.isArray(control.parts) && control.parts.length > 0) {
-    const statementParts = control.parts.filter(p => 
-      p.name === 'statement' || p.name === 'objective' || p.name === 'item'
-    );
-    const partsToUse = statementParts.length > 0 ? statementParts : control.parts;
-    controlDescription = partsToUse
-      .map(part => (part.prose || part.title || ''))
-      .filter(text => text.length > 0)
-      .join('\n\n');
-  }
-  
-  if (!controlDescription && control.description) {
-    controlDescription = control.description;
-  }
-
-  // Build context
-  const controlId = control.id || 'Unknown';
-  const controlFamily = controlId.split('-')[0];
-  
-  // Analyze existing controls for style guidance
-  const styleAnalysis = analyzeWritingStyle(existingControls);
-  
-  // Build style guidance section
-  let styleGuidance = '';
-  if (styleAnalysis && styleAnalysis.examples.length > 0) {
-    styleGuidance = `
-
-STYLE GUIDANCE - Match the writing style of these existing implementations:
-${styleAnalysis.examples.map((ex, idx) => `${idx + 1}. "${ex}"`).join('\n')}
-
-IMPORTANT: Your response should match the tone, structure, and terminology used in the examples above.`;
-  }
-  
-  return `Generate a professional implementation description for the following security control:
-
-Control ID: ${controlId}
-Control Title: ${controlTitle}
-Control Family: ${controlFamily}
-
-Control Description:
-${controlDescription || 'No description available'}${styleGuidance}
-
-Requirements:
-1. Write 2-3 concise sentences describing what HAS BEEN implemented (past/present perfect tense)
-2. Use descriptive language: "X is implemented by...", "We have implemented...", "The system uses...", "X are configured to..."
-3. Focus on practical, technical implementation details that exist
-4. Use professional cybersecurity terminology
-5. Be specific about security measures, processes, or technologies that are in place
-6. Do not include generic phrases like "Board of Directors" unless specifically relevant
-7. Do NOT use imperative/instructional language (avoid "Implement...", "Create...", "Ensure...")
-8. CRITICAL: Your response MUST be exactly 250 characters or less - count your characters carefully
-9. Be concise and precise - prioritize essential information, omit unnecessary words
-10. ${styleAnalysis ? 'Match the writing style, tone, and structure of the examples provided above.' : 'Keep the response aligned with standard OSCAL implementation descriptions'}
-
-${styleAnalysis ? '' : 'Example format (exactly 250 characters): "Break Glass accounts are implemented by creating high-privileged, emergency-access accounts that are activated only when regular authentication processes fail or are compromised. These accounts have least privilege access and are monitored for usage."'}
-
-Implementation Description:`;
-}
-
-/**
- * Build extended prompt requesting JSON with implementation, testingObjective, testingProcedure, remarks
- * Includes existing implementation AND remarks examples so the AI can suggest Additional Notes in the same style.
- */
-function buildExtendedPrompt(control, existingControls = []) {
-  const basePrompt = buildPrompt(control, existingControls);
-  const remarksExamples = getRemarksExamples(existingControls);
-  const remarksGuidance = remarksExamples.length > 0
-    ? `
-
-EXAMPLES of Additional Notes / Consumer Guidance from your existing controls (match this style when you suggest remarks):
-${remarksExamples.map((r, idx) => `${idx + 1}. "${r}"`).join('\n')}
-
-When relevant, suggest a brief additional note or consumer guidance in the same style as above; otherwise use empty string for "remarks".`
-    : '';
-
-  return `${basePrompt}
-
-Alternatively, respond with a JSON object containing all of the following (use this format so we can fill Implementation, Assessment/Testing Objective, Testing Method, and Additional Notes):${remarksGuidance}
-
-Respond with ONLY a valid JSON object, no other text. Use this exact structure:
-{
-  "implementation": "2-3 sentences, 250 chars or less, describing what has been implemented (past/present perfect tense).",
-  "testingObjective": "One sentence: the objective of assessing this control (e.g., Verify that...).",
-  "testingProcedure": "One sentence: how this control is tested (e.g., Manual review of...; Automated by tools).",
-  "remarks": "Optional brief additional notes or consumer guidance, or empty string if none."
-}
-
-Requirements for each field: implementation (250 chars or less); testingObjective and testingProcedure (one clear sentence each); remarks (short or empty; when you have example style above, prefer suggesting a brief note when it would help the assessor). Respond with ONLY the JSON object.`;
-}
-
-/**
- * Parse structured JSON response into { implementation, testingObjective, testingProcedure, remarks }
- * Handles responses with leading text (e.g. "Implementation Description: {...}") or markdown code blocks.
- */
-function parseStructuredResponse(rawResponse) {
-  if (!rawResponse || typeof rawResponse !== 'string') return null;
-  let text = rawResponse.trim();
-  // Strip markdown code block if present
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) text = codeBlockMatch[1].trim();
-  // Strip leading label/text before the JSON (e.g. "Implementation Description: " or "Description: ")
-  text = text.replace(/^(Implementation Description|Description|Implementation):\s*/i, '').trim();
-  // Find the first { and parse from there in case there's any trailing text
-  const start = text.indexOf('{');
-  if (start !== -1) {
-    const end = text.lastIndexOf('}') + 1;
-    if (end > start) text = text.slice(start, end);
-  }
-  text = text.replace(/\.\s*$/, '').trim(); // strip trailing period that some models add
-  try {
-    const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== 'object') return null;
-    const implementation = typeof parsed.implementation === 'string' ? cleanResponse(parsed.implementation) : null;
-    const testingObjective = typeof parsed.testingObjective === 'string' ? parsed.testingObjective.trim() : null;
-    const testingProcedure = typeof parsed.testingProcedure === 'string' ? parsed.testingProcedure.trim() : null;
-    const remarks = typeof parsed.remarks === 'string' ? parsed.remarks.trim() : '';
-    return {
-      implementation: implementation && implementation.length > 10 ? implementation : null,
-      testingObjective: testingObjective && testingObjective.length > 5 ? testingObjective : null,
-      testingProcedure: testingProcedure && testingProcedure.length > 5 ? testingProcedure : null,
-      remarks: remarks || ''
-    };
-  } catch (_) {
-    return null;
-  }
-}
-
-/**
- * Clean and format the AI response
- */
-function cleanResponse(response) {
-  if (!response) return null;
-  
-  // Remove markdown formatting if present
-  let cleaned = response
-    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-    .replace(/`([^`]+)`/g, '$1') // Remove inline code
-    .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold
-    .replace(/\*([^*]+)\*/g, '$1') // Remove italic
-    .trim();
-  
-  // Remove common prefixes/suffixes
-  cleaned = cleaned
-    .replace(/^(Implementation Description:|Description:|Implementation:)\s*/i, '')
-    .replace(/\s*(This control|The control|This implementation).*$/i, '')
-    .trim();
-  
-  // Convert imperative/instructional language to descriptive language
-  // Common patterns: "Implement X by..." -> "X is implemented by..."
-  // "Create X..." -> "X is created..."
-  // "Ensure X..." -> "X is ensured..."
-  const imperativeConversions = [
-    { pattern: /^Implement\s+(.+?)\s+by\s+(.+)$/i, replacement: '$1 is implemented by $2' },
-    { pattern: /^Implement\s+(.+)$/i, replacement: '$1 is implemented' },
-    { pattern: /^Create\s+(.+?)\s+by\s+(.+)$/i, replacement: '$1 is created by $2' },
-    { pattern: /^Create\s+(.+)$/i, replacement: '$1 is created' },
-    { pattern: /^Ensure\s+(.+)$/i, replacement: '$1 is ensured' },
-    { pattern: /^Configure\s+(.+)$/i, replacement: '$1 is configured' },
-    { pattern: /^Establish\s+(.+)$/i, replacement: '$1 is established' },
-    { pattern: /^Maintain\s+(.+)$/i, replacement: '$1 is maintained' },
-    { pattern: /^Monitor\s+(.+)$/i, replacement: '$1 is monitored' },
-    { pattern: /^Protect\s+(.+)$/i, replacement: '$1 is protected' },
-    { pattern: /^Manage\s+(.+)$/i, replacement: '$1 is managed' },
-    { pattern: /^Enforce\s+(.+)$/i, replacement: '$1 is enforced' }
-  ];
-  
-  for (const conversion of imperativeConversions) {
-    if (conversion.pattern.test(cleaned)) {
-      cleaned = cleaned.replace(conversion.pattern, conversion.replacement);
-      break; // Only apply first match
-    }
-  }
-  
-  // Remove extra whitespace and normalize spacing
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  
-  // Do NOT truncate - rely on prompt to generate within 250 characters
-  // Just ensure it ends with a period if it doesn't already
-  if (cleaned && !cleaned.endsWith('.') && !cleaned.endsWith('!') && !cleaned.endsWith('?')) {
-    cleaned += '.';
-  }
-  
-  return cleaned || null;
 }
 
 /**
@@ -1118,11 +857,11 @@ export async function checkMistralAvailability() {
         };
       }
       
-      if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+      if (!bedrockCredentialsConfigured(config)) {
         return {
           available: false,
           provider: 'aws-bedrock',
-          reason: 'AWS credentials not configured'
+          reason: 'AWS credentials not configured (access keys or IAM role)'
         };
       }
       

@@ -1,3 +1,8 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # OSCAL Green/Blue: Auto Scaling Groups + Launch Templates + optional persistent gp3 volumes.
 # Replaces standalone aws_instance (resilience: ASG replaces terminated/unhealthy instances).
 # See docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock.
@@ -78,13 +83,18 @@ resource "aws_launch_template" "oscal_green" {
 
   tag_specifications {
     resource_type = "instance"
-    tags = {
-      Name                  = "${var.project_name}-oscal-green"
-      Port                  = "3019"
-      Stack                 = var.project_name
-      OSCAL_PERSISTENT_ROLE = "green"
-      OSCAL_SSM_TARGET      = "true"
-    }
+    tags = merge(
+      {
+        Name                  = "${var.project_name}-oscal-green"
+        Port                  = tostring(var.oscal_app_port)
+        Stack                 = var.project_name
+        OSCAL_PERSISTENT_ROLE = "green"
+        OSCAL_SSM_TARGET      = "true"
+      },
+      var.oscal_os_patch_enabled ? {
+        "Patch Group" = "${var.project_name}-green"
+      } : {}
+    )
   }
 
   tag_specifications {
@@ -138,13 +148,18 @@ resource "aws_launch_template" "oscal_blue" {
 
   tag_specifications {
     resource_type = "instance"
-    tags = {
-      Name                  = "${var.project_name}-oscal-blue"
-      Port                  = "3020"
-      Stack                 = var.project_name
-      OSCAL_PERSISTENT_ROLE = "blue"
-      OSCAL_SSM_TARGET      = "true"
-    }
+    tags = merge(
+      {
+        Name                  = "${var.project_name}-oscal-blue"
+        Port                  = tostring(var.oscal_app_port)
+        Stack                 = var.project_name
+        OSCAL_PERSISTENT_ROLE = "blue"
+        OSCAL_SSM_TARGET      = "true"
+      },
+      var.oscal_os_patch_enabled ? {
+        "Patch Group" = "${var.project_name}-blue"
+      } : {}
+    )
   }
 
   tag_specifications {

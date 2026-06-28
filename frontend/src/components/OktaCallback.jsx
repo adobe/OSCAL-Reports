@@ -1,8 +1,9 @@
 /**
- * Okta OIDC callback handler
- * Renders when user returns from Okta with ?code=&state=; exchanges code for session and redirects to app.
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useEffect, useRef, useState } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';

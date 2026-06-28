@@ -1,8 +1,9 @@
 /**
- * SSO Integration Component - Configure SAML and OAuth providers
- * Platform Admin only
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect, useRef } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
@@ -73,6 +74,18 @@ function SSOIntegration({ onClose, embedded = false }) {
         clientSecret: '',
         redirectUri: `${window.location.origin}/auth/okta/callback`,
         scope: 'openid profile email'
+      },
+      Generic_OIDC: {
+        enabled: true,
+        displayName: 'Generic SSO',
+        issuerUrl: '',
+        discoveryUrl: '',
+        clientId: '',
+        clientSecret: '',
+        callbackPath: '/auth/callback',
+        scope: 'openid profile email',
+        endSessionUrl: '',
+        redirectUriPatterns: []
       },
       github: {
         enabled: false,
@@ -209,6 +222,19 @@ function SSOIntegration({ onClose, embedded = false }) {
               scope: 'openid profile email',
               ...(providers.okta && typeof providers.okta === 'object' ? providers.okta : {})
             },
+            Generic_OIDC: {
+              enabled: true,
+              displayName: 'Generic SSO',
+              issuerUrl: '',
+              discoveryUrl: '',
+              clientId: '',
+              clientSecret: '',
+              callbackPath: '/auth/callback',
+              scope: 'openid profile email',
+              endSessionUrl: '',
+              redirectUriPatterns: [],
+              ...(providers.Generic_OIDC && typeof providers.Generic_OIDC === 'object' ? providers.Generic_OIDC : {})
+            },
             github: {
               enabled: false,
               clientId: '',
@@ -295,7 +321,10 @@ function SSOIntegration({ onClose, embedded = false }) {
     // OAuth: validate current form fields (enable toggles are not required to run a test)
     if (activeTab === 'oauth') {
       const providerSlug = provider.toLowerCase().replace(/\s+/g, '');
-      const oauthKey = providerSlug === 'azuread' ? 'azure' : providerSlug;
+      let oauthKey = providerSlug === 'azuread' ? 'azure' : providerSlug;
+      if (provider === 'Generic_OIDC' || providerSlug === 'generic_oidc') {
+        oauthKey = 'Generic_OIDC';
+      }
       const providerConfig = oauthConfig.providers?.[oauthKey];
       if (oauthKey === 'okta') {
         const hasDomain = !!safeStr(providerConfig?.domain);
@@ -329,12 +358,14 @@ function SSOIntegration({ onClose, embedded = false }) {
 
       const slug = provider.toLowerCase().replace(/\s+/g, '');
       const isOkta = slug === 'okta';
+      const isGenericOidc = provider === 'Generic_OIDC' || slug === 'generic_oidc';
       const checks = response.data.checks;
-      if (isOkta && Array.isArray(checks) && checks.length > 0) {
+      if ((isOkta || isGenericOidc) && Array.isArray(checks) && checks.length > 0) {
         dismissAfterMs = 16000;
+        const label = isGenericOidc ? 'Generic OIDC' : 'Okta';
         const header = response.data.success
-          ? '✅ Okta test — all steps passed'
-          : '❌ Okta test — one or more steps failed';
+          ? `✅ ${label} test — all steps passed`
+          : `❌ ${label} test — one or more steps failed`;
         const lines = checks.map((c) => `${c.passed ? '✅' : '❌'} ${c.label}\n   ${c.detail || (c.passed ? 'OK' : 'Failed')}`);
         const footer = response.data.error ? `\n${response.data.error}` : '';
         const successNote = response.data.success && response.data.message ? `\n${response.data.message}` : '';
@@ -417,7 +448,9 @@ function SSOIntegration({ onClose, embedded = false }) {
   // Client secret may be a Pass vault pointer { _pass: "entry/path" } — treat as configured for UI/test gating
   const hasOidcClientSecret = (v) => {
     if (safeStr(v)) return true;
-    if (v && typeof v === 'object' && !Array.isArray(v) && safeStr(v._pass)) return true;
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      if (safeStr(v._pass) || safeStr(v._sm) || safeStr(v._cfgenc)) return true;
+    }
     return false;
   };
 
@@ -432,6 +465,21 @@ function SSOIntegration({ onClose, embedded = false }) {
         clientSecret: '',
         redirectUri: (typeof window !== 'undefined' && window.location?.origin) ? `${window.location.origin}/auth/okta/callback` : '',
         scope: 'openid profile email'
+      };
+
+  const genericOidcProvider = (oauthConfig?.providers?.Generic_OIDC != null && typeof oauthConfig.providers.Generic_OIDC === 'object')
+    ? oauthConfig.providers.Generic_OIDC
+    : {
+        enabled: true,
+        displayName: 'Generic SSO',
+        issuerUrl: '',
+        discoveryUrl: '',
+        clientId: '',
+        clientSecret: '',
+        callbackPath: '/auth/callback',
+        scope: 'openid profile email',
+        endSessionUrl: '',
+        redirectUriPatterns: [],
       };
 
   // Defensive: ensure other OAuth providers and SAML config never cause "read of undefined"
@@ -786,7 +834,66 @@ function SSOIntegration({ onClose, embedded = false }) {
                 <p>Integrate with popular OAuth providers like Azure AD, Google, Okta, GitHub, and more.</p>
               </div>
 
-              {/* Okta OAuth 2.0 - First / default provider */}
+              {/* Built-in Generic OIDC (read-only settings; Platform Admin may enable/disable) */}
+              <div className="provider-config">
+                <div className="provider-header">
+                  <div className="provider-title">
+                    <span className="provider-icon">🔐</span>
+                    <h4>Generic OIDC ({genericOidcProvider.displayName || 'Generic SSO'})</h4>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={!!genericOidcProvider.enabled}
+                      onChange={(e) => canEdit && setOauthConfig({
+                        ...oauthConfig,
+                        providers: {
+                          ...oauthConfig.providers,
+                          Generic_OIDC: { ...genericOidcProvider, enabled: e.target.checked }
+                        }
+                      })}
+                      disabled={!canEdit}
+                    />
+                    <span className="toggle-slider"></span>
+                    <span className="toggle-label">{genericOidcProvider.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </label>
+                </div>
+                <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>
+                  Built-in Authentik OIDC provider. Issuer, client ID, and secret are managed in deployment config (not editable here).
+                </p>
+                <div className="form-row-2">
+                  <div className="form-group">
+                    <label>Issuer URL</label>
+                    <input type="text" className="form-control" value={genericOidcProvider.issuerUrl || ''} readOnly disabled />
+                  </div>
+                  <div className="form-group">
+                    <label>Discovery URL</label>
+                    <input type="text" className="form-control" value={genericOidcProvider.discoveryUrl || ''} readOnly disabled />
+                  </div>
+                </div>
+                <div className="form-row-2" style={{ marginTop: '0.5rem' }}>
+                  <div className="form-group">
+                    <label>Callback path</label>
+                    <input type="text" className="form-control" value={genericOidcProvider.callbackPath || '/auth/callback'} readOnly disabled />
+                  </div>
+                  <div className="form-group">
+                    <label>Client ID</label>
+                    <input type="text" className="form-control" value={genericOidcProvider.clientId || ''} readOnly disabled />
+                  </div>
+                </div>
+                <div className="form-actions" style={{ marginTop: '0.75rem' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleTestConnection('Generic_OIDC')}
+                    disabled={!canEdit || testing}
+                  >
+                    🔍 Test Generic OIDC Connection
+                  </button>
+                </div>
+              </div>
+
+              {/* Okta OAuth 2.0 */}
               <div className="provider-config">
                 <div className="provider-header">
                   <div className="provider-title">

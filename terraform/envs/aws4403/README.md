@@ -91,9 +91,9 @@ InfraSec tickets for AMS-OSCAL-Reporter Non-Prod (account **442277170733**) requ
    ```
 3. **Pin:** Set `image_factory_amazon_linux_ami_us_east_1 = "ami-..."` in `terraform.tfvars` and keep `instance_architecture` aligned.
 4. **Apply:** `./terraform/run-with-aws-pass.sh plan -out=tfplan` then `./terraform/run-with-aws-pass.sh apply tfplan`.
-5. **Data / app:** New instances get new **root** volumes each launch; when **persistent EBS** is enabled, **`/opt/oscal`** survives replacement on the same gp3 volume (AZ must stay aligned with each role’s subnet). Otherwise restore `/opt/oscal/data` from S3 (ec2_automation backups) and run `./scripts/deploy-to-ec2.sh` with the same `TERRAFORM_DIR` and Pass entries. Optional **`oscal_ssm_release_s3_prefix`** can sync packaged app bits from the logs bucket on an SSM schedule. Check ALB target health and `/health` on 3019/3020.
+5. **Data / app:** New instances get new **root** volumes each launch; when **persistent EBS** is enabled, **`/opt/oscal`** survives replacement on the same gp3 volume (AZ must stay aligned with each role’s subnet). Otherwise restore `/opt/oscal/data` from S3 (ec2_automation backups) and run `./scripts/deploy-to-ec2.sh` with the same `TERRAFORM_DIR` and Pass entries. Optional **`oscal_ssm_release_s3_prefix`** can sync packaged app bits from the logs bucket on an SSM schedule. Check ALB target health and `/health` on port **3020** (both Green and Blue).
 6. **Close ticket:** After CrowdStrike/Nexpose rescan is clean, close **SSAAU-169** (or use Adobe exception tooling if blocked).
 
 ---
 
-**Version:** 1.7.12 · **Last updated:** April 2026
+**Version:** 1.7.23 · **Last updated:** June 2026

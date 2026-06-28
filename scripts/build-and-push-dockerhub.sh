@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 #
 # Build the OSCAL Report Generator Docker image locally and push to Docker Hub.
 # Use this when you want to publish from your machine (e.g. Docker Desktop) instead
@@ -130,6 +135,10 @@ warn_if_no_docker_hub_auth() {
     return 0
   fi
   if command -v jq >/dev/null 2>&1; then
+    # Docker Desktop stores credentials in the OS keychain when credsStore is set (auths may be empty objects).
+    if jq -e '.credsStore != null and (.credsStore | type == "string") and (.credsStore | length) > 0' "$cfg" >/dev/null 2>&1; then
+      return 0
+    fi
     if ! jq -e '.auths["https://index.docker.io/v1/"].auth != null and (.auths["https://index.docker.io/v1/"].auth | type == "string") and (.auths["https://index.docker.io/v1/"].auth | length) > 0' "$cfg" >/dev/null 2>&1; then
       echo "Warning: Docker Hub credentials not set in $cfg. Run: docker login" >&2
     fi

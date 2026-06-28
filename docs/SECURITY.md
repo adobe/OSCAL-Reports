@@ -34,6 +34,13 @@
 - **HTTPS** in production; secure cookies: `httpOnly`, `sameSite: 'strict'`, `secure` in production.
 - No sensitive data in cookies; session timeout configured.
 
+#### Config secrets (_cfgenc and AWS SM)
+
+- **EC2 (production):** Sensitive platform settings (SMTP, AI tokens, SSO client secrets) use **`OSCAL_SECRETS_MODE=aws-sm`** and a single AWS Secrets Manager JSON bundle; `config.json` holds `{ "_sm": "OSCAL/..." }` pointers only. Saves **fail** if SM is unavailable (no plaintext fallback). Startup auto-migrates any plaintext to SM. See **`backend/utils/secretsManager.js`** and **`backend/utils/configSecretMigration.js`**.
+- **Local / Docker / offline:** Secrets are stored as **`{ "_cfgenc": "v1$..." }`** envelopes in `config.json` using PBKDF2-SHA256 + AES-256-GCM (`backend/utils/configFieldCrypto.js`). Set **`OSCAL_CONFIG_FIELD_SECRET`** or **`SESSION_SECRET`**. Docker entrypoint generates and persists keys under `/data/.field-secret` and `/data/.session-secret`. **Pass vault is not required.**
+- **Optional operator tooling:** Legacy pass bundle sync scripts (`push-pass-to-secrets-manager.sh`, etc.) remain for migrating secrets to SM; set **`OSCAL_PASS_DISABLED=1`** in Docker (default in compose).
+- **Never commit** plaintext secrets; use `config.json.example` pointers or `_cfgenc` placeholders only.
+
 #### Password storage (PBKDF2 and legacy SHA-256 migration)
 
 - **Current storage format**: New and rotated passwords are stored as **PBKDF2-SHA256** with random salt and **100,000 iterations** (`pbkdf2$sha256$...` prefix). Implementation: `backend/auth/userManager.js` (`hashPassword` / `verifyPassword`).
@@ -90,4 +97,4 @@
 
 ---
 
-**Version:** 1.7.12 · **Last updated:** April 2026
+**Version:** 1.7.23 · **Last updated:** June 2026

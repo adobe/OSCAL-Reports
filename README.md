@@ -61,7 +61,7 @@ OSCAL_Reports/
 │   └── ...
 ├── test_cases/              # Backend tests (Jest)
 ├── docs/                    # Documentation
-├── package.json             # Root scripts (dev, install:all, lint)
+├── package.json             # Root scripts (dev, install:all, lint, lint:all, probe-bedrock-gemma)
 ├── docker-compose.yml       # Single service (no Ollama)
 └── Dockerfile
 ```
@@ -85,6 +85,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 | Topic | Document |
 |-------|----------|
+| **Summary** | [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) – purpose, stack, layout |
 | **Start** | [docs/README.md](docs/README.md) – doc index |
 | **Deploy** | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 | **Architecture** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
@@ -95,10 +96,42 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ---
 
-## License
+## What's new in 1.7.23
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+- **Dependencies:** Dependabot updates merged into Quality — AWS SDK, `express-rate-limit` 8.x, `pdfkit` 0.19, `pg`, React 19.2.7, and related security/toolchain bumps (#45–#61).
+- **CI / tests:** Quality Gates action updates; OIDC and Docker bootstrap unit tests stable in CI; optional live OIDC probe via `OSCAL_RUN_OIDC_PROBE=1`.
+- **Deploy:** `keekar/oscal_reports:v1.7.23` when published to Docker Hub.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1723---2026-06-29).
 
 ---
 
-**Version:** 1.7.14 (see root `package.json`) · **Last updated:** April 2026
+## What's new in 1.7.22
+
+- **Pass bundle (laptop):** All OSCAL app secrets in one pass entry `PROD/OSCAL/AWS_SM` (same JSON as AWS SM); migrate legacy `OSCAL/*` with `migrate-pass-entries-to-bundle.sh`.
+- **EC2 deploy safety:** `DEPLOY_CONFIG_S3_SKIP=1` for code-only deploys; golden **`config/default/`** on S3 for restore; no more accidental SSO/config wipe from force S3 sync.
+- **Generic OIDC / SSO:** Fixes orphan `_sm` pointers when SM empty; login providers API returns Generic SSO when secret is resolvable.
+- **Deploy:** `keekar/oscal_reports:v1.7.22` on Docker Hub; EC2 via safe flags above.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1722---2026-06-26).
+
+---
+
+## What's new in 1.7.21 (previous)
+
+- **Multi-Report Comparison:** Export uses the same `generate-ssp` path as the main app; fixes gateway timeouts, validation modal dismiss, and `_ComplianceReport` filenames.
+- **AI suggestions:** Per-control prompts (catalog description, statement parts) so Gemma/Mistral outputs vary by control.
+- **Generic OIDC (Docker/NAS):** `tlsRelaxed` when Authentik TLS chain fails Node verification; EC2 production remains Okta-first.
+- **Deploy:** `keekar/oscal_reports:v1.7.21` on Docker Hub; EC2 via `./scripts/deploy-to-ec2.sh --update-s3` then `--both`.
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1721---2026-06-25).
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+---
+
+**Version:** 1.7.23 (see root `package.json`) · **Last updated:** June 2026

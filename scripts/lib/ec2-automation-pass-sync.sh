@@ -1,6 +1,15 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # shellcheck shell=bash
-# Pass vault ↔ AWS Secrets Manager sync (allowlist). Sourced by ec2_automation.sh after otel_log is defined.
+# Pass vault ↔ AWS Secrets Manager sync (single bundle entry). Sourced by ec2_automation.sh after otel_log is defined.
 # Test hook: PASS_SYNC_TEST_EPOCH overrides wall clock for min-interval and merge timestamps (integer seconds).
+
+# shellcheck source=./pass-bundle-common.sh disable=SC1091
+_LIB_DIR="${BASH_SOURCE[0]%/*}"
+source "${_LIB_DIR}/pass-bundle-common.sh"
 
 pass_secrets_sync_epoch() {
   if [ -n "${PASS_SYNC_TEST_EPOCH:-}" ]; then
@@ -8,48 +17,6 @@ pass_secrets_sync_epoch() {
     return 0
   fi
   date +%s
-}
-
-pass_secrets_sync_allowlist() {
-  cat <<'ALLOW'
-OSCAL/smtp-password
-OSCAL/slack-webhook-url
-OSCAL/ai-api-token
-OSCAL/ai-aws-access-key-id
-OSCAL/ai-aws-secret-access-key
-OSCAL/sso-oauth-azure-client-secret
-OSCAL/sso-oauth-google-client-secret
-OSCAL/sso-oauth-okta-client-secret
-OSCAL/sso-oauth-github-client-secret
-ALLOW
-}
-
-pass_secrets_sync_gpg_mtime() {
-  local key="$1"
-  local store="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
-  local f="${store}/${key}.gpg"
-  if [ -f "$f" ]; then
-    stat -c %Y "$f" 2>/dev/null || echo 0
-  else
-    echo 0
-  fi
-}
-
-pass_secrets_sync_local_show() {
-  local key="$1"
-  if command -v pass >/dev/null 2>&1 && pass show "$key" >/dev/null 2>&1; then
-    pass show "$key" 2>/dev/null || true
-  fi
-}
-
-pass_secrets_sync_insert() {
-  local key="$1"
-  local val="$2"
-  printf '%s\n' "$val" | pass insert -m -f "$key" >/dev/null 2>&1
-}
-
-pass_secrets_sync_same() {
-  [ "$1" = "$2" ]
 }
 
 pass_secrets_sync_otel() {
@@ -85,8 +52,9 @@ pass_secrets_sync_run() {
   mkdir -p "$data_dir" 2>/dev/null || true
   local state_file="${data_dir}/.pass-secrets-sync-state"
   local min_interval="${PASS_SECRETS_SYNC_MIN_INTERVAL_SECONDS:-21600}"
-  local now
+  local now bundle_entry
   now=$(pass_secrets_sync_epoch)
+  bundle_entry=$(pass_bundle_entry)
   local last_run=0
   if [ -f "$state_file" ]; then
     last_run=$(jq -r '.last_run // 0' "$state_file" 2>/dev/null || echo 0)
@@ -108,104 +76,67 @@ pass_secrets_sync_run() {
     return 0
   fi
 
-  local key local_val remote_val remote_t local_mtime
-  local need_put=0
-  local pulls=0
-  local keys_to_update_pass=()
-  local vals_for_pass=()
-  local keys_local_won=()
+  local local_raw local_mtime remote_max_t
+  local_raw=$(pass_show_bundle_json)
+  if ! echo "$local_raw" | jq -e 'has("entries") and has("_meta")' >/dev/null 2>&1; then
+    local_raw=$(pass_empty_bundle_json)
+  fi
+  local_mtime=$(pass_bundle_gpg_mtime)
+  remote_max_t=$(pass_bundle_max_meta_t "$remote_raw")
 
-  while IFS= read -r key || [ -n "$key" ]; do
-    [ -z "$key" ] && continue
-    remote_val=$(echo "$remote_raw" | jq -r --arg k "$key" '.entries[$k] // empty')
-    remote_t=$(echo "$remote_raw" | jq -r --arg k "$key" '._meta.keys[$k].t? // 0')
-    local_val=$(pass_secrets_sync_local_show "$key")
-    local_mtime=$(pass_secrets_sync_gpg_mtime "$key")
+  local canon_local canon_remote
+  canon_local=$(echo "$local_raw" | jq -c -S . 2>/dev/null) || canon_local=""
+  canon_remote=$(echo "$remote_raw" | jq -c -S . 2>/dev/null) || canon_remote=""
 
-    if pass_secrets_sync_same "$local_val" "$remote_val"; then
-      continue
+  if [ "$canon_local" = "$canon_remote" ]; then
+    echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
+    return 0
+  fi
+
+  if [ "$local_mtime" -gt "$remote_max_t" ]; then
+    local merged now_ts
+    now_ts=$(pass_secrets_sync_epoch)
+    merged=$(echo "$remote_raw" | jq -c --argjson local "$local_raw" --argjson t "$now_ts" '
+      .entries = (.entries + $local.entries)
+      | ._meta.keys = (.["_meta"].keys + ($local.entries | keys | map({key: ., value: {t: $t}}) | from_entries))
+    ')
+
+    local json_out2 v2 remote_raw2
+    if ! json_out2=$(aws secretsmanager get-secret-value --secret-id "$arn" --output json 2>/dev/null); then
+      pass_secrets_sync_otel "warn" "pass secrets sync: second GetSecretValue failed; skipping Put" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.skipped\":\"cas_get_failed\""
+      echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
+      return 0
+    fi
+    v2=$(echo "$json_out2" | jq -r '.VersionId // empty')
+    remote_raw2=$(echo "$json_out2" | jq -r '.SecretString // empty')
+    if [ -n "$v1" ] && [ -n "$v2" ] && [ "$v1" != "$v2" ]; then
+      pass_secrets_sync_otel "info" "pass secrets sync: secret version changed during merge; skipping Put" "success" "\"event.action\":\"pass_sm_sync\",\"sync.skipped\":\"cas_version\""
+      echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
+      return 0
     fi
 
-    if [ -z "$local_val" ] && [ -n "$remote_val" ]; then
-      keys_to_update_pass+=("$key")
-      vals_for_pass+=("$remote_val")
-      pulls=$((pulls + 1))
-    elif [ -n "$local_val" ] && [ -z "$remote_val" ]; then
-      keys_local_won+=("$key")
-      need_put=1
-    elif [ "$local_mtime" -gt "$remote_t" ]; then
-      keys_local_won+=("$key")
-      need_put=1
+    local canon_merged canon_remote2
+    canon_remote2=$(echo "$remote_raw2" | jq -c -S . 2>/dev/null) || canon_remote2=""
+    canon_merged=$(echo "$merged" | jq -c -S .)
+    if [ -n "$canon_remote2" ] && [ "$canon_remote2" = "$canon_merged" ]; then
+      pass_secrets_sync_otel "info" "pass secrets sync: merged equals remote; no Put" "success" "\"event.action\":\"pass_sm_sync\""
+      echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
+      return 0
+    fi
+
+    if aws secretsmanager put-secret-value --secret-id "$arn" --secret-string "$merged" >/dev/null 2>&1; then
+      pass_secrets_sync_otel "info" "pass secrets sync: PutSecretValue succeeded (local bundle wins)" "success" "\"event.action\":\"pass_sm_sync\",\"sync.put\":true,\"sync.bundle\":\"${bundle_entry//\"/\\\"}\""
     else
-      keys_to_update_pass+=("$key")
-      vals_for_pass+=("$remote_val")
-      pulls=$((pulls + 1))
+      pass_secrets_sync_otel "warn" "pass secrets sync: PutSecretValue failed" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.put\":false"
     fi
-  done < <(pass_secrets_sync_allowlist)
-
-  local i plen=${#keys_to_update_pass[@]}
-  for ((i = 0; i < plen; i++)); do
-    key="${keys_to_update_pass[$i]}"
-    remote_val="${vals_for_pass[$i]}"
-    if ! pass_secrets_sync_insert "$key" "$remote_val"; then
-      pass_secrets_sync_otel "warn" "pass secrets sync: pass insert failed for entry" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.entry\":\"${key//\"/\\\"}\""
-    fi
-  done
-
-  if [ "$need_put" -eq 0 ]; then
-    if [ "$pulls" -gt 0 ]; then
-      pass_secrets_sync_otel "info" "pass secrets sync: updated pass from AWS only" "success" "\"event.action\":\"pass_sm_sync\",\"sync.pulls\":$pulls"
-    fi
-    echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
-    return 0
-  fi
-
-  local merged newt now_ts
-  merged=$(echo "$remote_raw" | jq -c .)
-  now_ts=$(pass_secrets_sync_epoch)
-  for key in "${keys_local_won[@]}"; do
-    local_val=$(pass_secrets_sync_local_show "$key")
-    if [ -z "$local_val" ]; then
-      merged=$(echo "$merged" | jq -c --arg k "$key" 'del(.entries[$k]) | .["_meta"].keys |= del(.[$k])')
-    else
-      local_mtime=$(pass_secrets_sync_gpg_mtime "$key")
-      if [ "$now_ts" -gt "$local_mtime" ]; then
-        newt=$now_ts
-      else
-        newt=$local_mtime
-      fi
-      merged=$(echo "$merged" | jq -c --arg k "$key" --arg v "$local_val" --argjson t "$newt" '.entries[$k]=$v | ._meta.keys[$k].t=$t')
-    fi
-  done
-
-  local json_out2 v2 remote_raw2
-  if ! json_out2=$(aws secretsmanager get-secret-value --secret-id "$arn" --output json 2>/dev/null); then
-    pass_secrets_sync_otel "warn" "pass secrets sync: second GetSecretValue failed; skipping Put" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.skipped\":\"cas_get_failed\""
-    echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
-    return 0
-  fi
-  v2=$(echo "$json_out2" | jq -r '.VersionId // empty')
-  remote_raw2=$(echo "$json_out2" | jq -r '.SecretString // empty')
-  if [ -n "$v1" ] && [ -n "$v2" ] && [ "$v1" != "$v2" ]; then
-    pass_secrets_sync_otel "info" "pass secrets sync: secret version changed during merge; skipping Put (retry next interval)" "success" "\"event.action\":\"pass_sm_sync\",\"sync.skipped\":\"cas_version\""
-    echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
-    return 0
-  fi
-
-  local canon_remote canon_merged
-  canon_remote=$(echo "$remote_raw2" | jq -c -S . 2>/dev/null) || canon_remote=""
-  canon_merged=$(echo "$merged" | jq -c -S .)
-  if [ -n "$canon_remote" ] && [ "$canon_remote" = "$canon_merged" ]; then
-    pass_secrets_sync_otel "info" "pass secrets sync: merged equals remote; no Put" "success" "\"event.action\":\"pass_sm_sync\""
-    echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
-    return 0
-  fi
-
-  if aws secretsmanager put-secret-value --secret-id "$arn" --secret-string "$merged" >/dev/null 2>&1; then
-    pass_secrets_sync_otel "info" "pass secrets sync: PutSecretValue succeeded" "success" "\"event.action\":\"pass_sm_sync\",\"sync.put\":true,\"sync.pulls\":$pulls"
   else
-    pass_secrets_sync_otel "warn" "pass secrets sync: PutSecretValue failed" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.put\":false"
+    if pass_insert_bundle_json "$(echo "$remote_raw" | jq -c .)"; then
+      pass_secrets_sync_otel "info" "pass secrets sync: updated pass bundle from AWS" "success" "\"event.action\":\"pass_sm_sync\",\"sync.pull\":true,\"sync.bundle\":\"${bundle_entry//\"/\\\"}\""
+    else
+      pass_secrets_sync_otel "warn" "pass secrets sync: pass bundle insert failed" "failure" "\"event.action\":\"pass_sm_sync\",\"sync.pull\":false"
+    fi
   fi
+
   echo "{\"last_run\":$now}" >"$state_file" 2>/dev/null || true
   return 0
 }

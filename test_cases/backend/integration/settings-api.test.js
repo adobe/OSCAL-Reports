@@ -1,13 +1,9 @@
 /**
- * Settings API Integration Tests
- * 
- * Tests the /api/settings endpoint to ensure proper async operation handling.
- * This test suite was added after the v1.6.1 bug where the settings endpoint
- * was missing the 'async' keyword, causing server crashes.
- * 
- * Location: tests/backend/integration/settings-api.test.js
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';
@@ -245,9 +241,26 @@ describe('Settings API Integration Tests', () => {
       
       // If we got here without a SyntaxError, the async handler is working
       asyncOperationCompleted = true;
-      
+
       expect(asyncOperationCompleted).toBe(true);
       expect(response.body.success).toBe(true);
+    });
+
+    test('should accept apiGateways-only POST without publishedSoaUrl', async () => {
+      const gatewayOnly = {
+        apiGateways: {
+          aws: { enabled: true, url: 'https://api.example.com', region: 'us-east-1' },
+          azure: { enabled: false, url: '' },
+        },
+      };
+
+      const response = await request(app)
+        .post('/api/settings')
+        .send(gatewayOnly)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('config');
     });
   });
 });
