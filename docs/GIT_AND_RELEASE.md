@@ -47,12 +47,20 @@ git config core.hooksPath   # Should output: .githooks
 #### Branch Flow
 
 ```
-Development → Quality_Test → Pre_Prod → main
+Personal Quality (authoritative) ──auto-sync──> Adobe Quality (mirror)
+                                                      │
+                                                      v
+                                              Adobe Pre_Prod (staging + version bump)
+                                                      │
+                                                      v
+                                              Adobe Prod (production)
 ```
 
-**Current application release:** **1.7.23** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` before promoting to Pre_Prod/main.
+**Personal repo:** commit and test on **`Quality`** only.  
+**Adobe repo:** **`Quality`** is a mirror (automation only); **`Development`** is retired.  
+**Current application release:** **1.7.23** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` when promoting **Adobe Quality → Pre_Prod**.
 
-**main** accepts PRs from **Development**, **Quality_Test**, or **Pre_Prod**. Feature/custom branches cannot target main. Recommended: use Pre_Prod for staging validation first.
+**Prod** accepts PRs from **Pre_Prod** only (recommended). Legacy docs may reference `main`; this repo uses **`Prod`** as production.
 
 ---
 
@@ -66,9 +74,10 @@ Development → Quality_Test → Pre_Prod → main
 
 ### Workflow
 
-1. **Develop** on Development or Quality_Test; merge to Pre_Prod via PR.
-2. **On Pre_Prod**: Run `./scripts/bump_version.sh [patch|minor|major] "message"` and push. Pre-push hook and GitHub Actions validate.
-3. **Release**: Create PR Pre_Prod → main. After merge, release workflow runs (tag, GitHub Release).
+1. **Develop** on personal **`Quality`**; Quality Gates and shell validation run on the personal fork.
+2. **Mirror:** push to personal `Quality` triggers **Dispatch Adobe Quality sync** → Adobe pulls into **`Quality`** (see [Quality mirror](#quality-mirror-personal--adobe) below).
+3. **Staging:** open PR **Adobe `Quality` → `Pre_Prod`**, run `./scripts/bump_version.sh patch` on the PR branch if version equals the latest tag, merge when Adobe PreProd Validation passes.
+4. **Release:** PR **`Pre_Prod` → `Prod`**. After merge, verify tag and GitHub Release on Adobe.
 
 ---
 
@@ -633,10 +642,39 @@ Workflows live in `.github/workflows/`. The same files exist in **both** remotes
 | `release.yml` | **Adobe** | GitHub Release on version tags. |
 | `codacy.yml` | **Adobe** | Codacy + SARIF upload. |
 | `docker-publish.yml` | **Personal** | Docker Hub push (keekar image). |
-| `sync-personal-quality-to-adobe-preprod.yml` | **Both** (split jobs) | **Adobe:** `workflow_dispatch` → fast-forward `Pre_Prod` from personal `Quality`. **Personal:** push to `Quality` or `workflow_dispatch` → self-hosted push to Adobe `Pre_Prod`. |
+| `sync-personal-quality-to-adobe-quality.yml` | **Adobe** | `repository_dispatch` (quality-sync), `workflow_dispatch`, hourly schedule → fast-forward Adobe **`Quality`** from personal **`Quality`**. |
+| `dispatch-adobe-quality-sync.yml` | **Personal** | On push to **`Quality`**, fire `repository_dispatch` to Adobe (requires `ADOBE_REPO_DISPATCH_TOKEN`). |
 | **CodeQL** (enterprise default setup) | **Adobe** | GitHub-managed dynamic workflow; scans **JavaScript/TypeScript** (required) and **Python** if enabled in repo Code Security settings. |
 
 Develop on **personal** first: shell validation and Docker publish do not wait on Adobe Actions.
+
+<a id="quality-mirror-personal--adobe"></a>
+
+#### Quality mirror (personal → Adobe)
+
+| Branch | Repo | Role |
+|--------|------|------|
+| `Quality` | Personal (`keekar2022/OSCAL-Reports`) | **Authoritative** — all feature work and Dependabot merges |
+| `Quality` | Adobe (`AdobeManagedServices/OSCAL-Reports`) | **Mirror** — updated only by sync automation; do not commit manually |
+| `Pre_Prod` | Adobe | Staging — PR from Adobe `Quality` + version bump |
+| `Prod` | Adobe | Production — PR from `Pre_Prod` |
+
+**Adobe repo secrets**
+
+| Secret | Purpose |
+|--------|---------|
+| `PERSONAL_REPO_READ_TOKEN` | PAT from personal GitHub user; read access to `keekar2022/OSCAL-Reports` (authorize SSO if needed) |
+| `ADOBE_REPO_PUSH_TOKEN` | Optional; push Adobe `Quality` if `GITHUB_TOKEN` is blocked by branch rules |
+
+**Personal repo secrets**
+
+| Secret | Purpose |
+|--------|---------|
+| `ADOBE_REPO_DISPATCH_TOKEN` | PAT with `repo` scope on Adobe repo; triggers `quality-sync` dispatch on push to `Quality` |
+
+**Manual fallback:** Adobe → Actions → **Sync Quality to Adobe Quality** → Run workflow. Hourly schedule runs if dispatch is unavailable.
+
+**Retired:** Adobe `Development` branch; direct sync personal `Quality` → Adobe `Pre_Prod` (use PR promotion instead).
 
 #### Adobe CodeQL (enterprise default setup)
 
