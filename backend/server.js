@@ -22,7 +22,7 @@ import { syncExportToDatabase } from './database/exportSync.js';
 import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
 import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
 import { initializeSecretsCache, resolveSecretPointer, isAwsSmMode } from './utils/secretsManager.js';
-import { MASK, isSecretPointer } from './utils/sensitiveConfigKeys.js';
+import { isSecretPointer } from './utils/sensitiveConfigKeys.js';
 import { isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
 import { isStoredSecretEnvelope, resolveStoredSecretValue, coalesceSecretForTest, maskSensitiveConfigForClient } from './utils/resolveStoredSecret.js';
 import { oidcAxiosRequestOptions } from './utils/oidcHttpsAgent.js';
