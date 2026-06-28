@@ -1,11 +1,9 @@
 /**
- * ExportButtons Component - Export controls to various formats
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect } from 'react';
 import './ExportButtons.css';
 import { validateSSP, getValidatorStatus } from '../services/oscalValidator';
@@ -13,7 +11,7 @@ import ValidationStatus from './ValidationStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { formatExportApiBody } from '../utils/exportErrorMessage';
 
-function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, onExportPDF, loading, exportingType = null, systemInfo, controls }) {
+function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportPDF, loading, exportingType = null, systemInfo, controls }) {
   const { user } = useAuth();
   /** Per-button loading: only the active export shows spinner (exportingType: 'oscal' | 'sar' | 'excel' | 'ccm' | 'pdf' | null). */
   const isExporting = exportingType != null;
@@ -278,7 +276,7 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportCCM, o
             className="btn btn-success export-btn"
             onClick={onExportExcel}
             disabled={exportingType === 'excel'}
-            title="Excel SSP: Easy-to-read spreadsheet format for manual review and distribution"
+            title="ACSC June 2026 Excel: Info, Principles, and Controls worksheets (SOA/SSP/CCM) with OSCAL extension columns"
           >
             {exportingType === 'excel' ? (
               <>

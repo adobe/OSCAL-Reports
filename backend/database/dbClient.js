@@ -1,19 +1,9 @@
 /**
- * PostgreSQL client and test connection for Database Integration.
- * Used by Platform Settings (test-connection) and future schema-less storage.
- * Supports password auth and AWS RDS IAM database authentication (authMode: iam).
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
  *
- * RDS TLS: Amazon RDS uses CAs under Amazon Trust Services. Node's default trust store
- * may not include them, which yields "self-signed certificate in certificate chain" when
- * sslMode is require/prefer with rejectUnauthorized alone. We merge tls.rootCertificates
- * with backend/database/rds-global-bundle.pem (from https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem).
- * Override CA file: OSCAL_DATABASE_SSL_CA_PATH.
- *
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import fs from 'node:fs';
 import path from 'node:path';
 import tls from 'node:tls';
@@ -170,7 +160,9 @@ export function getClientConfig(config) {
     port,
     database: config.database.trim(),
     user: (config.user || '').trim() || undefined,
-    password: (config.password || '').trim() || undefined,
+    password: typeof config.password === 'string'
+      ? (config.password.trim() || undefined)
+      : undefined,
     connectionTimeoutMillis,
     ssl
   };

@@ -1,10 +1,10 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-frontend",
   "private": true,
-  "version": "1.7.16",
+  "version": "1.7.23",
   "type": "module",
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
@@ -13,21 +13,23 @@
     "lint:fix": "npx eslint . --ext .js,.jsx --fix"
   },
   "dependencies": {
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "axios": ">=1.15.0",
-    "lucide-react": "^0.577.0"
+    "axios": ">=1.15.2",
+    "lucide-react": "^1.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "esbuild": "^0.27.7",
-    "vite": "^8.0.8"
+    "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.1",
+    "vite": "^8.1.0"
   },
   "overrides": {
     "rollup": ">=4.59.0",
-    "axios": ">=1.15.0",
-    "picomatch": ">=4.0.4"
+    "axios": ">=1.15.2",
+    "picomatch": ">=4.0.4",
+    "postcss": ">=8.5.10",
+    "form-data": ">=4.0.6"
   }
 }

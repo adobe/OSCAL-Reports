@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # List resources that depend on an AWS security group (ENIs and optionally other SGs).
 # Use when Terraform fails with DependencyViolation deleting an SG.
 # Requires: AWS CLI, credentials configured (e.g. via Pass or AWS_PROFILE).

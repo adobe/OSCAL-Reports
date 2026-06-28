@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
 # List pass entries, let user pick one (or add new), paste credentials, parse and store;
 # or delete an existing entry (with confirmation).
 # Credentials are read from stdin (paste then Ctrl+D); they are not written to disk.
+#
+# This script does NOT read AWS Secrets Manager. To pull SM → pass on EC2 use:
+#   pull-secrets-manager-to-pass.sh  (or ec2_automation pass_secrets_sync_run via cron)
 #
 # Usage:
 #   ./scripts/debug/update-pass-credential.sh

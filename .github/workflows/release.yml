@@ -1,3 +1,4 @@
+# GitHub Release + artifacts for Adobe org repo only (avoids duplicate releases on personal fork).
 name: Release
 
 on:
@@ -12,12 +13,13 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
     permissions:
       contents: write
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -48,7 +50,7 @@ jobs:
           echo "path=$NOTES" >> "$GITHUB_OUTPUT"
       
       - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20.x'
       
@@ -97,7 +99,7 @@ jobs:
               "${extras[@]}"
       
       - name: 🎉 Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Release v${{ steps.version.outputs.version }}
           body_path: ${{ steps.changelog.outputs.path }}

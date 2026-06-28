@@ -1,20 +1,20 @@
 /**
- * SaveLoadBar Component - Auto-save indicator and manual save/load controls
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect } from 'react';
-import { 
-  hasSavedData, 
-  getLastSaveTime, 
-  clearSSPData, 
+import {
+  hasSavedData,
+  getLastSaveTime,
+  clearSSPData,
   exportBackup,
   formatBytes,
-  getStorageSize 
+  getStorageSize,
+  loadSSPData,
 } from '../utils/storage';
+import { complianceReportFileName } from '../utils/complianceReportFileName';
 import './SaveLoadBar.css';
 
 function SaveLoadBar({ onLoadData, onClearData, lastSaveTime, autoSaveEnabled }) {
@@ -36,10 +36,11 @@ function SaveLoadBar({ onLoadData, onClearData, lastSaveTime, autoSaveEnabled })
   const handleExportBackup = () => {
     const blob = exportBackup();
     if (blob) {
+      const saved = loadSSPData();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ssp-backup-${new Date().toISOString().split('T')[0]}.json`;
+      link.download = complianceReportFileName(saved?.systemInfo?.systemName, 'json');
       link.click();
       window.URL.revokeObjectURL(url);
     }

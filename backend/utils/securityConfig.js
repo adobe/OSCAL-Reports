@@ -1,8 +1,9 @@
 /**
- * Security Configuration
- * Centralized security settings for the application
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 export const SECURITY_CONFIG = {
   // CSRF Protection
   csrf: {
@@ -84,6 +85,7 @@ export const CSRF_EXEMPT_PATHS = [
 // must validate CSRF. Okta exchange-token is protected; frontend fetches token before POST.
 export const CSRF_PROTECTED_PATHS = [
   '/api/auth/okta/exchange-token',
+  '/api/auth/oidc/generic-oidc/exchange-token',
 ];
 
 // Paths that should always validate URLs (SSRF protection)

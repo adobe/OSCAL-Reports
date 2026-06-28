@@ -1,16 +1,24 @@
 /**
- * Messaging Configuration Component
- * Configure Email and Slack for sending user credentials
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
 import './MessagingConfiguration.css';
+
+const MASK = '********';
+
+function normalizeSecretField(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') {
+    return value === MASK || value === '********' ? '' : value;
+  }
+  if (typeof value === 'object') return '';
+  return value;
+}
 
 function MessagingConfiguration({ embedded = false }) {
   const { canManageUsers, getAuthConfig } = useAuth();
@@ -147,8 +155,13 @@ function MessagingConfiguration({ embedded = false }) {
   const handleTestEmail = async () => {
     try {
       setTesting(true);
-      const response = await axios.post('/api/messaging/test-email', 
-        { emailConfig: messagingConfig.email },
+      const response = await axios.post('/api/messaging/test-email',
+        {
+          emailConfig: {
+            ...messagingConfig.email,
+            smtpPassword: normalizeSecretField(messagingConfig.email.smtpPassword),
+          },
+        },
         getAuthConfig()
       );
       if (response.data.success) {
@@ -167,7 +180,12 @@ function MessagingConfiguration({ embedded = false }) {
     try {
       setTesting(true);
       const response = await axios.post('/api/messaging/test-slack',
-        { slackConfig: messagingConfig.slack },
+        {
+          slackConfig: {
+            ...messagingConfig.slack,
+            webhookUrl: normalizeSecretField(messagingConfig.slack.webhookUrl),
+          },
+        },
         getAuthConfig()
       );
       if (response.data.success) {

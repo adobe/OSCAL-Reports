@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "defined": [
+    {
+      "name": "Australian ISM (Non-Classified Baseline)",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_NON_CLASSIFIED-baseline-resolved-profile_catalog.json",
+      "description": "Australian Signals Directorate ISM Non-Classified Baseline",
+      "classification": "Non-Classified",
+      "publisher": "ACSC",
+      "minControls": 1
+    },
+    {
+      "name": "BSI Grundschutz++ (Kompendium) 🇩🇪",
+      "url": "https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+      "description": "German IT Security Standards - Grundschutz++ Baseline",
+      "classification": "standard",
+      "publisher": "BSI",
+      "minControls": 1
+    },
+    {
+      "name": "Australian ISM (Official Sensitive Baseline)",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_OFFICIAL_SENSITIVE-baseline-resolved-profile_catalog.json",
+      "description": "Australian Signals Directorate ISM Official Sensitive Baseline",
+      "classification": "Official Sensitive",
+      "publisher": "ACSC",
+      "minControls": 1
+    },
+    {
+      "name": "Australian ISM (Protected Baseline)",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/heads/main/ISM_PROTECTED-baseline-resolved-profile_catalog.json",
+      "description": "Australian Signals Directorate ISM Protected Baseline",
+      "classification": "Protected",
+      "publisher": "ACSC",
+      "minControls": 1
+    },
+    {
+      "name": "Australian ISM (Secret Baseline)",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_SECRET-baseline-resolved-profile_catalog.json",
+      "description": "Australian Signals Directorate ISM Secret Baseline",
+      "classification": "Secret",
+      "publisher": "ACSC",
+      "minControls": 1
+    },
+    {
+      "name": "Australian ISM (Top Secret Baseline)",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_TOP_SECRET-baseline-resolved-profile_catalog.json",
+      "description": "Australian Signals Directorate ISM Top Secret Baseline",
+      "classification": "Top Secret",
+      "publisher": "ACSC",
+      "minControls": 1
+    },
+    {
+      "name": "Canadian CCCS Cloud Medium Profile",
+      "url": "https://raw.githubusercontent.com/aws-samples/cccs-oscal-samples/refs/heads/main/profiles/cccs-cloud-medium-profile/cccs-cloud-medium-resolved.json",
+      "description": "Canadian Centre for Cyber Security Cloud Medium Security Profile",
+      "classification": "medium",
+      "publisher": "CCCS",
+      "minControls": 1
+    },
+    {
+      "name": "Canadian CCCS ITSP.10.033-01",
+      "url": "https://raw.githubusercontent.com/aws-samples/cccs-oscal-samples/refs/heads/main/profiles/cccs-itsp.10.033-01-profile/cccs-itsp.10.033-01-resolved.json",
+      "description": "Canadian Centre for Cyber Security ITSP.10.033-01 User Authentication Guidance Profile",
+      "classification": "moderate",
+      "publisher": "CCCS",
+      "minControls": 1
+    },
+    {
+      "name": "Canadian CCCS ITSP.10.171 (Protected B)",
+      "url": "https://raw.githubusercontent.com/aws-samples/cccs-oscal-samples/refs/heads/main/profiles/cccs-itsp.10.171-profile/cccs-itsp.10.171-resolved.json",
+      "description": "Canadian Centre for Cyber Security ITSP.10.171 Protected B Profile",
+      "classification": "Protected B",
+      "publisher": "CCCS",
+      "minControls": 1
+    },
+    {
+      "name": "Canadian CCCS Medium + PBHVA",
+      "url": "https://raw.githubusercontent.com/aws-samples/cccs-oscal-samples/refs/heads/main/profiles/cccs-medium%2Bpbhva-profile/cccs-medium%2Bpbhva-resolved.json",
+      "description": "Canadian Centre for Cyber Security Medium + Protected B, High Integrity, High Availability Profile",
+      "classification": "Protected B",
+      "publisher": "CCCS",
+      "minControls": 1
+    },
+    {
+      "name": "Canadian CCCS PBHVA Overlay",
+      "url": "https://raw.githubusercontent.com/aws-samples/cccs-oscal-samples/refs/heads/main/profiles/cccs-pbhva-overlay-profile/cccs-pbhva-overlay-resolved.json",
+      "description": "Canadian Centre for Cyber Security Protected B, High Integrity, High Availability Overlay Profile",
+      "classification": "Protected B",
+      "publisher": "CCCS",
+      "minControls": 1
+    },
+    {
+      "name": "Canadian CCCS SaaS FedRAMP Profile",
+      "url": "https://raw.githubusercontent.com/aws-samples/cccs-oscal-samples/refs/heads/main/profiles/cccs-saas-fedramp-profile/cccs-saas-fedramp-resolved.json",
+      "description": "Canadian Centre for Cyber Security SaaS FedRAMP Compliance Profile",
+      "classification": "moderate",
+      "publisher": "CCCS",
+      "minControls": 1
+    },
+    {
+      "name": "NIST SP 800-53 Rev 5 (Full Catalog)",
+      "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+      "description": "Complete NIST SP 800-53 Rev 5 catalog",
+      "classification": "moderate",
+      "publisher": "NIST",
+      "minControls": 100
+    },
+    {
+      "name": "NIST SP 800-53 Rev 5 (High Baseline)",
+      "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_HIGH-baseline-resolved-profile_catalog.json",
+      "description": "High impact baseline profile",
+      "classification": "high",
+      "publisher": "NIST",
+      "minControls": 1
+    },
+    {
+      "name": "NIST SP 800-53 Rev 5 (Low Baseline)",
+      "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_LOW-baseline-resolved-profile_catalog.json",
+      "description": "Low impact baseline profile",
+      "classification": "low",
+      "publisher": "NIST",
+      "minControls": 1
+    },
+    {
+      "name": "NIST SP 800-53 Rev 5 (Moderate Baseline)",
+      "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_MODERATE-baseline-resolved-profile_catalog.json",
+      "description": "Moderate impact baseline profile",
+      "classification": "moderate",
+      "publisher": "NIST",
+      "minControls": 1
+    },
+    {
+      "name": "Singapore IM8 Reform (Low Risk Cloud)",
+      "url": "https://raw.githubusercontent.com/GovTechSG/tech-standards/master/catalogs/im8-reform.json",
+      "description": "Singapore Government IM8 Reform catalog for low-risk cloud systems",
+      "classification": "low",
+      "publisher": "GovTech SG",
+      "minControls": 1
+    }
+  ],
+  "custom": [
+    {
+      "name": "NIST OSCAL basic example (user-pasted custom URL)",
+      "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/examples/catalog/json/basic-catalog.json",
+      "description": "Small OSCAL example catalog — typical custom URL not listed in the preset dropdown",
+      "minControls": 1
+    },
+    {
+      "name": "NIST SP 800-53 Rev 5 catalog-min (user-pasted custom URL)",
+      "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog-min.json",
+      "description": "Compact NIST catalog variant — custom URL not in the preset dropdown",
+      "minControls": 10
+    }
+  ]
+}

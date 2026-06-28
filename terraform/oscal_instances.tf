@@ -1,4 +1,9 @@
-# OSCAL Green and Blue instances (always on), ports 3019 and 3020
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
+# OSCAL Green and Blue instances (always on), same app port on both (var.oscal_app_port, default 3020)
 # AMI order: 1) var.oscal_ami_id, 2) Image Factory Amazon Linux 2023 / EMR (when resolved), 3) native Amazon Linux 2023 fallback.
 
 locals {
@@ -9,15 +14,15 @@ locals {
   oscal_persistent_ebs = !var.run_oscal_via_docker && var.oscal_persistent_ebs_enabled
 
   oscal_mount_snippet_green = local.oscal_persistent_ebs ? templatefile("${path.module}/templates/oscal-persistent-volume-mount.sh.tftpl", {
-    oscal_role  = "green"
-    stack_name  = var.project_name
-    aws_region  = var.aws_region
+    oscal_role = "green"
+    stack_name = var.project_name
+    aws_region = var.aws_region
   }) : ""
 
   oscal_mount_snippet_blue = local.oscal_persistent_ebs ? templatefile("${path.module}/templates/oscal-persistent-volume-mount.sh.tftpl", {
-    oscal_role  = "blue"
-    stack_name  = var.project_name
-    aws_region  = var.aws_region
+    oscal_role = "blue"
+    stack_name = var.project_name
+    aws_region = var.aws_region
   }) : ""
 
   # SSM optional release sync (prefix inside logs bucket; trimmed for IAM and scripts)
@@ -31,7 +36,7 @@ locals {
     rds_address       = aws_db_instance.oscal[0].address
     rds_port          = tostring(aws_db_instance.oscal[0].port)
     db_name           = var.rds_database_name
-    master_username   = var.rds_master_username
+    admin_username   = var.rds_admin_username
     iam_db_username   = var.rds_iam_app_username
     master_secret_arn = aws_db_instance.oscal[0].master_user_secret[0].secret_arn
   }) : ""
@@ -47,22 +52,22 @@ set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p 3019:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
-  oscal_user_data_blue_docker = <<-EOT
+  oscal_user_data_blue_docker  = <<-EOT
 #!/bin/bash
 set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
 podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p 3020:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
 EOT
   # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
   oscal_direct_user_data_green = <<-EOT
 #!/bin/bash
 set -e
 ${local.oscal_mount_snippet_green}
-PORT="3019"
+PORT="${var.oscal_app_port}"
 DATA_DIR="/opt/oscal/data"
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
@@ -114,6 +119,8 @@ sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /et
 
 ${local.rds_bootstrap_fragment}
 
+${local.bedrock_bootstrap_fragment}
+
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
 systemctl start oscal-reporter.service
@@ -123,7 +130,7 @@ EOT
 #!/bin/bash
 set -e
 ${local.oscal_mount_snippet_blue}
-PORT="3020"
+PORT="${var.oscal_app_port}"
 DATA_DIR="/opt/oscal/data"
 SVC_USER="svc_ams-oscal"
 SVC_GROUP="oscal"
@@ -175,6 +182,8 @@ sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_US
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
 
 ${local.rds_bootstrap_fragment}
+
+${local.bedrock_bootstrap_fragment}
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service

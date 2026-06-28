@@ -1,19 +1,8 @@
 #!/bin/bash
-
-# OSCAL Report Generator - Docker Hub Pull-Based Deployment Script
-# This script pulls pre-built images from Docker Hub and deploys with automatic
-# backup, restore, and rollback capabilities for Blue-Green deployments
-#
-# Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
+# Copyright 2025 Adobe. All rights reserved.
 # Copyright (c) 2025 Mukesh Kesharwani
-# License: GPL-3.0-or-later
 #
-# Usage:
-#   ./install_from_dockerhub.sh [--force] [--skip-backup]
-#
-# Options:
-#   --force         Force deployment even if lock file exists
-#   --skip-backup   Skip API backup (use volume backup only)
+# Licensed under the MIT License. See LICENSE file for details.
 
 set -e  # Exit on error
 
@@ -410,7 +399,7 @@ if [ -d "$LEGACY_CONFIG_DIR" ] && [ -n "$(ls -A "$LEGACY_CONFIG_DIR" 2>/dev/null
         print_success "Migrated users.json"
       fi
       
-      # Copy other JSON files (rate_limit, email_blacklist, etc)
+      # Copy other JSON files (rate_limit, email_blocklist, etc)
       for file in "$LEGACY_CONFIG_DIR"/*.json; do
         if [ -f "$file" ]; then
           filename=$(basename "$file")

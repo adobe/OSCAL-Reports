@@ -1,11 +1,9 @@
 /**
- * Settings Component - Configure API Gateway endpoints
- * 
- * @author Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
- * @copyright Copyright (c) 2025 Mukesh Kesharwani
- * @license GPL-3.0-or-later
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,14 +22,10 @@ function Settings() {
       url: ''
     }
   });
-  const [publishedSoaUrl, setPublishedSoaUrl] = useState('');
-  const [customUrlInput, setCustomUrlInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingGateway, setIsTestingGateway] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saveMessage, setSaveMessage] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationMessage, setVerificationMessage] = useState('');
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [lastSaved, setLastSaved] = useState(null);
   
@@ -52,22 +46,11 @@ function Settings() {
         setGateways(config.apiGateways);
       }
 
-      const url = config.publishedSoaUrl || '';
-      // Only support external URL (repository path); no file upload
-      if (url.startsWith('/api/published-soa/')) {
-        setPublishedSoaUrl('');
-        setCustomUrlInput('');
-      } else {
-        setPublishedSoaUrl(url);
-        setCustomUrlInput(url);
-      }
-      
       if (config.lastModified) {
         setLastSaved(config.lastModified);
       }
       
       console.log('✅ Settings loaded from server');
-      setVerificationStatus(null);
     } catch (error) {
       console.error('Error loading settings from server:', error);
       setSaveMessage('⚠️ Could not load settings from server. Using defaults.');
@@ -115,23 +98,11 @@ function Settings() {
         }
       }
 
-      // Validate Published SOA/CCM URL (external repository path only)
-      const urlToSave = customUrlInput ? customUrlInput.trim() : '';
-      if (urlToSave) {
-        try {
-          new URL(urlToSave);
-        } catch (e) {
-          throw new Error('Invalid Published SOA/CCM URL');
-        }
-      }
-      const trimmedUrl = urlToSave;
-      
       const config = {
         apiGateways: gateways,
-        publishedSoaUrl: trimmedUrl // Ensure it's always included (even if empty)
       };
       
-      console.log('💾 Saving settings - publishedSoaUrl:', config.publishedSoaUrl);
+      console.log('💾 Saving settings - apiGateways only');
       console.log('💾 Full config being sent:', JSON.stringify(config, null, 2));
       
       const response = await axios.post('/api/settings', config, getAuthConfig());
@@ -196,84 +167,6 @@ function Settings() {
           ? { enabled: false, url: '', region: 'ap-southeast-2' }
           : { enabled: false, url: '' }
       }));
-    }
-  };
-
-  const handleCustomUrlChange = (value) => {
-    setCustomUrlInput(value);
-    setPublishedSoaUrl(value);
-  };
-
-  const handleVerifyPublishedUrl = async () => {
-    const urlToVerify = customUrlInput ? customUrlInput.trim() : '';
-    if (!urlToVerify || urlToVerify.trim() === '') {
-      setVerificationMessage('❌ Please enter a URL to verify');
-      setTimeout(() => setVerificationMessage(''), 3000);
-      return;
-    }
-
-    setIsVerifying(true);
-    setVerificationMessage('🔄 Verifying URL...');
-
-    try {
-      try {
-        new URL(urlToVerify);
-      } catch (e) {
-        throw new Error('Invalid URL format');
-      }
-
-      const response = await axios.post('/api/proxy-fetch', { url: urlToVerify });
-
-      console.log('🔍 Proxy response:', response);
-      console.log('🔍 Response data keys:', response.data ? Object.keys(response.data) : 'No data');
-
-      const responseData = response.data;
-      if (responseData) {
-        let data = responseData;
-        const hasProxyWrapper = data.success !== undefined && data.status !== undefined && data.data !== undefined;
-        if (hasProxyWrapper) {
-          data = data.data;
-        }
-        
-        console.log('🔍 Final data keys:', data ? Object.keys(data) : 'No data after unwrap');
-        console.log('🔍 Final data type:', typeof data);
-        console.log('🔍 Has system-security-plan:', data && !!data['system-security-plan']);
-        
-        // Check if it's a valid OSCAL SSP structure
-        if (data && data['system-security-plan']) {
-          const ssp = data['system-security-plan'];
-          const metadata = ssp.metadata || {};
-          const title = metadata.title || 'Untitled';
-          const version = metadata.version || 'N/A';
-          const oscalVersion = metadata['oscal-version'] || 'N/A';
-          const systemName = ssp['system-characteristics']?.['system-name'] || 'N/A';
-          
-          console.log('✅ Valid OSCAL SSP found:', { title, version, oscalVersion, systemName });
-          setVerificationMessage(`✅ Valid OSCAL report found!\nTitle: ${title}\nSystem: ${systemName}\nVersion: ${version}\nOSCAL: ${oscalVersion}`);
-        } else {
-          console.warn('⚠️ No system-security-plan found in data');
-          console.log('Available keys:', data ? Object.keys(data) : 'No data');
-          setVerificationMessage(`⚠️ URL is accessible but does not contain a valid OSCAL System Security Plan structure\n\nFound keys: ${data ? Object.keys(data).join(', ') : 'No data'}`);
-        }
-      } else {
-        throw new Error('No data received from URL');
-      }
-    } catch (error) {
-      console.error('URL verification failed:', error);
-      let errorMessage = '❌ Verification failed: ';
-      
-      if (error.response) {
-        errorMessage += error.response.data?.error || error.response.statusText || 'Server error';
-      } else if (error.message) {
-        errorMessage += error.message;
-      } else {
-        errorMessage += 'Unknown error';
-      }
-      
-      setVerificationMessage(errorMessage);
-    } finally {
-      setIsVerifying(false);
-      setTimeout(() => setVerificationMessage(''), 8000); // Clear message after 8 seconds
     }
   };
 
@@ -544,62 +437,6 @@ function Settings() {
               <strong>ℹ️ How it works:</strong>
               <p>When you configure an Azure API Gateway here, the application will route API calls through your gateway. Authentication is handled by the gateway using Azure AD, subscription keys, or OAuth2 configured on Azure.</p>
               <p><strong>No credentials are stored in this application.</strong></p>
-            </div>
-          </div>
-        </div>
-
-        {/* Published SOA/CCM URL (repository path only) */}
-        <div className="settings-section">
-          <div className="section-header">
-            <div className="section-title">
-              <h3>📄 Published SOA/CCM URL</h3>
-              <small>Repository path (URL) for existing published SOA/CCM report (comparison baseline)</small>
-            </div>
-          </div>
-
-          <div className="gateway-form">
-            <div className="form-group">
-              <label>
-                Published Report URL
-                <small>Define the repository path (e.g. GitHub raw URL or any JSON URL) of published SOA/CCM for multi-report comparison</small>
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                <input
-                  type="url"
-                  className="form-control"
-                  value={customUrlInput}
-                  onChange={(e) => handleCustomUrlChange(e.target.value)}
-                  placeholder="https://raw.githubusercontent.com/.../report.json"
-                  style={{ flex: 1 }}
-                  disabled={isReadOnly}
-                />
-                <button
-                  type="button"
-                  className="btn-verify"
-                  onClick={handleVerifyPublishedUrl}
-                  disabled={isVerifying || !customUrlInput?.trim() || isReadOnly}
-                  title="Verify URL and validate OSCAL structure"
-                >
-                  {isVerifying ? '⏳ Verifying...' : '🔍 Verify'}
-                </button>
-              </div>
-              {verificationMessage && (
-                <div className={`verification-message ${verificationMessage.includes('✅') ? 'success' : verificationMessage.includes('⚠️') ? 'warning' : verificationMessage.includes('🔄') ? 'info' : 'error'}`}>
-                  {verificationMessage.split('\n').map((line, idx) => (
-                    <div key={idx}>{line}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="info-box">
-              <strong>ℹ️ How it works:</strong>
-              <p>Enter the full URL (repository path) to your published SOA/CCM JSON report. This URL is used as the baseline in Multi-Report Comparison. Use Verify to check that the URL is accessible and contains a valid OSCAL System Security Plan.</p>
-              <ul>
-                <li>✅ Compare your report with IaaS, PaaS, or SaaS provider reports</li>
-                <li>✅ Identify control differences across platforms</li>
-                <li>✅ Track catalog version changes</li>
-              </ul>
             </div>
           </div>
         </div>

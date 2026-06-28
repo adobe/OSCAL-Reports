@@ -1,10 +1,9 @@
 /**
- * Password Generator for Default Credentials
- * Generates password in format: username#DDMMYYHH
- * Where DD=day, MM=month, YY=last 2 digits of year, HH=hour (24-hour format, UTC)
- * Note: Uses UTC time to match Dockerfile's build-time password generation
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 /**
  * Generate default password based on build timestamp
  * Format: username#DDMMYYHH (no literal $ character)

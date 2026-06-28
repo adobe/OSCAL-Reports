@@ -1,8 +1,9 @@
 /**
- * RBAC (Role-Based Access Control) Configuration
- * Defines roles, permissions, and access control rules
+ * Copyright 2025 Adobe. All rights reserved.
+ * Copyright (c) 2025 Mukesh Kesharwani
+ *
+ * Licensed under the MIT License. See LICENSE file for details.
  */
-
 // Define role constants
 export const ROLES = {
   PLATFORM_ADMIN: 'Platform Admin',
