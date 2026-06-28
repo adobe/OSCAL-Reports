@@ -9,8 +9,6 @@ import {
   SENSITIVE_CONFIG_KEYS,
   getByPath,
   setByPath,
-  isMaskedOrEmpty,
-  isSecretPointer,
 } from './sensitiveConfigKeys.js';
 import {
   isCfgEncPointer,

@@ -188,6 +188,7 @@ Development baseline for release **1.7.20**.
 - [`scripts/remove-legacy-os-patch-cron.sh`](scripts/remove-legacy-os-patch-cron.sh) to remove manual OS patch crontab entries after migrating to Patch Manager.
 
 ### Changed
+- Pre_Prod: merge Development (CI consolidation, Quality fixes, deploy script hardening).
 - Terraform variables: `oscal_os_patch_enabled`, `oscal_os_patch_hour`, `oscal_os_patch_reboot_option`, `oscal_os_patch_approval_days`; new outputs for baseline and maintenance windows.
 
 ### Documentation

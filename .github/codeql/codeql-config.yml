@@ -1,0 +1,16 @@
+# CodeQL scope for OSCAL Report Generator (Node.js + shell; minimal Python CI helpers).
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
+name: "OSCAL Reports"
+
+paths:
+  - backend
+  - frontend
+  - scripts
+  - test_cases
+
+paths-ignore:
+  - "**/node_modules/**"
+  - "**/sample_output/**"
+  - "**/dist/**"
+  - "**/build/**"

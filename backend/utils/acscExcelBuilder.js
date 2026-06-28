@@ -136,7 +136,7 @@ function buildPrincipleRowValues(control, isCcm) {
     topic: control.topic || control.title || '',
     description,
     responsibility: control.controlOwner || control.responsibleParty || '',
-    implementation: control.implementation || status,
+    implementation,
     comments,
   };
 }
