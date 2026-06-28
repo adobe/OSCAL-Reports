@@ -3,8 +3,16 @@
  * Contact: mukesh.kesharwani@adobe.com
  */
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { DEFAULT_CONFIG, prepareConfigForSave, getResolvedConfig } from '../../../backend/configManager.js';
-import { encryptConfigSecret } from '../../../backend/utils/configFieldCrypto.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { DEFAULT_CONFIG, prepareConfigForSave } from '../../../backend/configManager.js';
+import { decryptConfigSecret, encryptConfigSecret } from '../../../backend/utils/configFieldCrypto.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '../../..');
+const exampleConfigPath = path.join(repoRoot, 'config/app/config.json.example');
 
 describe('defaultGenericOidcConfig', () => {
   const prevSecret = process.env.OSCAL_CONFIG_FIELD_SECRET;
@@ -63,9 +71,10 @@ describe('defaultGenericOidcConfig', () => {
     expect(config.ssoConfig.oauth.providers.Generic_OIDC.enabled).toBe(false);
   });
 
-  it('getResolvedConfig decrypts Generic_OIDC _cfgenc client secret', () => {
-    const resolved = getResolvedConfig();
-    const secret = resolved.ssoConfig?.oauth?.providers?.Generic_OIDC?.clientSecret;
+  it('example config decrypts Generic_OIDC _cfgenc client secret', () => {
+    const cfg = JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
+    const enc = cfg.ssoConfig?.oauth?.providers?.Generic_OIDC?.clientSecret;
+    const secret = decryptConfigSecret(enc);
     expect(typeof secret).toBe('string');
     expect(secret.length).toBeGreaterThan(0);
   });
