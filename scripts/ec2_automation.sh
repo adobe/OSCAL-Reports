@@ -274,7 +274,8 @@ sync_from_s3_installer_and_restart() {
     sudo cp "${APP_DIR}/scripts/lib/ec2-automation-pass-sync.sh" /opt/oscal/scripts/lib/
   fi
 
-  sudo rm -rf "${APP_DIR}/config" 2>/dev/null || true
+  # Remove stale installer config except catalogues (required for Vite build).
+  sudo find "${APP_DIR}/config" -mindepth 1 -maxdepth 1 ! -name catalogues -exec rm -rf {} + 2>/dev/null || true
 
   if ! sudo -u "$S3_SYNC_CHOWN_USER" bash -c "set -e
     export PATH=\"/usr/bin:/usr/local/bin:\$PATH\"
@@ -282,8 +283,10 @@ sync_from_s3_installer_and_restart() {
     npm install --no-audit --no-fund
     (cd backend && npm install --no-audit --no-fund)
     (cd frontend && npm install --no-audit --no-fund && npm run build)
+    rm -rf backend/public
     mkdir -p backend/public
-    cp -r frontend/dist/* backend/public/ 2>/dev/null || true
+    cp -r frontend/dist/* backend/public/
+    test -s backend/public/index.html
   "; then
     otel_log error "npm install/build after S3 sync failed" "failure" "\"event.action\":\"s3_installer_build\""
     return 1
@@ -293,7 +296,10 @@ sync_from_s3_installer_and_restart() {
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
     app_port="${OSCAL_APP_PORT}"
     sleep 3
-    curl -sf --connect-timeout 3 "http://127.0.0.1:${app_port}/health" >/dev/null 2>&1 || true
+    curl -sf --connect-timeout 3 "http://127.0.0.1:${app_port}/health/ready" >/dev/null 2>&1 || {
+      otel_log error "service restart but /health/ready failed" "failure" "\"event.action\":\"health_ready_check\""
+      return 1
+    }
   fi
   otel_log "info" "S3 installer sync and restart completed" "success" "\"event.action\":\"s3_installer_sync\""
   return 0

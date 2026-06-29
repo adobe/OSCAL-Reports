@@ -280,6 +280,12 @@ variable "alb_port_justification" {
   default     = "OSCAL Report Generator web access HTTPS and HTTP"
 }
 
+variable "alb_browser_user_agent_routing" {
+  description = "When true, ALB listener rules split traffic by User-Agent (Chrome/Firefox vs Edge/Safari) for blue/green canary testing. Set false for production hostnames so all browsers use the same 50/50 (or host-based) weights."
+  type        = bool
+  default     = false
+}
+
 # --- Optional RDS PostgreSQL (Database Integration) ---
 variable "create_rds_postgres" {
   description = "When true, provisions Amazon RDS PostgreSQL in the VPC, enables IAM DB auth, and EC2 user_data bootstraps the app IAM user and OSCAL_DATABASE_* systemd environment variables."

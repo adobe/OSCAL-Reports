@@ -22,6 +22,7 @@ import { syncExportToDatabase } from './database/exportSync.js';
 import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
 import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
 import { initializeSecretsCache, resolveSecretPointer, isAwsSmMode } from './utils/secretsManager.js';
+import { evaluateReadiness } from './utils/healthReady.js';
 import { isSecretPointer } from './utils/sensitiveConfigKeys.js';
 import { isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
 import { coalesceSecretForTest, maskSensitiveConfigForClient } from './utils/resolveStoredSecret.js';
@@ -264,9 +265,18 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
 // Serve static files from the public folder (warning page for backend)
 app.use(express.static('public'));
 
-// Health check endpoint for Docker
+// Health check endpoint for Docker (liveness — process listening)
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'Keekar\'s OSCAL SOA/SSP/CCM Generator' });
+});
+
+// Readiness: SPA, config, and (on EC2) Secrets Manager cache for enabled SSO providers
+app.get('/health/ready', (req, res) => {
+  const result = evaluateReadiness();
+  if (result.ready) {
+    return res.status(200).json({ status: 'ready', checks: result.checks });
+  }
+  return res.status(503).json({ status: 'not_ready', checks: result.checks });
 });
 
 /**

@@ -308,6 +308,17 @@ deploy_maintenance_wait_target_healthy() {
   return 1
 }
 
+# Curl /health/ready and SPA root on the instance (localhost). Requires SSH key path.
+deploy_maintenance_verify_instance_ready() {
+  local ip="$1"
+  local ssh_key="$2"
+  local port="${3:-3020}"
+  local ssh_user="${4:-ec2-user}"
+  [ -z "$ip" ] || [ -z "$ssh_key" ] && return 1
+  ssh -i "$ssh_key" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${ssh_user}@${ip}" \
+    "curl -sf --connect-timeout 5 'http://127.0.0.1:${port}/health/ready' >/dev/null && curl -sf --connect-timeout 5 -o /dev/null 'http://127.0.0.1:${port}/'"
+}
+
 # Restore ALB weights and ASG processes for role.
 deploy_maintenance_exit() {
   local role="${1:?role required}"
