@@ -93,7 +93,8 @@ resource "aws_iam_role_policy" "oscal_ebs_attach" {
         Sid    = "AttachStackTaggedVolumes"
         Effect = "Allow"
         Action = [
-          "ec2:AttachVolume"
+          "ec2:AttachVolume",
+          "ec2:DetachVolume"
         ]
         Resource = [
           "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:volume/*",

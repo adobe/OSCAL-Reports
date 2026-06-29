@@ -1,0 +1,50 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
+# First-boot installer sync + frontend build when SPA is missing (ASG replacement before deploy).
+APP="/opt/oscal/app"
+INDEX="$APP/backend/public/index.html"
+export AWS_DEFAULT_REGION="${aws_region}"
+
+if [ -f "$INDEX" ] && [ -s "$INDEX" ]; then
+  echo "oscal-first-boot: SPA present at $INDEX — skipping S3 installer sync"
+  exit 0
+fi
+
+command -v aws >/dev/null 2>&1 || dnf install -y awscli 2>/dev/null || yum install -y awscli 2>/dev/null || true
+command -v npm >/dev/null 2>&1 || {
+  curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+  dnf install -y nodejs 2>/dev/null || yum install -y nodejs 2>/dev/null
+}
+
+mkdir -p "$APP"
+SVC_GROUP="oscal"
+
+if ! sudo -u ec2-user env AWS_DEFAULT_REGION="${aws_region}" aws s3 sync \
+  "s3://${s3_bucket}/${installer_prefix}/" "$APP/" --delete --region "${aws_region}" \
+  --exclude 'node_modules/**' --exclude '.git/**' --exclude 'config/**' \
+  --include 'config/catalogues/**' --exclude 'terraform/**' \
+  --exclude 'frontend/dist/**' --exclude 'backend/public/**'; then
+  echo "oscal-first-boot: S3 sync failed (deploy may be required)" >&2
+  exit 0
+fi
+
+if ! sudo -u ec2-user bash -c "set -e
+  export PATH=/usr/bin:/usr/local/bin:\$PATH
+  cd '$APP'
+  npm install --no-audit --no-fund
+  (cd backend && npm install --no-audit --no-fund)
+  (cd frontend && npm install --no-audit --no-fund && npm run build)
+  rm -rf backend/public
+  mkdir -p backend/public
+  cp -r frontend/dist/* backend/public/
+  test -s backend/public/index.html
+"; then
+  echo "oscal-first-boot: npm build failed (deploy required)" >&2
+  exit 0
+fi
+
+chown -R ec2-user:$SVC_GROUP /opt/oscal 2>/dev/null || true
+echo "oscal-first-boot: SPA built at $INDEX"
