@@ -32,11 +32,12 @@
 
 | Document | Description |
 |----------|-------------|
-| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Dev/QA/Pre_Prod → main), dual remotes (Adobe + personal), GitHub accounts, PR checklist |
+| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Quality → Pre_Prod → Prod), dual remotes (Adobe + personal), GitHub accounts, PR checklist |
+| [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md) | **Portable:** personal → corporate mirror automation, version-check CI, secrets, cutover — copy to other projects for Cursor agents |
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
-**Current release:** **1.7.23** (2026-06-29) — Dependabot dependency updates (#45–#61), CI/test stabilization, version alignment. See [CHANGELOG.md](CHANGELOG.md#1723---2026-06-29).
+**Current release:** **1.7.24** — Quality mirror sync (personal → Adobe), Adobe `Development` retired, staging via PR. See [CHANGELOG.md](CHANGELOG.md) and [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md).
 
 ---
 
