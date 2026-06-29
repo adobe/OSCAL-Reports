@@ -652,6 +652,8 @@ Develop on **personal** first: shell validation and Docker publish do not wait o
 
 #### Quality mirror (personal → Adobe)
 
+**Portable copy for other projects:** [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md)
+
 | Branch | Repo | Role |
 |--------|------|------|
 | `Quality` | Personal (`keekar2022/OSCAL-Reports`) | **Authoritative** — all feature work and Dependabot merges |
