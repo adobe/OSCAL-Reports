@@ -286,11 +286,13 @@ In the console: **Fleet Manager** → instances **Online**; **Patch Manager** �
 **After apply**
 
 1. **Outputs:** `terraform output` (via wrapper) — `oscal_green_instance_id`, `oscal_*_public_ip` / `private_ip` should be non-null once instances are **running** (ASG may take a few minutes).
-2. **ALB targets:** EC2 → Target Groups → Green/Blue → targets **healthy** (HTTP `/health` on `oscal_app_port`, default 3020, per `alb.tf`).
+2. **ALB targets:** EC2 → Target Groups → Green/Blue → targets **healthy** (HTTP `/health/ready` on `oscal_app_port`, default 3020, per `alb.tf`).
 3. **SSH / deploy:** `./scripts/deploy-to-ec2.sh` (or `--both`) so **`/opt/oscal/app`** matches your repo; restores full build after a fresh instance.
 4. **Data:** If new persistent volumes are **empty**, seed **`/opt/oscal/data`** from S3 `config/<green|blue>/` or snapshots before expecting the app to serve traffic.
 5. **SSM:** Systems Manager → **Run Command** / **Compliance** — association on document `oscal_post_boot_ssm_document_name` (output) should show successful invocations on tagged instances after ~30 minutes (or run the document manually once).
-6. **Persistence:** On a **replacement** test (optional), terminate one instance in the ASG (console) and confirm a new instance attaches the **same** gp3 data volume and service recovers (only when `oscal_persistent_ebs_enabled` is true).
+6. **Persistence:** On a **replacement drill** (recommended quarterly), terminate one instance in the ASG and confirm: the same gp3 volume reattaches, `/health/ready` returns 200, SSO login-providers lists expected IdPs, and `./scripts/ci/post-deploy-smoke.sh ssh:<ip> 3020` passes (only when `oscal_persistent_ebs_enabled` is true).
+
+**Production ALB policy:** Keep `alb_browser_user_agent_routing = false` on the production hostname. Browser-based canary routing must not be enabled on `oscal.amsgovcloud.com.au` — it caused Safari/Edge to hit a broken Blue instance while Chrome used Green.
 
 **Quick tests**
 
@@ -1273,8 +1275,8 @@ Use a **strict layout** so config is never confused with app code:
 
 - **Green and Blue:** port **3020** (same on both EC2 instances; `oscal_app_port` in Terraform, `OSCAL_APP_PORT` in deploy scripts).
 - Green and Blue differ by **role** (`DEPLOYMENT_ROLE`, ALB target group, S3 log prefix `logs/green` vs `logs/blue`), not by TCP port. Config and users are shared via `config/active/` on S3; **golden restore** uses **`config/default/`** (config.default).
-- **Health:** ALB checks `http://<target>:3020/health`. After deploy, the script waits ~20s and retries up to 5 times. If health fails, it prints recent `journalctl -u oscal-reporter.service` for debugging.
-- **Common causes of failure:** Bad or missing config/users in `/opt/oscal/data`, missing or broken Pass vault, wrong PORT in the unit file (deploy forces `3020`).
+- **Health:** ALB checks `http://<target>:3020/health/ready` (SPA `index.html`, valid config, and SM secrets when enabled). Liveness probe `/health` remains for process-up checks. After deploy, the script waits ~20s and retries `/health/ready` up to 5 times, then runs `scripts/ci/post-deploy-smoke.sh`.
+- **Common causes of failure:** Missing `backend/public/index.html` (frontend build failed), bad config in `/opt/oscal/data`, empty SM bundle vs `_sm` pointers, missing `OSCAL_SECRETS_MODE` in systemd after ASG replacement.
 
 ---
 
@@ -1284,7 +1286,9 @@ Use a **strict layout** so config is never confused with app code:
   - SSH and run:  
     `sudo systemctl status oscal-reporter.service`  
     `sudo journalctl -u oscal-reporter.service -n 50 --no-pager`  
-  - From repo root, SSH to the instance (e.g. `./scripts/ssh-ec2.sh blue`) and inspect the same items: `systemctl`, `journalctl`, disk, `sudo crontab -u svc_ams-oscal -l`, `/opt/oscal/scripts/ec2_automation.env`, `/opt/oscal/app/logs/`, and `curl -sf http://127.0.0.1:3020/health` (Green or Blue).
+  - From repo root, SSH to the instance (e.g. `./scripts/ssh-ec2.sh blue`) and inspect: `systemctl`, `journalctl`, disk, cron, `/opt/oscal/app/backend/public/index.html`, `curl -sf http://127.0.0.1:3020/health/ready`, `curl -sf -o /dev/null http://127.0.0.1:3020/`, and `./scripts/ci/post-deploy-smoke.sh ssh:<ip> 3020`.
+- **502 Bad Gateway / browser-specific Not Found:** Often ASG replaced an instance without a successful frontend build on the new target, or ALB browser User-Agent rules sent Safari/Edge to an unhealthy Blue. Check `./scripts/debug/alb-target-health.sh`; verify both targets healthy on `/health/ready`. Do not enable `alb_browser_user_agent_routing` on production.
+- **SSO missing after instance replacement:** Run `./scripts/deploy-to-ec2.sh --both` so systemd gets `OSCAL_SECRETS_MODE`, `OSCAL_SECRETS_MANAGER_ARN`, and `SESSION_SECRET` drop-in. Run `./scripts/debug/diagnose-okta-on-ec2.sh` (calls `probe-sso-secrets.mjs`). Restore config from `config/default/` if EBS data was empty.
 - **Blue only – disable cron and fix env now (one-off):**  
   `./scripts/debug/fix-blue-no-cron.sh`  
   (or with explicit IP). This sets `ENABLE_S3_INSTALLER_UPDATE=false` and removes the ec2_automation cron on Blue.
@@ -1303,11 +1307,12 @@ Use a **strict layout** so config is never confused with app code:
 
 | Script | Purpose |
 |--------|--------|
-| `scripts/deploy-to-ec2.sh` | Full deploy to Green/Blue: code, config seed, cron, systemd, health check. |
+| `scripts/deploy-to-ec2.sh` | Full deploy to Green/Blue: code, config seed, cron, systemd, `/health/ready` + smoke checks. |
+| `scripts/ci/post-deploy-smoke.sh` | Curl `/`, `/health/ready`, `/health`, optional SSO providers (use `ssh:IP` from laptop). |
 | `scripts/ec2_automation.sh` | Backup to S3; optional sync from `installer/` + build + restart (every N cron runs). Runs from cron on Green by default. |
 | `scripts/reactivate-admin.sh` | Reactivate admin user in `users.json`. Use repo path or pass path; works with `/opt/oscal/data/users.json`. |
 | `scripts/debug/fix-blue-no-cron.sh` | One-off: set ENABLE_S3_INSTALLER_UPDATE=false and remove ec2_automation cron on Blue. |
-| `scripts/debug/diagnose-okta-on-ec2.sh` | Diagnose Okta SSO on EC2 (config paths, tokens). |
+| `scripts/debug/diagnose-okta-on-ec2.sh` | Diagnose SSO on EC2 (`probe-sso-secrets.mjs`, SM env, legacy pass). |
 | `scripts/debug/alb-target-health.sh` | Print ALB Green/Blue target health via AWS CLI. |
 | `scripts/debug/restore-blue-config.sh` | Copy config/users from Green to Blue (e.g. after replacing Blue). |
 | `scripts/debug/migrate-config-secrets-to-sm.sh` | One-time: migrate plaintext / `_pass` secrets in config to AWS SM + `_sm` pointers on EC2. |
@@ -1334,7 +1339,7 @@ Use a **strict layout** so config is never confused with app code:
 ### 10. ALB and timeouts
 
 - ALB **idle timeout** should be at least **300 seconds** (e.g. in `terraform/alb.tf`) to avoid 504 on long-running requests (e.g. AI, large reports).
-- If you see **502 Bad Gateway** after deploy, wait 1–2 minutes for target health checks to pass, then retry the ALB URL. Default route is to Blue (3020).
+- If you see **502 Bad Gateway** after deploy, wait 1–2 minutes for target health checks (`/health/ready`) to pass, then retry the ALB URL.
 
 ---
 

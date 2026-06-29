@@ -28,6 +28,17 @@ locals {
   # SSM optional release sync (prefix inside logs bucket; trimmed for IAM and scripts)
   oscal_ssm_release_s3_prefix_trimmed = var.oscal_ssm_release_s3_prefix != null ? trimsuffix(trimprefix(var.oscal_ssm_release_s3_prefix, "/"), "/") : ""
   oscal_ssm_release_s3_read           = local.oscal_ssm_release_s3_prefix_trimmed != ""
+
+  secrets_bootstrap_fragment = var.oscal_pass_secrets_sync_enabled ? templatefile("${path.module}/templates/oscal-secrets-bootstrap.sh.tftpl", {
+    sm_arn     = aws_secretsmanager_secret.oscal_pass_sync[0].arn
+    aws_region = var.aws_region
+  }) : ""
+
+  first_boot_install_fragment = !var.run_oscal_via_docker ? templatefile("${path.module}/templates/oscal-first-boot-install.sh.tftpl", {
+    s3_bucket        = aws_s3_bucket.logs.id
+    installer_prefix = "installer"
+    aws_region       = var.aws_region
+  }) : ""
 }
 
 locals {
@@ -110,16 +121,23 @@ Environment=NODE_ENV=production
 Environment=PORT=PORT_PLACEHOLDER
 Environment=CONFIG_PATH=DATA_DIR_PLACEHOLDER/config.json
 Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
+SM_ENV_PLACEHOLDER
 
 [Install]
 WantedBy=multi-user.target
 SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
+sed -i '/^SM_ENV_PLACEHOLDER$/d' /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
+${var.oscal_pass_secrets_sync_enabled ? "sed -i \"/Environment=USERS_PATH=/a Environment=OSCAL_SECRETS_MODE=aws-sm\" /etc/systemd/system/oscal-reporter.service\nsed -i \"/Environment=OSCAL_SECRETS_MODE=/a Environment=OSCAL_SECRETS_MANAGER_ARN=${aws_secretsmanager_secret.oscal_pass_sync[0].arn}\" /etc/systemd/system/oscal-reporter.service" : "# SM env skipped (oscal_pass_secrets_sync_enabled=false)"}
+
+${local.secrets_bootstrap_fragment}
 
 ${local.rds_bootstrap_fragment}
 
 ${local.bedrock_bootstrap_fragment}
+
+${local.first_boot_install_fragment}
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
@@ -174,16 +192,23 @@ Environment=NODE_ENV=production
 Environment=PORT=PORT_PLACEHOLDER
 Environment=CONFIG_PATH=DATA_DIR_PLACEHOLDER/config.json
 Environment=USERS_PATH=DATA_DIR_PLACEHOLDER/users.json
+SM_ENV_PLACEHOLDER
 
 [Install]
 WantedBy=multi-user.target
 SVC
 sed -i "s|PORT_PLACEHOLDER|$PORT|g; s|DATA_DIR_PLACEHOLDER|$DATA_DIR|g; s|SVC_USER_PLACEHOLDER|$SVC_USER|g; s|SVC_GROUP_PLACEHOLDER|$SVC_GROUP|g" /etc/systemd/system/oscal-reporter.service
 sed -i "/Environment=USERS_PATH=/a Environment=AWS_REGION=${var.aws_region}" /etc/systemd/system/oscal-reporter.service
+sed -i '/^SM_ENV_PLACEHOLDER$/d' /etc/systemd/system/oscal-reporter.service 2>/dev/null || true
+${var.oscal_pass_secrets_sync_enabled ? "sed -i \"/Environment=USERS_PATH=/a Environment=OSCAL_SECRETS_MODE=aws-sm\" /etc/systemd/system/oscal-reporter.service\nsed -i \"/Environment=OSCAL_SECRETS_MODE=/a Environment=OSCAL_SECRETS_MANAGER_ARN=${aws_secretsmanager_secret.oscal_pass_sync[0].arn}\" /etc/systemd/system/oscal-reporter.service" : "# SM env skipped (oscal_pass_secrets_sync_enabled=false)"}
+
+${local.secrets_bootstrap_fragment}
 
 ${local.rds_bootstrap_fragment}
 
 ${local.bedrock_bootstrap_fragment}
+
+${local.first_boot_install_fragment}
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service

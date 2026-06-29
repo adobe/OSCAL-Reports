@@ -128,6 +128,10 @@ export function isSecretCached(entryKey) {
   return cache.has(String(entryKey || '').trim());
 }
 
+export function isSecretsCacheLoaded() {
+  return cacheLoaded;
+}
+
 /**
  * Merge partial entries into the SM bundle (CAS). Updates in-memory cache on success.
  * @param {Record<string, string>} partialEntries
