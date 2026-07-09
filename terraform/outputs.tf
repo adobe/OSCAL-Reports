@@ -161,6 +161,46 @@ output "oscal_blue_autoscaling_group_name" {
   value       = aws_autoscaling_group.oscal_blue.name
 }
 
+output "oscal_traffic_mode" {
+  description = "Blue/Green traffic mode: active_passive or active_active."
+  value       = var.oscal_traffic_mode
+}
+
+output "oscal_active_role" {
+  description = "Primary color when active_passive (production ALB weight)."
+  value       = var.oscal_active_role
+}
+
+output "oscal_passive_role" {
+  description = "Standby color when active_passive (scale-to-zero when idle)."
+  value       = var.oscal_passive_role
+}
+
+output "oscal_active_autoscaling_group_name" {
+  description = "ASG name for the active (primary) color when active_passive."
+  value       = var.oscal_active_role == "blue" ? aws_autoscaling_group.oscal_blue.name : aws_autoscaling_group.oscal_green.name
+}
+
+output "oscal_passive_autoscaling_group_name" {
+  description = "ASG name for the passive (standby) color when active_passive."
+  value       = var.oscal_passive_role == "blue" ? aws_autoscaling_group.oscal_blue.name : aws_autoscaling_group.oscal_green.name
+}
+
+output "oscal_traffic_mode_parameter_name" {
+  description = "SSM parameter storing traffic mode: steady, deploy_green, or failover."
+  value       = local.oscal_standby_enabled ? aws_ssm_parameter.oscal_traffic_mode[0].name : null
+}
+
+output "oscal_passive_idle_shutdown_hours" {
+  description = "Hours of no passive TG traffic before idle shutdown automation."
+  value       = var.oscal_passive_idle_shutdown_hours
+}
+
+output "oscal_deploy_edge_canary_enabled" {
+  description = "Whether deploy_green mode may route Edge User-Agent to passive Green."
+  value       = var.oscal_deploy_edge_canary_enabled
+}
+
 
 output "oscal_os_patch_baseline_id" {
   description = "SSM patch baseline ID for OSCAL Amazon Linux 2023 (null when oscal_os_patch_enabled is false)"
@@ -180,6 +220,38 @@ output "oscal_os_patch_group_green" {
 output "oscal_os_patch_maintenance_window_ids" {
   description = "SSM maintenance window IDs for staggered Blue/Green OS patching"
   value       = var.oscal_os_patch_enabled ? { for k, w in aws_ssm_maintenance_window.oscal_patch : k => w.id } : {}
+}
+
+output "oscal_resolved_ami_id" {
+  description = "AMI ID resolved for OSCAL Green/Blue launch templates (Image Factory EMR dynamic lookup, pin, or fallback)"
+  value       = local.oscal_ami_id
+}
+
+output "oscal_resolved_ami_name" {
+  description = "AMI name for oscal_resolved_ami_id when available from Image Factory lookup"
+  value       = coalesce(
+    try(local.image_factory_ami_name, null),
+    try(data.aws_ami.oscal_resolved[0].name, null),
+  )
+}
+
+data "aws_ami" "oscal_resolved" {
+  count = local.oscal_ami_id_ok ? 1 : 0
+
+  filter {
+    name   = "image-id"
+    values = [local.oscal_ami_id]
+  }
+}
+
+output "oscal_os_patch_weekly_scan_association_id" {
+  description = "SSM association ID for weekly patch Scan (null when disabled)"
+  value       = var.oscal_os_patch_enabled && var.oscal_os_patch_weekly_scan_enabled ? aws_ssm_association.oscal_patch_weekly_scan[0].association_id : null
+}
+
+output "oscal_os_patch_on_launch_rule_name" {
+  description = "EventBridge rule name for patch-on-launch (null when disabled)"
+  value       = var.oscal_os_patch_enabled && var.oscal_os_patch_on_launch_enabled ? aws_cloudwatch_event_rule.oscal_asg_launch_patch[0].name : null
 }
 
 output "oscal_post_boot_ssm_document_name" {
@@ -277,6 +349,6 @@ output "bedrock_cross_account_configured" {
 }
 
 output "bedrock_systemd_env_configured" {
-  description = "True when BEDROCK_ASSUME_ROLE_ARN and BEDROCK_EXTERNAL_ID are injected via user_data/systemd (requires bedrock_external_id in tfvars)"
-  value       = nonsensitive(local.bedrock_cross_account_ready)
+  description = "True when BEDROCK_ASSUME_ROLE_ARN (and optional BEDROCK_EXTERNAL_ID) are injected via user_data/systemd on new instances"
+  value       = nonsensitive(local.bedrock_assume_configured && var.bedrock_inject_systemd_env)
 }

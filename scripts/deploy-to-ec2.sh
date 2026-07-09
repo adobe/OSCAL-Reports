@@ -8,7 +8,8 @@
 # deploy_one runs application steps (S3 sync, npm build, etc.). OS package update is skipped by default during deploy
 # (DEPLOY_SKIP_OS_PACKAGE_UPDATE=1) to avoid kernel reboot and ASG instance replacement mid-deploy.
 # Default / --blue / --both / --*-only: each instance runs aws s3 sync from s3://<bucket>/installer/ (no upload from this laptop).
-# Use --update-s3 to upload this repo to installer/ (same excludes as legacy rsync), then exit without SSH. After that, a normal deploy
+# Use --update-s3 to upload this repo to installer/ (same excludes as legacy rsync), then exit without SSH. Also writes
+# s3://<bucket>/installer/.oscal-bedrock-cross-account.json when cross-account Bedrock is configured in Terraform.
 # pulls that snapshot into /opt/oscal/app, npm install/build, copies scripts from the synced tree to /opt/oscal/scripts, restarts oscal-reporter.
 # Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount). Golden restore: s3://<bucket>/config/default/ (config.default) via publish-config-default-to-s3.sh / restore-config-from-s3-default.sh. logs/ in the bucket is for
 # runtime log backup (logs/green, logs/blue), not application code—installer/ holds deployable bits.
@@ -185,6 +186,7 @@ sync_repo_to_s3_installer() {
   done
   aws s3 sync "$REPO_ROOT/" "s3://${bucket}/${INSTALLER_PREFIX}/" --region "$region" --delete "${exargs[@]}"
   write_installer_manifest_to_s3 "$bucket" "$region"
+  write_bedrock_cross_account_manifest_to_s3 "$bucket" "$region"
   print_success "Uploaded repo to s3://${bucket}/${INSTALLER_PREFIX}/"
 }
 
@@ -214,6 +216,42 @@ write_installer_manifest_to_s3() {
   aws s3 cp "$tmp" "s3://${bucket}/${INSTALLER_PREFIX}/.installer-build.json" --region "$region"
   rm -f "$tmp"
   print_info "Wrote s3://${bucket}/${INSTALLER_PREFIX}/.installer-build.json for instance-side verify after pull."
+}
+
+# Write s3://bucket/installer/.oscal-bedrock-cross-account.json for ASG first-boot / cron self-heal.
+write_bedrock_cross_account_manifest_to_s3() {
+  local bucket="$1"
+  local region="$2"
+  local tmp ts
+  tmp=$(mktemp)
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  load_bedrock_deploy_env
+  if [ -z "${BEDROCK_ASSUME_ROLE_ARN:-}" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      jq -n \
+        --arg ts "$ts" \
+        '{schema: 1, enabled: false, bedrock_auth_mode: "iam-role", assume_role_arn: "", external_id: "", published_at: $ts}' > "$tmp"
+    else
+      printf '{"schema":1,"enabled":false,"bedrock_auth_mode":"iam-role","assume_role_arn":"","external_id":"","published_at":"%s"}\n' "$ts" > "$tmp"
+    fi
+    aws s3 cp "$tmp" "s3://${bucket}/${INSTALLER_PREFIX}/.oscal-bedrock-cross-account.json" --region "$region"
+    rm -f "$tmp"
+    print_info "Wrote disabled Bedrock manifest to s3://${bucket}/${INSTALLER_PREFIX}/.oscal-bedrock-cross-account.json (cross-account not configured in Terraform)."
+    return 0
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq -n \
+      --arg ts "$ts" \
+      --arg arn "$BEDROCK_ASSUME_ROLE_ARN" \
+      --arg eid "${BEDROCK_EXTERNAL_ID:-}" \
+      '{schema: 1, enabled: true, bedrock_auth_mode: "iam-role", assume_role_arn: $arn, external_id: $eid, published_at: $ts}' > "$tmp"
+  else
+    printf '{"schema":1,"enabled":true,"bedrock_auth_mode":"iam-role","assume_role_arn":"%s","external_id":"%s","published_at":"%s"}\n' \
+      "$BEDROCK_ASSUME_ROLE_ARN" "${BEDROCK_EXTERNAL_ID:-}" "$ts" > "$tmp"
+  fi
+  aws s3 cp "$tmp" "s3://${bucket}/${INSTALLER_PREFIX}/.oscal-bedrock-cross-account.json" --region "$region"
+  rm -f "$tmp"
+  print_success "Wrote Bedrock cross-account manifest to s3://${bucket}/${INSTALLER_PREFIX}/.oscal-bedrock-cross-account.json"
 }
 
 # Resolve SSH key into SSH_KEY (from file or from Pass). Call from main; do not use in subshell.

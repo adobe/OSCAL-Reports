@@ -5,8 +5,10 @@
 
 # Application Load Balancer: Green and Blue target groups (same app port on both instances).
 # Health check: /health/ready on var.oscal_app_port (default 3020) — SPA, config, secrets.
-# Optional traffic by User-Agent (alb_browser_user_agent_routing): Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11). Disabled by default for production.
-# Default (including curl probe): 50% green, 50% blue. Host-based rules (green/blue hostnames) use priority 100/101 when set.
+# oscal_traffic_mode active_passive (default): primary color 100% / passive 0%; passive ASG scale-to-zero when idle.
+# oscal_traffic_mode active_active: default 50/50 Green/Blue (legacy).
+# Optional User-Agent canary (alb_browser_user_agent_routing): disabled in production. Deploy Edge→Green rule managed by scripts (deploy_green mode).
+# Host-based rules (green/blue hostnames) use priority 100/101 when set.
 # idle_timeout 300s avoids 504 Gateway Timeout when backend takes >60s (e.g. AI/report generation).
 # PCL custom-elb-restricted-ports-check: ALB security group allows only 443 (no port 80). Enable HTTPS (create_alb_certificate + alb_certificate_ready or alb_ssl_certificate_arn) so the ALB is reachable.
 # When cert is not ready: HTTP listener on 80 exists for redirect but SG does not open 80; use HTTPS listener (443) once cert is Issued.
@@ -17,6 +19,11 @@ locals {
   # ELB target group name_prefix max 6 chars (AWS); suffix is added by Terraform/AWS.
   alb_tg_prefix_green = "aogrn-"
   alb_tg_prefix_blue  = "aoblu-"
+
+  alb_active_passive        = var.oscal_traffic_mode == "active_passive"
+  alb_stickiness_duration   = local.alb_active_passive ? 3600 : 86400
+  alb_default_green_weight  = local.alb_active_passive ? (var.oscal_active_role == "green" ? 100 : 0) : 50
+  alb_default_blue_weight   = local.alb_active_passive ? (var.oscal_active_role == "blue" ? 100 : 0) : 50
 }
 
 # AMS PCL: ALB with port exposure must be tagged Adobe:PublicPorts (space-separated ports) and Adobe:PortJustification.
@@ -107,15 +114,15 @@ resource "aws_lb_listener" "http_forward" {
     forward {
       target_group {
         arn    = aws_lb_target_group.green.arn
-        weight = 50
+        weight = local.alb_default_green_weight
       }
       target_group {
         arn    = aws_lb_target_group.blue.arn
-        weight = 50
+        weight = local.alb_default_blue_weight
       }
       stickiness {
         enabled  = true
-        duration = 86400
+        duration = local.alb_stickiness_duration
       }
     }
   }
@@ -288,15 +295,15 @@ resource "aws_lb_listener" "https" {
     forward {
       target_group {
         arn    = aws_lb_target_group.green.arn
-        weight = 50
+        weight = local.alb_default_green_weight
       }
       target_group {
         arn    = aws_lb_target_group.blue.arn
-        weight = 50
+        weight = local.alb_default_blue_weight
       }
       stickiness {
         enabled  = true
-        duration = 86400
+        duration = local.alb_stickiness_duration
       }
     }
   }
