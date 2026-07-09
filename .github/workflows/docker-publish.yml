@@ -24,8 +24,8 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    # Only run on personal repository, not Adobe repository
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    # Only run on adobe/OSCAL-Reports
+    if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: read
       packages: write
@@ -93,7 +93,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=OSCAL Report Generator
             org.opencontainers.image.description=Generate OSCAL-compliant security assessment reports
-            org.opencontainers.image.vendor=keekar2022
+            org.opencontainers.image.vendor=adobe
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
       
       - name: 🔨 Build and push Docker image
@@ -145,8 +145,8 @@ jobs:
     name: Verify Published Image
     runs-on: ubuntu-latest
     needs: build-and-push
-    # Only run on personal repository, not Adobe repository
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    # Only run on adobe/OSCAL-Reports
+    if: github.repository == 'adobe/OSCAL-Reports'
     
     steps:
       - name: 📥 Pull and verify image

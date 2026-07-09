@@ -3,6 +3,8 @@ concept: Mukesh Kesharwani
 contact: mukesh.kesharwani@adobe.com
 -->
 
+> **DEPRECATED — July 2026.** OSCAL Report Generator now uses a single canonical repository: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports). See [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md#single-repository-setup-guide) for the current workflow. This playbook is retained for historical reference only.
+
 # Dual-Repo Quality Mirror Playbook
 
 Portable guide for implementing **personal authoritative development → corporate mirror → staging → production** across two GitHub repositories. Written so a Cursor agent (or engineer) can apply the same pattern in another project by replacing placeholders and following the checklists.

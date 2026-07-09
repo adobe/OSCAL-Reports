@@ -2,7 +2,7 @@
 
 **OSCAL Report Generator: a web application for generating compliance documentation from OSCAL catalogs. This guide covers Docker Hub publishing, setup, and usage.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/adobe/OSCAL-Reports/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/keekar/oscal_reports)](https://hub.docker.com/r/keekar/oscal_reports)
 
 ---
@@ -1020,8 +1020,8 @@ When modifying workflow:
 
 ### Documentation
 
-- **GitHub Repository**: https://github.com/keekar2022/OSCAL-Reports
-- **Full Documentation**: https://github.com/keekar2022/OSCAL-Reports/tree/main/docs
+- **GitHub Repository**: https://github.com/adobe/OSCAL-Reports
+- **Full Documentation**: https://github.com/adobe/OSCAL-Reports/tree/main/docs
 - **Docker Hub Page**: https://hub.docker.com/r/keekar/oscal_reports
 
 ### Getting Help
@@ -1059,9 +1059,9 @@ curl http://localhost:3020/health       # Check health
 |----------|-----|
 | **Docker Hub** | https://hub.docker.com/r/keekar/oscal_reports |
 | **Tags** | https://hub.docker.com/r/keekar/oscal_reports/tags |
-| **GitHub Actions** | https://github.com/keekar2022/OSCAL-Reports/actions |
-| **Issues** | https://github.com/keekar2022/OSCAL-Reports/issues |
-| **Documentation** | https://github.com/keekar2022/OSCAL-Reports/tree/main/docs |
+| **GitHub Actions** | https://github.com/adobe/OSCAL-Reports/actions |
+| **Issues** | https://github.com/adobe/OSCAL-Reports/issues |
+| **Documentation** | https://github.com/adobe/OSCAL-Reports/tree/main/docs |
 
 ---
 
@@ -1076,13 +1076,13 @@ curl http://localhost:3020/health       # Check health
 
 ## Contributing
 
-Contributions are welcome. Visit the [GitHub repository](https://github.com/keekar2022/OSCAL-Reports) to report bugs, submit feature requests, contribute code via pull requests, or improve documentation.
+Contributions are welcome. Visit the [GitHub repository](https://github.com/adobe/OSCAL-Reports) to report bugs, submit feature requests, contribute code via pull requests, or improve documentation.
 
 ---
 
 ## License
 
-This project is licensed under the **MIT License**. See [LICENSE](https://github.com/keekar2022/OSCAL-Reports/blob/main/LICENSE) for details.
+This project is licensed under the **MIT License**. See [LICENSE](https://github.com/adobe/OSCAL-Reports/blob/main/LICENSE) for details.
 
 ---
 

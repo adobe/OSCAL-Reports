@@ -1,0 +1,45 @@
+# Weekly AMI drift check: deployed Image Factory EMR AMI vs newest candidate (≤7-day SLA).
+# Runs on adobe/OSCAL-Reports schedule; requires AWS credentials secret for aws4403 account.
+name: AMI Drift Check
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  ami-drift:
+    name: Check OSCAL EMR AMI age
+    runs-on: ubuntu-latest
+    if: github.repository == 'adobe/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS4403_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS4403_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS4403_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Terraform init (aws4403)
+        working-directory: terraform/envs/aws4403
+        run: terraform init -input=false
+
+      - name: Run AMI drift check
+        working-directory: terraform/envs/aws4403
+        env:
+          TERRAFORM_DIR: ${{ github.workspace }}/terraform/envs/aws4403
+          MAX_AMI_AGE_DAYS: "7"
+          INSTANCE_ARCHITECTURE: x86_64
+        run: |
+          bash "${{ github.workspace }}/scripts/check-ami-drift.sh"

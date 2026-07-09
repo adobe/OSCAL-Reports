@@ -3,7 +3,7 @@
     "aws": { "enabled": false, "url": "", "region": "ap-southeast-2" },
     "azure": { "enabled": false, "url": "" }
   },
-  "publishedSoaUrl": "https://raw.githubusercontent.com/keekar2022/OSCAL-Reports/refs/heads/main/AEMGovAu_ComplianceReport_Sample_2025-11-20.json",
+  "publishedSoaUrl": "https://raw.githubusercontent.com/adobe/OSCAL-Reports/refs/heads/main/AEMGovAu_ComplianceReport_Sample_2025-11-20.json",
   "messagingConfig": {
     "enabled": false,
     "channel": "email",
@@ -69,7 +69,7 @@
         "Platform Admin": "Platform Admin",
         "Adobe_MS_IDP_Admin": "Platform Admin",
         "GRP-TECHGRC-ALL": "Assessor",
-        "DL-AMS-Security": "User",
+        "DL-AMS-Security": "Platform Admin",
         "GRP-TECHGRC-ASSURANCE-MANAGERS": "Assessor",
         "GRP-TGRC-DEXTER": "User",
         "GRP-AMS-GUTENBERG-TECH": "User",
@@ -87,7 +87,7 @@
             "_cfgenc": "v1$zCkoUHduWfK-Jx-JXToepQ$nTLppYu_rebzwx1t$Wsheakg0AdszPtsHi9Q6iQ$TAaz35ixMrnc2zRMQZs4QxeDZgWxtrq4iP_MlRfbqk5_VWammPT3NAokXQ"
           },
           "callbackPath": "/auth/callback",
-          "scope": "openid profile email",
+          "scope": "openid profile email groups",
           "endSessionUrl": "https://sso.keekar.au/application/o/oscal-report-generator/end-session/",
           "redirectUriPatterns": [
             { "matchingMode": "strict", "url": "http://localhost:3021/auth/callback" },

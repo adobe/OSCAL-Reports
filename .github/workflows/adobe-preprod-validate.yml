@@ -1,6 +1,4 @@
-# Adobe org only: merges former version-check + pre-release-validation into ONE workflow per
-# push/PR so GitHub queues a single run (less wall-clock queue + one less duplicate checkout wave).
-# Personal fork: all jobs skipped (github.repository guard on each job).
+# Adobe org: merged Pre_Prod/main validation for adobe/OSCAL-Reports.
 name: Adobe PreProd Validation
 
 on:
@@ -16,7 +14,7 @@ jobs:
   version-check:
     name: Validate Version Increment
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: write
       pull-requests: write
@@ -140,7 +138,7 @@ jobs:
   changelog-check:
     name: Validate Changelog Updated
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: read
       pull-requests: write
@@ -197,7 +195,7 @@ jobs:
   package-consistency:
     name: Validate Package.json Consistency
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -217,7 +215,7 @@ jobs:
   yaml-validation:
     name: Validate Workflow YAML
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -240,7 +238,7 @@ jobs:
   tar-syntax-check:
     name: Validate Tar Commands
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -282,7 +280,7 @@ jobs:
   eslint-config-check:
     name: Validate ESLint Configuration
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -297,7 +295,7 @@ jobs:
   documentation-check:
     name: Check Documentation Files
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -320,7 +318,7 @@ jobs:
       - tar-syntax-check
       - eslint-config-check
       - documentation-check
-    if: always() && github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: always() && github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📊 Summary
@@ -338,7 +336,7 @@ jobs:
     name: Auto-create Version Tag
     runs-on: ubuntu-latest
     needs: [version-check, changelog-check, package-consistency]
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports' && github.event_name == 'push' && github.ref == 'refs/heads/Pre_Prod'
+    if: github.repository == 'adobe/OSCAL-Reports' && github.event_name == 'push' && github.ref == 'refs/heads/Pre_Prod'
     permissions:
       contents: write
 

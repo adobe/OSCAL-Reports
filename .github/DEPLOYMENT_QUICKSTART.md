@@ -174,7 +174,7 @@ gh run view <run-id> --log
 docker images | grep oscal
 
 # Remove old images
-docker image prune -a --filter "label=org.opencontainers.image.source=https://github.com/AdobeManagedServices/OSCAL-Reports"
+docker image prune -a --filter "label=org.opencontainers.image.source=https://github.com/adobe/OSCAL-Reports"
 ```
 
 ---
