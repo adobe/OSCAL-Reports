@@ -20,9 +20,9 @@ name: Snyk Security
 
 on:
   push:
-    branches: ["Pre_Prod", "Prod"]
+    branches: ["Quality", "Prod"]
   pull_request:
-    branches: ["Pre_Prod"]
+    branches: ["Quality"]
 
 permissions:
   contents: read

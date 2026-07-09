@@ -11,7 +11,7 @@ on:
     branches:
       - Quality
       - Quality_Test
-      - Pre_Prod
+      - Quality
       - main
     paths:
       - '**.sh'
@@ -21,7 +21,7 @@ on:
     branches:
       - Quality
       - Quality_Test
-      - Pre_Prod
+      - Quality
     paths:
       - '**.sh'
       - '.github/workflows/**.yml'
