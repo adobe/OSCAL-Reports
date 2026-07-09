@@ -32,12 +32,11 @@
 
 | Document | Description |
 |----------|-------------|
-| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Quality → Pre_Prod → Prod), dual remotes (Adobe + personal), GitHub accounts, PR checklist |
-| [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md) | **Portable:** personal → corporate mirror automation, version-check CI, secrets, cutover — copy to other projects for Cursor agents |
+| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Quality → Pre_Prod → main), single remote (adobe/OSCAL-Reports), GitHub auth, PR checklist |
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
-**Current release:** **1.7.24** — Quality mirror sync (personal → Adobe), Adobe `Development` retired, staging via PR. See [CHANGELOG.md](CHANGELOG.md) and [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md).
+**Current release:** see [CHANGELOG.md](CHANGELOG.md). Canonical repository: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports). Integration branch: **Quality**.
 
 ---
 
@@ -46,7 +45,7 @@
 | Document | Description |
 |----------|-------------|
 | [AWS_OPERATIONS.md](AWS_OPERATIONS.md) | **Consolidated:** Terraform (ALB, Green/Blue ASG + EBS, S3 `installer/`/`config`/`logs`, RDS), Image Factory AMIs, Amazon Bedrock setup, EC2/S3 deploy scripts, cost estimates |
-| [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md) | Corporate PKI / PLM CSR, `OSCAL_Reports_data/tls/` paths, ACM import, replace Let's Encrypt on ALB |
+| [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md) | Corporate PKI / PLM CSR, `OSCAL_Reports_data/tls/` paths, ACM import, DigiCert cutover history, Let's Encrypt emergency fallback |
 | [CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md) | Cross-account Bedrock Phase 1: Account B IAM runbook, Terraform AssumeRole, validation (no app change) |
 | [TERRAFORM_NETWORK_PCL_AND_TAGS.md](TERRAFORM_NETWORK_PCL_AND_TAGS.md) | **Portability:** VPC segments, SG allow lists, Australia prefix lists, **ALB tags** (`Adobe:PublicPorts`, `Adobe:PortJustification`), PCL notes — copy to other projects |
 | [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platforms (Azure, AWS, GCP) |
@@ -75,7 +74,7 @@
 
 | Document | Description |
 |----------|-------------|
-| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO: Okta (EC2/production), **Generic_OIDC / Authentik** (local/Docker), login page policy |
+| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO: Okta (EC2/production), **Generic SSO implementation reference** (button, callback, backend flow, config, portable checklist for other projects), login page policy |
 
 ---
 
@@ -159,9 +158,17 @@ To regenerate merged files from historical sources (only if those sources exist 
 
 ## 🆘 Need help?
 
-- **Issue:** Open a GitHub issue on the repository you use (Adobe or personal remote).
-- **Updates:** Submit a PR with documentation changes.
+- **Issue:** Open a GitHub issue on [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports/issues).
+- **Updates:** Submit a PR to [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports).
 
 ---
 
-**Version:** 1.7.23 · **Last updated:** June 2026
+## Historical / deprecated
+
+| Document | Notes |
+|----------|--------|
+| [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md) | Retired July 2026 — dual-repo mirror pattern; superseded by [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md#single-repository-setup-guide) |
+
+---
+
+**Last updated:** July 2026

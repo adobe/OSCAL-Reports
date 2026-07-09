@@ -13,7 +13,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    if: github.repository == 'AdobeManagedServices/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: write
 
