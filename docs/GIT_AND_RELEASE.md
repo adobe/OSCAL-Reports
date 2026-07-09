@@ -24,7 +24,7 @@
 
 ### Quick Reference
 
-#### Version Bump (before merging to Pre_Prod/main)
+#### Version Bump (before merging to Quality/main/Prod)
 
 ```bash
 # Bug fix: 1.6.4 → 1.6.5
@@ -47,37 +47,35 @@ git config core.hooksPath   # Should output: .githooks
 #### Branch Flow
 
 ```
-Development / feature branches
+Development (default branch)
         │
         v
-   Quality (integration — default branch)
-        │
-        v
-   Pre_Prod (staging + version bump)
+   Quality (integration + staging validation)
         │
         v
    main / Prod (production)
 ```
 
 **Canonical repository:** [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) — commit and push to **`origin`** only.  
-**Integration branch:** **`Quality`** (default on GitHub).  
-**Current application release:** see [CHANGELOG.md](CHANGELOG.md). Bump with `./scripts/bump_version.sh` when promoting **Quality → Pre_Prod**.
+**Default branch:** **`Development`**.  
+**Retired branch:** **`Pre_Prod`** (removed; use `Quality` for staging validation).  
+**Current application release:** see [CHANGELOG.md](CHANGELOG.md). Bump with `./scripts/bump_version.sh` when promoting **Development → Quality** or **Quality → main/Prod**.
 
 ---
 
 ### Components
 
 - **scripts/bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`.
-- **.githooks/pre-push** – Validates version increment and package consistency before push to Pre_Prod/main.
-- **.github/workflows/adobe-preprod-validate.yml** – Adobe repo only: one workflow for Pre_Prod/main (version vs tags, changelog hints, package consistency, YAML/tar/ESLint/docs gates, auto-tag on Pre_Prod push).
+- **.githooks/pre-push** – Validates version increment and package consistency before push to Quality/main/Prod.
+- **.github/workflows/adobe-preprod-validate.yml** – Release validation on Quality/main/Prod (version vs tags, changelog, package consistency, auto-tag on Quality push).
 
 ---
 
 ### Workflow
 
-1. **Develop** on **`Quality`** (or feature branches merged via PR to Quality). Quality Gates and shell validation run on push/PR.
-2. **Staging:** open PR **`Quality` → `Pre_Prod`**, run `./scripts/bump_version.sh patch` on the PR branch if version equals the latest tag, merge when PreProd Validation passes.
-3. **Release:** PR **`Pre_Prod` → `main`** (or **`Prod`**). After merge, verify tag and GitHub Release.
+1. **Develop** on **`Development`** (default branch). Quality Gates run on `Quality` push/PR.
+2. **Integration:** open PR **`Development` → `Quality`**, run `./scripts/bump_version.sh patch` if version equals the latest tag, merge when validation passes.
+3. **Release:** PR **`Quality` → `main`** or **`Prod`**. After merge, verify tag and GitHub Release.
 
 ---
 
@@ -89,10 +87,10 @@ Development / feature branches
 - [ ] `docs/CHANGELOG.md` has entry for new version
 - [ ] Tests pass: `cd backend && npm run test`
 - [ ] No debug code or hardcoded credentials
-- [ ] Branch flow correct (PR from Pre_Prod to main only)
+- [ ] Branch flow correct (PR from Quality to main/Prod)
 
 #### Release Day
-- [ ] Create PR: Pre_Prod → main
+- [ ] Create PR: Quality → main (or Prod)
 - [ ] All GitHub Actions green
 - [ ] Merge (use merge commit to preserve history)
 - [ ] Verify tag created: `git fetch --tags && git tag -l "v*"`
@@ -101,7 +99,7 @@ Development / feature branches
 #### Common Pitfalls
 - **Tar:** Use `tar --exclude=... -czf archive.tar.gz files` (exclude before file args).
 - **Version mismatch:** Always use `scripts/bump_version.sh`, never edit version by hand in one place only.
-- **Wrong PR base:** Only Pre_Prod → main; never feature branch → main.
+- **Wrong PR base:** Prefer Quality → main/Prod for releases; never feature branch → main directly.
 
 ---
 
@@ -125,6 +123,8 @@ Development / feature branches
 <a id="branching-strategy"></a>
 
 ## 🌳 Branching Strategy
+
+> **Updated July 2026:** Default branch is **`Development`**. Flow is `Development` → `Quality` → `main` / `Prod`. Branch **`Pre_Prod` is retired** — see [Single Repository Setup Guide](#single-repository-setup-guide) for the current model. Sections below that mention `Pre_Prod` are historical unless updated inline.
 
 **OSCAL Report Generator V2 - Git Workflow**
 
@@ -628,7 +628,7 @@ git push
 
 - **Development branch**: Runs all tests, no deployment
 - **Quality_Test branch**: Runs all tests + security scans
-- **Pre_Prod branch**: Tests + builds Docker image + deploys to staging
+- **Quality branch**: Integration validation + staging checks
 - **main branch**: Full CI/CD + production deployment + tagging
 
 #### GitHub Actions Configuration
@@ -639,7 +639,7 @@ All workflows run on **adobe/OSCAL-Reports** (`github.repository == 'adobe/OSCAL
 |----------|---------|
 | `quality-gates.yml` | Backend unit tests, catalogue fetch, frontend build, npm audit on `Quality` |
 | `shell-validation.yml` | ShellCheck, hook syntax, ec2_automation tests |
-| `adobe-preprod-validate.yml` | Pre_Prod/main: version vs tags, changelog, package consistency, YAML/tar/ESLint/docs; auto-tag on `Pre_Prod` push |
+| `adobe-preprod-validate.yml` | Quality/main/Prod: version vs tags, changelog, package consistency; auto-tag on `Quality` push |
 | `release.yml` | GitHub Release on version tags |
 | `codacy.yml` | Codacy + SARIF upload |
 | `docker-publish.yml` | Docker Hub push |
@@ -728,7 +728,8 @@ OSCAL Report Generator uses one canonical GitHub repository:
 | **Repository** | [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) |
 | **Clone URL** | `https://github.com/adobe/OSCAL-Reports.git` |
 | **Git remote** | `origin` |
-| **Default branch** | `Quality` (integration) |
+| **Default branch** | `Development` |
+| **Branches** | `Development`, `Quality`, `main`, `Prod` ( **`Pre_Prod` retired** ) |
 | **GitHub account** | `mkesharw_adobe` (Adobe Inc. SSO) |
 | **Commit author** | Mukesh Kesharwani / mukesh.kesharwani@adobe.com |
 
@@ -749,15 +750,15 @@ git remote add origin https://github.com/adobe/OSCAL-Reports.git 2>/dev/null || 
   git remote set-url origin https://github.com/adobe/OSCAL-Reports.git
 git config user.name "Mukesh Kesharwani"
 git config user.email "mukesh.kesharwani@adobe.com"
-git push -u origin Quality
+git push -u origin Development
 ```
 
 ### GitHub UI setup (maintainer)
 
 After the first push to [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports):
 
-1. Set **default branch** to `Quality`.
-2. Enable **branch protection** on `Quality`, `Pre_Prod`, and `main` (require PR + status checks).
+1. Set **default branch** to `Development`.
+2. Enable **branch protection** on `Development`, `Quality`, `main`, and `Prod` (require PR + status checks).
 3. Migrate **Actions secrets** from legacy repos (Docker Hub, Snyk, Codacy, etc.).
 4. **Do not recreate** mirror-only secrets: `ADOBE_REPO_DISPATCH_TOKEN`, `PERSONAL_REPO_READ_TOKEN`, `ADOBE_REPO_PUSH_TOKEN`.
 5. Optionally **archive** `keekar2022/OSCAL-Reports` and `AdobeManagedServices/OSCAL-Reports` with a README pointer to `adobe/OSCAL-Reports`.
@@ -768,19 +769,15 @@ After the first push to [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Rep
 git config user.name "Mukesh Kesharwani"
 git config user.email "mukesh.kesharwani@adobe.com"
 
-git checkout Quality
-git pull origin Quality
+git checkout Development
+git pull origin Development
 # ... make changes ...
 git add <files>
 git commit -m "feat: description"
-git push origin Quality
+git push origin Development
 ```
 
-Promote via PR: `Quality` → `Pre_Prod` → `main`.
-
-### Branch protection on Pre_Prod
-
-If you see **`remote: GH013: ... Changes must be made through a pull request`** when pushing to **`Pre_Prod`**, that is a GitHub ruleset on **adobe/OSCAL-Reports**. Adjust in **Settings → Rules → Rulesets** (admin). Local `.githooks/pre-push` does not create that rule.
+Promote via PR: `Development` → `Quality` → `main` / `Prod`.
 
 ### TrueNAS / edge deployments
 
@@ -798,8 +795,8 @@ git checkout -B main origin/main   # or Quality, per your deploy policy
 |--------|---------|
 | Clone | `git clone https://github.com/adobe/OSCAL-Reports.git` |
 | Check remotes | `git remote -v` |
-| Push integration branch | `git push origin Quality` |
-| Create PR | `gh pr create --repo adobe/OSCAL-Reports --base Pre_Prod` |
+| Push default branch | `git push origin Development` |
+| Create PR to Quality | `gh pr create --repo adobe/OSCAL-Reports --base Quality` |
 | Switch GitHub CLI account | `./scripts/switch-github-account.sh` |
 
 ---
@@ -830,8 +827,8 @@ Use **mkesharw_adobe** (Adobe Inc. SSO) for all operations on [adobe/OSCAL-Repor
 gh auth switch --user mkesharw_adobe
 gh auth status
 gh repo view adobe/OSCAL-Reports
-git push origin Quality
-gh pr create --repo adobe/OSCAL-Reports --base Pre_Prod
+git push origin Development
+gh pr create --repo adobe/OSCAL-Reports --base Quality
 ```
 
 ### Helper script

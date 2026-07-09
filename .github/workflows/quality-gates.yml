@@ -10,7 +10,6 @@ on:
     branches:
       - Quality
       - Quality_Test
-      - Pre_Prod
   push:
     branches:
       - Quality

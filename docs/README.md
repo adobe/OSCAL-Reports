@@ -32,11 +32,11 @@
 
 | Document | Description |
 |----------|-------------|
-| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Quality → Pre_Prod → main), single remote (adobe/OSCAL-Reports), GitHub auth, PR checklist |
+| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Development → Quality → main/Prod), single remote, GitHub auth, PR checklist |
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
-**Current release:** see [CHANGELOG.md](CHANGELOG.md). Canonical repository: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports). Integration branch: **Quality**.
+**Current release:** see [CHANGELOG.md](CHANGELOG.md). Canonical repository: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports). Default branch: **Development**.
 
 ---
 

@@ -67,7 +67,7 @@ if [ "${DO_PUSH}" = true ]; then
   echo "Pushing branches to origin (requires mkesharw_adobe auth)..."
   current_branch="$(git branch --show-current)"
   git push -u origin "${current_branch}"
-  for branch in Quality Pre_Prod main Development Prod; do
+  for branch in Development Quality main Prod; do
     if git show-ref --verify --quiet "refs/heads/${branch}"; then
       git push origin "${branch}" || echo "Warning: push failed for ${branch}"
     fi
@@ -77,5 +77,5 @@ if [ "${DO_PUSH}" = true ]; then
 else
   echo ""
   echo "Local remotes updated. Run with --push to push branches after verifying GitHub access."
-  echo "Manual GitHub UI steps: branch protection on Quality/Pre_Prod/main, migrate Actions secrets, set default branch to Quality."
+  echo "Manual GitHub UI steps: branch protection on Development/Quality/main/Prod, migrate Actions secrets, set default branch to Development."
 fi
