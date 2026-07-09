@@ -842,7 +842,7 @@ gh pr create --repo adobe/OSCAL-Reports --base Quality
 **Push access:** As of cutover, `git push origin` may succeed with **keekar2022** (member of `adobe` org with admin on this repo). If **mkesharw_adobe** returns `403 Permission denied`, use `gh auth switch --user keekar2022` for push operations until EMU access is granted on `adobe/OSCAL-Reports`.
 
 If `git push origin` fails with authentication errors:
-
+**Push access:** Use only your approved EMU/corporate account (for example, **mkesharw_adobe**) for repository operations. If `git push origin` returns `403 Permission denied`, do **not** switch to a personal fallback account. Instead, request the required EMU/org membership and repository permissions for `adobe/OSCAL-Reports` through the repository/org administrators, then retry with your approved account.
 ```bash
 git config --local credential.useHttpPath true
 gh auth switch --user mkesharw_adobe
