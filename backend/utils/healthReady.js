@@ -117,6 +117,28 @@ function secretsReady(config) {
   return { ok: true };
 }
 
+function isIamRoleBedrockMode(aiConfig) {
+  const raw = (aiConfig?.bedrockAuthMode || '').trim().toLowerCase();
+  return raw === 'iam-role' || raw === 'iam' || raw === 'role' || raw === 'assume-role';
+}
+
+/** Warn-only: cross-account Bedrock needs assume-role ARN or BEDROCK_ASSUME_ROLE_ARN env. */
+function bedrockIamConfigured(config) {
+  const ai = config?.aiConfig;
+  if (!ai?.enabled || ai.provider !== 'aws-bedrock') {
+    return { ok: true, skipped: true };
+  }
+  if (!isIamRoleBedrockMode(ai)) {
+    return { ok: true, skipped: true };
+  }
+  const envArn = (process.env.BEDROCK_ASSUME_ROLE_ARN && String(process.env.BEDROCK_ASSUME_ROLE_ARN).trim()) || '';
+  const configArn = (ai.bedrockAssumeRoleArn && String(ai.bedrockAssumeRoleArn).trim()) || '';
+  if (envArn || configArn) {
+    return { ok: true };
+  }
+  return { ok: false, reason: 'bedrock_assume_role_missing' };
+}
+
 /**
  * @returns {{ ready: boolean, checks: Record<string, unknown> }}
  */
@@ -131,12 +153,15 @@ export function evaluateReadiness() {
     : { ok: false, reason: configResult.reason, file: configResult.file };
 
   let secrets = { ok: true, skipped: true };
+  let bedrock = { ok: true, skipped: true };
   if (configResult.ok) {
     secrets = secretsReady(configResult.parsed);
+    bedrock = bedrockIamConfigured(configResult.parsed);
   } else if (isAwsSmMode()) {
     secrets = { ok: false, reason: 'config_unavailable_for_secrets_check' };
   }
   checks.secrets = secrets;
+  checks.bedrock = bedrock;
 
   const ready = Boolean(spa.ok && configResult.ok && secrets.ok);
   return { ready, checks };

@@ -1,0 +1,1 @@
+../../oscal_ssm_patch_on_launch.tf

@@ -395,6 +395,46 @@ function coalesceDatabasePasswordForTest(formPassword, resolvedStored, rawStored
  * Merge Bedrock IAM / assume-role settings from process env (Terraform systemd on EC2).
  * @param {Object} config - Mutable config object
  */
+let bedrockMisconfigWarned = false;
+
+function isLikelyEc2Host() {
+  if (process.env.AWS_EXECUTION_ENV) {
+    return true;
+  }
+  try {
+    return fs.existsSync('/sys/hypervisor/uuid');
+  } catch {
+    return false;
+  }
+}
+
+function warnBedrockIamMisconfiguration(config) {
+  if (bedrockMisconfigWarned || !isLikelyEc2Host()) {
+    return;
+  }
+  const ai = config?.aiConfig;
+  if (!ai?.enabled || ai.provider !== 'aws-bedrock') {
+    return;
+  }
+  const mode = (ai.bedrockAuthMode || '').trim().toLowerCase();
+  const iamRole = mode === 'iam-role' || mode === 'iam' || mode === 'role' || mode === 'assume-role';
+  if (!iamRole) {
+    return;
+  }
+  const envArn = (process.env.BEDROCK_ASSUME_ROLE_ARN && String(process.env.BEDROCK_ASSUME_ROLE_ARN).trim()) || '';
+  const configArn = (ai.bedrockAssumeRoleArn && String(ai.bedrockAssumeRoleArn).trim()) || '';
+  if (envArn || configArn) {
+    return;
+  }
+  bedrockMisconfigWarned = true;
+  console.warn('Bedrock IAM role mode without assume-role ARN', {
+    'service.name': 'oscal-report-generator',
+    'event.action': 'bedrock_iam_misconfigured',
+    'event.category': 'configuration',
+    'event.outcome': 'failure',
+  });
+}
+
 export function applyBedrockEnvOverrides(config) {
   if (!config?.aiConfig) return;
   const ai = config.aiConfig;
@@ -407,6 +447,7 @@ export function applyBedrockEnvOverrides(config) {
   if (externalId) {
     ai.bedrockExternalId = externalId;
   }
+  warnBedrockIamMisconfiguration(config);
 }
 
 /**

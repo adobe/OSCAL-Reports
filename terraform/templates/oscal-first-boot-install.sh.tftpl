@@ -7,44 +7,55 @@
 APP="/opt/oscal/app"
 INDEX="$APP/backend/public/index.html"
 export AWS_DEFAULT_REGION="${aws_region}"
+S3_BUCKET="${s3_bucket}"
+INSTALLER_PREFIX="${installer_prefix}"
+
+oscal_first_boot_apply_bedrock_from_s3() {
+  local lib="$${APP}/scripts/lib/oscal-bedrock-apply-from-s3.sh"
+  if [ ! -f "$lib" ]; then
+    echo "oscal-first-boot: bedrock apply skipped (no $${lib}; run deploy --update-s3)" >&2
+    return 0
+  fi
+  # shellcheck source=/dev/null disable=SC1091
+  . "$lib"
+  S3_BUCKET="$S3_BUCKET" AWS_DEFAULT_REGION="${aws_region}" INSTALLER_PREFIX="$INSTALLER_PREFIX" APP_DIR="$APP" \
+    oscal_bedrock_apply_from_s3 || echo "oscal-first-boot: bedrock apply from S3 failed (non-fatal)" >&2
+}
 
 if [ -f "$INDEX" ] && [ -s "$INDEX" ]; then
   echo "oscal-first-boot: SPA present at $INDEX — skipping S3 installer sync"
-  exit 0
+  oscal_first_boot_apply_bedrock_from_s3
+else
+  command -v aws >/dev/null 2>&1 || dnf install -y awscli 2>/dev/null || yum install -y awscli 2>/dev/null || true
+  command -v npm >/dev/null 2>&1 || {
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+    dnf install -y nodejs 2>/dev/null || yum install -y nodejs 2>/dev/null
+  }
+
+  mkdir -p "$APP"
+  SVC_GROUP="oscal"
+
+  if ! sudo -u ec2-user env AWS_DEFAULT_REGION="${aws_region}" aws s3 sync \
+    "s3://${s3_bucket}/${installer_prefix}/" "$APP/" --delete --region "${aws_region}" \
+    --exclude 'node_modules/**' --exclude '.git/**' --exclude 'config/**' \
+    --include 'config/catalogues/**' --exclude 'terraform/**' \
+    --exclude 'frontend/dist/**' --exclude 'backend/public/**'; then
+    echo "oscal-first-boot: S3 sync failed (deploy may be required)" >&2
+  elif ! sudo -u ec2-user bash -c "set -e
+    export PATH=/usr/bin:/usr/local/bin:\$PATH
+    cd '$APP'
+    npm install --no-audit --no-fund
+    (cd backend && npm install --no-audit --no-fund)
+    (cd frontend && npm install --no-audit --no-fund && npm run build)
+    rm -rf backend/public
+    mkdir -p backend/public
+    cp -r frontend/dist/* backend/public/
+    test -s backend/public/index.html
+  "; then
+    echo "oscal-first-boot: npm build failed (deploy required)" >&2
+  else
+    chown -R ec2-user:$SVC_GROUP /opt/oscal 2>/dev/null || true
+    echo "oscal-first-boot: SPA built at $INDEX"
+    oscal_first_boot_apply_bedrock_from_s3
+  fi
 fi
-
-command -v aws >/dev/null 2>&1 || dnf install -y awscli 2>/dev/null || yum install -y awscli 2>/dev/null || true
-command -v npm >/dev/null 2>&1 || {
-  curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-  dnf install -y nodejs 2>/dev/null || yum install -y nodejs 2>/dev/null
-}
-
-mkdir -p "$APP"
-SVC_GROUP="oscal"
-
-if ! sudo -u ec2-user env AWS_DEFAULT_REGION="${aws_region}" aws s3 sync \
-  "s3://${s3_bucket}/${installer_prefix}/" "$APP/" --delete --region "${aws_region}" \
-  --exclude 'node_modules/**' --exclude '.git/**' --exclude 'config/**' \
-  --include 'config/catalogues/**' --exclude 'terraform/**' \
-  --exclude 'frontend/dist/**' --exclude 'backend/public/**'; then
-  echo "oscal-first-boot: S3 sync failed (deploy may be required)" >&2
-  exit 0
-fi
-
-if ! sudo -u ec2-user bash -c "set -e
-  export PATH=/usr/bin:/usr/local/bin:\$PATH
-  cd '$APP'
-  npm install --no-audit --no-fund
-  (cd backend && npm install --no-audit --no-fund)
-  (cd frontend && npm install --no-audit --no-fund && npm run build)
-  rm -rf backend/public
-  mkdir -p backend/public
-  cp -r frontend/dist/* backend/public/
-  test -s backend/public/index.html
-"; then
-  echo "oscal-first-boot: npm build failed (deploy required)" >&2
-  exit 0
-fi
-
-chown -R ec2-user:$SVC_GROUP /opt/oscal 2>/dev/null || true
-echo "oscal-first-boot: SPA built at $INDEX"

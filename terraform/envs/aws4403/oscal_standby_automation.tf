@@ -1,0 +1,1 @@
+../../oscal_standby_automation.tf

@@ -1,0 +1,89 @@
+# AWS4403 (Account ID 442277170733) – greenfield deployment
+# Credentials: pass show "AWS/AMS_4403-STG"
+# Do not use for AWS4379 Sandbox.
+aws_region     = "us-east-1"
+aws_account_id = "442277170733"
+environment    = "prod"
+project_name   = "ams-oscal-reports"
+# Networking
+vpc_cidr = "10.0.0.0/16"
+# Default CIDRs allowed for ingress (ALB port 80, SSH, direct 3019/3020). Do not use 0.0.0.0/0 (PCL).
+# For PCL in stage: CIDRs broader than /32 (e.g. /24) may trigger quarantine; prefer /32 where possible (e.g. known VPN egress IPs).
+# If you can reach instances at http://<green-ip>:3019 or http://<blue-ip>:3020 but NOT the ALB URL, add your current public IP: run "curl -s ifconfig.me" and add "YOUR_IP/32" below, then terraform apply.
+default_allowed_cidr_blocks = [
+  "130.248.32.0/24",
+  "103.43.114.129/32",
+  "103.43.112.97/32",
+  "130.248.54.10/32",
+  "192.150.9.201/32",
+  "130.248.113.29/32",
+  "203.119.182.151/32",
+  "203.119.182.150/32",
+  "203.191.182.150/32", # Your current IP (curl -s ifconfig.me)
+  "130.248.32.17/32",   # Added by run-with-aws-pass.sh (current IP),
+  "103.160.130.243/32", # Added by run-with-aws-pass.sh (current IP)
+]                       # Add more: ["YOUR_IP/32"] then terraform apply
+# EC2: after importing key (from repo root: TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./terraform/run-with-aws-pass.sh import-key us-east-1), set key_name below.
+key_name = "oscal-aws4403"
+
+# S3: globally unique; AMS convention ams-oscal-<account-id>
+# S3 names must be lowercase (no uppercase letters)
+s3_logs_bucket_name = "ams-oscal-442277170733"
+# ALB: no ACM (org does not authorize acm:RequestCertificate); use HTTP for testing.
+
+# When you have a valid cert, set alb_ssl_certificate_arn = "arn:aws:acm:..." and apply to add HTTPS.
+create_alb_certificate  = false
+alb_ssl_certificate_arn  = "arn:aws:acm:us-east-1:442277170733:certificate/fc47dd2e-d4ba-49f6-aabb-3c8da1d51518"
+
+# PCL custom-elb-restricted-ports-check: ALB SG must allow only 443. Set false so ALB is PCL-compliant; use https:// only.
+alb_allow_http_for_testing = false
+
+# AMS PCL: ALB is tagged Adobe:PublicPorts and Adobe:PortJustification (see alb.tf). Override if needed for your exception.
+# alb_port_justification = "OSCAL Report Generator production access for AMS Gov Cloud"
+# Restrict ALB HTTPS to Australian IPs only (prefix lists from IPdeny). Set false to allow 443 from default_allowed_cidr_blocks only.
+alb_restrict_to_australia = false
+
+# Recovery: set true to allow ALB 443 and instance 3019/3020 from all IPs after lockout. Add your IP to default_allowed_cidr_blocks then set both back to false.
+alb_allow_443_from_all            = true
+instance_allow_app_ports_from_all = true
+
+# AMI for OSCAL Green / Blue (SSAAU-209 / InfraSec — Image Factory EMR ≥ 1.12.1)
+# Dynamic lookup: newest launchable EMR AMI shared with this account (replaces stale IF 1.9.2 pin).
+use_image_factory_ami                    = true
+image_factory_amazon_linux_ami_us_east_1 = null # unset — use dynamic EMR lookup below
+image_factory_dynamic_emr_lookup_enabled = true
+image_factory_prefer_dynamic_emr_lookup  = true
+# Optional: freeze a specific AMI (set prefer_dynamic_emr_lookup = false)
+# image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"
+# Optional: owner + pattern lookup instead of executable-users self lookup
+# image_factory_owner_id         = "000000000000"
+# image_factory_ami_name_pattern = "*Amazon*Linux*2023*EMR*"
+instance_architecture = "x86_64"
+instance_type         = "t3a.small"
+
+# Patch compliance (≤7-day SLA — SSAAU-209 plan)
+oscal_os_patch_approval_days       = 1
+oscal_os_patch_weekly_scan_enabled = true
+oscal_os_patch_on_launch_enabled   = true
+# Set true during terraform apply to stagger-refresh ASG instances after AMI change (requires AWS CLI)
+oscal_ami_auto_refresh_on_change   = true
+oscal_splunk_uf_upgrade_enabled  = true
+oscal_splunk_uf_min_version        = "9.3.9"
+# Environment tag comes from variable "environment" (main.tf default_tags). Do not add "Environment" or "environment" here — IAM treats tag keys case-insensitively and will error on duplicate.
+common_tags = {
+  Team       = "Compliance"
+  Account    = "AWS4403"
+  TFTemplate = "AMS-OSCAL-Stage-01"
+}
+
+# ------------------------------------------------------------------------------
+# Cross-account Bedrock (Account B: 928475551084) — docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md
+# EC2 in 442277170733 assumes OSCAL-BedrockCrossAccount before InvokeModel.
+# Set bedrock_external_id to match Account B role trust policy (required if trust uses ExternalId).
+# ------------------------------------------------------------------------------
+bedrock_cross_account_enabled = true
+bedrock_account_id            = "928475551084"
+bedrock_assume_role_arn       = "arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount"
+bedrock_assume_role_name      = "OSCAL-BedrockCrossAccount"
+# bedrock_external_id         = "<paste ExternalId from Account B trust policy if required>"
+bedrock_inject_systemd_env    = true

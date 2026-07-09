@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
 # Copyright 2025 Adobe. All rights reserved.
 # Copyright (c) 2025 Mukesh Kesharwani
 #
@@ -6,6 +8,7 @@
 
 # Obtain a Let's Encrypt certificate (manual DNS-01 in Route53), import it into AWS ACM,
 # and optionally update Terraform tfvars so the ALB uses it for HTTPS.
+# Core emergency fallback when corporate PKI / DigiCert is unavailable — see docs/TLS_CERTIFICATE_AND_PKI.md.
 #
 # Route53 is assumed to be in a DIFFERENT AWS account (credentials not in Pass). This script
 # prompts you with exact steps to create/update the DNS TXT record manually; certbot then
@@ -17,10 +20,10 @@
 #   - Domain must be oscal.amsgovcloud.com.au (or set DOMAIN)
 #
 # Usage:
-#   ./scripts/debug/letsencrypt-acm-import.sh
-#   LETSENCRYPT_EMAIL=you@example.com ./scripts/debug/letsencrypt-acm-import.sh
-#   DOMAIN=oscal.amsgovcloud.com.au TFVARS=terraform/envs/aws4403/terraform.tfvars ./scripts/debug/letsencrypt-acm-import.sh
-#   SKIP_TFVARS_UPDATE=1 ./scripts/debug/letsencrypt-acm-import.sh   # only print ARN, do not edit tfvars
+#   ./scripts/letsencrypt-acm-import.sh
+#   LETSENCRYPT_EMAIL=you@example.com ./scripts/letsencrypt-acm-import.sh
+#   DOMAIN=oscal.amsgovcloud.com.au TFVARS=terraform/envs/aws4403/terraform.tfvars ./scripts/letsencrypt-acm-import.sh
+#   SKIP_TFVARS_UPDATE=1 ./scripts/letsencrypt-acm-import.sh   # only print ARN, do not edit tfvars
 #
 # Environment:
 #   DOMAIN                  FQDN for the certificate (default: oscal.amsgovcloud.com.au)
@@ -31,12 +34,12 @@
 #   TERRAFORM_DIR            Used to default TFVARS to $TERRAFORM_DIR/terraform.tfvars
 #   CERTBOT_BASE             Base dir for certbot config/work/logs (default: $HOME/.certbot-oscal). Used so certbot runs without root.
 #
-# After running: from terraform/envs/aws4403 run terraform plan then terraform apply to attach the cert to the ALB.
+# After running: from terraform/ run ./run-with-aws-pass.sh apply to attach the cert to the ALB.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOMAIN="${DOMAIN:-oscal.amsgovcloud.com.au}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"

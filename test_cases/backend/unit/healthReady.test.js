@@ -13,8 +13,18 @@ import {
 import { evaluateReadiness } from '../../../backend/utils/healthReady.js';
 
 const ORIGINAL_ENV = { ...process.env };
-const BACKEND_PUBLIC = path.join(process.cwd(), 'backend', 'public');
+const BACKEND_PUBLIC = path.join(process.cwd(), 'public');
 const BACKEND_INDEX = path.join(BACKEND_PUBLIC, 'index.html');
+
+function writeConfigFile(obj) {
+  const payload = { ...obj };
+  let json = JSON.stringify(payload);
+  while (json.length < 256) {
+    payload._readinessPad = (payload._readinessPad || '') + 'x';
+    json = JSON.stringify(payload);
+  }
+  fs.writeFileSync(process.env.CONFIG_PATH, json);
+}
 
 describe('healthReady', () => {
   let tmpDir;
@@ -27,10 +37,10 @@ describe('healthReady', () => {
     delete process.env.OSCAL_SECRETS_MANAGER_ARN;
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oscal-ready-'));
     process.env.CONFIG_PATH = path.join(tmpDir, 'config.json');
-    fs.writeFileSync(process.env.CONFIG_PATH, JSON.stringify({
+    writeConfigFile({
       ssoConfig: { oauth: { providers: {} } },
       aiConfig: {},
-    }));
+    });
     if (fs.existsSync(BACKEND_INDEX)) {
       indexBackup = fs.readFileSync(BACKEND_INDEX);
     } else {
@@ -65,6 +75,39 @@ describe('healthReady', () => {
     expect(result.checks.spa.ok).toBe(false);
   });
 
+  it('warns on bedrock iam-role without assume ARN but stays ready', () => {
+    writeConfigFile({
+      ssoConfig: { oauth: { providers: {} } },
+      aiConfig: {
+        enabled: true,
+        provider: 'aws-bedrock',
+        bedrockAuthMode: 'iam-role',
+        bedrockAssumeRoleArn: '',
+      },
+    });
+    delete process.env.BEDROCK_ASSUME_ROLE_ARN;
+    const result = evaluateReadiness();
+    expect(result.ready).toBe(true);
+    expect(result.checks.bedrock.ok).toBe(false);
+    expect(result.checks.bedrock.reason).toBe('bedrock_assume_role_missing');
+  });
+
+  it('bedrock check ok when BEDROCK_ASSUME_ROLE_ARN env is set', () => {
+    writeConfigFile({
+      ssoConfig: { oauth: { providers: {} } },
+      aiConfig: {
+        enabled: true,
+        provider: 'aws-bedrock',
+        bedrockAuthMode: 'iam-role',
+        bedrockAssumeRoleArn: '',
+      },
+    });
+    process.env.BEDROCK_ASSUME_ROLE_ARN = 'arn:aws:iam::1:role/test';
+    const result = evaluateReadiness();
+    expect(result.ready).toBe(true);
+    expect(result.checks.bedrock.ok).toBe(true);
+  });
+
   it('requires SM secrets when Okta enabled with _sm pointer in aws-sm mode', () => {
     process.env.OSCAL_SECRETS_MODE = 'aws-sm';
     process.env.OSCAL_SECRETS_MANAGER_ARN = 'arn:aws:secretsmanager:us-east-1:1:secret:test';
@@ -77,6 +120,7 @@ describe('healthReady', () => {
         },
       },
       aiConfig: {},
+      _readinessPad: 'x'.repeat(200),
     }));
     __setSecretsCacheForTests({});
     let result = evaluateReadiness();
