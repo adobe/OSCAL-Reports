@@ -229,6 +229,21 @@ verify_installer_manifest_optional() {
   return 0
 }
 
+# Self-heal cross-account Bedrock systemd drop-in from S3 manifest (ASG replacement).
+maybe_apply_bedrock_cross_account_from_s3() {
+  [ -z "$S3_BUCKET" ] && return 0
+  local lib="${APP_DIR}/scripts/lib/oscal-bedrock-apply-from-s3.sh"
+  if [ ! -f "$lib" ]; then
+    lib="/opt/oscal/scripts/lib/oscal-bedrock-apply-from-s3.sh"
+  fi
+  [ -f "$lib" ] || return 0
+  # shellcheck source=/dev/null disable=SC1091
+  . "$lib"
+  S3_BUCKET="$S3_BUCKET" AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}" \
+    INSTALLER_PREFIX="${S3_INSTALLER_PREFIX:-installer}" APP_DIR="$APP_DIR" \
+    oscal_bedrock_apply_from_s3
+}
+
 # Sync from S3 installer prefix; rebuild frontend; restart unit (same flow as after a full deploy).
 sync_from_s3_installer_and_restart() {
   [ ! -d "$APP_DIR" ] && return 0
@@ -273,6 +288,13 @@ sync_from_s3_installer_and_restart() {
     sudo mkdir -p /opt/oscal/scripts/lib
     sudo cp "${APP_DIR}/scripts/lib/ec2-automation-pass-sync.sh" /opt/oscal/scripts/lib/
   fi
+  for _bedrock_lib in oscal-bedrock-apply-from-s3.sh oscal-bedrock-apply-lib.sh oscal-bedrock-dropin.sh; do
+    if [ -f "${APP_DIR}/scripts/lib/${_bedrock_lib}" ]; then
+      sudo mkdir -p /opt/oscal/scripts/lib
+      sudo cp "${APP_DIR}/scripts/lib/${_bedrock_lib}" /opt/oscal/scripts/lib/
+      sudo chmod +x "/opt/oscal/scripts/lib/${_bedrock_lib}" 2>/dev/null || true
+    fi
+  done
 
   # Remove stale installer config except catalogues (required for Vite build).
   sudo find "${APP_DIR}/config" -mindepth 1 -maxdepth 1 ! -name catalogues -exec rm -rf {} + 2>/dev/null || true
@@ -302,6 +324,7 @@ sync_from_s3_installer_and_restart() {
     }
   fi
   otel_log "info" "S3 installer sync and restart completed" "success" "\"event.action\":\"s3_installer_sync\""
+  maybe_apply_bedrock_cross_account_from_s3 || true
   return 0
 }
 
@@ -402,6 +425,19 @@ maybe_os_package_update() {
   return 0
 }
 
+# Start oscal-reporter when user_data exited early (SPA-on-EBS path) but the unit file exists.
+ensure_oscal_service_running() {
+  if ! sudo systemctl list-unit-files 2>/dev/null | grep -q '^oscal-reporter.service'; then
+    return 0
+  fi
+  if sudo systemctl is-active --quiet oscal-reporter.service 2>/dev/null; then
+    return 0
+  fi
+  otel_log "info" "oscal-reporter inactive; starting (user_data may have exited before systemctl start)" "success" "\"event.action\":\"oscal_service_start\""
+  sudo systemctl enable oscal-reporter.service 2>/dev/null || true
+  sudo systemctl start oscal-reporter.service 2>/dev/null || true
+}
+
 # Skip disruptive work while deploy-to-ec2.sh holds maintenance (ASG/ALB protection on laptop).
 DEPLOY_MAINTENANCE_FLAG="${DEPLOY_MAINTENANCE_FLAG:-/opt/oscal/data/.deploy_maintenance}"
 
@@ -411,6 +447,7 @@ EXTRA=""
 
 if [ -f "$DEPLOY_MAINTENANCE_FLAG" ]; then
   otel_log "info" "deploy maintenance flag present; skipping S3 installer sync and OS package update" "success" "\"event.action\":\"deploy_maintenance_skip\""
+  ensure_oscal_service_running || true
   pass_secrets_sync_run || true
   otel_log "info" "ec2_automation completed" "success" "\"event.action\":\"deploy_maintenance_skip\""
   exit 0
@@ -421,10 +458,13 @@ if ! ensure_aws_cli; then
   EXTRA="\"error.type\":\"MissingDependency\""
 fi
 
+ensure_oscal_service_running || true
+
 if [ "$OUTCOME" = "success" ] && [ -n "$S3_BUCKET" ]; then
   sync_shared_config_from_s3 || true
   backup_to_s3 || { OUTCOME="failure"; EXTRA="\"error.type\":\"BackupFailed\""; }
   _backup_logs_to_s3 || true
+  maybe_apply_bedrock_cross_account_from_s3 || true
 fi
 
 if [ "$OUTCOME" = "success" ]; then
