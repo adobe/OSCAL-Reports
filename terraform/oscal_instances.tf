@@ -62,16 +62,16 @@ locals {
 set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
-podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman pull ${var.oscal_container_image}
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ${var.oscal_container_image}
 EOT
   oscal_user_data_blue_docker  = <<-EOT
 #!/bin/bash
 set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
-podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman pull ${var.oscal_container_image}
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ${var.oscal_container_image}
 EOT
   # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
   oscal_direct_user_data_green = <<-EOT

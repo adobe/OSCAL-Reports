@@ -40,7 +40,7 @@ Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.
 
 **Image Factory EMR (InfraSec):** To list candidate **Amazon Linux 2023 EMR** AMIs launchable in your account, run [scripts/list-emr-candidate-amis.sh](scripts/list-emr-candidate-amis.sh) with AWS credentials (see [docs/AWS_OPERATIONS.md – Image Factory](../docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform) and [envs/aws4403/README.md](envs/aws4403/README.md) § SSAAU-169).
 
-**Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js; config/users live under **`/opt/oscal/data`** on the instance (persistent gp3 at **`/opt/oscal`** when enabled) with **ec2_automation** backups to S3. After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` in that env’s `terraform.tfvars`.
+**Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js; config/users live under **`/opt/oscal/data`** on the instance (persistent gp3 at **`/opt/oscal`** when enabled) with **ec2_automation** backups to S3. After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` and optionally `oscal_container_image` (default **`ghcr.io/adobe/oscal-report-generator:latest`**) in that env’s `terraform.tfvars`.
 
 **Credentials from Pass (default aws4403):** With [Pass](https://www.passwordstore.org/) and credentials in `AWS/AMS_4403-STG`:
 

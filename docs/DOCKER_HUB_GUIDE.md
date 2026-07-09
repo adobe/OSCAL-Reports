@@ -1021,7 +1021,7 @@ When modifying workflow:
 ### Documentation
 
 - **GitHub Repository**: https://github.com/adobe/OSCAL-Reports
-- **Full Documentation**: https://github.com/adobe/OSCAL-Reports/tree/main/docs
+- **Full Documentation**: https://github.com/adobe/OSCAL-Reports/tree/Development/docs
 - **Docker Hub Page**: https://hub.docker.com/r/keekar/oscal_reports
 
 ### Getting Help
@@ -1061,7 +1061,7 @@ curl http://localhost:3020/health       # Check health
 | **Tags** | https://hub.docker.com/r/keekar/oscal_reports/tags |
 | **GitHub Actions** | https://github.com/adobe/OSCAL-Reports/actions |
 | **Issues** | https://github.com/adobe/OSCAL-Reports/issues |
-| **Documentation** | https://github.com/adobe/OSCAL-Reports/tree/main/docs |
+| **Documentation** | https://github.com/adobe/OSCAL-Reports/tree/Development/docs |
 
 ---
 

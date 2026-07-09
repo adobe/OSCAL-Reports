@@ -674,9 +674,9 @@ Or run (with sufficient `gh` permissions):
 
 **Repo-side mitigation:** `scripts/ci/validate_workflow_yaml.py` and `.github/codeql/codeql-config.yml` narrow Python scope when Python remains enabled.
 
-#### GHCR migration (deferred)
+#### GHCR container image
 
-Container images still reference `ghcr.io/adobemanagedservices/oscal-report-generator` in Terraform and deployment docs. A follow-up phase will republish to `ghcr.io/adobe/oscal-report-generator` and update infrastructure references.
+Terraform Docker mode (`run_oscal_via_docker = true`) pulls **`ghcr.io/adobe/oscal-report-generator`** (override with `oscal_container_image` in `terraform.tfvars`). Images are published from [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) via the Docker publish workflow (Docker Hub + GHCR).
 
 ---
 

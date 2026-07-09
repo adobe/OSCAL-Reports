@@ -80,6 +80,12 @@ common_tags = {
 # oscal_splunk_uf_min_version        = "9.3.9"
 
 # ------------------------------------------------------------------------------
+# Docker on EC2 (optional; default is direct Node.js run + deploy-to-ec2.sh)
+# ------------------------------------------------------------------------------
+# run_oscal_via_docker   = false
+# oscal_container_image  = "ghcr.io/adobe/oscal-report-generator:latest"
+
+# ------------------------------------------------------------------------------
 # Cross-account Bedrock (Account B) — see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md
 # ------------------------------------------------------------------------------
 # bedrock_cross_account_enabled        = true
