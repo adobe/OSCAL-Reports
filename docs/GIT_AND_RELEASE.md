@@ -136,7 +136,7 @@ This project follows a **three-tier branching model** to ensure code quality and
 
 ```
 Development  ─────┐
-                  ├──> Pre_Prod ─────> main (Production)
+                  ├──> Quality ─────> Pre_Prod ─────> main (Production)
 Quality_Test ─────┘
 ```
 
