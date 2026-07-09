@@ -2,9 +2,9 @@
 
 This directory contains upgrade and consolidation scripts for Blue-Green deployments.
 
-**Repeated-use helpers** at repo [`scripts/`](.): [`ssh-ec2.sh`](ssh-ec2.sh) (SSH to Green/Blue via Terraform IPs), [`restart-local-dev.sh`](restart-local-dev.sh) (local npm dev restart). Shared EC2/Pass/Terraform helpers: [`lib/ec2-common.sh`](lib/ec2-common.sh).
+**Repeated-use helpers** at repo [`scripts/`](.): [`ssh-ec2.sh`](ssh-ec2.sh) (SSH to Green/Blue via Terraform IPs), [`restart-local-dev.sh`](restart-local-dev.sh) (local npm dev restart), [`letsencrypt-acm-import.sh`](letsencrypt-acm-import.sh) (Let's Encrypt → ACM emergency TLS fallback; see [docs/TLS_CERTIFICATE_AND_PKI.md](../docs/TLS_CERTIFICATE_AND_PKI.md)). Shared EC2/Pass/Terraform helpers: [`lib/ec2-common.sh`](lib/ec2-common.sh).
 
-**Debug and one-off tools** under [`scripts/debug/`](debug/): Okta diagnosis (`diagnose-okta-on-ec2.sh`), ALB target health (`alb-target-health.sh`), Let's Encrypt → ACM import (`letsencrypt-acm-import.sh`), Terraform SG dependency lookup (`terraform-find-sg-dependencies.sh`), EC2 config/SM helpers (`migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`), laptop pass bundle sync (`push-pass-to-secrets-manager.sh`, `pull-secrets-manager-to-pass.sh`, `migrate-pass-entries-to-bundle.sh`), Blue config restore (`restore-blue-config.sh`), and related utilities.
+**Debug and one-off tools** under [`scripts/debug/`](debug/): Okta diagnosis (`diagnose-okta-on-ec2.sh`), ALB target health (`alb-target-health.sh`), Terraform SG dependency lookup (`terraform-find-sg-dependencies.sh`), EC2 config/SM helpers (`migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`), laptop pass bundle sync (`push-pass-to-secrets-manager.sh`, `pull-secrets-manager-to-pass.sh`, `migrate-pass-entries-to-bundle.sh`), Blue config restore (`restore-blue-config.sh`), and related utilities.
 
 ## 📋 Available Scripts
 
@@ -473,7 +473,7 @@ If you encounter issues:
 
 3. Review backup files in `~/oscal-*-backup-*/`
 
-4. Open an issue: https://github.com/keekar2022/OSCAL-Reports/issues
+4. Open an issue: https://github.com/adobe/OSCAL-Reports/issues
 
 ---
 

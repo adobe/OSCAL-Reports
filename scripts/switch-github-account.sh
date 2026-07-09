@@ -4,7 +4,7 @@
 #
 # Licensed under the MIT License. See LICENSE file for details.
 
-# GitHub Account Switcher — switch between personal and Adobe GitHub accounts.
+# GitHub account helper for adobe/OSCAL-Reports.
 # Run: ./scripts/switch-github-account.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,45 +16,36 @@ echo "║              GitHub Account Switcher                          ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Show current status
 echo "📊 Current Account Status:"
 gh auth status
 echo ""
 
-# Menu
-echo "Select account to switch to:"
-echo "  1) keekar2022 (Personal - for personal repo)"
-echo "  2) mkesharw_adobe (Adobe EMU - for Adobe repo)"
-echo "  3) Show current status"
-echo "  4) Exit"
+echo "Canonical repository: adobe/OSCAL-Reports"
+echo "Use mkesharw_adobe for push/PR operations on this project."
 echo ""
-read -rp "Enter choice [1-4]: " choice
+echo "Select action:"
+echo "  1) Switch to mkesharw_adobe (Adobe — for adobe/OSCAL-Reports)"
+echo "  2) Show current status"
+echo "  3) Exit"
+echo ""
+read -rp "Enter choice [1-3]: " choice
 
 case $choice in
     1)
         echo ""
-        echo "🔄 Switching to keekar2022..."
-        gh auth switch --user keekar2022
-        echo "✅ Switched to personal account (keekar2022)"
-        echo ""
-        echo "You can now access:"
-        echo "  - Personal repo: keekar2022/OSCAL-Reports (private)"
-        ;;
-    2)
-        echo ""
         echo "🔄 Switching to mkesharw_adobe..."
         gh auth switch --user mkesharw_adobe
-        echo "✅ Switched to Adobe EMU account (mkesharw_adobe)"
+        echo "✅ Switched to Adobe account (mkesharw_adobe)"
         echo ""
         echo "You can now access:"
-        echo "  - Adobe repo: AdobeManagedServices/OSCAL-Reports"
+        echo "  - adobe/OSCAL-Reports (https://github.com/adobe/OSCAL-Reports)"
         ;;
-    3)
+    2)
         echo ""
         echo "📊 Current GitHub Account Status:"
         gh auth status
         ;;
-    4)
+    3)
         echo "Exiting..."
         exit 0
         ;;
@@ -66,5 +57,4 @@ esac
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ Account switch complete"
-echo ""
+echo "✅ Done"

@@ -36,7 +36,7 @@ export const Footer = () => {
         
         <div className="footer-links">
           <a 
-            href="https://github.com/AdobeManagedServices/oscal/blob/main/docs/ARCHITECTURE.md" 
+            href="https://github.com/adobe/OSCAL-Reports/blob/main/docs/ARCHITECTURE.md" 
             target="_blank" 
             rel="noopener noreferrer"
             title="View Technical Architecture"
@@ -45,7 +45,7 @@ export const Footer = () => {
           </a>
           <span className="divider">•</span>
           <a 
-            href="https://github.com/AdobeManagedServices/oscal/blob/main/docs/DEPLOYMENT.md" 
+            href="https://github.com/adobe/OSCAL-Reports/blob/main/docs/DEPLOYMENT.md" 
             target="_blank" 
             rel="noopener noreferrer"
             title="View Deployment Guide"
@@ -54,7 +54,7 @@ export const Footer = () => {
           </a>
           <span className="divider">•</span>
           <a 
-            href="https://github.com/AdobeManagedServices/oscal/blob/main/docs/CONFIGURATION.md" 
+            href="https://github.com/adobe/OSCAL-Reports/blob/main/docs/CONFIGURATION.md" 
             target="_blank" 
             rel="noopener noreferrer"
             title="View Configuration Guide"
@@ -63,7 +63,7 @@ export const Footer = () => {
           </a>
           <span className="divider">•</span>
           <a 
-            href="https://github.com/AdobeManagedServices/oscal" 
+            href="https://github.com/adobe/OSCAL-Reports" 
             target="_blank" 
             rel="noopener noreferrer"
             title="View on GitHub"
@@ -72,7 +72,7 @@ export const Footer = () => {
           </a>
           <span className="divider">•</span>
           <a 
-            href="https://github.com/AdobeManagedServices/OSCAL-Reports/blob/main/LICENSE" 
+            href="https://github.com/adobe/OSCAL-Reports/blob/main/LICENSE" 
             target="_blank" 
             rel="noopener noreferrer"
             title="MIT License"
