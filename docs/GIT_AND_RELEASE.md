@@ -1086,7 +1086,7 @@ git rebase --continue
 git push --force
 ```
 
-#### Option B: If Rebase Gets Messy
+git push --force-with-lease
 ```bash
 # 1. Save your commit hash
 git log --oneline -1  # Note the commit hash
