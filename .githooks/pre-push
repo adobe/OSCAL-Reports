@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Pre-push hook to ensure version is bumped when pushing to Pre_Prod or main
+# Pre-push hook to ensure version is bumped when pushing to Quality, main, or Prod
 #
 # To install this hook:
 #   git config core.hooksPath .githooks
@@ -39,8 +39,8 @@ while read local_ref local_sha remote_ref remote_sha; do
   # Extract branch name
   branch=$(echo "$remote_ref" | sed 's|refs/heads/||')
   
-  # Only check for Pre_Prod and main branches
-  if [[ "$branch" != "Pre_Prod" && "$branch" != "main" ]]; then
+  # Only check for Quality, main, and Prod branches
+  if [[ "$branch" != "Quality" && "$branch" != "main" && "$branch" != "Prod" ]]; then
     continue
   fi
   

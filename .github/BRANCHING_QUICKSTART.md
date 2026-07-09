@@ -1,85 +1,55 @@
-# 🌳 Branching Strategy - Quick Reference
+# Branching Strategy - Quick Reference
 
-**OSCAL Report Generator V2**
-
----
-
-## 🎯 Branch Flow
-
-```
-Development  ──┐
-               ├──> Pre_Prod ──> main (Production)
-Quality_Test ──┘
-```
+**OSCAL Report Generator** — [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports)
 
 ---
 
-## 📋 Quick Rules
+## Branch flow (4 branches)
 
-| Branch | Purpose | Merges To | Protected |
+```
+Development (default) → Quality → main / Prod
+```
+
+**Retired:** `Pre_Prod` — use `Quality` for integration and staging validation.
+
+---
+
+## Quick rules
+
+| Branch | Purpose | Merges to | Protected |
 |--------|---------|-----------|-----------|
-| **Development** | Active development | Pre_Prod or main | No |
-| **Quality_Test** | QA testing | Pre_Prod or main | No |
-| **Pre_Prod** | Staging/Pre-production | main | ✅ Yes |
-| **main** | Production | N/A | ✅ Yes |
+| **Development** | Active development (default) | Quality | Recommended |
+| **Quality** | Integration / staging validation | main, Prod | Recommended |
+| **main** | Production | N/A | Yes |
+| **Prod** | Production (parallel) | N/A | Yes |
 
 ---
 
-## ⚡ Quick Commands
+## Quick commands
 
-### Start New Feature
+### Daily development
+
 ```bash
 git checkout Development
-git pull
-git checkout -b feature/my-feature
-# ... work on feature ...
-git push origin feature/my-feature
-gh pr create --base Development
+git pull origin Development
+# ... changes ...
+git push origin Development
 ```
 
-### Deploy to Staging (Pre_Prod)
+### Promote to integration
+
 ```bash
-git checkout Development  # or Quality_Test
-git pull
-gh pr create --base Pre_Prod --title "Deploy to Staging"
+gh pr create --repo adobe/OSCAL-Reports --base Quality --head Development --title "Merge to Quality"
 ```
 
-### Deploy to Production (main)
+### Release to production
+
 ```bash
-# From Pre_Prod (recommended), Development, or Quality_Test
-git checkout Pre_Prod   # or Development / Quality_Test
-git pull
-gh pr create --base main --head Pre_Prod --title "Release v1.x.x"
+gh pr create --repo adobe/OSCAL-Reports --base main --head Quality --title "Release v1.x.x"
 ```
 
 ---
 
-## 🔒 Merging to main
+## Full documentation
 
-**Allowed:** Development, Quality_Test, or Pre_Prod can merge to main.  
-**Blocked:** Feature/custom branches cannot target main.
-
----
-
-## ❌ Don't Do This
-
-- ❌ **Feature/custom branch → main** (blocked)
-- ❌ Push directly to main or Pre_Prod
-- ❌ Force push to protected branches
-
-## ✅ Do This
-
-- ✅ Use Pull Requests for everything
-- ✅ **Recommended flow:** Development/Quality_Test → Pre_Prod → main (validate in staging first)
-- ✅ Allowed: Development, Quality_Test, or Pre_Prod → main
-- ✅ Get code reviews
-
----
-
-## 🔗 Full Documentation
-
-See [docs/GIT_AND_RELEASE.md](../docs/GIT_AND_RELEASE.md) (branching strategy section) for complete details.
-
----
-
-**Questions?** Contact: mukesh.kesharwani@adobe.com
+See [docs/GIT_AND_RELEASE.md](../docs/GIT_AND_RELEASE.md).

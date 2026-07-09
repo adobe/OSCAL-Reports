@@ -1,14 +1,15 @@
-# Adobe org: merged Pre_Prod/main validation for adobe/OSCAL-Reports.
+# Release validation for adobe/OSCAL-Reports (Quality staging, main/Prod production).
 name: Adobe PreProd Validation
 
 on:
   pull_request:
     branches:
-      - Pre_Prod
+      - Quality
       - main
+      - Prod
   push:
     branches:
-      - Pre_Prod
+      - Quality
 
 jobs:
   version-check:
@@ -336,7 +337,7 @@ jobs:
     name: Auto-create Version Tag
     runs-on: ubuntu-latest
     needs: [version-check, changelog-check, package-consistency]
-    if: github.repository == 'adobe/OSCAL-Reports' && github.event_name == 'push' && github.ref == 'refs/heads/Pre_Prod'
+    if: github.repository == 'adobe/OSCAL-Reports' && github.event_name == 'push' && github.ref == 'refs/heads/Quality'
     permissions:
       contents: write
 
