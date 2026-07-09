@@ -162,6 +162,13 @@ variable "run_oscal_via_docker" {
   default     = false
 }
 
+# GHCR image for run_oscal_via_docker = true (canonical: adobe/OSCAL-Reports packages)
+variable "oscal_container_image" {
+  description = "Container image for Docker/podman mode on EC2 (GHCR). Default matches adobe/OSCAL-Reports GitHub Container Registry."
+  type        = string
+  default     = "ghcr.io/adobe/oscal-report-generator:latest"
+}
+
 # Persistent EBS + ASG (see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
 variable "oscal_persistent_ebs_enabled" {
   description = "When true and run_oscal_via_docker is false, provision dedicated gp3 volumes and mount at /opt/oscal on boot (Auto Scaling launch template user_data). Ignored for Docker mode."

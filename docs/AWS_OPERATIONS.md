@@ -192,7 +192,7 @@ export TERRAFORM_DIR=$PWD/terraform/envs/aws4403
 ./scripts/deploy-to-ec2.sh --blue-only "$(./terraform/run-with-aws-pass.sh output -raw oscal_blue_public_ip 2>/dev/null || ./terraform/run-with-aws-pass.sh output -raw oscal_blue_private_ip)"
 ```
 
-Config and users live on each instance at `/opt/oscal/data`; the deploy script does **not** sync them to S3 (ec2_automation performs backups every 10 min). To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply.
+Config and users live on each instance at `/opt/oscal/data`; the deploy script does **not** sync them to S3 (ec2_automation performs backups every 10 min). To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply (default image: `ghcr.io/adobe/oscal-report-generator:latest`; override with `oscal_container_image`).
 
 ##### S3 backup layout (ec2_automation)
 
@@ -421,6 +421,7 @@ Stage-account PCL (Policy Compliance Layer) may flag the ALB for **port 443** an
 | `instance_architecture` | **arm64** for t4g (default), **x86_64** for t3a | `arm64` |
 | `key_name` | EC2 key pair name (or null) | (required or null) |
 | `run_oscal_via_docker` | If false, EC2 runs Node.js directly with S3-mounted config/users; if true, Docker/podman + GHCR image | `false` |
+| `oscal_container_image` | GHCR image when `run_oscal_via_docker = true` | `ghcr.io/adobe/oscal-report-generator:latest` |
 | `s3_logs_bucket_name` | S3 bucket for logs and activity | (required) |
 | `default_allowed_cidr_blocks` | CIDRs allowed for ALB HTTPS and SSH ingress | `["130.248.32.17/32", "203.191.182.150/32"]` (do not use `0.0.0.0/0`) |
 | `alb_ssl_certificate_arn` | ACM cert for HTTPS | `null` (HTTP only) |
@@ -428,7 +429,6 @@ Stage-account PCL (Policy Compliance Layer) may flag the ALB for **port 443** an
 | `alb_green_hostname` | Hostname for Green (e.g. green.oscal.example.com); ALB routes by Host header | `null` |
 | `alb_port_justification` | Free-form text for Adobe:PortJustification tag on ALB (AMS PCL requirement); only letters, numbers, spaces, _.:/=+-@ | `"OSCAL Report Generator web access HTTPS and HTTP"` |
 | `use_image_factory_ami` | Use Image Factory Amazon Linux 2023 when available | `true` |
-| `run_oscal_via_docker` | If true, EC2 runs Docker/podman + GHCR image | `false` |
 | `common_tags` | Tags applied to all resources (e.g. Team, Account) | `{}` |
 
 See `terraform/variables.tf` and `terraform/terraform.tfvars.example` (or `terraform/envs/<env>/`) for the full list. **AI** is via AWS Bedrock or Mistral API; configure in the app (Settings or config.json). See [Amazon Bedrock setup](#amazon-bedrock-integration-step-by-step-aws-setup).
