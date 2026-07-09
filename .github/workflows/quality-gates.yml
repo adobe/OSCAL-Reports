@@ -1,21 +1,17 @@
 # Concept: Mukesh Kesharwani
 # Contact: mukesh.kesharwani@adobe.com
 #
-# Personal fork quality gates: tests, build, and npm audit before Adobe promotion.
-# AdobeManagedServices/OSCAL-Reports: skipped (uses Adobe PreProd Validation instead).
+# Quality gates for adobe/OSCAL-Reports (integration branch Quality).
 
 name: Quality Gates
 
 on:
   pull_request:
     branches:
-      - Development
       - Quality
       - Quality_Test
-      - Pre_Prod
   push:
     branches:
-      - Development
       - Quality
 
 concurrency:
@@ -26,7 +22,7 @@ jobs:
   backend-unit-tests:
     name: Backend unit tests
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: Checkout code
@@ -50,7 +46,7 @@ jobs:
   catalogue-fetch-release:
     name: OSCAL catalogue fetch (release gate)
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: Checkout code
@@ -75,7 +71,7 @@ jobs:
   frontend-build:
     name: Frontend build
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: Checkout code
@@ -99,7 +95,7 @@ jobs:
   npm-audit:
     name: npm audit (high+)
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: Checkout code
@@ -125,7 +121,7 @@ jobs:
   package-version-consistency:
     name: Package version consistency
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: Checkout code
@@ -151,7 +147,7 @@ jobs:
       - frontend-build
       - npm-audit
       - package-version-consistency
-    if: always() && github.repository == 'keekar2022/OSCAL-Reports'
+    if: always() && github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: Generate summary

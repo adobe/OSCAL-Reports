@@ -1,6 +1,6 @@
 # Runs only on the personal fork for fast feedback (ShellCheck, hooks, pass-sync tests).
-# AdobeManagedServices/OSCAL-Reports: skipped — avoids duplicate minutes and waiting on Adobe
-# for checks that should fail first on personal Development / Quality.
+# Shell validation for adobe/OSCAL-Reports.
+# for checks that should fail first on personal Quality.
 #
 # Consolidated: one job runs ShellCheck + hooks + best-practices + dry-run (single checkout);
 # ec2_automation tests stay parallel on a second runner.
@@ -9,10 +9,9 @@ name: Shell Script Validation
 on:
   pull_request:
     branches:
-      - Development
       - Quality
       - Quality_Test
-      - Pre_Prod
+      - Quality
       - main
     paths:
       - '**.sh'
@@ -20,10 +19,9 @@ on:
       - '.githooks/**'
   push:
     branches:
-      - Development
       - Quality
       - Quality_Test
-      - Pre_Prod
+      - Quality
     paths:
       - '**.sh'
       - '.github/workflows/**.yml'
@@ -33,7 +31,7 @@ jobs:
   shell-gates:
     name: ShellCheck, hooks, best practices, dry-run
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -98,7 +96,7 @@ jobs:
   ec2-automation-pass-sync-tests:
     name: ec2_automation Pass / Secrets Manager sync tests
     runs-on: ubuntu-latest
-    if: github.repository == 'keekar2022/OSCAL-Reports'
+    if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📥 Checkout code
@@ -113,7 +111,7 @@ jobs:
     name: Shell Validation Summary
     runs-on: ubuntu-latest
     needs: [shell-gates, ec2-automation-pass-sync-tests]
-    if: always() && github.repository == 'keekar2022/OSCAL-Reports'
+    if: always() && github.repository == 'adobe/OSCAL-Reports'
 
     steps:
       - name: 📊 Generate summary

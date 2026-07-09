@@ -131,6 +131,10 @@ DEPLOY_S3_SYNC_EXCLUDES=(
   'backend/public/**'
   '*.log'
 )
+# Re-include paths needed for frontend build (config/** is excluded above).
+DEPLOY_S3_SYNC_INCLUDES=(
+  'config/catalogues/**'
+)
 
 # Load AWS credentials from Pass (same entry shape as terraform/run-with-aws-pass.sh). For S3 upload from laptop.
 load_deploy_aws_credentials() {
@@ -175,6 +179,9 @@ sync_repo_to_s3_installer() {
   print_info "Syncing repo to s3://${bucket}/${INSTALLER_PREFIX}/ (region ${region})..."
   for x in "${DEPLOY_S3_SYNC_EXCLUDES[@]}"; do
     exargs+=(--exclude "$x")
+  done
+  for x in "${DEPLOY_S3_SYNC_INCLUDES[@]}"; do
+    exargs+=(--include "$x")
   done
   aws s3 sync "$REPO_ROOT/" "s3://${bucket}/${INSTALLER_PREFIX}/" --region "$region" --delete "${exargs[@]}"
   write_installer_manifest_to_s3 "$bucket" "$region"
@@ -564,6 +571,7 @@ aws s3 sync "s3://${BUCKET}/installer/" "${APP}/" --delete --region "$REGION" \
   --exclude '.validation/**' \
   --exclude '.github/**' \
   --exclude 'config/**' \
+  --include 'config/catalogues/**' \
   --exclude 'terraform/**' \
   --exclude 'test_cases/**' \
   --exclude 'docs/**' \
@@ -634,8 +642,7 @@ INSTALLERSYNC
   fi
   print_success "Application tree synced from S3 to ${REMOTE_APP}/ (manifest sha256 verified when installer/.installer-build.json exists on S3)"
 
-  ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "rm -rf ${REMOTE_APP}/config" 2>/dev/null || true
-
+  # Keep config/catalogues/ for frontend build; app config.json lives on EBS (/opt/oscal/data), not in the installer tree.
   # Install /opt/oscal/scripts from synced app tree (no SCP from laptop for these).
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
     APP='${REMOTE_APP}'
@@ -794,8 +801,10 @@ POSTCONFIGSYNC
     npm install --no-audit --no-fund
     cd backend && npm install --no-audit --no-fund && cd ..
     cd frontend && npm install --no-audit --no-fund && npm run build && cd ..
+    rm -rf backend/public
     mkdir -p backend/public
     cp -r frontend/dist/* backend/public/
+    test -s backend/public/index.html
     if [ -n \"${sm_arn}\" ] && [ \"${DEPLOY_MIGRATE_CONFIG_SM:-0}\" = \"1\" ] && [ -f backend/scripts/migrate-config-to-sm.mjs ]; then
       sudo -u $SVC_USER env OSCAL_SECRETS_MODE=aws-sm OSCAL_SECRETS_MANAGER_ARN='${sm_arn}' CONFIG_PATH=/opt/oscal/data/config.json AWS_DEFAULT_REGION=${AWS_DEPLOY_REGION:-us-east-1} node backend/scripts/migrate-config-to-sm.mjs 2>/dev/null || echo 'Secret migration skipped or already complete'
     fi
@@ -856,7 +865,11 @@ SVCEOF
     sudo systemctl daemon-reload
     sudo systemctl restart oscal-reporter.service 2>/dev/null || true
     echo OK
-  "
+  " || {
+    print_error "npm install/build or service setup failed on $role ($ip). Check frontend build and backend/public/index.html."
+    [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip fail" >> "$results_file"
+    return 1
+  }
 
   print_success "Deployed to $role at $ip"
   if [ -n "$sm_arn" ]; then
@@ -873,12 +886,12 @@ SVCEOF
   print_info "Restarting oscal-reporter.service..."
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo systemctl restart oscal-reporter.service" 2>/dev/null || true
   # Verify app responds. Public curl often fails: SG allows only ALB/VPC/self on OSCAL_APP_PORT, not the internet.
-  print_info "Waiting 20s then checking /health (retry up to 5 times)..."
+  print_info "Waiting 20s then checking /health/ready (retry up to 5 times)..."
   sleep 20
   health_ok=""
   health_via_ssh=""
   for attempt in 1 2 3 4 5; do
-    if curl -sf --connect-timeout 5 "http://${ip}:${port}/health" >/dev/null 2>&1; then
+    if curl -sf --connect-timeout 5 "http://${ip}:${port}/health/ready" >/dev/null 2>&1; then
       health_ok=1
       break
     fi
@@ -887,21 +900,30 @@ SVCEOF
   if [ -z "$health_ok" ]; then
     # Fallback: check from inside instance (SG does not affect localhost).
     if ssh -i "$key" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SSH_USER}@${ip}" \
-      "curl -sf --connect-timeout 5 http://127.0.0.1:${port}/health >/dev/null" 2>/dev/null; then
+      "curl -sf --connect-timeout 5 http://127.0.0.1:${port}/health/ready >/dev/null && curl -sf --connect-timeout 5 -o /dev/null http://127.0.0.1:${port}/" 2>/dev/null; then
       health_ok=1
       health_via_ssh=1
     fi
   fi
   if [ -n "$health_ok" ]; then
     if [ -n "$health_via_ssh" ]; then
-      print_success "App /health OK on instance (localhost only). Direct http://${ip}:${port}/ is blocked by SG -- use ALB URL to reach the app."
+      print_success "App /health/ready OK on instance (localhost only). Direct http://${ip}:${port}/ is blocked by SG -- use ALB URL to reach the app."
       [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok_ssh" >> "$results_file"
     else
-      print_success "App is up at http://${ip}:${port}/health"
+      print_success "App is up at http://${ip}:${port}/health/ready"
       [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok" >> "$results_file"
     fi
+    if [ -x "$REPO_ROOT/scripts/ci/post-deploy-smoke.sh" ]; then
+      smoke_host="ssh:${ip}"
+      if SSH_USER="$SSH_USER" SSH_KEY="$key" "$REPO_ROOT/scripts/ci/post-deploy-smoke.sh" "$smoke_host" "$port"; then
+        print_success "Post-deploy smoke checks passed on $role"
+      else
+        print_error "Post-deploy smoke checks failed on $role"
+        [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip fail" >> "$results_file"
+      fi
+    fi
   else
-    print_warning "App /health not yet responding at http://${ip}:${port}/health (check: sudo systemctl status oscal-reporter.service; config/users on EBS at /opt/oscal/data)"
+    print_warning "App /health/ready not yet responding at http://${ip}:${port}/health/ready (check: sudo systemctl status oscal-reporter.service; backend/public/index.html; config on EBS at /opt/oscal/data)"
     [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip fail" >> "$results_file"
     print_info "Recent oscal-reporter.service logs (for debugging):"
     ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "sudo journalctl -u oscal-reporter.service -n 30 --no-pager 2>/dev/null" 2>/dev/null || true
@@ -920,11 +942,13 @@ sudo chown "$(whoami)":oscal "$LOG" 2>/dev/null || sudo chmod 666 "$LOG"
   echo "=== $(date -Iseconds) deploy_one local binding port=$1 role=$2 ==="
   echo "--- ss listening (${OSCAL_APP_PORT:-3020} or node) ---"
   ss -tlnp 2>/dev/null | grep -E ":${OSCAL_APP_PORT:-3020}\\b" || ss -tlnp 2>/dev/null | grep node || echo "ss: no matching listener"
-  echo "--- curl http://127.0.0.1:$1/health ---"
-  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://127.0.0.1:$1/health" || echo "curl_127_fail"
+  echo "--- curl http://127.0.0.1:$1/health/ready ---"
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://127.0.0.1:$1/health/ready" || echo "curl_127_ready_fail"
+  echo "--- curl http://127.0.0.1:$1/ (SPA) ---"
+  curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 -o /dev/null "http://127.0.0.1:$1/" || echo "curl_127_root_fail"
   if [ -n "$3" ]; then
-    echo "--- curl http://$3:$1/health (same host private IP) ---"
-    curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://$3:$1/health" || echo "curl_private_fail"
+    echo "--- curl http://$3:$1/health/ready (same host private IP) ---"
+    curl -sS -w "\nhttp_code:%{http_code}\n" --connect-timeout 5 "http://$3:$1/health/ready" || echo "curl_private_fail"
   else
     echo "--- skip private-IP curl (no private IP in tf output) ---"
   fi
@@ -984,11 +1008,27 @@ deploy_role_with_maintenance() {
   if [ "$maintenance_enabled" = "1" ]; then
     if [ "$deploy_rc" -eq 0 ]; then
       print_info "Waiting for ALB target health on $role before restoring weighted routing..."
+      ready_for_traffic=0
       if deploy_maintenance_wait_target_healthy "$role"; then
         print_success "ALB target $role is healthy."
+        if deploy_maintenance_verify_instance_ready "$ip" "$SSH_KEY" "${OSCAL_APP_PORT:-3020}" "$SSH_USER"; then
+          ready_for_traffic=1
+        else
+          print_error "Instance $role failed SPA/readiness checks; keeping peer color at 100% until fixed."
+          deploy_rc=1
+        fi
       else
-        print_warning "ALB target $role not healthy yet; restoring weighted routing (peer color still carries traffic until healthy)."
+        print_error "ALB target $role not healthy; not restoring weighted routing."
+        deploy_rc=1
       fi
+      if [ "$ready_for_traffic" = "1" ]; then
+        print_info "Exiting deploy maintenance for $role..."
+        deploy_maintenance_exit "$role" || true
+      else
+        print_warning "Leaving deploy maintenance active for $role (peer carries traffic). Re-run deploy or fix manually, then: deploy_maintenance_exit $role"
+        return "$deploy_rc"
+      fi
+      return "$deploy_rc"
     else
       print_warning "Deploy failed for $role; restoring ALB/ASG maintenance state."
     fi
@@ -1293,7 +1333,7 @@ if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
     elif [ "$status" = "ok_ssh" ]; then
       echo -e "  ${GREEN}✓${NC} $role ($ip): healthy (localhost; use ALB -- SG blocks direct :${OSCAL_APP_PORT:-3020})"
     else
-      echo -e "  ${RED}✗${NC} $role ($ip): /health not responding"
+      echo -e "  ${RED}✗${NC} $role ($ip): /health/ready not responding"
     fi
   done < "$DEPLOY_RESULTS_FILE"
 fi

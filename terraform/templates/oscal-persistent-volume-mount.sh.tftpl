@@ -14,24 +14,57 @@ ROLE="${oscal_role}"
 STACK="${stack_name}"
 export AWS_DEFAULT_REGION="$REGION"
 
-VID=""
-for _ in $(seq 1 90); do
-  VID=$(aws ec2 describe-volumes \
-    --filters \
-      "Name=tag:OSCAL_PERSISTENT_ROLE,Values=$ROLE" \
-      "Name=tag:Stack,Values=$STACK" \
-      "Name=availability-zone,Values=$AZ" \
-      "Name=status,Values=available" \
-    --query 'Volumes[0].VolumeId' --output text 2>/dev/null || true)
-  if [[ -n "$VID" && "$VID" != "None" ]]; then break; fi
-  sleep 5
-done
+# Prefer volume already attached to this instance (ASG recycle / user_data re-run).
+VID=$(aws ec2 describe-volumes \
+  --filters \
+    "Name=tag:OSCAL_PERSISTENT_ROLE,Values=$ROLE" \
+    "Name=tag:Stack,Values=$STACK" \
+    "Name=availability-zone,Values=$AZ" \
+  --query "Volumes[?Attachments[?InstanceId=='$IID']].VolumeId | [0]" --output text 2>/dev/null || true)
+
 if [[ -z "$VID" || "$VID" == "None" ]]; then
-  echo "oscal-persistent-volume: no available volume for role=$ROLE stack=$STACK in $AZ" >&2
+  for _ in $(seq 1 90); do
+    VID=$(aws ec2 describe-volumes \
+      --filters \
+        "Name=tag:OSCAL_PERSISTENT_ROLE,Values=$ROLE" \
+        "Name=tag:Stack,Values=$STACK" \
+        "Name=availability-zone,Values=$AZ" \
+        "Name=status,Values=available" \
+      --query 'Volumes[0].VolumeId' --output text 2>/dev/null || true)
+    if [[ -n "$VID" && "$VID" != "None" ]]; then break; fi
+    sleep 5
+  done
+fi
+if [[ -z "$VID" || "$VID" == "None" ]]; then
+  echo "oscal-persistent-volume: no volume for role=$ROLE stack=$STACK in $AZ (not attached to $IID and not available)" >&2
   exit 1
 fi
 
 ATTACHED=$(aws ec2 describe-volumes --volume-ids "$VID" --query 'Volumes[0].Attachments[0].InstanceId' --output text 2>/dev/null || echo "")
+if [[ -n "$ATTACHED" && "$ATTACHED" != "None" && "$ATTACHED" != "$IID" ]]; then
+  echo "oscal-persistent-volume: volume $VID attached to $ATTACHED; waiting for release or force-detach"
+  for _ in $(seq 1 120); do
+    STALE_STATE=$(aws ec2 describe-instances --instance-ids "$ATTACHED" \
+      --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo "terminated")
+    CUR_ATT=$(aws ec2 describe-volumes --volume-ids "$VID" \
+      --query 'Volumes[0].Attachments[0].InstanceId' --output text 2>/dev/null || echo "")
+    if [[ -z "$CUR_ATT" || "$CUR_ATT" == "None" ]]; then
+      ATTACHED=""
+      break
+    fi
+    if [[ "$STALE_STATE" == "shutting-down" || "$STALE_STATE" == "terminated" ]]; then
+      aws ec2 detach-volume --volume-id "$VID" --force 2>/dev/null || true
+      aws ec2 wait volume-available --volume-ids "$VID" 2>/dev/null || sleep 5
+      ATTACHED=""
+      break
+    fi
+    sleep 5
+  done
+fi
+if [[ -n "$ATTACHED" && "$ATTACHED" != "None" && "$ATTACHED" != "$IID" ]]; then
+  echo "oscal-persistent-volume: volume $VID still attached to $ATTACHED after wait" >&2
+  exit 1
+fi
 if [[ "$ATTACHED" != "$IID" ]]; then
   aws ec2 attach-volume --volume-id "$VID" --instance-id "$IID" --device /dev/sdf
   aws ec2 wait volume-in-use --volume-ids "$VID"

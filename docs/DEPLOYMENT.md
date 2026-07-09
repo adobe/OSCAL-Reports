@@ -34,7 +34,7 @@
 | On-premises (own server) | TrueNAS | FREE | 20 min |
 | Just build Docker images | GitHub Container Registry | FREE | Auto |
 
-\* **Note**: Ngrok deployment only available on Adobe repository (`AdobeManagedServices/OSCAL-Reports`)
+* **Note**: Ngrok deployment available on [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) when configured in CI
 
 ### Platform Comparison
 
@@ -58,10 +58,9 @@
 - New URL for each deployment
 
 **⚠️ Repository Restriction:**
-- **Only available on Adobe repository** (`AdobeManagedServices/OSCAL-Reports`)
+- **Repository**: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports)
 - Requires `NGROK_AUTHTOKEN` secret and GitLab runner access
-- Personal repository (`keekar2022/OSCAL-Reports`) does not support this deployment
-- See `docs/REPOSITORY_WORKFLOW_RESTRICTIONS.md` for details
+- See `docs/TESTING_ENVIRONMENT_SETUP.md` for details
 
 **See**: `docs/TESTING_ENVIRONMENT_SETUP.md`
 
@@ -121,7 +120,7 @@ GitHub Actions automatically builds and publishes Docker images to GitHub Contai
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/keekar2022/OSCAL-Reports.git
+git clone https://github.com/adobe/OSCAL-Reports.git
 cd OSCAL-Reports
 
 # 2. Run setup
@@ -251,7 +250,7 @@ For TrueNAS deployments, we use:
 
 ### Quick Setup (TrueNAS)
 
-**⚠️ Important**: Uses personal repo (`github.com/keekar2022/OSCAL-Reports`) - no VPN required
+**Clone from canonical repository** (`github.com/adobe/OSCAL-Reports`) — no VPN required
 
 ```bash
 # SSH into TrueNAS
@@ -259,7 +258,7 @@ ssh mkesharw@nas.keekar.au
 cd /mnt/pool1/Documents/KACI-Apps
 
 # Clone Blue instance (Port 3020)
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Blue
+git clone https://github.com/adobe/OSCAL-Reports.git OSCAL-Report-Generator-Blue
 cd OSCAL-Report-Generator-Blue
 # Pull-based deploy from Docker Hub (see docs/DOCKER_HUB_GUIDE.md)
 chmod +x scripts/install_from_dockerhub.sh
@@ -267,7 +266,7 @@ chmod +x scripts/install_from_dockerhub.sh
 
 # Clone Green instance (Port 3019)
 cd /mnt/pool1/Documents/KACI-Apps
-git clone https://github.com/keekar2022/OSCAL-Reports.git OSCAL-Report-Generator-Green
+git clone https://github.com/adobe/OSCAL-Reports.git OSCAL-Report-Generator-Green
 cd OSCAL-Report-Generator-Green
 chmod +x scripts/install_from_dockerhub.sh
 ./scripts/install_from_dockerhub.sh
@@ -691,7 +690,7 @@ du -sh /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-*
 - **Best Practices**: See `docs/BEST_PRACTICES.md`
 - **Testing Guide**: See `test_cases/TESTING_GUIDE.md`
 - **Validation System**: See `docs/VALIDATION_SYSTEM.md`
-- **Dual Repo Setup**: See [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md#dual-repository-setup-guide)
+- **Git & release**: See [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md#single-repository-setup-guide)
 - **Version History**: See `docs/VERSION_NOTES.md`
 
 ---

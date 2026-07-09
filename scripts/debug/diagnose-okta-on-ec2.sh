@@ -4,8 +4,8 @@
 #
 # Licensed under the MIT License. See LICENSE file for details.
 
-# Diagnose Okta 401 on Blue and Green EC2 instances.
-# SSHs to each instance and checks: config (ssoConfig.okta), pass secret, env, logs.
+# Diagnose Okta / SSO on Blue and Green EC2 instances.
+# SSHs to each instance: aws-sm probe (preferred), config, systemd env, legacy pass checks.
 # Uses: Pass for SSH key (default AWS/OSCAL-AWS4403-SSH); Terraform via terraform/run-with-aws-pass.sh for IPs.
 #
 # Usage: ./scripts/debug/diagnose-okta-on-ec2.sh
@@ -46,6 +46,26 @@ INSTANCE_NAME=$1
 OKTA_PASS_ENTRY=$2
 
 echo "========== $INSTANCE_NAME =========="
+
+# AWS SM mode probe (preferred on EC2)
+PROBE="/opt/oscal/app/scripts/debug/probe-sso-secrets.mjs"
+if [ -f "$PROBE" ] && command -v node >/dev/null 2>&1; then
+  echo "  --- probe-sso-secrets.mjs ---"
+  sudo -u svc_ams-oscal env PATH=/usr/bin:/usr/local/bin:$PATH node "$PROBE" 2>&1 | tail -25 || echo "  probe-sso-secrets failed"
+fi
+if systemctl show oscal-reporter.service -p Environment 2>/dev/null | grep -q OSCAL_SECRETS_MODE=aws-sm; then
+  echo "  Systemd: OSCAL_SECRETS_MODE=aws-sm"
+  systemctl show oscal-reporter.service -p Environment 2>/dev/null | tr ' ' '\n' | grep -E 'OSCAL_SECRETS|SESSION_SECRET' | sed 's/SESSION_SECRET=.*/SESSION_SECRET=<set>/' || true
+else
+  echo "  Systemd: OSCAL_SECRETS_MODE not aws-sm (run deploy-to-ec2.sh to patch unit)"
+fi
+if curl -sf --connect-timeout 5 http://127.0.0.1:3020/health/ready >/dev/null 2>&1; then
+  echo "  /health/ready: OK"
+else
+  echo "  /health/ready: FAILED (SPA, config, or SM secrets)"
+fi
+
+echo "========== $INSTANCE_NAME (legacy config/pass) =========="
 
 # Config paths (direct run vs Docker)
 CONFIG_PATHS="/opt/oscal/data/config.json /data/config.json"

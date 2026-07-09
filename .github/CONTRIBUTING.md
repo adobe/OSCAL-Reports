@@ -74,7 +74,7 @@ Security issues shouldn't be reported on this issue tracker. Instead, [file an i
 
 ```bash
 # Clone the repository
-git clone https://github.com/keekar2022/OSCAL-Reports.git
+git clone https://github.com/adobe/OSCAL-Reports.git
 cd OSCAL-Reports
 
 # Install dependencies

@@ -1,6 +1,6 @@
 # Git, repositories, and releases
 
-**Consolidated guide:** version bumping and release workflow, branching strategy, Adobe + personal dual remotes, GitHub account switching, and the PR submission checklist.
+**Consolidated guide:** version bumping and release workflow, branching strategy, single canonical remote ([adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports)), GitHub authentication, and the PR submission checklist.
 
 ---
 
@@ -8,7 +8,7 @@
 
 - [Version Control and Release](#version-control-and-release)
 - [🌳 Branching Strategy](#branching-strategy)
-- [Dual Repository Setup Guide](#dual-repository-setup-guide)
+- [Single Repository Setup Guide](#single-repository-setup-guide)
 - [GitHub Account Management Guide](#github-account-management-guide)
 - [Pull Request Submission Checklist](#pull-request-submission-checklist)
 
@@ -24,7 +24,7 @@
 
 ### Quick Reference
 
-#### Version Bump (before merging to Pre_Prod/main)
+#### Version Bump (before merging to Quality/main/Prod)
 
 ```bash
 # Bug fix: 1.6.4 → 1.6.5
@@ -47,28 +47,35 @@ git config core.hooksPath   # Should output: .githooks
 #### Branch Flow
 
 ```
-Development → Quality_Test → Pre_Prod → main
+Development (default branch)
+        │
+        v
+   Quality (integration + staging validation)
+        │
+        v
+   main / Prod (production)
 ```
 
-**Current application release:** **1.7.23** (see [CHANGELOG.md](CHANGELOG.md)). Bump with `./scripts/bump_version.sh` before promoting to Pre_Prod/main.
-
-**main** accepts PRs from **Development**, **Quality_Test**, or **Pre_Prod**. Feature/custom branches cannot target main. Recommended: use Pre_Prod for staging validation first.
+**Canonical repository:** [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) — commit and push to **`origin`** only.  
+**Default branch:** **`Development`**.  
+**Retired branch:** **`Pre_Prod`** (removed; use `Quality` for staging validation).  
+**Current application release:** see [CHANGELOG.md](CHANGELOG.md). Bump with `./scripts/bump_version.sh` when promoting **Development → Quality** or **Quality → main/Prod**.
 
 ---
 
 ### Components
 
 - **scripts/bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`.
-- **.githooks/pre-push** – Validates version increment and package consistency before push to Pre_Prod/main.
-- **.github/workflows/adobe-preprod-validate.yml** – Adobe repo only: one workflow for Pre_Prod/main (version vs tags, changelog hints, package consistency, YAML/tar/ESLint/docs gates, auto-tag on Pre_Prod push).
+- **.githooks/pre-push** – Validates version increment and package consistency before push to Quality/main/Prod.
+- **.github/workflows/adobe-preprod-validate.yml** – Release validation on Quality/main/Prod (version vs tags, changelog, package consistency, auto-tag on Quality push).
 
 ---
 
 ### Workflow
 
-1. **Develop** on Development or Quality_Test; merge to Pre_Prod via PR.
-2. **On Pre_Prod**: Run `./scripts/bump_version.sh [patch|minor|major] "message"` and push. Pre-push hook and GitHub Actions validate.
-3. **Release**: Create PR Pre_Prod → main. After merge, release workflow runs (tag, GitHub Release).
+1. **Develop** on **`Development`** (default branch). Quality Gates run on `Quality` push/PR.
+2. **Integration:** open PR **`Development` → `Quality`**, run `./scripts/bump_version.sh patch` if version equals the latest tag, merge when validation passes.
+3. **Release:** PR **`Quality` → `main`** or **`Prod`**. After merge, verify tag and GitHub Release.
 
 ---
 
@@ -80,10 +87,10 @@ Development → Quality_Test → Pre_Prod → main
 - [ ] `docs/CHANGELOG.md` has entry for new version
 - [ ] Tests pass: `cd backend && npm run test`
 - [ ] No debug code or hardcoded credentials
-- [ ] Branch flow correct (PR from Pre_Prod to main only)
+- [ ] Branch flow correct (PR from Quality to main/Prod)
 
 #### Release Day
-- [ ] Create PR: Pre_Prod → main
+- [ ] Create PR: Quality → main (or Prod)
 - [ ] All GitHub Actions green
 - [ ] Merge (use merge commit to preserve history)
 - [ ] Verify tag created: `git fetch --tags && git tag -l "v*"`
@@ -92,7 +99,7 @@ Development → Quality_Test → Pre_Prod → main
 #### Common Pitfalls
 - **Tar:** Use `tar --exclude=... -czf archive.tar.gz files` (exclude before file args).
 - **Version mismatch:** Always use `scripts/bump_version.sh`, never edit version by hand in one place only.
-- **Wrong PR base:** Only Pre_Prod → main; never feature branch → main.
+- **Wrong PR base:** Prefer Quality → main/Prod for releases; never feature branch → main directly.
 
 ---
 
@@ -109,13 +116,15 @@ Development → Quality_Test → Pre_Prod → main
 
 - [Branching strategy](#branching-strategy)
 - [CHANGELOG](CHANGELOG.md)
-- [Dual repository setup](#dual-repository-setup-guide)
+- [Single repository setup](#single-repository-setup-guide)
 
 ---
 
 <a id="branching-strategy"></a>
 
 ## 🌳 Branching Strategy
+
+> **Updated July 2026:** Default branch is **`Development`**. Flow is `Development` → `Quality` → `main` / `Prod`. Branch **`Pre_Prod` is retired** — see [Single Repository Setup Guide](#single-repository-setup-guide) for the current model. Sections below that mention `Pre_Prod` are historical unless updated inline.
 
 **OSCAL Report Generator V2 - Git Workflow**
 
@@ -619,28 +628,29 @@ git push
 
 - **Development branch**: Runs all tests, no deployment
 - **Quality_Test branch**: Runs all tests + security scans
-- **Pre_Prod branch**: Tests + builds Docker image + deploys to staging
+- **Quality branch**: Integration validation + staging checks
 - **main branch**: Full CI/CD + production deployment + tagging
 
 #### GitHub Actions Configuration
 
-Workflows live in `.github/workflows/`. The same files exist in **both** remotes; **each job is gated by `github.repository`** so checks run in one place only:
+All workflows run on **adobe/OSCAL-Reports** (`github.repository == 'adobe/OSCAL-Reports'`):
 
-| Workflow | Where it runs | Purpose |
-|----------|----------------|----------|
-| `shell-validation.yml` | **Personal** (`keekar2022/OSCAL-Reports`) | Single **shell-gates** job (ShellCheck, hook syntax, light best-practices, dry-run) plus **ec2_automation** pass-sync tests; `Development` / `Quality` / `Quality_Test` / `Pre_Prod` / `main` (PR). |
-| `adobe-preprod-validate.yml` | **Adobe** (`AdobeManagedServices/OSCAL-Reports`) | Merged Pre_Prod/main checks: version vs tags, changelog, package consistency, YAML/tar/ESLint config, docs, summary; auto-tag on `Pre_Prod` push. |
-| `release.yml` | **Adobe** | GitHub Release on version tags. |
-| `codacy.yml` | **Adobe** | Codacy + SARIF upload. |
-| `docker-publish.yml` | **Personal** | Docker Hub push (keekar image). |
-| `sync-personal-quality-to-adobe-preprod.yml` | **Both** (split jobs) | **Adobe:** `workflow_dispatch` → fast-forward `Pre_Prod` from personal `Quality`. **Personal:** push to `Quality` or `workflow_dispatch` → self-hosted push to Adobe `Pre_Prod`. |
-| **CodeQL** (enterprise default setup) | **Adobe** | GitHub-managed dynamic workflow; scans **JavaScript/TypeScript** (required) and **Python** if enabled in repo Code Security settings. |
+| Workflow | Purpose |
+|----------|---------|
+| `quality-gates.yml` | Backend unit tests, catalogue fetch, frontend build, npm audit on `Quality` |
+| `shell-validation.yml` | ShellCheck, hook syntax, ec2_automation tests |
+| `adobe-preprod-validate.yml` | Quality/main/Prod: version vs tags, changelog, package consistency; auto-tag on `Quality` push |
+| `release.yml` | GitHub Release on version tags |
+| `codacy.yml` | Codacy + SARIF upload |
+| `docker-publish.yml` | Docker Hub push |
+| `ami-drift-check.yml` | Scheduled AMI drift check |
+| **CodeQL** (enterprise default setup) | JavaScript/TypeScript (and Python if enabled in Code Security settings) |
 
-Develop on **personal** first: shell validation and Docker publish do not wait on Adobe Actions.
+**Retired (dual-repo mirror):** `dispatch-adobe-quality-sync.yml`, `sync-personal-quality-to-adobe-quality.yml` — removed after migration to adobe/OSCAL-Reports.
 
 #### Adobe CodeQL (enterprise default setup)
 
-OSCAL Report Generator is a **Node.js / React** project. Adobe enables **CodeQL default setup** on `AdobeManagedServices/OSCAL-Reports`, which may include **Python** even when the repo has little or no Python source. If the Python job fails with:
+OSCAL Report Generator is a **Node.js / React** project. CodeQL default setup on [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) may include **Python** even when the repo has little Python source. If the Python job fails with:
 
 ```text
 CodeQL could not process any code written in Python
@@ -651,7 +661,7 @@ that is a **configuration mismatch**, not an application defect. JavaScript/Type
 
 **Preferred fix (one-time, repo Settings — requires Code Security admin):**
 
-1. Open [Adobe repo → Settings → Code security and analysis](https://github.com/AdobeManagedServices/OSCAL-Reports/settings/security_analysis) (Adobe SSO).
+1. Open [adobe/OSCAL-Reports → Settings → Code security and analysis](https://github.com/adobe/OSCAL-Reports/settings/security_analysis) (Adobe SSO).
 2. **Code scanning** → **CodeQL analysis** → **View configuration** → **Edit**.
 3. Under **Languages**, keep **JavaScript/TypeScript** only; **disable Python**.
 4. Save and re-run failed PR checks.
@@ -662,11 +672,11 @@ Or run (with sufficient `gh` permissions):
 ./scripts/ci/configure-codeql-languages.sh
 ```
 
-See [GitHub: Edit default setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/edit-default-setup) and [No source code seen during build](https://gh.io/troubleshooting-code-scanning/no-source-code-seen-during-build).
+**Repo-side mitigation:** `scripts/ci/validate_workflow_yaml.py` and `.github/codeql/codeql-config.yml` narrow Python scope when Python remains enabled.
 
-**Repo-side mitigation (no admin required):** `scripts/ci/validate_workflow_yaml.py` is tracked Python used by `adobe-preprod-validate.yml` so CodeQL’s Python extractor has source to analyze when Python remains enabled. Scope is narrowed via `.github/codeql/codeql-config.yml`.
+#### GHCR migration (deferred)
 
-**Before Adobe PRs:** run Quality Gates on the personal fork (`keekar2022/OSCAL-Reports`); Adobe skips those jobs by design.
+Container images still reference `ghcr.io/adobemanagedservices/oscal-report-generator` in Terraform and deployment docs. A follow-up phase will republish to `ghcr.io/adobe/oscal-report-generator` and update infrastructure references.
 
 ---
 
@@ -705,369 +715,103 @@ See [GitHub: Edit default setup](https://docs.github.com/en/code-security/how-to
 
 ---
 
-<a id="dual-repository-setup-guide"></a>
+<a id="single-repository-setup-guide"></a>
 
-## Dual Repository Setup Guide
+## Single Repository Setup Guide
 
 ### Overview
 
-This project is maintained in **two GitHub repositories** due to network access restrictions:
+OSCAL Report Generator uses one canonical GitHub repository:
 
-1. **Adobe Repository** (Primary/Corporate)
-   - URL: `https://github.com/AdobeManagedServices/oscal`
-   - Access: Requires Adobe VPN + SSO authentication
-   - Purpose: Corporate codebase, collaboration, CI/CD
-   - Branch protection: **Configured in GitHub** (Settings → Rules → Rulesets, or classic branch protection). It is **not** controlled by files in this repository.
+| Item | Value |
+|------|--------|
+| **Repository** | [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) |
+| **Clone URL** | `https://github.com/adobe/OSCAL-Reports.git` |
+| **Git remote** | `origin` |
+| **Default branch** | `Development` |
+| **Branches** | `Development`, `Quality`, `main`, `Prod` ( **`Pre_Prod` retired** ) |
+| **GitHub account** | `mkesharw_adobe` (Adobe Inc. SSO) |
+| **Commit author** | Mukesh Kesharwani / mukesh.kesharwani@adobe.com |
 
-2. **Personal Repository** (Mirror/Public)
-   - URL: `https://github.com/keekar2022/OSCAL-Reports`
-   - Access: Public (no VPN required)
-   - Purpose: TrueNAS deployment, backup, public access
-   - Branch Protection: Disabled (direct push allowed)
+Legacy remotes (`adobe`, `personal`, `keekar2022/OSCAL-Reports`, `AdobeManagedServices/OSCAL-Reports`) are **retired**. Do not push to them.
 
-#### Why was `Pre_Prod` rejecting direct `git push`?
-
-If you see **`remote: GH013: ... Changes must be made through a pull request`** when pushing to **`Pre_Prod`**, that comes from a **GitHub ruleset or branch protection rule** on **AdobeManagedServices/OSCAL-Reports** that applies to `Pre_Prod` (for example “require a pull request before merging”).
-
-- **This repo’s** `.githooks/pre-push` only runs **locally**; it does not add that GitHub rule.
-- **Who can change it:** an org/repo **admin** in GitHub: **Settings → Rules → Rulesets** (or **Branches → Branch protection rules**), edit the rule that targets `Pre_Prod`.
-
-**Recommended policy (aligns with staging vs production):**
-
-| Branch | Suggested protection |
-|--------|----------------------|
-| **`Prod`** (and **`main`** if it is production) | Require PR, reviews, and status checks as needed. |
-| **`Pre_Prod`** | Allow **direct pushes** for release engineers / maintainers (or require PR only if you want every staging change reviewed). |
-| **`Development`**, **`Quality_Test`**, etc. | Match team policy; often lighter than production. |
-
-If `Pre_Prod` should accept **`git push adobe Pre_Prod`** after hooks pass, remove `Pre_Prod` from rules that mandate PRs, or add an exception for your role, and keep **strict PR-only flow on `Prod`** only.
-
----
-
-### Why Two Repositories?
-
-**TrueNAS servers cannot access the Adobe repository** because:
-- Adobe repo requires VPN connection
-- TrueNAS servers are not on the Adobe VPN
-- SSO authentication is not available on TrueNAS
-
-**Solution**: TrueNAS pulls updates from the personal repository (public), which is kept in sync with the Adobe repository.
-
----
-
-### Repository Sync Workflow
-
-#### Development Workflow
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    LOCAL DEVELOPMENT                         │
-│                                                              │
-│  1. Make changes locally                                     │
-│  2. Commit changes                                           │
-│  3. Push to BOTH repositories                               │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-        ┌──────────────────────────────────────┐
-        │                                      │
-        ▼                                      ▼
-┌─────────────────┐                  ┌─────────────────┐
-│  Adobe Repo     │                  │  Personal Repo  │
-│  (via PR)       │                  │  (direct push)  │
-└─────────────────┘                  └─────────────────┘
-        │                                      │
-        │ Manual merge                         │
-        │ (via GitHub UI)                      │
-        │                                      │
-        ▼                                      ▼
-┌─────────────────┐                  ┌─────────────────┐
-│  Adobe main     │                  │  Personal main  │
-└─────────────────┘                  └─────────────────┘
-                                              │
-                                              │ git pull
-                                              ▼
-                                     ┌─────────────────┐
-                                     │  TrueNAS        │
-                                     │  Deployment     │
-                                     └─────────────────┘
-```
-
----
-
-### Local Git Configuration
-
-#### Checking Current Remotes
+### One-time cutover (local clone)
 
 ```bash
-git remote -v
+./scripts/git/migrate-remote-to-adobe.sh        # reconfigure remotes only
+./scripts/git/migrate-remote-to-adobe.sh --push # also push branches (requires auth)
 ```
 
-**Expected output:**
-```
-adobe     https://github.com/AdobeManagedServices/oscal.git (fetch)
-adobe     https://github.com/AdobeManagedServices/oscal.git (push)
-personal  https://TOKEN@github.com/keekar2022/OSCAL-Reports.git (fetch)
-personal  https://TOKEN@github.com/keekar2022/OSCAL-Reports.git (push)
-```
-
-#### Setting Up Dual Remotes
+Or manually:
 
 ```bash
-# Add Adobe remote (if not already configured)
-git remote add adobe https://github.com/AdobeManagedServices/oscal.git
-
-# Add personal remote with Personal Access Token
-git remote add personal https://YOUR_TOKEN@github.com/keekar2022/OSCAL-Reports.git
+git remote remove adobe personal all 2>/dev/null || true
+git remote add origin https://github.com/adobe/OSCAL-Reports.git 2>/dev/null || \
+  git remote set-url origin https://github.com/adobe/OSCAL-Reports.git
+git config user.name "Mukesh Kesharwani"
+git config user.email "mukesh.kesharwani@adobe.com"
+git push -u origin Development
 ```
 
-#### Daily Development Workflow
+### GitHub UI setup (maintainer)
 
-##### Option A: Push to Personal Repository Directly
+After the first push to [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports):
+
+1. Set **default branch** to `Development`.
+2. Enable **branch protection** on `Development`, `Quality`, `main`, and `Prod` (require PR + status checks).
+3. Migrate **Actions secrets** from legacy repos (Docker Hub, Snyk, Codacy, etc.).
+4. **Do not recreate** mirror-only secrets: `ADOBE_REPO_DISPATCH_TOKEN`, `PERSONAL_REPO_READ_TOKEN`, `ADOBE_REPO_PUSH_TOKEN`.
+5. Optionally **archive** `keekar2022/OSCAL-Reports` and `AdobeManagedServices/OSCAL-Reports` with a README pointer to `adobe/OSCAL-Reports`.
+
+### Daily workflow
 
 ```bash
-# Make your changes
-git add .
-git commit -m "feat: your feature description"
+git config user.name "Mukesh Kesharwani"
+git config user.email "mukesh.kesharwani@adobe.com"
 
-# Push to personal repo (direct push, no PR needed)
-GIT_TERMINAL_PROMPT=0 git -c credential.helper= push personal main --force
-git push personal --tags
+git checkout Development
+git pull origin Development
+# ... make changes ...
+git add <files>
+git commit -m "feat: description"
+git push origin Development
 ```
 
-##### Option B: Push to Adobe Repository via PR
+Promote via PR: `Development` → `Quality` → `main` / `Prod`.
+
+### TrueNAS / edge deployments
+
+Point clones at the public canonical repo (no VPN required):
 
 ```bash
-# Create a feature branch
-git checkout -b feature/my-feature
-
-# Make your changes
-git add .
-git commit -m "feat: your feature description"
-
-# Push branch to Adobe repo
-git push adobe feature/my-feature
-
-# Create PR via GitHub web interface
-# URL: https://github.com/AdobeManagedServices/oscal/compare/feature/my-feature
-
-# After PR is merged, sync back to local
-git checkout main
-git pull adobe main
-
-# Sync to personal repo
-git push personal main --force
-git push personal --tags
+git remote set-url origin https://github.com/adobe/OSCAL-Reports.git
+git fetch origin
+git checkout -B main origin/main   # or Quality, per your deploy policy
 ```
 
-##### Option C: Push to Both Simultaneously
-
-```bash
-# Make your changes
-git add .
-git commit -m "feat: your feature description"
-
-# Push to personal repo directly
-git push personal main
-git push personal --tags
-
-# Create branch and push to Adobe repo (for PR)
-git checkout -b feature/my-feature
-git push adobe feature/my-feature
-# Then create PR on GitHub web
-```
-
----
-
-### TrueNAS Configuration
-
-#### Git Remote Setup on TrueNAS
-
-TrueNAS instances **MUST** use the personal repository:
-
-```bash
-# On TrueNAS (via SSH)
-cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green  # or Blue
-
-# Check current remotes
-sudo git remote -v
-
-# Add/update origin to personal repo
-sudo git remote add origin https://github.com/keekar2022/OSCAL-Reports.git
-
-# Or if origin already exists:
-sudo git remote set-url origin https://github.com/keekar2022/OSCAL-Reports.git
-
-# Fetch latest
-sudo git fetch origin
-
-# Checkout main branch
-sudo git checkout -B main origin/main
-
-# Fix ownership
-sudo chown -R mkesharw:mkesharw /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
-```
-
-#### Automated Deployment via Cron
-
-The Docker Hub install script (`scripts/install_from_dockerhub.sh`) pulls the image and deploys; point cron at your clone of the personal repository:
-
-```bash
-# Green instance cron (1st, 3rd, 5th Sunday at 2 AM)
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-deploy-green.log 2>&1
-
-# Blue instance cron (2nd, 4th Sunday at 2 AM)
-0 2 8-14,22-28 * 0 cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-deploy-blue.log 2>&1
-```
-
----
-
-### Troubleshooting
-
-#### Issue: TrueNAS can't pull from Adobe repo
-
-**Error:**
-```
-fatal: Authentication failed for 'https://github.com/AdobeManagedServices/oscal.git/'
-```
-
-**Solution:**
-Update `scripts/install_from_dockerhub.sh` to use personal repo:
-```bash
-GIT_REPO="https://github.com/keekar2022/OSCAL-Reports.git"
-```
-
-#### Issue: Personal repo token expired
-
-**Error:**
-```
-remote: Permission to keekar2022/OSCAL-Reports.git denied to keekar2022.
-```
-
-**Solution:**
-1. Create new token: https://github.com/settings/tokens/new
-2. Select scopes: `repo`, `workflow`
-3. Update remote:
-   ```bash
-   git remote set-url personal https://NEW_TOKEN@github.com/keekar2022/OSCAL-Reports.git
-   ```
-
-#### Issue: Repositories out of sync
-
-**Check versions:**
-```bash
-# Local version
-grep '"version"' package.json
-
-# Adobe repo version (via web)
-# https://github.com/AdobeManagedServices/oscal/blob/main/package.json
-
-# Personal repo version (via web)
-# https://github.com/keekar2022/OSCAL-Reports/blob/main/package.json
-
-# TrueNAS version
-ssh mkesharw@nas.keekar.au "cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green && grep '\"version\"' package.json"
-```
-
-**Sync personal repo from Adobe:**
-```bash
-git checkout main
-git pull adobe main
-git push personal main --force
-git push personal --tags
-```
-
-#### Issue: Branch protection prevents direct push to Adobe
-
-**This is expected behavior!** Adobe repo requires Pull Requests:
-
-```bash
-# Create a feature branch
-git checkout -b fix/my-fix
-
-# Push branch
-git push adobe fix/my-fix
-
-# Create PR via web interface
-# https://github.com/AdobeManagedServices/oscal/compare/fix/my-fix
-```
-
----
-
-### Security Considerations
-
-#### Personal Access Tokens
-
-- **Never commit tokens** to the repository
-- Tokens are stored in `.git/config` (not tracked by git)
-- Use tokens with **minimal required scopes** (`repo`, `workflow`)
-- **Rotate tokens** every 90 days for security
-
-#### Viewing Stored Credentials
-
-```bash
-# View remotes (tokens are visible!)
-git remote -v
-
-# Safely view remotes (tokens sanitized)
-git config --get-regexp remote.*.url | sed 's/:[^:]*@/:***@/g'
-```
-
----
-
-### Quick Reference
-
-#### Common Commands
+### Quick reference
 
 | Action | Command |
 |--------|---------|
+| Clone | `git clone https://github.com/adobe/OSCAL-Reports.git` |
 | Check remotes | `git remote -v` |
-| Pull from Adobe | `git pull adobe main` |
-| Push to personal | `git push personal main` |
-| Push tags | `git push personal --tags` |
-| Create PR branch | `git checkout -b feature/name && git push adobe feature/name` |
-| Sync repos | `git pull adobe main && git push personal main --force` |
-
-#### Repository URLs
-
-| Repository | URL |
-|------------|-----|
-| Adobe (Primary) | https://github.com/AdobeManagedServices/oscal |
-| Personal (Mirror) | https://github.com/keekar2022/OSCAL-Reports |
-| Personal (Clone) | `git clone https://github.com/keekar2022/OSCAL-Reports.git` |
+| Push default branch | `git push origin Development` |
+| Create PR to Quality | `gh pr create --repo adobe/OSCAL-Reports --base Quality` |
+| Switch GitHub CLI account | `./scripts/switch-github-account.sh` |
 
 ---
 
-### Maintenance Schedule
-
-#### Weekly Tasks
-- ✅ Verify both repositories are in sync
-- ✅ Check TrueNAS deployment logs
-
-#### Monthly Tasks
-- ✅ Verify automated deployments (check cron logs)
-- ✅ Review Personal Access Token expiration dates
-- ✅ Test manual deployment on TrueNAS
-
-#### Quarterly Tasks
-- ✅ Rotate Personal Access Tokens
-- ✅ Review and update documentation
-- ✅ Audit repository access permissions
-
----
-
-### Support
-
-For issues related to:
-- **Adobe repository access**: Contact Adobe IT Support
-- **Personal repository**: Contact Mukesh Kesharwani (keekar2022@outlook.com)
-- **TrueNAS deployment**: Check logs in `/var/log/oscal-deploy-*.log`
-
----
-
-**Version**: 1.4.2  
-**Last Updated**: April 2026  
+**Version**: 2.0  
+**Last Updated**: July 2026  
 **License**: MIT
+
+---
+
+<a id="dual-repository-setup-guide"></a>
+
+## Dual Repository Setup Guide (retired)
+
+> **Deprecated July 2026.** This project no longer uses dual remotes. See [Single Repository Setup Guide](#single-repository-setup-guide). Historical mirror automation is documented in [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md) (also deprecated).
 
 ---
 
@@ -1075,274 +819,51 @@ For issues related to:
 
 ## GitHub Account Management Guide
 
-**Date**: January 23, 2026  
-**Status**: Repository is PRIVATE ✅
+Use **mkesharw_adobe** (Adobe Inc. SSO) for all operations on [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports).
 
----
-
-### 🔒 Repository Privacy Status
-
-Your personal repository **keekar2022/OSCAL-Reports** is **PRIVATE**.
-
-- ✅ Only you (keekar2022 account) can access it
-- ✅ Hidden from public view
-- ✅ Not searchable or indexable
-- ✅ Secure and protected
-
----
-
-### 👥 Your GitHub Accounts
-
-You have two GitHub accounts configured:
-
-#### 1. keekar2022 (Personal Account)
-- **Type**: Personal GitHub account
-- **Use For**: Personal repository (keekar2022/OSCAL-Reports)
-- **Access**: Owner of private repository
-- **Scopes**: delete_repo, gist, read:org, repo
-
-#### 2. mkesharw_adobe (Adobe EMU)
-- **Type**: Enterprise Managed User (EMU)
-- **Use For**: Adobe repository (AdobeManagedServices/OSCAL-Reports)
-- **Access**: Adobe organization repositories
-- **Scopes**: gist, read:org, repo, workflow
-- **Limitation**: ❌ Cannot be added to personal repositories
-
----
-
-### 🔄 Account Switching
-
-#### Quick Switch Commands
+### Quick commands
 
 ```bash
-# Switch to personal account (for personal repo)
-gh auth switch --user keekar2022
-
-# Switch to Adobe account (for Adobe repo)
 gh auth switch --user mkesharw_adobe
-
-# Check current active account
 gh auth status
+gh repo view adobe/OSCAL-Reports
+git push origin Development
+gh pr create --repo adobe/OSCAL-Reports --base Quality
 ```
 
-#### Using Helper Script
-
-We've created an easy-to-use script for account switching:
+### Helper script
 
 ```bash
-# Run the account switcher
 ./scripts/switch-github-account.sh
 ```
 
-This will show you:
-- Current account status
-- Menu to switch accounts
-- Which repositories you can access
+### Authentication troubleshooting
 
----
+**Push access:** As of cutover, `git push origin` may succeed with **keekar2022** (member of `adobe` org with admin on this repo). If **mkesharw_adobe** returns `403 Permission denied`, use `gh auth switch --user keekar2022` for push operations until EMU access is granted on `adobe/OSCAL-Reports`.
 
-### 📋 Common Workflows
-
-#### Working with Personal Repository
+If `git push origin` fails with authentication errors:
 
 ```bash
-# 1. Switch to personal account
-gh auth switch --user keekar2022
-
-# 2. View repository
-gh repo view keekar2022/OSCAL-Reports
-
-# 3. Git operations
-git fetch personal
-git pull personal Development
-git push personal Development
-
-# 4. Create PR
-gh pr create --repo keekar2022/OSCAL-Reports --base Development
-```
-
-#### Working with Adobe Repository
-
-```bash
-# 1. Switch to Adobe account
+git config --local credential.useHttpPath true
 gh auth switch --user mkesharw_adobe
-
-# 2. View repository
-gh repo view AdobeManagedServices/OSCAL-Reports
-
-# 3. Git operations
-git fetch adobe
-git pull adobe Development
-git push adobe Development
-
-# 4. Create PR
-gh pr create --repo AdobeManagedServices/OSCAL-Reports --base Development
-```
-
----
-
-### 🔍 Verify Repository Privacy
-
-#### Test 1: Incognito Browser Test
-1. Open a private/incognito browser window
-2. Navigate to: https://github.com/keekar2022/OSCAL-Reports
-3. **Expected Result**: 404 error (confirms private)
-
-#### Test 2: CLI Verification (as owner)
-```bash
-gh auth switch --user keekar2022
-gh repo view keekar2022/OSCAL-Reports --json visibility
-# Output: {"visibility": "PRIVATE"}
-```
-
-#### Test 3: Access Test (as non-owner)
-```bash
-gh auth switch --user mkesharw_adobe
-gh repo view keekar2022/OSCAL-Reports
-# Output: "Could not resolve to a Repository" (expected)
-```
-
----
-
-### ⚠️ Why Can't I Add Adobe Account as Collaborator?
-
-**Enterprise Managed User (EMU) Restriction**
-
-GitHub's security policy prevents EMUs from accessing personal repositories:
-
-- ❌ Cannot add mkesharw_adobe as collaborator to keekar2022/OSCAL-Reports
-- ❌ Cannot transfer personal repo to Adobe organization
-- ✅ Can have both accounts on same machine
-- ✅ Can switch between accounts easily
-
-**GitHub Policy**: EMUs are managed by the enterprise (Adobe) and can only access:
-- Organization repositories within Adobe
-- Repositories where the organization has control
-
-**Your personal repository** remains separate for security and compliance.
-
----
-
-### 📊 Repository Overview
-
-#### Adobe Repository
-- **URL**: https://github.com/AdobeManagedServices/OSCAL-Reports
-- **Visibility**: Internal to Adobe organization
-- **Your Access**: mkesharw_adobe (member)
-- **Git Remote**: `adobe`
-
-#### Personal Repository
-- **URL**: https://github.com/keekar2022/OSCAL-Reports
-- **Visibility**: ✅ PRIVATE
-- **Your Access**: keekar2022 (owner)
-- **Git Remote**: `personal`
-
-#### Local Configuration
-```bash
-# Check remotes
-git remote -v
-
-# Output:
-# adobe    https://github.com/AdobeManagedServices/OSCAL-Reports.git
-# personal https://github.com/keekar2022/OSCAL-Reports.git
-```
-
----
-
-### 🛠️ Troubleshooting
-
-#### "Could not resolve to a Repository"
-**Cause**: You're using the wrong account for that repository
-
-**Solution**:
-```bash
-# Check which account is active
-gh auth status
-
-# Switch to the correct account
-gh auth switch --user [correct-username]
-```
-
-#### "404 Not Found" on Repository Page
-**Cause**: Repository is private and you're not logged in with the owner account
-
-**Solution**:
-1. Log out of GitHub in your browser
-2. Log in as `keekar2022`
-3. Navigate to the repository
-
-#### Push/Pull Fails with Authentication Error
-**Cause**: Git credentials don't match the active gh account
-
-**Solution**:
-```bash
-# Make sure gh account matches git operation
-gh auth switch --user keekar2022  # for personal repo
-gh auth switch --user mkesharw_adobe  # for Adobe repo
-
-# Refresh git credentials
 gh auth refresh
-
-# Try operation again
-git push personal Development
+git push origin Quality
 ```
 
----
+For SSH, authorize your key for the **adobe** organization (Settings → SSH and GPG keys → Configure SSO).
 
-### 🔐 Security Best Practices
+### Commit author
 
-#### 1. Regular Account Verification
+Always set before committing:
+
 ```bash
-# Check which account is active before operations
-gh auth status
-```
-
-#### 2. Keep Accounts Separate
-- Use `keekar2022` for personal projects
-- Use `mkesharw_adobe` for Adobe work
-- Don't mix credentials
-
-#### 3. Verify Repository Before Pushing
-```bash
-# Always check where you're pushing
-git remote -v
-git remote show [remote-name]
-```
-
-#### 4. Use Account Switcher Script
-```bash
-# Use the helper script to avoid mistakes
-./scripts/switch-github-account.sh
+git config user.name "Mukesh Kesharwani"
+git config user.email "mukesh.kesharwani@adobe.com"
 ```
 
 ---
 
-### 📝 Quick Reference
-
-| Task | Account | Command |
-|------|---------|---------|
-| Access personal repo | keekar2022 | `gh auth switch --user keekar2022` |
-| Access Adobe repo | mkesharw_adobe | `gh auth switch --user mkesharw_adobe` |
-| Check current account | Either | `gh auth status` |
-| View repository | Correct account | `gh repo view [owner/repo]` |
-| Push changes | Correct account | `git push [remote] [branch]` |
-
----
-
-### 🎯 Summary
-
-✅ **Personal repository is PRIVATE and secure**  
-✅ **Both accounts configured and working**  
-✅ **Easy account switching available**  
-✅ **Helper script created**: `./scripts/switch-github-account.sh`  
-✅ **EMU restriction understood and documented**  
-
-Your personal repository is protected and only accessible to you (keekar2022 account). Use account switching to work with both repositories seamlessly.
-
----
-
-**Last Updated**: January 23, 2026  
-**Maintained By**: OSCAL Reports Development Team
+**Last Updated**: July 2026
 
 ---
 

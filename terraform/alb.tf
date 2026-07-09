@@ -4,8 +4,8 @@
 # Licensed under the MIT License. See LICENSE file for details.
 
 # Application Load Balancer: Green and Blue target groups (same app port on both instances).
-# Health check: /health on var.oscal_app_port (default 3020).
-# Traffic by User-Agent: Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11).
+# Health check: /health/ready on var.oscal_app_port (default 3020) — SPA, config, secrets.
+# Optional traffic by User-Agent (alb_browser_user_agent_routing): Chrome/Firefox → 60% green, 40% blue (priority 10). Edge/Safari → 60% blue, 40% green (priority 11). Disabled by default for production.
 # Default (including curl probe): 50% green, 50% blue. Host-based rules (green/blue hostnames) use priority 100/101 when set.
 # idle_timeout 300s avoids 504 Gateway Timeout when backend takes >60s (e.g. AI/report generation).
 # PCL custom-elb-restricted-ports-check: ALB security group allows only 443 (no port 80). Enable HTTPS (create_alb_certificate + alb_certificate_ready or alb_ssl_certificate_arn) so the ALB is reachable.
@@ -48,7 +48,7 @@ resource "aws_lb_target_group" "green" {
   }
 
   health_check {
-    path                = "/health"
+    path                = "/health/ready"
     port                = tostring(var.oscal_app_port)
     protocol            = "HTTP"
     healthy_threshold   = 2
@@ -77,7 +77,7 @@ resource "aws_lb_target_group" "blue" {
   }
 
   health_check {
-    path                = "/health"
+    path                = "/health/ready"
     port                = tostring(var.oscal_app_port)
     protocol            = "HTTP"
     healthy_threshold   = 2
@@ -141,7 +141,7 @@ resource "aws_lb_listener" "http_redirect" {
 
 # Chrome or Firefox User-Agent → 60% Green, 40% Blue (priority 10; evaluated before Edge/Safari so Chrome does not match Safari).
 resource "aws_lb_listener_rule" "browser_green_http" {
-  count        = local.alb_use_https ? 0 : 1
+  count        = !local.alb_use_https && var.alb_browser_user_agent_routing ? 1 : 0
   listener_arn = aws_lb_listener.http_forward[0].arn
   priority     = 10
 
@@ -173,7 +173,7 @@ resource "aws_lb_listener_rule" "browser_green_http" {
 
 # Edge or Safari User-Agent → 60% Blue, 40% Green (priority 11).
 resource "aws_lb_listener_rule" "browser_edge_safari_http" {
-  count        = local.alb_use_https ? 0 : 1
+  count        = !local.alb_use_https && var.alb_browser_user_agent_routing ? 1 : 0
   listener_arn = aws_lb_listener.http_forward[0].arn
   priority     = 11
 
@@ -304,7 +304,7 @@ resource "aws_lb_listener" "https" {
 
 # Chrome or Firefox User-Agent → 60% Green, 40% Blue (HTTPS, priority 10).
 resource "aws_lb_listener_rule" "browser_green_https" {
-  count        = local.alb_use_https ? 1 : 0
+  count        = local.alb_use_https && var.alb_browser_user_agent_routing ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 10
 
@@ -336,7 +336,7 @@ resource "aws_lb_listener_rule" "browser_green_https" {
 
 # Edge or Safari User-Agent → 60% Blue, 40% Green (HTTPS, priority 11).
 resource "aws_lb_listener_rule" "browser_edge_safari_https" {
-  count        = local.alb_use_https ? 1 : 0
+  count        = local.alb_use_https && var.alb_browser_user_agent_routing ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 11
 

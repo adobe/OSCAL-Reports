@@ -99,5 +99,18 @@ describe('secretsManager', () => {
     const result = await mergeAndPutBundle({ 'OSCAL/smtp-password': 'merged' }, client);
     expect(result.success).toBe(true);
     expect(getSecret('OSCAL/smtp-password')).toBe('merged');
+  it('mergeAndPutBundle persists new Generic OIDC key in cache after put', async () => {
+    process.env.OSCAL_SECRETS_MANAGER_ARN = 'arn:aws:secretsmanager:us-east-1:1:secret:test';
+    const remote = { entries: {}, _meta: { keys: {} } };
+    const send = jest.fn()
+      .mockResolvedValueOnce({ SecretString: JSON.stringify(remote), VersionId: 'v1' })
+      .mockResolvedValueOnce({ SecretString: JSON.stringify(remote), VersionId: 'v1' })
+      .mockResolvedValueOnce({});
+    const client = { send };
+    const key = 'OSCAL/sso-oauth-generic-oidc-client-secret';
+    const result = await mergeAndPutBundle({ [key]: 'generic-secret' }, client);
+    expect(result.success).toBe(true);
+    expect(getSecret(key)).toBe('generic-secret');
+    expect(send).toHaveBeenCalledTimes(3);
   });
 });
