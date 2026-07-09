@@ -657,6 +657,19 @@ export async function findOrCreateOidcUser(email, profile = {}, options = {}) {
     syncRoleFromGroups = true
   } = options;
   const resolvedRole = resolveRoleFromGroups(profile.groups, groupToRoleMapping, jitDefaultRole);
+  const groupList = Array.isArray(profile.groups) ? profile.groups : [];
+  const dlAmsMapped = groupList.some(
+    (g) => (g || '').toString().trim().toLowerCase() === 'dl-ams-security',
+  );
+  console.log('OIDC role resolution', {
+    'service.name': 'oscal-report-generator',
+    'event.action': 'oidc_role_resolution',
+    'event.category': 'authentication',
+    'group.count': groupList.length,
+    'group.dl_ams_security_present': dlAmsMapped,
+    'role.resolved': resolvedRole,
+    'role.sync_from_groups': syncRoleFromGroups,
+  });
   const users = await loadUsers();
   let userByEmail = users.find(u => (u.email || u.username || '').toString().trim().toLowerCase() === normalizedEmail);
 

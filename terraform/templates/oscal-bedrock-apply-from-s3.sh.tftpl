@@ -1,0 +1,42 @@
+# Copyright 2025 Adobe. All rights reserved.
+# Copyright (c) 2025 Mukesh Kesharwani
+#
+# Licensed under the MIT License. See LICENSE file for details.
+
+# Apply cross-account Bedrock env from S3 manifest on every launch (after installer sync when present).
+export AWS_DEFAULT_REGION="${aws_region}"
+S3_BUCKET="${s3_bucket}"
+INSTALLER_PREFIX="${installer_prefix}"
+APP="/opt/oscal/app"
+LIB="$APP/scripts/lib/oscal-bedrock-apply-from-s3.sh"
+if [ -f "$LIB" ]; then
+  # shellcheck source=/dev/null disable=SC1091
+  . "$LIB"
+  S3_BUCKET="$S3_BUCKET" AWS_DEFAULT_REGION="${aws_region}" INSTALLER_PREFIX="$INSTALLER_PREFIX" APP_DIR="$APP" \
+    oscal_bedrock_apply_from_s3 || true
+elif command -v aws >/dev/null 2>&1; then
+  MF=$(mktemp)
+  if aws s3 cp "s3://${s3_bucket}/${installer_prefix}/.oscal-bedrock-cross-account.json" "$MF" --region "${aws_region}" 2>/dev/null; then
+    ASSUME_ARN=$(jq -r 'select(.enabled != false) | .assume_role_arn // empty' "$MF" 2>/dev/null || true)
+    EXTERNAL_ID=$(jq -r '.external_id // ""' "$MF" 2>/dev/null || true)
+    if [ -n "$ASSUME_ARN" ] && [ "$ASSUME_ARN" != "null" ]; then
+      DROPIN_DIR="/etc/systemd/system/oscal-reporter.service.d"
+      DROPIN="$DROPIN_DIR/51-oscal-bedrock-env.conf"
+      mkdir -p "$DROPIN_DIR"
+      cat > "$DROPIN" <<EOF
+[Service]
+Environment=BEDROCK_ASSUME_ROLE_ARN=$ASSUME_ARN
+Environment=BEDROCK_EXTERNAL_ID=$EXTERNAL_ID
+EOF
+      chmod 644 "$DROPIN"
+      CONFIG_PATH="/opt/oscal/data/config.json"
+      if [ -f "$CONFIG_PATH" ] && command -v jq >/dev/null 2>&1; then
+        jq --arg arn "$ASSUME_ARN" --arg eid "$EXTERNAL_ID" --arg mode "iam-role" \
+          '.aiConfig = (.aiConfig // {}) | .aiConfig.bedrockAuthMode = $mode | .aiConfig.bedrockAssumeRoleArn = $arn | .aiConfig.bedrockExternalId = $eid' \
+          "$CONFIG_PATH" > "$${CONFIG_PATH}.tmp" && mv "$${CONFIG_PATH}.tmp" "$CONFIG_PATH"
+        chown ec2-user:oscal "$CONFIG_PATH" 2>/dev/null || true
+      fi
+    fi
+  fi
+  rm -f "$MF"
+fi

@@ -23,7 +23,8 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `security_groups.tf` – ALB, OSCAL security groups
 - `alb.tf` – Application Load Balancer and target groups (Green and Blue, same app port)
 - `oscal_instances.tf` – Green/Blue user data (Node/Docker), locals for persistent EBS snippets
-- `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (size 1), optional gp3 volumes, ALB attachments
+- `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (active-passive: primary size 1, passive scale-to-zero), optional gp3 volumes, ALB attachments
+- `oscal_standby_automation.tf` – SSM traffic-mode parameter, Lambda idle shutdown + failover wake (active_passive)
 - `oscal_ssm.tf` – SSM Command document and optional periodic association (post-boot checks / optional S3 sync)
 - `oscal_ssm_patch.tf` – SSM Patch Manager baseline, patch groups, and staggered Blue/Green maintenance windows
 - `rds.tf` – Amazon RDS PostgreSQL (Database Integration; IAM DB auth) when `create_rds_postgres = true` (default **true**; set `false` in `terraform.tfvars` to skip RDS)

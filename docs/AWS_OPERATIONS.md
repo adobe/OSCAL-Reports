@@ -306,6 +306,42 @@ In the console: **Fleet Manager** → instances **Online**; **Patch Manager** �
 
 **Launch template note:** Instances launched from the template are tagged with **`Stack = project_name`** explicitly (required for Terraform outputs, SSM association targets, and **`ec2:AttachVolume`** IAM conditions). Provider **`default_tags`** alone do not propagate to LT-launched instances.
 
+#### Blue/Green active-passive (Blue primary, Green standby)
+
+Default **`oscal_traffic_mode = "active_passive"`**: production traffic goes to **Blue only** (ALB weight 100/0). **Green** is the passive standby: ASG **`desired_capacity = 0`** when idle (compute off; persistent EBS retained). Standby automation (Lambda + CloudWatch) and operator scripts wake Green when needed.
+
+| Mode | ALB default | Edge browser (deploy only) | Green ASG |
+|------|-------------|----------------------------|-----------|
+| **steady** | Blue 100%, Green 0% | off | 0 (after idle) |
+| **deploy_green** | Blue 100% (non-Edge unchanged) | Edge → Green 100% | 1 |
+| **failover** | Green 100% (Blue unhealthy) | off | 1 |
+
+**Auto-wake passive Green:** `./terraform/run-with-aws-pass.sh plan|apply`; `./scripts/deploy-to-ec2.sh` Green/`--both`; CloudWatch alarm when Blue target unhealthy (~5 min).
+
+**Idle shutdown:** no ALB requests to Green target group for **`oscal_passive_idle_shutdown_hours`** (default 4) while traffic-mode is `steady` and Blue is healthy → passive ASG scales to 0.
+
+**Operator CLI:**
+
+```bash
+./scripts/oscal-standby.sh status
+./scripts/oscal-standby.sh wake
+./scripts/oscal-standby.sh shutdown
+./scripts/oscal-standby.sh set-mode steady|deploy_green|failover
+./scripts/debug/alb-target-health.sh
+```
+
+**Deploy / test workflow (active-passive):**
+
+1. `./terraform/run-with-aws-pass.sh plan` — wakes Green if scaled to 0.
+2. `./scripts/deploy-to-ec2.sh --update-s3` — publish installer + standby libs to S3.
+3. `./scripts/deploy-to-ec2.sh` (Green) — enters **deploy_green** (Edge → Green; Chrome/Firefox → Blue).
+4. Test with **Microsoft Edge** on `https://oscal.amsgovcloud.com.au/` (Green); verify production browsers still hit Blue.
+5. On success, deploy maintenance exits → **steady** (Blue primary). Green idles; shutdown after 4 h no Edge traffic.
+
+**Failover:** If Blue is unhealthy, automation wakes Green and sets **failover** routing. When Blue is healthy again, **failover-restore** alarm returns **steady** Blue-primary weights (Green stays up until idle alarm).
+
+**Legacy active-active:** Set `oscal_traffic_mode = "active_active"` for 50/50 ALB weights (not recommended for production).
+
 #### Blue/Green host-based routing (optional)
 
 To access Blue and Green with two different hostnames (e.g. `blue.oscal.example.com` and `green.oscal.example.com`) so both run the same app at `/` with no application code changes:
@@ -329,9 +365,9 @@ If your organisation does not authorize `acm:RequestCertificate`, you can establ
 4. **If direct instance URLs work (e.g. http://&lt;green-ip&gt;:3020) but the ALB URL does not:** The ALB allows port 80 only from `default_allowed_cidr_blocks`. Add your current public IP (run `curl -s ifconfig.me` to see it) as `"x.x.x.x/32"` in `default_allowed_cidr_blocks` in tfvars, then run `terraform apply` again. Also check in the AWS Console that the ALB target groups show the ASG-registered targets as **Healthy** (Targets tab); if they are Unhealthy, the ALB returns 503.
 5. **Add a certificate later:** When your organisation provides an ACM certificate (same account/region), set `alb_ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT:certificate/CERT_ID"` in tfvars, keep `create_alb_certificate = false`, and run `terraform apply` again. Terraform will add the HTTPS listener (443) and HTTP→HTTPS redirect; no ACM request is made.
 
-**Corporate PKI (Adobe PLM):** CSR, private key, and issued cert storage paths, PLM portal, and cutover from Let's Encrypt are documented in [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md). Request audit log: [logs/SSL_CERT_PKI_REQUEST_2026-05-27.md](../logs/SSL_CERT_PKI_REQUEST_2026-05-27.md).
+**Corporate PKI (Adobe PLM):** CSR, private key, issued cert storage, PLM portal, cutover history, and renewal notes are documented in [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md).
 
-**Let's Encrypt and import into ACM:** If you use Let's Encrypt (e.g. when ACM *request* is not allowed but ACM *import* is), run the script `scripts/debug/letsencrypt-acm-import.sh` from the repo root. It uses **manual DNS-01** validation: you add the TXT record in Route53 yourself (Route53 may be in a different AWS account; the script prompts you with exact steps). The script then imports the issued cert into ACM and can update your env's `terraform.tfvars` with the new cert ARN. Prerequisites: `certbot` installed, AWS CLI credentials for the ALB account (Pass entry `AWS/AMS_4403-STG` or env). See the script header for usage and environment variables.
+**Let's Encrypt and import into ACM:** Emergency fallback when corporate PKI is unavailable — run [`scripts/letsencrypt-acm-import.sh`](../scripts/letsencrypt-acm-import.sh) from the repo root. It uses **manual DNS-01** validation: you add the TXT record in Route53 yourself (Route53 may be in a different AWS account; the script prompts you with exact steps). The script then imports the issued cert into ACM and can update your env's `terraform.tfvars` with the new cert ARN. Prerequisites: `certbot` installed, AWS CLI credentials for the ALB account (Pass entry `AWS/AMS_4403-STG` or env). See the script header for usage and environment variables.
 
 #### HTTPS setup (ACM and HTTP-to-HTTPS redirect)
 
@@ -1299,7 +1335,20 @@ Use a **strict layout** so config is never confused with app code:
 - **Pass vault on instances:**  
   Compare `config.json` `_sm` (or legacy `_pass`) references with the SM bundle in AWS console or `migrate-config-secrets-to-sm.sh`.
 - **AI engine unreachable from Green/Blue:**  
-  See [Terraform on AWS – troubleshooting (AI engine unreachable)](#aws-terraform-for-oscal-ai-via-bedrock). On the instance, verify Bedrock IAM role/keys in `config.json`, systemd env, and backend logs (`journalctl -u oscal-reporter.service`).
+  See [Terraform on AWS – troubleshooting (AI engine unreachable)](#aws-terraform-for-oscal-ai-via-bedrock). On the instance, verify Bedrock IAM role/keys in `config.json`, systemd env (`51-oscal-bedrock-env.conf`), S3 manifest `installer/.oscal-bedrock-cross-account.json`, and backend logs (`journalctl -u oscal-reporter.service`). After ASG replacement, run `./scripts/deploy-to-ec2.sh --update-s3` then `terraform apply` so user_data and the S3 manifest self-heal cross-account assume-role; optional `./scripts/debug/publish-config-default-to-s3.sh --via-green` to refresh golden `config/default/`.
+
+**Bedrock cross-account ASG hardening (operator workflow):**
+
+1. Publish installer + Bedrock manifest (no SSH):  
+   `export AWS_PASS_ENTRY=AWS/AMS_4403-STG TERRAFORM_DIR=$PWD/terraform/envs/aws4403`  
+   `./scripts/deploy-to-ec2.sh --update-s3`
+2. Apply Terraform (launch template user_data hooks):  
+   `./terraform/run-with-aws-pass.sh plan -out=tfplan && ./terraform/run-with-aws-pass.sh apply tfplan`
+3. Optional: refresh golden config after verifying AI Test Connection:  
+   `./scripts/debug/publish-config-default-to-s3.sh --via-green`
+4. New ASG instances self-apply via user_data, first-boot, `ec2_automation` cron (every 10 min), and optional SSM post-boot. Verify on instance (SSM):  
+   `sudo cat /etc/systemd/system/oscal-reporter.service.d/51-oscal-bedrock-env.conf`  
+   `curl -s http://127.0.0.1:3020/health/ready | jq .checks.bedrock`
 
 ---
 
@@ -1320,6 +1369,8 @@ Use a **strict layout** so config is never confused with app code:
 | `scripts/debug/publish-config-default-to-s3.sh` | Publish golden snapshot to `s3://<bucket>/config/default/` (config.default). |
 | `scripts/debug/restore-config-from-s3-default.sh` | Restore `/opt/oscal/data` from config.default (fast rollback). |
 | `scripts/debug/sync-config-from-s3-newest.sh` | Pull newest shared config from S3 `config/active/` prefixes. |
+| `scripts/lib/oscal-bedrock-apply-from-s3.sh` | Idempotent apply of cross-account Bedrock env from S3 manifest (first-boot, cron, SSM). |
+| `scripts/lib/oscal-bedrock-dropin.sh` | Apply Bedrock systemd drop-in + config (used by deploy-to-ec2.sh over SSH). |
 | `scripts/debug/scp-to-ec2.sh` | Copy a debug script from laptop to Green/Blue via SSH. |
 
 ---

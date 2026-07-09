@@ -139,6 +139,8 @@ ${local.bedrock_bootstrap_fragment}
 
 ${local.first_boot_install_fragment}
 
+${local.bedrock_apply_from_s3_fragment}
+
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
 systemctl start oscal-reporter.service
@@ -209,6 +211,8 @@ ${local.rds_bootstrap_fragment}
 ${local.bedrock_bootstrap_fragment}
 
 ${local.first_boot_install_fragment}
+
+${local.bedrock_apply_from_s3_fragment}
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
