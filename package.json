@@ -32,6 +32,9 @@
     "axios": ">=1.15.2",
     "lodash": ">=4.17.23",
     "minimatch": ">=10.2.1",
-    "path-to-regexp": ">=8.4.0"
+    "path-to-regexp": ">=8.4.0",
+    "exceljs": {
+      "uuid": "^14.0.1"
+    }
   }
 }
