@@ -23,7 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "esbuild": "^0.28.1",
-    "vite": "^8.1.0"
+    "vite": "^8.1.4"
   },
   "overrides": {
     "rollup": ">=4.59.0",
