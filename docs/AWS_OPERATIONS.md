@@ -660,7 +660,8 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 |------|--------|
 | AMI preference | **First choice:** Adobe Image Factory **Amazon Linux 2023 EMR** (or approved AL2023) when pinned or resolved. **Fallback:** native Amazon Linux 2023. **Ollama and OSCAL use the same chain.** |
 | Where to find AMIs | [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) — **EMR:** [Amazon Linux 2023 EMR flavor](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) |
-| SSAAU-169 / InfraSec | Pin latest EMR `ami-*` in `terraform.tfvars`; run `terraform/scripts/list-emr-candidate-amis.sh` to list candidates; replace EC2 via `terraform apply`. |
+| SSAAU-169 / SSAAU-216 / InfraSec | Dynamic EMR lookup + `check-ami-drift.sh`; staggered ASG refresh to latest IF EMR (e.g. **3.0.2**). See [RELEASE_1.7.25.md](RELEASE_1.7.25.md) §4. |
+| SSAAU-212 / Splunk SCC | `oscal_splunk_uf_bootstrap_enabled` (default true); SSM post-boot re-runs bootstrap. See [terraform/envs/aws4403/README.md](../terraform/envs/aws4403/README.md) and [RELEASE_1.7.25.md](RELEASE_1.7.25.md) §5. |
 | Terraform variables | `use_image_factory_ami` (default **true** = Image Factory Amazon Linux 2023 when in map, else native AL2023); `oscal_ami_id`, `ollama_ami_id` (null = use preference order) |
 | Add Image Factory Amazon Linux | In `terraform.tfvars` set `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (from Image Factory UI), or add entries in `terraform/image_factory_ami.tf` in `image_factory_amazon_linux_by_region`. Both Green/Blue and Ollama use it. |
 | Replace Ollama instance for new AMI | Legacy Ollama path only; current stacks use Bedrock (see [Amazon Bedrock Integration](#amazon-bedrock-integration-step-by-step-aws-setup)). |

@@ -11,6 +11,12 @@ import packageJson from '../../package.json';
 const BUILD_TIMESTAMP = import.meta.env.VITE_BUILD_TIME || new Date().toISOString();
 const BUILD_ENV = import.meta.env.MODE || 'production';
 
+/** Canonical distribution URLs (single-repo + Docker Hub publish). */
+export const PROJECT_LINKS = {
+  githubRepo: 'https://github.com/adobe/OSCAL-Reports',
+  dockerHub: 'https://hub.docker.com/r/keekar/oscal_reports',
+};
+
 export const buildInfo = {
   version: packageJson.version,
   buildTime: BUILD_TIMESTAMP,

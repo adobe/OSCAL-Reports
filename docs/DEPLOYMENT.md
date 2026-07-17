@@ -1,6 +1,6 @@
 # 🚀 OSCAL Report Generator - Complete Deployment Guide
 
-**Version**: 1.7.23  
+**Version**: 1.7.25  
 **Last Updated**: April 2026  
 **Author**: Mukesh Kesharwani
 
@@ -314,8 +314,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.23 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.23
+# ✓ Current version: 1.7.25 (example — use values printed by the script)
+# ✓ GitHub version: 1.7.25
 # ✓ Versions match - no build needed
 ```
 
@@ -445,7 +445,7 @@ After first deployment, configure via web UI:
    - Username: `admin`
    - Password: `admin` (⚠️ Change immediately!)
 3. **Configure Settings**:
-   - Email/SMTP settings
+   - Slack notifications (optional)
    - AI integration (optional)
    - API Gateways
 
@@ -505,7 +505,6 @@ Passwords, tokens, and API keys are **never** persisted as plaintext in `config.
 
 | Setting | Logical key |
 |--------|------------|
-| SMTP password | `OSCAL/smtp-password` |
 | Slack webhook URL | `OSCAL/slack-webhook-url` |
 | AI API token | `OSCAL/ai-api-token` |
 | AI AWS Access Key ID | `OSCAL/ai-aws-access-key-id` |
@@ -535,7 +534,7 @@ docker run -d \
   oscal-report-generator:latest
 ```
 
-Sensitive Platform Settings (SMTP password, AI tokens, SSO client secrets) use _cfgenc locally or AWS SM on EC2; see [Sensitive settings and _cfgenc (local/Docker) or AWS SM (EC2)](#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) above.
+Sensitive Platform Settings (Slack webhook URL, AI tokens, SSO client secrets) use _cfgenc locally or AWS SM on EC2; see [Sensitive settings and _cfgenc (local/Docker) or AWS SM (EC2)](#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) above.
 
 ---
 

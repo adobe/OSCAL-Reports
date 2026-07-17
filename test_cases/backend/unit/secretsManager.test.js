@@ -44,9 +44,9 @@ describe('secretsManager', () => {
   });
 
   it('isSmPointer and entryKeyToConfigPointer', () => {
-    expect(isSmPointer({ _sm: 'OSCAL/smtp-password' })).toBe(true);
+    expect(isSmPointer({ _sm: 'OSCAL/slack-webhook-url' })).toBe(true);
     expect(isSmPointer({ _pass: 'x' })).toBe(false);
-    expect(entryKeyToConfigPointer('OSCAL/smtp-password')).toEqual({ _sm: 'OSCAL/smtp-password' });
+    expect(entryKeyToConfigPointer('OSCAL/slack-webhook-url')).toEqual({ _sm: 'OSCAL/slack-webhook-url' });
   });
 
   it('isSecretPointer treats _sm and _pass as masked', () => {
@@ -57,10 +57,10 @@ describe('secretsManager', () => {
   });
 
   it('resolveSmPointers substitutes from cache', () => {
-    __setSecretsCacheForTests({ 'OSCAL/smtp-password': 'smtp-secret' });
-    const cfg = { messagingConfig: { email: { smtpPassword: { _sm: 'OSCAL/smtp-password' } } } };
+    __setSecretsCacheForTests({ 'OSCAL/slack-webhook-url': 'slack-secret' });
+    const cfg = { messagingConfig: { slack: { webhookUrl: { _sm: 'OSCAL/slack-webhook-url' } } } };
     resolveSmPointers(cfg);
-    expect(cfg.messagingConfig.email.smtpPassword).toBe('smtp-secret');
+    expect(cfg.messagingConfig.slack.webhookUrl).toBe('slack-secret');
   });
 
   it('resolveSecretPointer reads _sm cache', () => {
@@ -71,16 +71,16 @@ describe('secretsManager', () => {
 
   it('mergeAndPutBundle updates cache on success', async () => {
     process.env.OSCAL_SECRETS_MANAGER_ARN = 'arn:aws:secretsmanager:us-east-1:1:secret:test';
-    const remote = { entries: { 'OSCAL/smtp-password': 'old' }, _meta: { keys: { 'OSCAL/smtp-password': { t: 1 } } } };
+    const remote = { entries: { 'OSCAL/slack-webhook-url': 'old' }, _meta: { keys: { 'OSCAL/slack-webhook-url': { t: 1 } } } };
     const send = jest.fn()
       .mockResolvedValueOnce({ SecretString: JSON.stringify(remote), VersionId: 'v1' })
       .mockResolvedValueOnce({ SecretString: JSON.stringify(remote), VersionId: 'v1' })
       .mockResolvedValueOnce({});
     const client = { send };
 
-    const result = await mergeAndPutBundle({ 'OSCAL/smtp-password': 'new' }, client);
+    const result = await mergeAndPutBundle({ 'OSCAL/slack-webhook-url': 'new' }, client);
     expect(result.success).toBe(true);
-    expect(getSecret('OSCAL/smtp-password')).toBe('new');
+    expect(getSecret('OSCAL/slack-webhook-url')).toBe('new');
     expect(send.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -96,9 +96,9 @@ describe('secretsManager', () => {
       .mockResolvedValueOnce({});
     const client = { send };
 
-    const result = await mergeAndPutBundle({ 'OSCAL/smtp-password': 'merged' }, client);
+    const result = await mergeAndPutBundle({ 'OSCAL/slack-webhook-url': 'merged' }, client);
     expect(result.success).toBe(true);
-    expect(getSecret('OSCAL/smtp-password')).toBe('merged');
+    expect(getSecret('OSCAL/slack-webhook-url')).toBe('merged');
   });
 
   it('mergeAndPutBundle persists new Generic OIDC key in cache after put', async () => {

@@ -111,4 +111,4 @@ Then run `terraform plan` and `terraform apply` again. AWS credentials must be s
 
 ---
 
-**Version:** 1.7.23 · **Last updated:** June 2026
+**Version:** 1.7.25 · **Last updated:** July 2026

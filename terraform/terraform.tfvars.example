@@ -108,6 +108,9 @@ common_tags = {
 # oscal_ami_auto_refresh_on_change   = false  # set true during AMI bump apply (staggered ASG refresh)
 # oscal_splunk_uf_upgrade_enabled  = true
 # oscal_splunk_uf_min_version        = "9.3.9"
+# oscal_splunk_uf_bootstrap_enabled  = true
+# oscal_splunk_deployment_server     = "ds2.splunk.adobe.net:443"
+# oscal_splunk_client_name           = "DC-ue1-journald_seclogs-ams-oscal"
 
 # ------------------------------------------------------------------------------
 # Docker on EC2 (optional; default is direct Node.js run + deploy-to-ec2.sh)

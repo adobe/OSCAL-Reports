@@ -9,6 +9,8 @@ import { MASK } from './sensitiveConfigKeys.js';
 
 export const BEDROCK_AUTH_ACCESS_KEYS = 'access-keys';
 export const BEDROCK_AUTH_IAM_ROLE = 'iam-role';
+/** Fixed STS session name — must match Account B trust policy StringLike condition. */
+export const BEDROCK_ASSUME_ROLE_SESSION_NAME = 'oscal-bedrock-session';
 
 /**
  * @param {Object} [aiConfig]
@@ -109,7 +111,7 @@ export async function resolveBedrockCredentials(aiConfig) {
   if (assumeRoleArn) {
     const params = {
       RoleArn: assumeRoleArn,
-      RoleSessionName: 'oscal-bedrock-session',
+      RoleSessionName: BEDROCK_ASSUME_ROLE_SESSION_NAME,
       DurationSeconds: 3600
     };
     if (externalId) {

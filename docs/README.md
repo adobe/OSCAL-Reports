@@ -33,6 +33,7 @@
 | Document | Description |
 |----------|-------------|
 | [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Development → Quality → main/Prod), single remote, GitHub auth, PR checklist |
+| [RELEASE_1.7.25.md](RELEASE_1.7.25.md) | **July 2026 release:** SSRF/Bedrock fixes, SSAAU-216/212, Dependabot — full record + regression prevention |
 | [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
