@@ -149,29 +149,6 @@ resource "aws_security_group" "oscal" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # SMTP: allow Green/Blue to reach smtp.gmail.com (and other SMTP servers) for email
-  egress {
-    from_port   = 25
-    to_port     = 25
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SMTP (e.g. smtp.gmail.com)"
-  }
-  egress {
-    from_port   = 465
-    to_port     = 465
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SMTPS (e.g. smtp.gmail.com)"
-  }
-  egress {
-    from_port   = 587
-    to_port     = 587
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SMTP submission / STARTTLS (e.g. smtp.gmail.com)"
-  }
-
   # Egress to VPC: app port, HTTP/HTTPS (80, 443) for cross-system talk
   egress {
     from_port   = var.oscal_app_port

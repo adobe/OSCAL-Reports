@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.7.25] - 2026-07-18
+
+Release **1.7.25** merges Dependabot dependency updates on **Development**, remediates pentest findings (**VULN-36986** SSRF, **VULN-37020** Bedrock access control), closes AMS Non-Prod InfraSec tickets (**SSAAU-216**, **SSAAU-212**), and aligns Terraform/GHCR paths with the canonical [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) repository.
+
+**Full release record and regression-prevention checklist:** [docs/RELEASE_1.7.25.md](RELEASE_1.7.25.md).
+
+### Security
+
+- **SSRF (VULN-36986):** Strict URL validation profiles; `authenticate` on `/api/proxy-fetch` and `/api/fetch-catalogue`; encoded-IP and redirect blocking; frontend authenticated fetch helpers; regression tests.
+- **Bedrock (VULN-37020):** `GET /api/settings` requires auth; redact `bedrockAssumeRoleArn` / `bedrockExternalId` for non-admin; Terraform gates cross-account IAM on `bedrock_external_id`; hardened Account B runbook.
+
+### Infrastructure (AWS4403 / AMS Non-Prod)
+
+- **SSAAU-216:** Dynamic Image Factory **Amazon Linux 2023 EMR** lookup; staggered ASG refresh to **IF 3.0.2** (`ami-036bb3d5f242f68c0`); `check-ami-drift.sh` workflow.
+- **SSAAU-212:** Splunk UF SCC bootstrap (`deploymentclient.conf`, `00-secops_meta_app` metadata, journald client name) via user-data and SSM post-boot (`terraform/oscal_splunk.tf`).
+
+### Changed
+
+- **Terraform / GHCR:** `oscal_container_image` default `ghcr.io/adobe/oscal-report-generator:latest`; EC2 Docker user_data uses the variable instead of legacy paths.
+- **Dependencies (Dependabot #8–#12):** AWS SDK **3.1086**, `fast-xml-parser` **5.10.1**, `nodemailer` **9.0.3**, `lucide-react` **1.24**, `vite` **8.1.4**, React toolchain, security overrides (`exceljs` → `uuid@14.0.1` for CVE-2026-41907).
+- **CI:** Docker publish workflow pushes to **GHCR** and Docker Hub.
+- **Tests:** `secretsManager` unit test nesting fix; `urlValidator-ssrf-remediation.test.js`, `proxyFetchHelpers.test.js`, `ssrf-auth-endpoints.test.js`, `settingsRedaction.test.js`; updated `csrf-api.test.js`, `securityConfig.test.js`.
+
+### Deploy
+
+- **Docker Hub:** `keekar/oscal_reports:v1.7.25` when published.
+- **GHCR:** `ghcr.io/adobe/oscal-report-generator:v1.7.25` when published.
+
 ## [1.7.24] - 2026-06-29
 
 ### Changed

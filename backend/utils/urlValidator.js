@@ -7,12 +7,11 @@
 import { URL } from 'url';
 import dns from 'dns';
 import { promisify } from 'util';
+import ipaddr from 'ipaddr.js';
 
 const dnsLookup = promisify(dns.lookup);
 
-// Private IP ranges (CIDR notation)
 const PRIVATE_IP_RANGES = [
-  // IPv4 Private Ranges
   { start: '10.0.0.0', end: '10.255.255.255', name: 'Private Class A' },
   { start: '172.16.0.0', end: '172.31.255.255', name: 'Private Class B' },
   { start: '192.168.0.0', end: '192.168.255.255', name: 'Private Class C' },
@@ -23,7 +22,6 @@ const PRIVATE_IP_RANGES = [
   { start: '240.0.0.0', end: '255.255.255.255', name: 'Reserved' },
 ];
 
-// Localhost patterns
 const LOCALHOST_PATTERNS = [
   'localhost',
   '127.0.0.1',
@@ -32,7 +30,6 @@ const LOCALHOST_PATTERNS = [
   '[::]',
 ];
 
-// Cloud metadata endpoints that should always be blocked
 const CLOUD_METADATA_ENDPOINTS = [
   '169.254.169.254',
   'metadata.google.internal',
@@ -40,7 +37,6 @@ const CLOUD_METADATA_ENDPOINTS = [
   'metadata.aws.internal',
 ];
 
-// Dangerous protocols
 const DANGEROUS_PROTOCOLS = [
   'file:',
   'gopher:',
@@ -50,217 +46,274 @@ const DANGEROUS_PROTOCOLS = [
   'javascript:',
 ];
 
-/**
- * Convert IP address to integer for range checking
- */
+const DOTTED_IPV4_REGEX = /^(\d{1,3}\.){3}\d{1,3}$/;
+
+function extractOriginalHostname(url) {
+  const match = url.match(/^([a-z][a-z0-9+.-]*):\/\/(?:[^/@]*@)?(\[[^\]]+\]|[^/:?#]+)/i);
+  if (!match) {
+    return null;
+  }
+  let host = match[2];
+  if (host.startsWith('[') && host.endsWith(']')) {
+    host = host.slice(1, -1);
+  }
+  return host;
+}
+
+function detectNonCanonicalIpEncoding(url, parsedHostname, rejectNonCanonicalIpEncoding) {
+  if (!rejectNonCanonicalIpEncoding) {
+    return null;
+  }
+
+  const originalHost = extractOriginalHostname(url);
+  if (!originalHost) {
+    return null;
+  }
+
+  const originalLower = originalHost.toLowerCase();
+  const parsedLower = parsedHostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+
+  if (/^0x[0-9a-f]+$/i.test(originalHost)) {
+    return 'Non-canonical IP encoding is not allowed (hexadecimal hostname)';
+  }
+
+  if (/^0\d+$/.test(originalHost)) {
+    return 'Non-canonical IP encoding is not allowed (octal hostname)';
+  }
+
+  if (/^\d+$/.test(originalHost) && !DOTTED_IPV4_REGEX.test(originalHost)) {
+    return 'Non-canonical IP encoding is not allowed (decimal integer hostname)';
+  }
+
+  if (originalLower !== parsedLower && (ipaddr.isValid(originalHost) || ipaddr.isValid(parsedLower))) {
+    return 'Non-canonical IP encoding is not allowed (hostname was normalized to a different IP form)';
+  }
+
+  if (/^::ffff:/i.test(originalHost) || /^::ffff:/i.test(parsedLower)) {
+    if (originalLower !== parsedLower) {
+      return 'Non-canonical IP encoding is not allowed (IPv4-mapped IPv6 hostname)';
+    }
+  }
+
+  return null;
+}
+
+function parseIpAddress(hostname) {
+  const clean = hostname.replace(/^\[/, '').replace(/\]$/, '');
+  if (!ipaddr.isValid(clean)) {
+    return null;
+  }
+  return ipaddr.parse(clean);
+}
+
+function isTrustedDomain(hostname, trustedDomains = []) {
+  if (!Array.isArray(trustedDomains) || trustedDomains.length === 0) {
+    return false;
+  }
+  const lowerHost = hostname.toLowerCase();
+  return trustedDomains.some((domain) => {
+    const lowerDomain = String(domain).toLowerCase();
+    return lowerHost === lowerDomain || lowerHost.endsWith(`.${lowerDomain}`);
+  });
+}
+
 function ipToInt(ip) {
   const parts = ip.split('.').map(Number);
   return parts[0] * 16777216 + parts[1] * 65536 + parts[2] * 256 + parts[3];
 }
 
-/**
- * Check if IP is in a private range
- */
 function isPrivateIP(ip) {
-  // Check IPv6 loopback
+  const parsed = parseIpAddress(ip);
+  if (parsed) {
+    const range = parsed.range();
+    if (range === 'loopback' || range === 'private' || range === 'linkLocal' || range === 'uniqueLocal') {
+      const label = range === 'loopback' ? 'Loopback' : range === 'linkLocal' ? 'Link-local / Cloud Metadata' : 'Private';
+      return { blocked: true, reason: `IP is in ${label} range`, isPrivateIP: true, isLocalhost: range === 'loopback' };
+    }
+    if (range === 'multicast' || range === 'reserved') {
+      return { blocked: true, reason: `IP is in ${range} range`, isPrivateIP: true };
+    }
+    return false;
+  }
+
   if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) {
     return true;
   }
 
-  // Check IPv4
   if (!ip.includes('.')) {
-    return false; // Not IPv4, skip range check
+    return false;
   }
 
   const ipInt = ipToInt(ip);
-  
+
   for (const range of PRIVATE_IP_RANGES) {
     const startInt = ipToInt(range.start);
     const endInt = ipToInt(range.end);
-    
+
     if (ipInt >= startInt && ipInt <= endInt) {
       return { blocked: true, reason: `IP is in ${range.name} range (${range.start} - ${range.end})` };
     }
   }
-  
+
   return false;
 }
 
-/**
- * Check if hostname is localhost
- */
 function isLocalhost(hostname) {
-  const lowerHost = hostname.toLowerCase();
-  return LOCALHOST_PATTERNS.some(pattern => lowerHost === pattern || lowerHost.endsWith(`.${pattern}`));
+  const lowerHost = hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  if (LOCALHOST_PATTERNS.some((pattern) => lowerHost === pattern || lowerHost.endsWith(`.${pattern}`))) {
+    return true;
+  }
+  const parsed = parseIpAddress(lowerHost);
+  return parsed?.range() === 'loopback';
 }
 
-/**
- * Validate URL structure and protocol
- */
 function validateUrlStructure(url) {
   let parsedUrl;
-  
+
   try {
     parsedUrl = new URL(url);
   } catch (error) {
     return { valid: false, error: 'Invalid URL format' };
   }
 
-  // Check protocol
   const protocol = parsedUrl.protocol.toLowerCase();
   if (!['http:', 'https:'].includes(protocol)) {
     if (DANGEROUS_PROTOCOLS.includes(protocol)) {
-      return { 
-        valid: false, 
+      return {
+        valid: false,
         error: `Dangerous protocol detected: ${protocol}`,
-        blocked: true 
+        blocked: true,
       };
     }
-    return { 
-      valid: false, 
-      error: `Unsupported protocol: ${protocol}. Only HTTP and HTTPS are allowed.` 
+    return {
+      valid: false,
+      error: `Unsupported protocol: ${protocol}. Only HTTP and HTTPS are allowed.`,
     };
   }
 
-  // Check for credentials in URL
   if (parsedUrl.username || parsedUrl.password) {
-    return { 
-      valid: false, 
+    return {
+      valid: false,
       error: 'URLs with embedded credentials are not allowed',
-      blocked: true 
+      blocked: true,
     };
   }
 
   return { valid: true, parsedUrl };
 }
 
-/**
- * Check if hostname/IP is a cloud metadata endpoint (always blocked)
- */
 function isCloudMetadata(hostname) {
-  const lowerHost = hostname.toLowerCase();
-  return CLOUD_METADATA_ENDPOINTS.some(endpoint => 
-    lowerHost === endpoint || lowerHost.includes(endpoint)
-  );
+  const lowerHost = hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  if (CLOUD_METADATA_ENDPOINTS.some((endpoint) => lowerHost === endpoint || lowerHost.includes(endpoint))) {
+    return true;
+  }
+  const parsed = parseIpAddress(lowerHost);
+  if (parsed && parsed.kind() === 'ipv4') {
+    return parsed.octets[0] === 169 && parsed.octets[1] === 254;
+  }
+  return false;
 }
 
-/**
- * Resolve hostname to IP and validate
- */
 async function validateHostname(hostname) {
-  // Always block cloud metadata endpoints
-  if (isCloudMetadata(hostname)) {
+  const cleanHostname = hostname.replace(/^\[/, '').replace(/\]$/, '');
+
+  if (isCloudMetadata(cleanHostname)) {
     return {
       valid: false,
       error: 'Cloud metadata endpoints are not allowed',
       blocked: true,
-      isCloudMetadata: true
+      isCloudMetadata: true,
     };
   }
 
-  // Check if hostname is localhost
-  if (isLocalhost(hostname)) {
-    return { 
-      valid: false, 
+  if (isLocalhost(cleanHostname)) {
+    return {
+      valid: false,
       error: 'Localhost URLs are not allowed',
       blocked: true,
-      isLocalhost: true
+      isLocalhost: true,
     };
   }
 
-  // Check for IPv6 addresses
-  if (hostname.includes(':') || hostname.startsWith('[')) {
-    const cleanHost = hostname.replace(/[\[\]]/g, '');
-    if (cleanHost === '::1' || cleanHost.startsWith('fe80:') || cleanHost.startsWith('fc') || cleanHost.startsWith('fd')) {
+  if (cleanHostname.includes(':') || cleanHostname.startsWith('[')) {
+    if (cleanHostname === '::1' || cleanHostname.startsWith('fe80:') || cleanHostname.startsWith('fc') || cleanHostname.startsWith('fd')) {
       return {
         valid: false,
         error: 'IPv6 private/loopback addresses are not allowed',
         blocked: true,
         isIPv6Private: true,
-        isLocalhost: cleanHost === '::1'  // Mark if it's loopback
+        isLocalhost: cleanHostname === '::1',
       };
     }
   }
 
-  // If hostname is already an IP, validate it directly
-  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)) {
-    // Check for cloud metadata IP
-    if (isCloudMetadata(hostname)) {
+  if (DOTTED_IPV4_REGEX.test(cleanHostname) || parseIpAddress(cleanHostname)) {
+    if (isCloudMetadata(cleanHostname)) {
       return {
         valid: false,
         error: 'Cloud metadata endpoints are not allowed',
         blocked: true,
-        isCloudMetadata: true
+        isCloudMetadata: true,
       };
     }
-    
-    const privateCheck = isPrivateIP(hostname);
+
+    const privateCheck = isPrivateIP(cleanHostname);
     if (privateCheck) {
-      return { 
-        valid: false, 
+      return {
+        valid: false,
         error: privateCheck.reason,
         blocked: true,
-        isPrivateIP: true
+        isPrivateIP: true,
+        isLocalhost: privateCheck.isLocalhost || false,
       };
     }
-    return { valid: true };
+    return { valid: true, resolvedIp: cleanHostname };
   }
 
-  // Resolve hostname to IP
   try {
-    const { address } = await dnsLookup(hostname, { family: 4 });
-    
-    // Check if resolved IP is cloud metadata
+    const { address } = await dnsLookup(cleanHostname, { family: 4 });
+
     if (isCloudMetadata(address)) {
       return {
         valid: false,
-        error: `Hostname resolves to cloud metadata endpoint`,
+        error: 'Hostname resolves to cloud metadata endpoint',
         blocked: true,
         resolvedIp: address,
-        isCloudMetadata: true
+        isCloudMetadata: true,
       };
     }
-    
-    // Check if resolved IP is private
+
     const privateCheck = isPrivateIP(address);
     if (privateCheck) {
-      return { 
-        valid: false, 
+      return {
+        valid: false,
         error: `Hostname resolves to private IP: ${privateCheck.reason}`,
         blocked: true,
         resolvedIp: address,
-        isPrivateIP: true
+        isPrivateIP: true,
       };
     }
 
     return { valid: true, resolvedIp: address };
   } catch (error) {
-    return { 
-      valid: false, 
+    return {
+      valid: false,
       error: `DNS resolution failed: ${error.message}`,
-      blocked: false // Not blocked, just unreachable
+      blocked: false,
     };
   }
 }
 
-/**
- * Main validation function - validates URL against SSRF attacks
- * 
- * @param {string} url - The URL to validate
- * @param {Object} options - Validation options
- * @param {boolean} options.allowPrivateIPs - Allow private IPs (default: false)
- * @param {boolean} options.allowLocalhost - Allow localhost (default: false)
- * @param {boolean} options.skipDNSCheck - Skip DNS resolution check (default: false)
- * @returns {Promise<Object>} - Validation result
- */
 export async function validateUrl(url, options = {}) {
   const {
     allowPrivateIPs = false,
     allowLocalhost = false,
     skipDNSCheck = false,
+    rejectNonCanonicalIpEncoding = true,
+    requireTrustedDomain = false,
+    trustedDomains = [],
   } = options;
 
-  // Step 1: Validate URL structure and protocol
   const structureCheck = validateUrlStructure(url);
   if (!structureCheck.valid) {
     return {
@@ -271,13 +324,29 @@ export async function validateUrl(url, options = {}) {
   }
 
   const { parsedUrl } = structureCheck;
+  const parsedHostname = parsedUrl.hostname;
 
-  // Step 2: Validate hostname
+  const encodingError = detectNonCanonicalIpEncoding(url, parsedHostname, rejectNonCanonicalIpEncoding);
+  if (encodingError) {
+    return {
+      valid: false,
+      error: encodingError,
+      blocked: true,
+    };
+  }
+
+  if (requireTrustedDomain && !isTrustedDomain(parsedHostname, trustedDomains)) {
+    return {
+      valid: false,
+      error: 'URL hostname is not in the trusted domain allowlist',
+      blocked: true,
+    };
+  }
+
   if (!skipDNSCheck) {
-    const hostnameCheck = await validateHostname(parsedUrl.hostname);
-    
+    const hostnameCheck = await validateHostname(parsedHostname);
+
     if (!hostnameCheck.valid) {
-      // Cloud metadata endpoints are NEVER allowed
       if (hostnameCheck.isCloudMetadata) {
         return {
           valid: false,
@@ -285,46 +354,41 @@ export async function validateUrl(url, options = {}) {
           blocked: true,
         };
       }
-      
-      // Allow override for private IPs/localhost if configured
+
       if (hostnameCheck.blocked) {
-        // Check for localhost override (includes IPv6 loopback ::1)
         if (allowLocalhost && hostnameCheck.isLocalhost) {
-          return { 
-            valid: true, 
+          return {
+            valid: true,
             warning: 'Localhost URL allowed by configuration',
             url: parsedUrl.href,
-            hostname: parsedUrl.hostname,
+            hostname: parsedHostname,
             protocol: parsedUrl.protocol,
           };
         }
-        
-        // Check for private IP override (includes IPv6 private but NOT loopback)
+
         if (allowPrivateIPs && hostnameCheck.isIPv6Private && !hostnameCheck.isLocalhost) {
-          return { 
-            valid: true, 
+          return {
+            valid: true,
             warning: 'Private IPv6 address allowed by configuration',
             url: parsedUrl.href,
-            hostname: parsedUrl.hostname,
+            hostname: parsedHostname,
             protocol: parsedUrl.protocol,
           };
         }
-        
-        // Check for private IP override (IPv4 private ranges or resolved private IPs)
+
         if (allowPrivateIPs && (hostnameCheck.isPrivateIP || hostnameCheck.error.includes('private') || hostnameCheck.error.includes('Private'))) {
-          // But NOT cloud metadata (169.254.x.x range)
           if (!hostnameCheck.error.includes('Cloud Metadata') && !hostnameCheck.error.includes('Link-local')) {
-            return { 
-              valid: true, 
+            return {
+              valid: true,
               warning: 'Private IP allowed by configuration',
               url: parsedUrl.href,
-              hostname: parsedUrl.hostname,
+              hostname: parsedHostname,
               protocol: parsedUrl.protocol,
             };
           }
         }
       }
-      
+
       return {
         valid: false,
         error: hostnameCheck.error,
@@ -332,38 +396,40 @@ export async function validateUrl(url, options = {}) {
         resolvedIp: hostnameCheck.resolvedIp,
       };
     }
+
+    if (DOTTED_IPV4_REGEX.test(parsedHostname) && hostnameCheck.resolvedIp && hostnameCheck.resolvedIp !== parsedHostname) {
+      return {
+        valid: false,
+        error: 'Resolved IP does not match hostname IP',
+        blocked: true,
+      };
+    }
   }
 
   return {
     valid: true,
     url: parsedUrl.href,
-    hostname: parsedUrl.hostname,
+    hostname: parsedHostname,
     protocol: parsedUrl.protocol,
   };
 }
 
-/**
- * Express middleware for URL validation
- * 
- * Usage:
- *   app.post('/api/fetch', validateUrlMiddleware('body', 'url'), handler);
- */
 export function validateUrlMiddleware(source = 'body', fieldName = 'url', options = {}) {
   return async (req, res, next) => {
     const url = source === 'body' ? req.body[fieldName] : req.query[fieldName];
-    
+
     if (!url) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: `${fieldName} is required` 
+        error: `${fieldName} is required`,
       });
     }
 
     try {
       const validation = await validateUrl(url, options);
-      
+
       if (!validation.valid) {
-        return res.status(400).json({ 
+        return res.status(validation.blocked ? 403 : 400).json({
           success: false,
           error: validation.error,
           blocked: validation.blocked,
@@ -371,24 +437,20 @@ export function validateUrlMiddleware(source = 'body', fieldName = 'url', option
         });
       }
 
-      // Attach validated URL to request
       req.validatedUrl = validation.url;
       req.urlValidation = validation;
-      
+
       next();
     } catch (error) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
         error: 'URL validation failed',
-        details: error.message 
+        details: error.message,
       });
     }
   };
 }
 
-/**
- * Quick synchronous validation (structure only, no DNS check)
- */
 export function validateUrlSync(url) {
   const structureCheck = validateUrlStructure(url);
   if (!structureCheck.valid) {
@@ -396,24 +458,30 @@ export function validateUrlSync(url) {
   }
 
   const { parsedUrl } = structureCheck;
-  
-  // Quick localhost check
-  if (isLocalhost(parsedUrl.hostname)) {
-    return { 
-      valid: false, 
-      error: 'Localhost URLs are not allowed',
-      blocked: true 
+  const encodingError = detectNonCanonicalIpEncoding(url, parsedUrl.hostname, true);
+  if (encodingError) {
+    return {
+      valid: false,
+      error: encodingError,
+      blocked: true,
     };
   }
 
-  // Quick IP check (if hostname is an IP)
-  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(parsedUrl.hostname)) {
+  if (isLocalhost(parsedUrl.hostname)) {
+    return {
+      valid: false,
+      error: 'Localhost URLs are not allowed',
+      blocked: true,
+    };
+  }
+
+  if (DOTTED_IPV4_REGEX.test(parsedUrl.hostname) || parseIpAddress(parsedUrl.hostname)) {
     const privateCheck = isPrivateIP(parsedUrl.hostname);
     if (privateCheck) {
-      return { 
-        valid: false, 
+      return {
+        valid: false,
         error: privateCheck.reason,
-        blocked: true 
+        blocked: true,
       };
     }
   }

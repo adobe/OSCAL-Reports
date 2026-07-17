@@ -88,6 +88,8 @@ SVC_HOME="/var/lib/svc_ams-oscal"
 systemctl start amazon-ssm-agent 2>/dev/null || true
 systemctl enable amazon-ssm-agent 2>/dev/null || true
 
+${local.oscal_splunk_bootstrap_user_data_fragment}
+
 # Service account for OSCAL (app and cron run as this user, not root)
 getent group $SVC_GROUP >/dev/null 2>&1 || groupadd -r $SVC_GROUP
 id $SVC_USER >/dev/null 2>&1 || useradd -r -s /bin/bash -g $SVC_GROUP -d $SVC_HOME -m -c "OSCAL service account" $SVC_USER
@@ -159,6 +161,8 @@ SVC_HOME="/var/lib/svc_ams-oscal"
 # Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
 systemctl start amazon-ssm-agent 2>/dev/null || true
 systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+${local.oscal_splunk_bootstrap_user_data_fragment}
 
 # Service account for OSCAL (app and cron run as this user, not root)
 getent group $SVC_GROUP >/dev/null 2>&1 || groupadd -r $SVC_GROUP

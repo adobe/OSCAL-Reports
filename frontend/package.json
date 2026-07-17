@@ -1,7 +1,7 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-frontend",
   "private": true,
-  "version": "1.7.24",
+  "version": "1.7.25",
   "type": "module",
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
   "license": "MIT",

@@ -25,13 +25,13 @@ import MultiReportComparison from './components/MultiReportComparison';
 import IntegrityWarning from './components/IntegrityWarning';
 // import Footer from './components/Footer'; // REMOVED: Footer component completely removed from application
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
-import buildInfo from './utils/buildInfo';
+import AuthorCreditsFooter from './components/AuthorCreditsFooter';
 import { exportErrorMessage } from './utils/exportErrorMessage';
 import { exportSspJsonDownload, complianceReportFileName } from './utils/exportSsp.js';
 import './App.css';
 
 function App() {
-  const { getAuthConfig } = useAuth();
+  const { getAuthConfig, canEditSettings } = useAuth();
   const [step, setStep] = useState(1); // 1: Load/New, 1.5: Catalog selection, 1.75: CCM Upload (optional), 2: System Info, 3: Controls
   const [catalogueUrl, setCatalogueUrl] = useState('');
   const [catalogue, setCatalogue] = useState(null);
@@ -90,7 +90,7 @@ function App() {
       return controlsInput;
     }
     try {
-      const settingsRes = await axios.get('/api/settings', getAuthConfig());
+      const settingsRes = await axios.get('/api/settings/runtime', getAuthConfig());
       if (!settingsRes.data?.databaseConfig?.enabled) {
         return controlsInput;
       }
@@ -154,7 +154,7 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        const settingsRes = await axios.get('/api/settings');
+        const settingsRes = await axios.get('/api/settings/runtime', getAuthConfig());
         const enabled = !!(settingsRes.data?.databaseConfig?.enabled);
         if (cancelled) return;
         setDatabaseIntegrationEnabled(enabled);
@@ -174,7 +174,7 @@ function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [step]);
+  }, [step, getAuthConfig]);
 
   // Auto-save functionality
   const autoSave = useCallback(() => {
@@ -264,7 +264,7 @@ function App() {
     try {
       console.log('📡 Fetching catalog:', existingCatalogUrl);
       // Load the same catalog and populate with existing data
-      const response = await axios.post('/api/fetch-catalogue', { url: existingCatalogUrl });
+      const response = await axios.post('/api/fetch-catalogue', { url: existingCatalogUrl }, getAuthConfig());
       console.log('✅ Catalog fetched:', response.data);
       setCatalogue(response.data.catalogue);
       setCatalogueUrl(existingCatalogUrl);
@@ -316,7 +316,7 @@ function App() {
     try {
       console.log('📡 Fetching new catalog:', url);
       // Fetch new catalog
-      const response = await axios.post('/api/fetch-catalogue', { url });
+      const response = await axios.post('/api/fetch-catalogue', { url }, getAuthConfig());
       console.log('✅ New catalog fetched:', response.data);
       setCatalogue(response.data.catalogue);
       setCatalogueUrl(url);
@@ -368,7 +368,7 @@ function App() {
     
     try {
       console.log('📡 Posting to /api/fetch-catalogue...');
-      const response = await axios.post('/api/fetch-catalogue', { url });
+      const response = await axios.post('/api/fetch-catalogue', { url }, getAuthConfig());
       console.log('✅ Catalogue fetched successfully');
       console.log('📊 Controls count in response:', response.data.controls?.length);
       
@@ -686,13 +686,15 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <button 
-          className="settings-btn" 
-          onClick={() => setShowSettings(true)}
-          title="API Credentials & Settings"
-        >
-          ⚙️ Settings
-        </button>
+        {canEditSettings() && (
+          <button
+            className="settings-btn"
+            onClick={() => setShowSettings(true)}
+            title="API Credentials & Settings"
+          >
+            ⚙️ Settings
+          </button>
+        )}
         <div className="header-content">
           <h1>Keekar's OSCAL SOA/SSP/CCM Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
           <p>Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix from OSCAL Catalogues</p>
@@ -937,13 +939,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>
-          <strong>Made with Passion by Mukesh Kesharwani</strong><br />
-          <small>mukesh.kesharwani@adobe.com | Adobe - Built with React and Node.js</small><br />
-          <small style={{ opacity: 0.7, fontSize: '0.85em' }}>
-            {buildInfo.getFormattedInfo()} | {buildInfo.environment === 'development' ? '🔧 Development Mode' : '🚀 Production Build'}
-          </small>
-        </p>
+        <AuthorCreditsFooter showTechStack />
       </footer>
     </div>
   );
@@ -951,7 +947,7 @@ function App() {
 
 // Wrap the main app to show use cases first
 function AppWithUseCases() {
-  const { isAuthenticated, loading, user, logout, canManageUsers } = useAuth();
+  const { isAuthenticated, loading, user, logout, canManageUsers, canEditSettings } = useAuth();
   const [showUseCases, setShowUseCases] = useState(true);
   const [showMultiReportComparison, setShowMultiReportComparison] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1003,7 +999,9 @@ function AppWithUseCases() {
           {canManageUsers() && (
             <button onClick={() => { setShowUserManagement(true); setShowUserMenu(false); }}>👥 User Management</button>
           )}
-          <button onClick={() => { setShowSettings(true); setShowUserMenu(false); }}>⚙️ Settings</button>
+          {canEditSettings() && (
+            <button onClick={() => { setShowSettings(true); setShowUserMenu(false); }}>⚙️ Settings</button>
+          )}
           <button onClick={logout} className="logout-btn">🚪 Logout</button>
         </div>
       )}

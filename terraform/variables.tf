@@ -341,6 +341,24 @@ variable "oscal_splunk_uf_min_version" {
   default     = "9.3.9"
 }
 
+variable "oscal_splunk_uf_bootstrap_enabled" {
+  description = "When true, user-data and SSM post-boot configure Splunk UF for Security SCC (deploymentclient.conf + secops metadata; SSAAU-212)."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_splunk_deployment_server" {
+  description = "Splunk deployment server targetUri for Security SCC (Adobe standard: ds2.splunk.adobe.net:443)."
+  type        = string
+  default     = "ds2.splunk.adobe.net:443"
+}
+
+variable "oscal_splunk_client_name" {
+  description = "Splunk UF deployment clientName. AL2023 without rsyslog must include journald_seclogs (e.g. DC-ue1-journald_seclogs-ams-oscal)."
+  type        = string
+  default     = "DC-ue1-journald_seclogs-ams-oscal"
+}
+
 # S3 (best practice: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
   description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, config, users."
@@ -516,6 +534,11 @@ variable "bedrock_cross_account_enabled" {
   description = "When true, grant OSCAL EC2 instance role sts:AssumeRole on the Bedrock account IAM role (requires bedrock_external_id and role ARN or bedrock_account_id)."
   type        = bool
   default     = false
+
+  validation {
+    condition = !var.bedrock_cross_account_enabled || trimspace(var.bedrock_external_id) != ""
+    error_message = "bedrock_external_id must be set when bedrock_cross_account_enabled is true (must match Account B trust policy sts:ExternalId)."
+  }
 }
 
 variable "bedrock_account_id" {

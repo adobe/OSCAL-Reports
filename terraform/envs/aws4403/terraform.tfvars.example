@@ -65,7 +65,7 @@ common_tags = {
 # oscal_standby_automation_enabled    = true
 # oscal_deploy_edge_canary_enabled    = true
 
-# oscal_ssm_post_boot_association_enabled = true
+# oscal_ssm_post_boot_association_enabled = true   # recommended: Splunk/health self-heal every 30 min (SSAAU-212)
 # oscal_ssm_release_s3_prefix  = null   # e.g. "releases/current" inside s3_logs_bucket_name
 
 # SSM Patch Manager — staggered Blue/Green OS patching (see docs/AWS_OPERATIONS.md#os-patching-ssm-patch-manager)
@@ -76,8 +76,11 @@ common_tags = {
 # oscal_os_patch_weekly_scan_enabled = true
 # oscal_os_patch_on_launch_enabled   = true
 # oscal_ami_auto_refresh_on_change   = false
-# oscal_splunk_uf_upgrade_enabled  = true
-# oscal_splunk_uf_min_version        = "9.3.9"
+oscal_splunk_uf_upgrade_enabled  = true
+oscal_splunk_uf_min_version        = "9.3.9"
+# oscal_splunk_uf_bootstrap_enabled  = true
+# oscal_splunk_deployment_server     = "ds2.splunk.adobe.net:443"
+# oscal_splunk_client_name           = "DC-ue1-journald_seclogs-ams-oscal"
 
 # ------------------------------------------------------------------------------
 # Docker on EC2 (optional; default is direct Node.js run + deploy-to-ec2.sh)

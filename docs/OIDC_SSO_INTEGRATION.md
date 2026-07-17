@@ -150,7 +150,7 @@ sequenceDiagram
 | Area | Behaviour |
 |------|-----------|
 | **Upper form** | Username/password, **Sign in with Okta** (when Okta is enabled). |
-| **Lower panel** | **Sign in with Generic SSO** (orange button) when `Generic_OIDC` is enabled, followed by access-policy text (15-user cohort, 30-day dormancy, SMTP retirement). |
+| **Lower panel** | **Sign in with Generic SSO** (orange button) when `Generic_OIDC` is enabled, followed by access-policy text (15-user cohort, 30-day dormancy). |
 | **Expedited entry (optional)** | Shown only when **not** on EC2 (`showExpeditedAccessPolicy` from `GET /api/auth/sso/login-providers`; false when `OSCAL_SECRETS_MODE=aws-sm`). |
 
 ### IdP setup (admin console — not app code)
@@ -210,7 +210,8 @@ The application is an **OAuth 2.0 / OIDC client only**. It does **not** call IdP
 
 **User lifecycle (local Generic SSO):**
 
-- Inactive **self-registered** users are deactivated after **30 days** (`userCleanup.js`); email blocklist cooldown is **30 days**.
+- Self-registration (`POST /api/auth/self-register`) has been **removed**; use SSO JIT provisioning or admin-created accounts.
+- Legacy **self-registered** users (existing rows) are still subject to deactivation after **30 days** of inactivity (`userCleanup.js`); email blocklist cooldown is **30 days**.
 - Hard delete after deactivation remains **45 days** (admin lifecycle in `userManager.js`).
 - JIT-created users are tagged `createdVia: 'oidc-jit'`.
 - `endSessionUrl` is stored in config but **not** invoked by backend logout (app session only).
@@ -619,4 +620,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md#sensitive-settings-and-_cfgenc-localdocker-or-
 
 ---
 
-**Version:** 1.7.24 · **Last updated:** June 2026
+**Version:** 1.7.25 · **Last updated:** July 2026

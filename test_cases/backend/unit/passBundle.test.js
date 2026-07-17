@@ -24,10 +24,10 @@ const {
 
 const BUNDLE_JSON = JSON.stringify({
   entries: {
-    'OSCAL/smtp-password': 'smtp-secret',
+    'OSCAL/slack-webhook-url': 'slack-secret',
     'OSCAL/sso-oauth-okta-client-secret': 'line1\nclient-secret=okta-value',
   },
-  _meta: { keys: { 'OSCAL/smtp-password': { t: 1 } } },
+  _meta: { keys: { 'OSCAL/slack-webhook-url': { t: 1 } } },
 });
 
 describe('passBundle', () => {
@@ -49,14 +49,14 @@ describe('passBundle', () => {
   });
 
   it('isLogicalBundleKey recognizes sensitive config keys', () => {
-    expect(isLogicalBundleKey('OSCAL/smtp-password')).toBe(true);
+    expect(isLogicalBundleKey('OSCAL/slack-webhook-url')).toBe(true);
     expect(isLogicalBundleKey('AWS/other')).toBe(false);
   });
 
   it('readPassBundle parses bundle JSON from pass show', () => {
     mockExecSync.mockReturnValue(BUNDLE_JSON);
     const bundle = readPassBundle(false);
-    expect(bundle.entries['OSCAL/smtp-password']).toBe('smtp-secret');
+    expect(bundle.entries['OSCAL/slack-webhook-url']).toBe('slack-secret');
     expect(mockExecSync).toHaveBeenCalledWith(
       expect.stringContaining('pass show'),
       expect.objectContaining({ encoding: 'utf8' }),
@@ -65,25 +65,25 @@ describe('passBundle', () => {
 
   it('getPassBundleSecret returns normalized OAuth secret from bundle', () => {
     mockExecSync.mockReturnValue(BUNDLE_JSON);
-    expect(getPassBundleSecret('OSCAL/smtp-password')).toBe('smtp-secret');
+    expect(getPassBundleSecret('OSCAL/slack-webhook-url')).toBe('slack-secret');
     expect(getPassBundleSecret('OSCAL/sso-oauth-okta-client-secret')).toBe('okta-value');
   });
 
   it('mergePassBundlePartial writes merged JSON via pass insert', () => {
     mockExecSync.mockReturnValue(JSON.stringify({ entries: {}, _meta: { keys: {} } }));
     mockSpawnSync.mockReturnValue({ status: 0, stderr: '' });
-    const result = mergePassBundlePartial({ 'OSCAL/smtp-password': 'new-smtp' });
+    const result = mergePassBundlePartial({ 'OSCAL/slack-webhook-url': 'new-slack' });
     expect(result.success).toBe(true);
     expect(mockSpawnSync).toHaveBeenCalledWith(
       'pass',
       ['insert', '-m', '-f', 'PROD/OSCAL/AWS_SM'],
-      expect.objectContaining({ input: expect.stringContaining('new-smtp') }),
+      expect.objectContaining({ input: expect.stringContaining('new-slack') }),
     );
   });
 
   it('mergePassBundlePartial skips when OSCAL_PASS_DISABLED', () => {
     process.env.OSCAL_PASS_DISABLED = '1';
-    const result = mergePassBundlePartial({ 'OSCAL/smtp-password': 'x' });
+    const result = mergePassBundlePartial({ 'OSCAL/slack-webhook-url': 'x' });
     expect(result.success).toBe(false);
     expect(mockSpawnSync).not.toHaveBeenCalled();
   });
