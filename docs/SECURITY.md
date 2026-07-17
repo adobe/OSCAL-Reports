@@ -87,6 +87,11 @@
 - **Issue**: CSRF middleware caused 403 on many API endpoints.
 - **Fix**: API routes under `/api/` exempted; Bearer token used for API (CSRF not applicable). State-changing browser flows still use CSRF tokens.
 
+### v1.7.25 – Settings disclosure (VULN-36998) (July 2026)
+- **Issue:** Unauthenticated `GET /api/settings` returned full platform configuration (DB, SSO, group mappings, Bedrock ARNs, legacy SMTP). CWE-200; CVSS 8.2 on production pentest.
+- **Fix:** Platform Admin required for full settings; `GET /api/settings/runtime` for allowlisted runtime flags; POST save responses redacted; SMTP/email and self-registration removed. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md#4-settings-disclosure-and-smtp-retirement-vuln-36998).
+- **Post-deploy:** Rotate exposed credentials; review OAuth redirect URIs in Okta Admin Console.
+
 ### v1.7.25 – SSRF and proxy endpoints (VULN-36986) (July 2026)
 - **Issue**: Unauthenticated `/api/proxy-fetch` and `/api/fetch-catalogue` allowed SSRF (hex IP bypass, redirect to IMDS).
 - **Fix**: Session auth required; `strictUserFetch` / `strictCatalogueFetch` profiles; no redirects on protected axios calls; encoded-IP rejection. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md).

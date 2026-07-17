@@ -2,14 +2,20 @@
 
 ## [1.7.25] - 2026-07-18
 
-Release **1.7.25** merges Dependabot dependency updates on **Development**, remediates pentest findings (**VULN-36986** SSRF, **VULN-37020** Bedrock access control), closes AMS Non-Prod InfraSec tickets (**SSAAU-216**, **SSAAU-212**), and aligns Terraform/GHCR paths with the canonical [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) repository.
+Release **1.7.25** merges Dependabot dependency updates on **Development**, remediates pentest findings (**VULN-36986** SSRF, **VULN-36998** settings disclosure, **VULN-37020** Bedrock access control), closes AMS Non-Prod InfraSec tickets (**SSAAU-216**, **SSAAU-212**), and aligns Terraform/GHCR paths with the canonical [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) repository.
 
 **Full release record and regression-prevention checklist:** [docs/RELEASE_1.7.25.md](RELEASE_1.7.25.md).
 
 ### Security
 
 - **SSRF (VULN-36986):** Strict URL validation profiles; `authenticate` on `/api/proxy-fetch` and `/api/fetch-catalogue`; encoded-IP and redirect blocking; frontend authenticated fetch helpers; regression tests.
-- **Bedrock (VULN-37020):** `GET /api/settings` requires auth; redact `bedrockAssumeRoleArn` / `bedrockExternalId` for non-admin; Terraform gates cross-account IAM on `bedrock_external_id`; hardened Account B runbook.
+- **Settings disclosure (VULN-36998):** `GET /api/settings` requires **Platform Admin** (`EDIT_SETTINGS`); new `GET /api/settings/runtime` for allowlisted runtime flags only; POST save response redacts secrets and omits server paths; structured settings access logging; Platform Settings UI admin-only.
+- **Bedrock (VULN-37020):** Redact `bedrockAssumeRoleArn` / `bedrockExternalId` for non-admin; Terraform gates cross-account IAM on `bedrock_external_id`; hardened Account B runbook.
+
+### Removed
+
+- **SMTP / email notifications:** Backend `nodemailer` dependency, SMTP config (`messagingConfig.email`), `POST /api/messaging/test-email`, and EC2 security-group SMTP egress (25/465/587). Credential delivery is **Slack-only** when messaging is enabled.
+- **Self-registration:** `POST /api/auth/self-register` removed; use SSO JIT provisioning or admin-created accounts.
 
 ### Infrastructure (AWS4403 / AMS Non-Prod)
 
@@ -19,9 +25,9 @@ Release **1.7.25** merges Dependabot dependency updates on **Development**, reme
 ### Changed
 
 - **Terraform / GHCR:** `oscal_container_image` default `ghcr.io/adobe/oscal-report-generator:latest`; EC2 Docker user_data uses the variable instead of legacy paths.
-- **Dependencies (Dependabot #8–#12):** AWS SDK **3.1086**, `fast-xml-parser` **5.10.1**, `nodemailer` **9.0.3**, `lucide-react` **1.24**, `vite` **8.1.4**, React toolchain, security overrides (`exceljs` → `uuid@14.0.1` for CVE-2026-41907).
+- **Dependencies (Dependabot #8–#12):** AWS SDK **3.1086**, `fast-xml-parser` **5.10.1**, `lucide-react` **1.24**, `vite` **8.1.4**, React toolchain, security overrides (`exceljs` → `uuid@14.0.1` for CVE-2026-41907). Backend **removed** `nodemailer` (SMTP retired).
 - **CI:** Docker publish workflow pushes to **GHCR** and Docker Hub.
-- **Tests:** `secretsManager` unit test nesting fix; `urlValidator-ssrf-remediation.test.js`, `proxyFetchHelpers.test.js`, `ssrf-auth-endpoints.test.js`, `settingsRedaction.test.js`; updated `csrf-api.test.js`, `securityConfig.test.js`.
+- **Tests:** `secretsManager` unit test nesting fix; `urlValidator-ssrf-remediation.test.js`, `proxyFetchHelpers.test.js`, `ssrf-auth-endpoints.test.js`, `settings-auth-disclosure.test.js`, `settingsRedaction.test.js`; updated `csrf-api.test.js`, `securityConfig.test.js`.
 
 ### Deploy
 

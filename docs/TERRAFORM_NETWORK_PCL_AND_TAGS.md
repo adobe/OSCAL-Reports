@@ -39,7 +39,7 @@ Private subnets for DB are **not** used for ALB or general app tiers in this lay
 
 ## 3. Ingress “allow list” (what can reach the ALB and instances)
 
-**Rule:** **No `0.0.0.0/0` on ingress** for ALB or EC2 SSH/app ports — enforced by `validation` on `default_allowed_cidr_blocks` in [`variables.tf`](../terraform/variables.tf). Egress to `0.0.0.0/0` is allowed where documented (ALB → targets; EC2 → HTTPS/SMTP; standard pattern).
+**Rule:** **No `0.0.0.0/0` on ingress** for ALB or EC2 SSH/app ports — enforced by `validation` on `default_allowed_cidr_blocks` in [`variables.tf`](../terraform/variables.tf). Egress to `0.0.0.0/0` is allowed where documented (ALB → targets; EC2 → HTTPS; standard pattern). SMTP egress removed in 1.7.25 (email notifications retired).
 
 ### 3.1 Primary variable: `default_allowed_cidr_blocks`
 

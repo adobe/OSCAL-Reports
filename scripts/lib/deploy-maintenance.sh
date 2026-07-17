@@ -39,6 +39,23 @@ DEPLOY_MAINTENANCE_STATE_DIR="${DEPLOY_MAINTENANCE_STATE_DIR:-}"
 # Space-separated roles currently in maintenance (green|blue).
 DEPLOY_MAINTENANCE_ACTIVE_ROLES="${DEPLOY_MAINTENANCE_ACTIVE_ROLES:-}"
 
+deploy_maintenance__state_dir() {
+  local role="$1"
+  local dir="${DEPLOY_MAINTENANCE_STATE_DIR}/${role}"
+  mkdir -p "$dir"
+  printf '%s' "$dir"
+}
+
+deploy_maintenance__read_state_file() {
+  local role="$1"
+  local file_name="$2"
+  local file_path
+  file_path="${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/${file_name}"
+  if [ -f "$file_path" ]; then
+    tr -d '\r\n' < "$file_path"
+  fi
+}
+
 deploy_maintenance__require_tools() {
   command -v aws >/dev/null 2>&1 || { echo "deploy-maintenance: aws CLI required" >&2; return 1; }
   command -v jq >/dev/null 2>&1 || { echo "deploy-maintenance: jq required" >&2; return 1; }
@@ -210,14 +227,14 @@ deploy_maintenance__suspend_asg() {
     proc_args+=(--scaling-processes "$p")
   done
   aws autoscaling suspend-processes --auto-scaling-group-name "$asg_name" "${proc_args[@]}" >/dev/null
-  printf '%s' "$asg_name" >"${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt"
+  printf '%s' "$asg_name" >"$(deploy_maintenance__state_dir "$role")/asg_name.txt"
   return 0
 }
 
 deploy_maintenance__resume_asg() {
   local role="$1"
   local asg_name proc_args=()
-  asg_name=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt" 2>/dev/null || true)
+  asg_name=$(deploy_maintenance__read_state_file "$role" "asg_name.txt")
   [ -z "$asg_name" ] && asg_name=$(deploy_maintenance__asg_name "$role")
   [ -z "$asg_name" ] && return 0
   local p
@@ -238,16 +255,16 @@ deploy_maintenance__protect_instance() {
     --auto-scaling-group-name "$asg_name" \
     --instance-ids "$instance_id" \
     --protected-from-scale-in >/dev/null
-  printf '%s' "$instance_id" >"${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt"
+  printf '%s' "$instance_id" >"$(deploy_maintenance__state_dir "$role")/instance_id.txt"
   return 0
 }
 
 deploy_maintenance__unprotect_instance() {
   local role="$1"
   local asg_name instance_id
-  asg_name=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/asg_name.txt" 2>/dev/null || true)
+  asg_name=$(deploy_maintenance__read_state_file "$role" "asg_name.txt")
   [ -z "$asg_name" ] && asg_name=$(deploy_maintenance__asg_name "$role")
-  instance_id=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt" 2>/dev/null || true)
+  instance_id=$(deploy_maintenance__read_state_file "$role" "instance_id.txt")
   [ -z "$instance_id" ] || [ -z "$asg_name" ] && return 0
   aws autoscaling set-instance-protection \
     --auto-scaling-group-name "$asg_name" \
@@ -268,6 +285,7 @@ deploy_maintenance_enter() {
 
   deploy_maintenance__require_tools || return 1
   [ -n "$DEPLOY_MAINTENANCE_STATE_DIR" ] || DEPLOY_MAINTENANCE_STATE_DIR=$(mktemp -d)
+  deploy_maintenance__state_dir "$role" >/dev/null
 
   if declare -F oscal_traffic_mode_is_active_passive >/dev/null 2>&1 \
     && oscal_traffic_mode_is_active_passive && [ "$role" = "green" ]; then
@@ -322,7 +340,7 @@ deploy_maintenance_wait_target_healthy() {
   local sleep_secs="${3:-10}"
   local tg_arn instance_id port state attempt
   tg_arn=$(deploy_maintenance__target_group_arn "$role")
-  instance_id=$(tr -d '\r\n' < "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/instance_id.txt" 2>/dev/null || true)
+  instance_id=$(deploy_maintenance__read_state_file "$role" "instance_id.txt")
   [ -z "$instance_id" ] && {
     local asg_name
     asg_name=$(deploy_maintenance__asg_name "$role")

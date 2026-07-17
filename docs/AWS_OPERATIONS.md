@@ -163,7 +163,7 @@ export TERRAFORM_DIR=$PWD/terraform/envs/aws4403   # if not already the default
 
 **Config/users during deploy:** By default deploy **does not force-overwrite** `/opt/oscal/data/config.json` from S3. Local EBS config is backed up to `s3://<bucket>/config/active/` before any optional pull; S3 is used only when files are missing or `DEPLOY_CONFIG_S3_FORCE=1`. Skip S3 config sync entirely on code-only deploys: `DEPLOY_CONFIG_S3_SKIP=1`. The SM migration script (`migrate-config-to-sm.mjs`) runs only when `DEPLOY_MIGRATE_CONFIG_SM=1` (not on every deploy). If local config is missing or smaller than 256 bytes after sync, deploy **automatically restores** from the golden prefix **`s3://<bucket>/config/default/`** (config.default) when that snapshot exists.
 
-**Golden config.default (quick restore):** After SSO/SMTP/OIDC are verified on an instance, publish a operator-controlled snapshot:
+**Golden config.default (quick restore):** After SSO/Slack/OIDC are verified on an instance, publish a operator-controlled snapshot:
 
 ```bash
 # On Green (or any instance with good /opt/oscal/data):
@@ -180,7 +180,7 @@ sudo bash /opt/oscal/scripts/debug/restore-config-from-s3-default.sh
 sudo systemctl restart oscal-reporter.service   # omitted if script runs without --no-restart
 ```
 
-If SSO/SMTP settings were lost and config.default is stale, run on the instance: `node scripts/debug/repair-ec2-config-from-backups.mjs` then `node scripts/debug/fix-ec2-generic-oidc-secret.mjs` (with `OSCAL_FIX_GENERIC_OIDC_SECRET` if needed), then **re-publish** config.default.
+If SSO/Slack settings were lost and config.default is stale, run on the instance: `node scripts/debug/repair-ec2-config-from-backups.mjs` then `node scripts/debug/fix-ec2-generic-oidc-secret.mjs` (with `OSCAL_FIX_GENERIC_OIDC_SECRET` if needed), then **re-publish** config.default.
 
 **Amazon Linux 2023 (Image Factory or native):** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 
@@ -334,9 +334,11 @@ Default **`oscal_traffic_mode = "active_passive"`**: production traffic goes to 
 
 1. `./terraform/run-with-aws-pass.sh plan` — wakes Green if scaled to 0.
 2. `./scripts/deploy-to-ec2.sh --update-s3` — publish installer + standby libs to S3.
-3. `./scripts/deploy-to-ec2.sh` (Green) — enters **deploy_green** (Edge → Green; Chrome/Firefox → Blue).
-4. Test with **Microsoft Edge** on `https://oscal.amsgovcloud.com.au/` (Green); verify production browsers still hit Blue.
-5. On success, deploy maintenance exits → **steady** (Blue primary). Green idles; shutdown after 4 h no Edge traffic.
+3. `./scripts/deploy-to-ec2.sh` — **passive-first both** (default when `active_passive`): deploy **Green (passive)** → ALB **failover** to Green → deploy **Blue (active)** → restore **steady** Blue-primary weights. Set `DEPLOY_PASSIVE_FIRST=0` only for intentional single-color deploys.
+4. After **Terraform AMI refresh** (`oscal_ami_auto_refresh_on_change`), `oscal-staggered-ami-refresh.sh` **cutsover to passive before Blue refresh** and runs post-refresh deploy by default (`OSCAL_POST_REFRESH_DEPLOY=1`).
+5. Verify: `./scripts/debug/alb-target-health.sh` and `https://oscal.amsgovcloud.com.au/health/ready` → 200.
+
+**Why 502 happens:** ASG instance refresh replaces the **active** Blue target before app code is deployed on the new instance, or deploy maintenance fails (missing state dir). Passive-first deploy + pre-Blue cutover prevents serving traffic to an empty target.
 
 **Failover:** If Blue is unhealthy, automation wakes Green and sets **failover** routing. When Blue is healthy again, **failover-restore** alarm returns **steady** Blue-primary weights (Green stays up until idle alarm).
 
