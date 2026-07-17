@@ -98,10 +98,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ## What's new in 1.7.25
 
-- **Security:** SSRF remediation (VULN-36986) — authenticated proxy/catalogue fetch, strict URL profiles, no redirects. Bedrock access control (VULN-37020) — settings redaction, Terraform ExternalId gate.
+- **Security:** SSRF remediation (VULN-36986) — authenticated proxy/catalogue fetch, strict URL profiles, no redirects. Settings disclosure (VULN-36998) — admin-only `/api/settings`, runtime allowlist endpoint, SMTP/email retired, self-registration removed. Bedrock access control (VULN-37020) — settings redaction, Terraform ExternalId gate.
 - **AMS Non-Prod:** Image Factory EMR **3.0.2** (SSAAU-216); Splunk UF SCC bootstrap (SSAAU-212).
 - **Terraform / GHCR:** Docker mode on EC2 uses `ghcr.io/adobe/oscal-report-generator`; CI publishes to GHCR and Docker Hub.
-- **Dependencies:** Dependabot library updates merged on Development (AWS SDK 3.1086, fast-xml-parser 5.10.1, nodemailer 9.0.3, lucide-react 1.24, vite 8.1.4).
+- **Dependencies:** Dependabot library updates merged on Development (AWS SDK 3.1086, fast-xml-parser 5.10.1, lucide-react 1.24, vite 8.1.4); backend SMTP/`nodemailer` removed.
 - **Deploy:** `keekar/oscal_reports:v1.7.25` and `ghcr.io/adobe/oscal-report-generator:v1.7.25` when published.
 - **Full record:** [docs/RELEASE_1.7.25.md](docs/RELEASE_1.7.25.md) (checklist so issues do not regress).
 

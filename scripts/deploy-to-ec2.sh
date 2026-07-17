@@ -14,8 +14,8 @@
 # Config and users live on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount). Golden restore: s3://<bucket>/config/default/ (config.default) via publish-config-default-to-s3.sh / restore-config-from-s3-default.sh. logs/ in the bucket is for
 # runtime log backup (logs/green, logs/blue), not application code—installer/ holds deployable bits.
 # Reliability: On each instance, ec2-user runs aws s3 sync; files previously owned by svc_ams-oscal could not be overwritten without
-# chown ec2-user:oscal on /opt/oscal/app first (see INSTALLERSYNC). Default deploy updates GREEN only—use --both or --blue so Blue pulls
-# installer/ too (existing S3 objects only unless you ran --update-s3 first). Confirm bucket: terraform output -raw s3_logs_bucket_name.
+# chown ec2-user:oscal on /opt/oscal/app first (see INSTALLERSYNC). active_passive default: passive-first both
+# (passive → ALB cutover → active). Use --green-only/--blue-only or DEPLOY_PASSIVE_FIRST=0 to override.
 # Application and cron run as service account svc_ams-oscal (not root). Pass is installed and initialized for that user for secrets.
 #
 # Green/Blue are Auto Scaling Group members. By default IPs resolve from the live ASG InService instance (not stale Terraform output).
@@ -29,9 +29,9 @@
 # Instances use their IAM role to read installer/* (no laptop upload on a normal deploy).
 #
 # Usage:
-#   ./scripts/deploy-to-ec2.sh              # Deploy green only: EC2 pulls existing s3://<bucket>/installer/ (no laptop upload)
+#   ./scripts/deploy-to-ec2.sh              # active_passive: passive-first both; else green only
 #   ./scripts/deploy-to-ec2.sh --update-s3  # Upload this repo to installer/ only; no SSH / no EC2 deploy (alias: -updateS3)
-#   ./scripts/deploy-to-ec2.sh --both       # Deploy to both green and blue
+#   ./scripts/deploy-to-ec2.sh --both       # Deploy both colors (passive-first when active_passive)
 #   ./scripts/deploy-to-ec2.sh --blue       # Deploy to blue only
 #   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4   # Deploy to green at given IP
 #   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8    # Deploy to blue at given IP
@@ -63,6 +63,7 @@
 #   DEPLOY_MIGRATE_CONFIG_SM    Set to 1 to run migrate-config-to-sm.mjs during deploy (default: 0; run manually when rotating secrets).
 # Golden restore: s3://<bucket>/config/default/ (config.default). Publish: scripts/debug/publish-config-default-to-s3.sh. Restore: restore-config-from-s3-default.sh.
 #   DEPLOY_MAINTENANCE_MODE     Default 1: ALB drain to peer color + ASG suspend/protect during deploy; restore after success.
+#   DEPLOY_PASSIVE_FIRST        Default 1 in active_passive: deploy passive color, cutover ALB, then deploy active (both colors).
 #   DEPLOY_USE_ASG_IP           Default 1: resolve Green/Blue public IP from live ASG (fallback: Terraform output).
 #   DEPLOY_SKIP_OS_PACKAGE_UPDATE  Default 1: skip dnf/yum upgrade during deploy (prevents kernel reboot / ASG recycle).
 #   DEPLOY_TERRAFORM_APPLY      Default 0: skip terraform apply at end of deploy (run separately when infra changes are intended).
@@ -649,20 +650,31 @@ if aws s3api head-object --bucket "$BUCKET" --key "$MANIFEST_KEY" --region "$REG
   {
     echo "=== $(date -Iseconds) installer manifest verify OK (sha256 ${DISK_SHA}) ==="
   } >>"$SYNC_LOG" 2>/dev/null || true
-  # aws s3 sync may skip same-size package.json (1.7.18 vs 1.7.19); reconcile from manifest package_version.
+  # aws s3 sync may skip same-size package.json (1.7.24 vs 1.7.25); reconcile all package.json copies from manifest.
   if command -v jq >/dev/null 2>&1; then
     MANIFEST_VER=$(jq -r '.package_version // empty' "$MF" 2>/dev/null)
-    DISK_VER=$(jq -r '.version // empty' "${APP}/package.json" 2>/dev/null)
-    if [ -n "$MANIFEST_VER" ] && [ -n "$DISK_VER" ] && [ "$MANIFEST_VER" != "$DISK_VER" ]; then
-      echo "=== $(date -Iseconds) installer version drift manifest=${MANIFEST_VER} disk=${DISK_VER}; forcing package.json from S3 ===" | tee -a "$SYNC_LOG"
+    needs_reconcile=0
+    for REL in package.json frontend/package.json backend/package.json; do
+      [ -f "${APP}/${REL}" ] || continue
+      DISK_VER=$(jq -r '.version // empty' "${APP}/${REL}" 2>/dev/null)
+      if [ -n "$MANIFEST_VER" ] && [ -n "$DISK_VER" ] && [ "$MANIFEST_VER" != "$DISK_VER" ]; then
+        needs_reconcile=1
+        break
+      fi
+    done
+    if [ "$needs_reconcile" = "1" ]; then
+      echo "=== $(date -Iseconds) installer version drift manifest=${MANIFEST_VER}; forcing package.json files from S3 ===" | tee -a "$SYNC_LOG"
       for REL in package.json frontend/package.json backend/package.json; do
         if aws s3api head-object --bucket "$BUCKET" --key "installer/${REL}" --region "$REGION" >/dev/null 2>&1; then
           aws s3 cp "s3://${BUCKET}/installer/${REL}" "${APP}/${REL}" --region "$REGION"
         fi
       done
-      DISK_VER=$(jq -r '.version // empty' "${APP}/package.json" 2>/dev/null)
-      if [ "$MANIFEST_VER" != "$DISK_VER" ]; then
-        echo "installer verify failed: package.json still ${DISK_VER} after reconcile (expected ${MANIFEST_VER})" >&2
+      DISK_VER=$(jq -r '.version // empty' "${APP}/frontend/package.json" 2>/dev/null)
+      if [ -z "$DISK_VER" ]; then
+        DISK_VER=$(jq -r '.version // empty' "${APP}/package.json" 2>/dev/null)
+      fi
+      if [ -n "$MANIFEST_VER" ] && [ "$MANIFEST_VER" != "$DISK_VER" ]; then
+        echo "installer verify failed: frontend/package.json still ${DISK_VER} after reconcile (expected ${MANIFEST_VER})" >&2
         exit 1
       fi
       echo "=== $(date -Iseconds) installer version reconcile OK (${DISK_VER}) ===" | tee -a "$SYNC_LOG"
@@ -1014,6 +1026,68 @@ deploy_one__set_instance_maintenance_flag() {
 }
 
 # Enter ALB/ASG maintenance, deploy, wait for target health, restore routing.
+get_oscal_active_role() {
+  local role
+  role=$(tf_output -raw oscal_active_role 2>/dev/null | tr -d '\r\n' || true)
+  [ -n "$role" ] && [ "$role" != "null" ] && printf '%s' "$role" || printf '%s' "blue"
+}
+
+get_oscal_passive_role() {
+  local role
+  role=$(tf_output -raw oscal_passive_role 2>/dev/null | tr -d '\r\n' || true)
+  [ -n "$role" ] && [ "$role" != "null" ] && printf '%s' "$role" || printf '%s' "green"
+}
+
+resolve_oscal_role_ip() {
+  local role="$1"
+  case "$role" in
+    green) printf '%s' "${GREEN_IP:-}" ;;
+    blue) printf '%s' "${BLUE_IP:-}" ;;
+    *) return 1 ;;
+  esac
+}
+
+# active_passive: deploy passive, cutover ALB, deploy active, restore steady primary weights.
+deploy_passive_first_both() {
+  local passive active passive_ip active_ip
+  passive=$(get_oscal_passive_role)
+  active=$(get_oscal_active_role)
+  passive_ip=$(resolve_oscal_role_ip "$passive")
+  active_ip=$(resolve_oscal_role_ip "$active")
+  [ -z "$passive_ip" ] || [ -z "$active_ip" ] && {
+    print_error "Could not resolve IPs for passive ($passive) and active ($active) roles."
+    return 1
+  }
+
+  print_info "Passive-first deploy: passive=$passive ($passive_ip) → ALB cutover → active=$active ($active_ip) → steady ($active)."
+
+  print_info "Step 1/4: deploy passive color ($passive)..."
+  deploy_role_with_maintenance "$passive" "$passive_ip" || return 1
+
+  print_info "Step 2/4: cutover ALB to passive ($passive) before touching active ($active)..."
+  if declare -F oscal_traffic_mode_enter >/dev/null 2>&1; then
+    oscal_traffic_mode_enter failover || {
+      print_error "ALB cutover to passive failed; aborting before active deploy."
+      return 1
+    }
+  else
+    print_error "oscal_traffic_mode_enter unavailable; cannot cutover safely."
+    return 1
+  fi
+
+  print_info "Step 3/4: deploy active color ($active) while traffic is on passive..."
+  deploy_role_with_maintenance "$active" "$active_ip" || {
+    print_error "Active deploy failed while traffic is on passive ($passive). Fix and re-run; do not restore steady until active is healthy."
+    return 1
+  }
+
+  print_info "Step 4/4: restore steady ALB weights to primary ($active)..."
+  if declare -F oscal_traffic_mode_enter >/dev/null 2>&1; then
+    oscal_traffic_mode_enter steady || print_warning "Could not restore steady traffic mode; run: oscal_traffic_mode_enter steady"
+  fi
+  return 0
+}
+
 deploy_role_with_maintenance() {
   local role="$1"
   local ip="$2"
@@ -1081,6 +1155,8 @@ deploy_role_with_maintenance() {
 # Deploy target: green (default), blue, or both. With --green-only/--blue-only IP we also set the IP.
 UPDATE_S3_ONLY=0
 DEPLOY_TARGET="green"
+DEPLOY_SINGLE_COLOR=0
+DEPLOY_PASSIVE_FIRST_FLOW=0
 GREEN_ONLY_IP=""
 BLUE_ONLY_IP=""
 while [ $# -gt 0 ]; do
@@ -1101,21 +1177,23 @@ while [ $# -gt 0 ]; do
       shift
       GREEN_ONLY_IP="${1:?Give IP after --green-only}"
       DEPLOY_TARGET="green"
+      DEPLOY_SINGLE_COLOR=1
       shift
       ;;
     --blue-only)
       shift
       BLUE_ONLY_IP="${1:?Give IP after --blue-only}"
       DEPLOY_TARGET="blue"
+      DEPLOY_SINGLE_COLOR=1
       shift
       ;;
     -h|--help)
       echo "Usage: $0 [--update-s3 | -updateS3] [--both | --blue | [--green-only IP] | [--blue-only IP]]"
       echo "  Default: EC2 pulls existing s3://<bucket>/installer/ with aws s3 sync (no upload from this laptop)."
       echo "  --update-s3 | -updateS3: upload this repo to installer/ (needs AWS_PASS_ENTRY + operator S3 write); no SSH / no EC2 deploy."
-      echo "  --both:    deploy to both green and blue."
-      echo "  --blue:    deploy to blue only."
-      echo "  (default): deploy to green only (IPs from Terraform). Use --both or --blue when Blue must match installer/ too."
+      echo "  --both:    deploy both colors (passive-first when active_passive)."
+      echo "  --blue:    deploy to blue only (active color; risky in active_passive)."
+      echo "  (default): active_passive → passive-first both; else green only. DEPLOY_PASSIVE_FIRST=0 for green-only."
       echo "  --green-only IP: deploy to green at given IP."
       echo "  --blue-only IP:  deploy to blue at given IP."
       echo "  Maintenance: DEPLOY_MAINTENANCE_MODE=1 (default) drains ALB to peer color and suspends target ASG during deploy."
@@ -1185,16 +1263,31 @@ else
   exit 1
 fi
 
-# Default: deploy green only. --both deploys both, --blue deploys blue only.
+# Default: green only unless active_passive upgrades to passive-first both.
 case "$DEPLOY_TARGET" in
   both)  DEPLOY_GREEN=1; DEPLOY_BLUE=1 ;;
   blue)  DEPLOY_GREEN=0; DEPLOY_BLUE=1 ;;
   green) DEPLOY_GREEN=1; DEPLOY_BLUE=0 ;;
   *)     DEPLOY_GREEN=1; DEPLOY_BLUE=0 ;;
 esac
-[ "$DEPLOY_TARGET" = "green" ] && print_info "Deploy target: green only (default). Use --both or --blue to change."
-[ "$DEPLOY_TARGET" = "both" ] && print_info "Deploy target: both green and blue."
-[ "$DEPLOY_TARGET" = "blue" ] && print_info "Deploy target: blue only."
+
+if [ "${DEPLOY_SINGLE_COLOR:-0}" != "1" ] \
+  && [ "${DEPLOY_PASSIVE_FIRST:-1}" = "1" ] \
+  && declare -F oscal_traffic_mode_is_active_passive >/dev/null 2>&1 \
+  && oscal_traffic_mode_is_active_passive \
+  && { [ "$DEPLOY_TARGET" = "green" ] || [ "$DEPLOY_TARGET" = "both" ]; }; then
+  DEPLOY_TARGET="both"
+  DEPLOY_GREEN=1
+  DEPLOY_BLUE=1
+  DEPLOY_PASSIVE_FIRST_FLOW=1
+  print_info "Deploy target: passive-first both (active_passive default)."
+elif [ "$DEPLOY_TARGET" = "green" ]; then
+  print_info "Deploy target: green only. Use --both or set DEPLOY_PASSIVE_FIRST=1 in active_passive."
+elif [ "$DEPLOY_TARGET" = "both" ]; then
+  print_info "Deploy target: both green and blue (active color first unless DEPLOY_PASSIVE_FIRST=1)."
+elif [ "$DEPLOY_TARGET" = "blue" ]; then
+  print_warning "Deploy target: blue only (production color in active_passive). Prefer default passive-first both."
+fi
 
 [ -z "$GREEN_IP" ] && [ -z "$BLUE_IP" ] && { print_error "No instance IPs"; exit 1; }
 
@@ -1259,11 +1352,13 @@ cleanup_deploy_exit() {
 }
 trap cleanup_deploy_exit EXIT
 
-# Blue first when deploying both so peer color serves traffic during each maintenance window.
-if [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
+# Passive-first both (active_passive) or legacy order (active first when both without passive-first).
+if [ "${DEPLOY_PASSIVE_FIRST_FLOW:-0}" = "1" ]; then
+  deploy_passive_first_both || exit 1
+elif [ -n "$BLUE_IP" ] && [ "${DEPLOY_BLUE:-0}" = "1" ]; then
   deploy_role_with_maintenance "blue" "$BLUE_IP" || exit 1
 fi
-if [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
+if [ "${DEPLOY_PASSIVE_FIRST_FLOW:-0}" != "1" ] && [ -n "$GREEN_IP" ] && [ "${DEPLOY_GREEN:-0}" = "1" ]; then
   deploy_role_with_maintenance "green" "$GREEN_IP" || exit 1
 fi
 
