@@ -17,6 +17,7 @@ Permanent record of work completed on **2026-07-18** for the OSCAL Report Genera
 |------|-----------------|--------|
 | Dependencies | Dependabot (#45–#61 lineage) | Accept latest proposed library versions; lockfiles updated |
 | SSRF | VULN-36986 (pentest) | Strict URL validation, auth on proxy endpoints, no redirects |
+| Settings disclosure | VULN-36998 (pentest) | Admin-only full settings; runtime allowlist endpoint; SMTP retired |
 | Bedrock abuse | VULN-37020 | Settings redaction, Terraform ExternalId gate, hardened runbook |
 | Image Factory AMI | SSAAU-216 | Dynamic EMR lookup → **IF 3.0.2** (`ami-036bb3d5f242f68c0`), staggered ASG refresh |
 | Splunk SCC | SSAAU-212 | Idempotent UF bootstrap (`deploymentclient.conf` + secops metadata) |
@@ -78,7 +79,8 @@ Chained from SSRF: stolen IMDS creds → `sts:AssumeRole` → unscoped Bedrock i
 
 | Component | Change |
 |-----------|--------|
-| `GET /api/settings` | Requires `authenticate`; Bedrock ARNs redacted for non-`EDIT_SETTINGS` users |
+| `GET /api/settings` | Requires `authenticate` + **`EDIT_SETTINGS` (Platform Admin)**; secrets masked; non-admin → **403** |
+| `GET /api/settings/runtime` | Authenticated allowlist only (`databaseConfig.enabled`, `publishedSoaUrl`) |
 | `backend/utils/resolveStoredSecret.js` | `applyRoleBasedConfigRedaction()` |
 | `terraform/bedrock_cross_account.tf` | IAM assume policy gated on `bedrock_cross_account_ready` (needs `bedrock_external_id`) |
 | `docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md` | Trust policy, invoke scope, logging, Guardrails, CloudTrail guidance |
@@ -92,7 +94,42 @@ Chained from SSRF: stolen IMDS creds → `sts:AssumeRole` → unscoped Bedrock i
 
 ---
 
-## 4. Image Factory EMR AMI (SSAAU-216)
+## 4. Settings disclosure and SMTP retirement (VULN-36998)
+
+### Root cause
+
+- Production `GET /api/settings` returned the **full application configuration** without authentication (CWE-200 / CVSS 8.2), exposing database parameters, OIDC/SSO settings, group-to-role mappings, Bedrock ARNs, and legacy SMTP configuration.
+- Authenticated non-admin users could still receive full settings metadata before hardening.
+- `POST /api/settings` success responses included unredacted config and server filesystem paths.
+
+### Fix (code)
+
+| Component | Change |
+|-----------|--------|
+| `GET /api/settings` | `authenticate` + `authorize(EDIT_SETTINGS)` — Platform Admin only |
+| `GET /api/settings/runtime` | Authenticated allowlist: `databaseConfig.enabled`, `publishedSoaUrl` |
+| `backend/utils/settingsClientResponse.js` | Admin/runtime/save response builders + structured audit logging |
+| `POST /api/settings` | Redacted `config` in response; `verification.configPath` server-side only |
+| Frontend | Settings UI gated to Platform Admin; runtime callers use `/api/settings/runtime` |
+| `backend/messagingService.js` | **Slack-only** credential delivery; SMTP/email removed |
+| `backend/server.js` | Removed `POST /api/messaging/test-email` and `POST /api/auth/self-register` |
+| `backend/configManager.js` | Strips legacy `messagingConfig.email` on load; Slack-only defaults |
+| `terraform/security_groups.tf` | Removed SMTP egress (TCP 25/465/587) |
+
+### Removed (product)
+
+- SMTP/email notifications and `nodemailer` backend dependency.
+- Self-registration endpoint — use SSO JIT or admin user creation.
+
+### Prevention
+
+- [ ] Pen-test retest: unauthenticated `GET /api/settings` → **401**; User/Assessor token → **403**; `GET /api/settings/runtime` with auth → **200** with allowlist only (no `ssoConfig`, DB host, etc.).
+- [ ] Regression tests: `settings-auth-disclosure.test.js`, `settingsRedaction.test.js`, updated `csrf-api.test.js`.
+- [ ] After deploy: **rotate** any credentials exposed in the pentest report (legacy SMTP app password, OIDC client secrets); review OAuth redirect URIs in Okta Admin Console (remove localhost/private IP patterns from production).
+
+---
+
+## 5. Image Factory EMR AMI (SSAAU-216)
 
 ### Root cause
 
@@ -121,7 +158,7 @@ terraform output oscal_resolved_ami_id   # must match latest EMR candidate
 
 ---
 
-## 5. Splunk SCC syslog (SSAAU-212)
+## 6. Splunk SCC syslog (SSAAU-212)
 
 ### Root cause (diagnosis on `i-06c2d9fd5aa19e872`, 2026-07-18)
 
@@ -170,11 +207,11 @@ Allow **up to 30 minutes** after bootstrap for deployment-server handshake.
 
 ---
 
-## 6. Release checklist (must pass before Quality → main)
+## 7. Release checklist (must pass before Quality → main)
 
 ### Application
 
-- [ ] `npm test` in `test_cases/backend` (include SSRF, settings redaction, securityConfig suites).
+- [ ] `npm test` in `test_cases/backend` (include SSRF, settings auth disclosure, settings redaction, securityConfig suites).
 - [ ] No direct `import axios from 'axios'` in `backend/` (except `safeAxios.js`).
 - [ ] Version aligned: root, `backend/`, `frontend/`, `test_cases/backend/` `package.json`.
 
@@ -193,11 +230,12 @@ Allow **up to 30 minutes** after bootstrap for deployment-server handshake.
 
 ---
 
-## 7. Open follow-ups
+## 8. Open follow-ups
 
 | Item | Owner | Notes |
 |------|-------|-------|
 | Zeus auto-close SSAAU-216 / SSAAU-212 | Security scan | ~2–4 days after fix verification |
+| Rotate pentest-exposed credentials (VULN-36998) | Platform / IdP admin | SMTP app password (legacy), OIDC secrets; Okta redirect URI cleanup |
 | `bedrock_external_id` in tfvars | Platform / Account B | Required to re-enable `bedrock_cross_account_enabled` |
 | Account B Bedrock logging + trust policy tighten | Account B ops | See `CROSS_ACCOUNT_BEDROCK_PHASE1.md` |
 | Splunk handshake on fresh instances | Ops | Wait 30 min; open LOGREQ if persistent errno 104 to hf3 |
