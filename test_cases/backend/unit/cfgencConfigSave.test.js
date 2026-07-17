@@ -39,16 +39,16 @@ describe('prepareConfigForSave (config mode _cfgenc)', () => {
 
   it('stores new secrets as _cfgenc envelopes', async () => {
     const incoming = {
-      messagingConfig: { email: { smtpPassword: 'new-smtp-pass' } },
+      messagingConfig: { slack: { webhookUrl: 'https://hooks.slack.com/new' } },
       aiConfig: { apiToken: 'ai-token-123' },
     };
     const existing = {};
 
     const { config, passErrors } = await prepareConfigForSave(incoming, existing);
     expect(passErrors).toEqual([]);
-    expect(isCfgEncPointer(config.messagingConfig.email.smtpPassword)).toBe(true);
+    expect(isCfgEncPointer(config.messagingConfig.slack.webhookUrl)).toBe(true);
     expect(isCfgEncPointer(config.aiConfig.apiToken)).toBe(true);
-    expect(decryptConfigSecret(config.messagingConfig.email.smtpPassword)).toBe('new-smtp-pass');
+    expect(decryptConfigSecret(config.messagingConfig.slack.webhookUrl)).toBe('https://hooks.slack.com/new');
     expect(decryptConfigSecret(config.aiConfig.apiToken)).toBe('ai-token-123');
   });
 });

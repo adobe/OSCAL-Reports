@@ -4,6 +4,60 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
+
+/** Domains permitted for OSCAL catalogue fetch when requireTrustedDomain is enabled. */
+export const CATALOGUE_TRUSTED_DOMAINS = [
+  'raw.githubusercontent.com',
+  'github.com',
+  'pages.nist.gov',
+  'csrc.nist.gov',
+  'api.mistral.ai',
+];
+
+/**
+ * Per-endpoint SSRF validation profiles.
+ * Do not use aiIntegration flags on unauthenticated user-controlled URL fetches.
+ */
+export const SSRF_VALIDATION_PROFILES = {
+  /** User proxy / published SOA URL fetch — public HTTPS only, no redirects. */
+  strictUserFetch: {
+    allowLocalhost: false,
+    allowPrivateIPs: false,
+    maxRedirects: 0,
+    rejectNonCanonicalIpEncoding: true,
+    requireTrustedDomain: false,
+  },
+  /** OSCAL catalogue fetch — strict network posture; optional domain allowlist via env. */
+  strictCatalogueFetch: {
+    allowLocalhost: false,
+    allowPrivateIPs: false,
+    maxRedirects: 0,
+    rejectNonCanonicalIpEncoding: true,
+    requireTrustedDomain: process.env.OSCAL_CATALOGUE_STRICT_DOMAINS === 'true',
+    trustedDomains: CATALOGUE_TRUSTED_DOMAINS,
+  },
+  /** Authenticated AI / Ollama admin test endpoints only. */
+  aiIntegration: {
+    allowLocalhost: true,
+    allowPrivateIPs: true,
+    maxRedirects: 0,
+    rejectNonCanonicalIpEncoding: true,
+    requireTrustedDomain: false,
+  },
+};
+
+/**
+ * @param {'strictUserFetch'|'strictCatalogueFetch'|'aiIntegration'} profileName
+ * @returns {object}
+ */
+export function getSsrfValidationOptions(profileName) {
+  const profile = SSRF_VALIDATION_PROFILES[profileName];
+  if (!profile) {
+    return { ...SSRF_VALIDATION_PROFILES.strictUserFetch };
+  }
+  return { ...profile };
+}
+
 export const SECURITY_CONFIG = {
   // CSRF Protection
   csrf: {
@@ -33,21 +87,10 @@ export const SECURITY_CONFIG = {
 
   // URL Validation for SSRF Prevention
   urlValidation: {
-    // AI Integration Architecture: Ollama is designed to run on private network
-    // Private IPs are ALWAYS allowed for AI services (development & production)
-    // This is a architectural design decision, not a security bypass
-    // Other SSRF protections remain active (cloud metadata, dangerous protocols)
-    allowLocalhost: true,  // Always allow localhost for AI services
-    allowPrivateIPs: true, // Always allow private IPs for AI services
-    
-    // Trusted domains for specific endpoints
-    trustedDomains: [
-      'raw.githubusercontent.com',
-      'github.com',
-      'pages.nist.gov',
-      'csrc.nist.gov',
-      'api.mistral.ai',
-    ],
+    // Legacy fields — prefer SSRF_VALIDATION_PROFILES per endpoint
+    allowLocalhost: SSRF_VALIDATION_PROFILES.aiIntegration.allowLocalhost,
+    allowPrivateIPs: SSRF_VALIDATION_PROFILES.aiIntegration.allowPrivateIPs,
+    trustedDomains: CATALOGUE_TRUSTED_DOMAINS,
   },
 
   // Rate Limiting
@@ -58,17 +101,13 @@ export const SECURITY_CONFIG = {
 };
 
 // CSRF exempted paths (paths that don't need CSRF protection)
-// 
+//
 // ARCHITECTURAL DECISION: All /api/ endpoints are exempt from CSRF protection
-// 
+//
 // Rationale:
 // 1. Protected endpoints use Bearer token authentication (immune to CSRF attacks)
-//    - Bearer tokens are not automatically sent by browsers like cookies
-//    - Attackers cannot force a user's browser to send valid Bearer tokens
-// 2. Public endpoints need to work without session-based authentication
-// 3. Core functionality (catalogue loading, report generation) requires public API access
-// 4. Session cookies use sameSite: 'strict' for additional protection
-// 
+// 2. Session cookies use sameSite: 'strict' for additional protection
+//
 // Security measures that remain active:
 // - Bearer token authentication and authorization for protected endpoints
 // - SSRF protection via validateUrl() and SSRF_PROTECTED_ENDPOINTS
@@ -81,8 +120,6 @@ export const CSRF_EXEMPT_PATHS = [
 ];
 
 // Paths that MUST have CSRF protection (even though they are under /api/)
-// Snyk/CodeQL: UseCsurfForExpress - state-changing endpoints that accept cookie/session
-// must validate CSRF. Okta exchange-token is protected; frontend fetches token before POST.
 export const CSRF_PROTECTED_PATHS = [
   '/api/auth/okta/exchange-token',
   '/api/auth/oidc/generic-oidc/exchange-token',

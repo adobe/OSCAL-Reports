@@ -69,8 +69,8 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       res.json({ status: 'healthy', service: 'OSCAL Report Generator' });
     });
 
-    // Catalogue Fetch (Public, CSRF Exempt, SSRF Protected)
-    app.post('/api/fetch-catalogue', async (req, res) => {
+    // Catalogue Fetch (Authenticated, CSRF Exempt, SSRF Protected)
+    app.post('/api/fetch-catalogue', mockAuthenticate, async (req, res) => {
       const { url } = req.body;
       
       if (!url) {
@@ -114,8 +114,8 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       });
     });
 
-    // Settings GET (Optional Auth, CSRF Exempt)
-    app.get('/api/settings', mockOptionalAuth, (req, res) => {
+    // Settings GET (Platform Admin, CSRF Exempt)
+    app.get('/api/settings', mockAuthenticate, mockAuthorize('EDIT_SETTINGS'), (req, res) => {
       const config = {
         publishedSoaUrl: 'https://example.com',
         aiConfig: {
@@ -123,13 +123,22 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
           url: 'http://localhost:11434'
         },
         messagingConfig: {
-          email: {
+          channel: 'slack',
+          slack: {
             enabled: false
           }
         }
       };
 
       res.json(config);
+    });
+
+    // Runtime settings (Authenticated non-admin safe subset)
+    app.get('/api/settings/runtime', mockAuthenticate, (req, res) => {
+      res.json({
+        databaseConfig: { enabled: false },
+        publishedSoaUrl: 'https://example.com',
+      });
     });
 
     // Settings POST (Protected, CSRF Exempt)
@@ -196,9 +205,17 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
   });
 
   describe('Public API Endpoints (CSRF Exempt)', () => {
-    test('POST /api/fetch-catalogue should work without CSRF token', async () => {
+    test('POST /api/fetch-catalogue should require Bearer token', async () => {
+      await request(app)
+        .post('/api/fetch-catalogue')
+        .send({ url: 'https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json' })
+        .expect(401);
+    });
+
+    test('POST /api/fetch-catalogue should work without CSRF token when authenticated', async () => {
       const response = await request(app)
         .post('/api/fetch-catalogue')
+        .set('Authorization', `Bearer ${validBearerToken}`)
         .send({ url: 'https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json' })
         .expect(200);
 
@@ -209,6 +226,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
     test('POST /api/fetch-catalogue should enforce SSRF protection', async () => {
       const response = await request(app)
         .post('/api/fetch-catalogue')
+        .set('Authorization', `Bearer ${validBearerToken}`)
         .send({ url: 'http://169.254.169.254/latest/meta-data/' })
         .expect(403);
 
@@ -278,6 +296,41 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       expect(response.body).toHaveProperty('error');
     });
 
+    test('GET /api/settings should require Bearer token', async () => {
+      await request(app)
+        .get('/api/settings')
+        .expect(401);
+    });
+
+    test('GET /api/settings should reject non-admin Bearer token', async () => {
+      await request(app)
+        .get('/api/settings')
+        .set('Authorization', `Bearer ${validBearerToken}`)
+        .expect(403);
+    });
+
+    test('GET /api/settings should work with admin Bearer token', async () => {
+      const response = await request(app)
+        .get('/api/settings')
+        .set('Authorization', `Bearer ${adminBearerToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('publishedSoaUrl');
+    });
+
+    test('GET /api/settings/runtime should work with user Bearer token', async () => {
+      const response = await request(app)
+        .get('/api/settings/runtime')
+        .set('Authorization', `Bearer ${validBearerToken}`)
+        .expect(200);
+
+      expect(response.body).toEqual({
+        databaseConfig: { enabled: false },
+        publishedSoaUrl: 'https://example.com',
+      });
+      expect(response.body).not.toHaveProperty('ssoConfig');
+    });
+
     test('POST /api/settings should work with valid Bearer token', async () => {
       const response = await request(app)
         .post('/api/settings')
@@ -311,23 +364,28 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
     });
   });
 
-  describe('Optional Auth Endpoints', () => {
-    test('GET /api/settings should work without authentication', async () => {
-      const response = await request(app)
+  describe('Authenticated Settings Endpoints', () => {
+    test('GET /api/settings should require authentication', async () => {
+      await request(app)
         .get('/api/settings')
-        .expect(200);
-
-      expect(response.body).toHaveProperty('publishedSoaUrl');
-      expect(response.body).toHaveProperty('aiConfig');
+        .expect(401);
     });
 
-    test('GET /api/settings should work with Bearer token', async () => {
-      const response = await request(app)
+    test('GET /api/settings should require Platform Admin', async () => {
+      await request(app)
         .get('/api/settings')
+        .set('Authorization', `Bearer ${validBearerToken}`)
+        .expect(403);
+    });
+
+    test('GET /api/settings/runtime should work with Bearer token', async () => {
+      const response = await request(app)
+        .get('/api/settings/runtime')
         .set('Authorization', `Bearer ${validBearerToken}`)
         .expect(200);
 
       expect(response.body).toHaveProperty('publishedSoaUrl');
+      expect(response.body).not.toHaveProperty('aiConfig');
     });
   });
 
@@ -382,13 +440,16 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
     test('should verify all tested endpoints follow CSRF exemption pattern', async () => {
       // Test multiple endpoints to ensure consistent behavior
       const endpoints = [
-        { method: 'post', path: '/api/fetch-catalogue', body: { url: 'https://example.com' } },
-        { method: 'get', path: '/api/settings', body: null },
+        { method: 'post', path: '/api/fetch-catalogue', body: { url: 'https://example.com' }, auth: validBearerToken },
+        { method: 'get', path: '/api/settings/runtime', body: null, auth: validBearerToken },
         { method: 'post', path: '/api/generate-ssp', body: { catalogueUrl: 'https://test.com', systemName: 'Test' } },
       ];
 
       for (const endpoint of endpoints) {
         const req = request(app)[endpoint.method](endpoint.path);
+        if (endpoint.auth) {
+          req.set('Authorization', `Bearer ${endpoint.auth}`);
+        }
         if (endpoint.body) {
           req.send(endpoint.body);
         }
@@ -407,6 +468,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
     test('should enforce Bearer token authentication on protected endpoints', async () => {
       const protectedEndpoints = [
         { method: 'post', path: '/api/ai/test-connection', body: { provider: 'aws-bedrock' } },
+        { method: 'get', path: '/api/settings', body: null },
         { method: 'post', path: '/api/settings', body: { publishedSoaUrl: 'https://test.com' } },
         { method: 'get', path: '/api/users', body: null },
       ];
@@ -432,6 +494,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       for (const maliciousUrl of ssrfTests) {
         const response = await request(app)
           .post('/api/fetch-catalogue')
+          .set('Authorization', `Bearer ${validBearerToken}`)
           .send({ url: maliciousUrl })
           .expect(403);
 
@@ -443,6 +506,7 @@ describe('CSRF and API Endpoint Integration Tests (v1.6.5)', () => {
       // Missing required fields
       await request(app)
         .post('/api/fetch-catalogue')
+        .set('Authorization', `Bearer ${validBearerToken}`)
         .send({})
         .expect(400);
 

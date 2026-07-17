@@ -52,37 +52,64 @@ aws bedrock list-foundation-models \
   --output table
 ```
 
-### B2 — Invoke policy
+### B2 — Invoke policy (least privilege)
+
+Replace `foundation-model/*` with only the model IDs your OSCAL deployment uses (from Settings → AI Integration → Bedrock Model ID). Example for Mistral + Gemma:
 
 ```bash
+export BEDROCK_MODEL_MISTRAL="mistral.mistral-large-2402-v1:0"
+export BEDROCK_MODEL_GEMMA="google.gemma-3-27b-it"
+
 cat > /tmp/oscal-bedrock-invoke-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "BedrockInvokeFoundationModels",
+      "Sid": "BedrockInvokeAllowedModelsOnly",
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "arn:aws:bedrock:${AWS_REGION}::foundation-model/*"
+      "Resource": [
+        "arn:aws:bedrock:${AWS_REGION}::foundation-model/${BEDROCK_MODEL_MISTRAL}",
+        "arn:aws:bedrock:${AWS_REGION}::foundation-model/${BEDROCK_MODEL_GEMMA}"
+      ]
     }
   ]
 }
 EOF
+```
 
+**Do not** attach `bedrock:ListFoundationModels` to this cross-account runtime role unless required. The OSCAL admin UI lists models via [`GET /api/ai/bedrock-models`](backend/server.js) (Platform Admin only); options:
+
+- **Option A (recommended):** Separate read-only admin policy on Account A instance role for `ListFoundationModels` only (no cross-account invoke).
+- **Option B:** Add a second Account B role with `ListFoundationModels` + scoped invoke, used only from authenticated admin flows.
+
+Legacy broad policy (avoid in production):
+
+```bash
+# NOT RECOMMENDED — allows all 121+ foundation models
+# "Resource": "arn:aws:bedrock:${AWS_REGION}::foundation-model/*"
+```
+
+```bash
 aws iam create-policy \
   --policy-name "$BEDROCK_POLICY_NAME" \
   --policy-document file:///tmp/oscal-bedrock-invoke-policy.json \
   --description "OSCAL cross-account Bedrock invoke in ${AWS_REGION}" \
-  2>/dev/null || true
+  2>/dev/null || aws iam create-policy-version \
+  --policy-arn "arn:aws:iam::${ACCOUNT_B_ID}:policy/${BEDROCK_POLICY_NAME}" \
+  --policy-document file:///tmp/oscal-bedrock-invoke-policy.json \
+  --set-as-default
 
 export BEDROCK_POLICY_ARN="arn:aws:iam::${ACCOUNT_B_ID}:policy/${BEDROCK_POLICY_NAME}"
 echo "Policy ARN: $BEDROCK_POLICY_ARN"
 ```
 
-### B3 — Trust policy
+### B3 — Trust policy (hardened)
+
+Require ExternalId, source account, and OSCAL session name prefix (matches app `RoleSessionName: oscal-bedrock-session` in `backend/utils/bedrockCredentials.js`):
 
 ```bash
 cat > /tmp/oscal-bedrock-trust-policy.json <<EOF
@@ -98,7 +125,11 @@ cat > /tmp/oscal-bedrock-trust-policy.json <<EOF
       "Action": "sts:AssumeRole",
       "Condition": {
         "StringEquals": {
-          "sts:ExternalId": "${EXTERNAL_ID}"
+          "sts:ExternalId": "${EXTERNAL_ID}",
+          "aws:SourceAccount": "${ACCOUNT_A_ID}"
+        },
+        "StringLike": {
+          "sts:RoleSessionName": "oscal-bedrock-*"
         }
       }
     }
@@ -106,6 +137,8 @@ cat > /tmp/oscal-bedrock-trust-policy.json <<EOF
 }
 EOF
 ```
+
+After a security incident, **rotate** `EXTERNAL_ID` in Account B trust policy and Account A `terraform.tfvars` / systemd `BEDROCK_EXTERNAL_ID`.
 
 ### B4 — Role
 
@@ -144,6 +177,76 @@ export AWS_ACCESS_KEY_ID="$AK" AWS_SECRET_ACCESS_KEY="$SK" AWS_SESSION_TOKEN="$S
 aws bedrock list-foundation-models --region "$AWS_REGION" \
   --query "modelSummaries[0].modelId" --output text
 ```
+
+### B6 — Enable Bedrock model invocation logging (required for production)
+
+Without logging, cross-account invoke abuse is invisible (`loggingConfig: null`).
+
+```bash
+export LOG_GROUP="/aws/bedrock/model-invocations-oscal"
+export LOG_BUCKET="oscal-bedrock-invocation-logs-${ACCOUNT_B_ID}"
+
+aws logs create-log-group --log-group-name "$LOG_GROUP" 2>/dev/null || true
+
+aws s3 mb "s3://${LOG_BUCKET}" --region "$AWS_REGION" 2>/dev/null || true
+
+cat > /tmp/bedrock-logging-config.json <<EOF
+{
+  "cloudWatchConfig": {
+    "logGroupName": "${LOG_GROUP}",
+    "roleArn": "arn:aws:iam::${ACCOUNT_B_ID}:role/BedrockModelInvocationLoggingRole",
+    "largeDataDeliveryS3Config": {
+      "bucketName": "${LOG_BUCKET}",
+      "keyPrefix": "bedrock-invocations/"
+    }
+  },
+  "textDataDeliveryEnabled": true,
+  "imageDataDeliveryEnabled": false,
+  "embeddingDataDeliveryEnabled": false
+}
+EOF
+```
+
+Create `BedrockModelInvocationLoggingRole` in Account B with trust for `bedrock.amazonaws.com` and permissions to write to the log group and S3 bucket (see [AWS Bedrock model invocation logging](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html)).
+
+```bash
+aws bedrock put-model-invocation-logging-configuration \
+  --region "$AWS_REGION" \
+  --logging-config file:///tmp/bedrock-logging-config.json
+
+aws bedrock get-model-invocation-logging-configuration --region "$AWS_REGION"
+# Expect loggingConfig non-null
+```
+
+### B7 — Bedrock Guardrails and model access
+
+1. **Model access:** In Bedrock console → **Model access**, enable only providers/models OSCAL uses (disable unused agreements).
+2. **Guardrails:** Create a Guardrail (content filters, denied topics, prompt-attack strength) and associate it with invoked models or use `guardrailIdentifier` in application invoke calls.
+
+### B8 — CloudTrail alerting (AssumeRole abuse)
+
+Create an EventBridge rule on CloudTrail `AssumeRole` events where:
+
+- `requestParameters.roleArn` matches your Bedrock cross-account role ARN
+- `requestParameters.roleSessionName` does **not** match `oscal-bedrock-*`
+
+Alert security team / SNS topic. Also review historical events for session names like `pentest-*` during engagement windows.
+
+Set a **billing alarm** on Bedrock usage in Account B (Cost Explorer anomaly or budget on Bedrock service).
+
+---
+
+## Security incident response (VULN-37020)
+
+If cross-account Bedrock abuse is suspected (chained from SSRF / IMDS):
+
+1. Rotate `EXTERNAL_ID` in Account B trust policy and Account A Terraform/systemd.
+2. Enable invocation logging (B6) if not already enabled.
+3. Tighten invoke policy to specific model ARNs (B2).
+4. Review CloudTrail in Account A and B for unexpected `AssumeRole` session names.
+5. Redeploy OSCAL with SSRF fixes and settings redaction (cross-account ARN hidden from non-admin `GET /api/settings`).
+
+See [logs/BEDROCK_ACCESS_CONTROL_OPS_2026-07.md](../logs/BEDROCK_ACCESS_CONTROL_OPS_2026-07.md).
 
 ---
 

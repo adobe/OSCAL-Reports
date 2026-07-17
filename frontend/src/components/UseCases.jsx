@@ -5,7 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 import React from 'react';
-import buildInfo from '../utils/buildInfo';
+import AuthorCreditsFooter from './AuthorCreditsFooter';
 import './UseCases.css';
 
 function UseCases({ onGetStarted, onMultiReportComparison }) {
@@ -269,13 +269,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
       </div>
 
       <div className="usecases-credits">
-        <p>
-          <strong>Made with Passion by Mukesh Kesharwani</strong><br />
-          <small>mukesh.kesharwani@adobe.com | Adobe</small><br />
-          <small style={{ opacity: 0.7, fontSize: '0.85em' }}>
-            {buildInfo.getFormattedInfo()} | {buildInfo.environment === 'development' ? '🔧 Development Mode' : '🚀 Production Build'}
-          </small>
-        </p>
+        <AuthorCreditsFooter />
       </div>
     </div>
   );

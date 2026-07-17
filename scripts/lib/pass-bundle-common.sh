@@ -10,7 +10,6 @@ pass_bundle_entry() {
 
 pass_legacy_oscal_keys() {
   cat <<'LEGACY'
-OSCAL/smtp-password
 OSCAL/slack-webhook-url
 OSCAL/ai-api-token
 OSCAL/ai-aws-access-key-id

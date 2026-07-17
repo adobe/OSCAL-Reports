@@ -27,6 +27,7 @@ locals {
       "fi",
     ],
     local.oscal_ssm_bedrock_self_heal_lines,
+    local.oscal_ssm_splunk_bootstrap_lines,
     var.oscal_splunk_uf_upgrade_enabled ? [
       "if command -v splunk >/dev/null 2>&1; then",
       "  UF_VER=\"$(splunk version 2>/dev/null | head -1 | tr -d '\\r' || true)\"",

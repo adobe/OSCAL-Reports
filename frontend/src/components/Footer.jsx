@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import './Footer.css';
-import buildInfo from '../utils/buildInfo';
+import buildInfo, { PROJECT_LINKS } from '../utils/buildInfo';
 
 /**
  * Footer component - Displays application branding, version, and links
@@ -79,6 +79,27 @@ export const Footer = () => {
           >
             License
           </a>
+        </div>
+
+        <div className="footer-distribution">
+          <a
+            href={PROJECT_LINKS.githubRepo}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Source code, issues, and contributions"
+          >
+            GitHub repository
+          </a>
+          <span className="divider">•</span>
+          <a
+            href={PROJECT_LINKS.dockerHub}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Pull published Docker images"
+          >
+            Docker Hub images
+          </a>
+          <span className="footer-distribution-hint">— fork, contribute, or pull images to test</span>
         </div>
         
         <div className="footer-build-info" title={buildTime}>

@@ -10,14 +10,14 @@ locals {
   bedrock_assume_role_arn = var.bedrock_assume_role_arn != "" ? var.bedrock_assume_role_arn : (
     var.bedrock_account_id != "" ? "arn:aws:iam::${var.bedrock_account_id}:role/${var.bedrock_assume_role_name}" : ""
   )
-  # IAM AssumeRole on EC2 role when enabled + ARN (ExternalId not required for this policy).
+  # IAM AssumeRole on EC2 role only when ExternalId is set (matches Account B trust policy).
   bedrock_assume_configured = var.bedrock_cross_account_enabled && local.bedrock_assume_role_arn != ""
-  # Systemd BEDROCK_* injection requires ExternalId when trust policy uses it (recommended).
+  # Systemd BEDROCK_* injection and sts:AssumeRole policy both require ExternalId.
   bedrock_cross_account_ready = local.bedrock_assume_configured && var.bedrock_external_id != ""
 }
 
 resource "aws_iam_role_policy" "oscal_bedrock_assume" {
-  count = local.bedrock_assume_configured ? 1 : 0
+  count = local.bedrock_cross_account_ready ? 1 : 0
 
   name_prefix = "${var.project_name}-bedrock-assume-"
   role        = aws_iam_role.oscal_instance.id

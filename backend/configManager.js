@@ -123,18 +123,7 @@ const DEFAULT_CONFIG = {
   publishedSoaUrl: '',
   messagingConfig: {
     enabled: false,
-    channel: 'email', // 'email' or 'slack'
-    email: {
-      enabled: false,
-      smtpHost: '',
-      smtpPort: 587,
-      smtpSecure: false, // true for 465, false for other ports
-      smtpUser: '',
-      smtpPassword: '',
-      fromEmail: '',
-      fromName: 'OSCAL Report Generator',
-      loginUrl: ''
-    },
+    channel: 'slack',
     slack: {
       enabled: false,
       webhookUrl: '',
@@ -206,6 +195,23 @@ const DEFAULT_CONFIG = {
 };
 
 /**
+ * Remove legacy SMTP/email config (retired in favour of Slack + SSO).
+ * @param {Object} config
+ */
+export function stripLegacyEmailMessagingConfig(config) {
+  if (!config?.messagingConfig) return;
+  if (config.messagingConfig.email) {
+    delete config.messagingConfig.email;
+  }
+  if (config.messagingConfig.channel === 'email') {
+    config.messagingConfig.channel = 'slack';
+  }
+  if (!config.messagingConfig.channel) {
+    config.messagingConfig.channel = 'slack';
+  }
+}
+
+/**
  * Load configuration from file (raw: _pass pointers are not resolved).
  * Creates default config if file doesn't exist.
  */
@@ -255,6 +261,7 @@ function loadConfig() {
       },
     };
     applyDefaultOidcGroupMappingsToConfig(config);
+    stripLegacyEmailMessagingConfig(config);
     console.log(`✅ Configuration loaded successfully from ${configPath}`);
     return config;
   } catch (error) {
@@ -769,14 +776,10 @@ async function saveConfig(config) {
           ...config.apiGateways?.azure
         }
       },
-      // Ensure messagingConfig structure is complete
+      // Ensure messagingConfig structure is complete (Slack only)
       messagingConfig: {
         ...DEFAULT_CONFIG.messagingConfig,
         ...config.messagingConfig,
-        email: {
-          ...DEFAULT_CONFIG.messagingConfig.email,
-          ...config.messagingConfig?.email
-        },
         slack: {
           ...DEFAULT_CONFIG.messagingConfig.slack,
           ...config.messagingConfig?.slack
@@ -872,25 +875,16 @@ function verifyConfigOnDisk(configPath, expectedConfig) {
     const diskConfig = JSON.parse(diskData);
     const discrepancies = [];
     
-    // Verify critical email settings
-    if (expectedConfig.messagingConfig?.email) {
-      const expected = expectedConfig.messagingConfig.email;
-      const actual = diskConfig.messagingConfig?.email || {};
-      
+    // Verify critical Slack messaging settings
+    if (expectedConfig.messagingConfig?.slack) {
+      const expected = expectedConfig.messagingConfig.slack;
+      const actual = diskConfig.messagingConfig?.slack || {};
+
       if (expected.enabled !== actual.enabled) {
-        discrepancies.push('email.enabled mismatch');
-      }
-      if (expected.smtpHost !== actual.smtpHost) {
-        discrepancies.push('email.smtpHost mismatch');
-      }
-      if (expected.smtpPort !== actual.smtpPort) {
-        discrepancies.push('email.smtpPort mismatch');
-      }
-      if (expected.smtpUser !== actual.smtpUser) {
-        discrepancies.push('email.smtpUser mismatch');
+        discrepancies.push('slack.enabled mismatch');
       }
     }
-    
+
     // Verify critical AI settings
     if (expectedConfig.aiConfig) {
       const expected = expectedConfig.aiConfig;

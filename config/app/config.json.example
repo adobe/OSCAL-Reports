@@ -6,18 +6,7 @@
   "publishedSoaUrl": "https://raw.githubusercontent.com/adobe/OSCAL-Reports/refs/heads/main/AEMGovAu_ComplianceReport_Sample_2025-11-20.json",
   "messagingConfig": {
     "enabled": false,
-    "channel": "email",
-    "email": {
-      "enabled": false,
-      "smtpHost": "",
-      "smtpPort": 587,
-      "smtpSecure": false,
-      "smtpUser": "",
-      "smtpPassword": { "_sm": "OSCAL/smtp-password" },
-      "fromEmail": "",
-      "fromName": "OSCAL Report Generator",
-      "loginUrl": ""
-    },
+    "channel": "slack",
     "slack": {
       "enabled": false,
       "webhookUrl": { "_sm": "OSCAL/slack-webhook-url" },

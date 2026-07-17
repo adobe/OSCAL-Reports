@@ -112,6 +112,18 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
+axios.interceptors.response.use(
+  (response) => {
+    if (response.config?.ssrfStrict && response.status >= 300 && response.status < 400) {
+      const err = new Error('Redirects are not allowed for SSRF-protected requests');
+      err.code = 'E_SSRF_REDIRECT';
+      return Promise.reject(err);
+    }
+    return response;
+  },
+  (error) => Promise.reject(error),
+);
+
 axios.isAxiosError = axiosRoot.isAxiosError;
 
 export default axios;

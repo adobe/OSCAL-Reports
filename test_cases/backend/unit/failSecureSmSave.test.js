@@ -43,13 +43,13 @@ describe('prepareConfigForSave (aws-sm fail-secure)', () => {
 
   it('does not persist plaintext when SM put fails', async () => {
     const incoming = {
-      messagingConfig: { email: { smtpPassword: 'new-secret' } },
+      messagingConfig: { slack: { webhookUrl: 'new-secret-url' } },
     };
-    const existing = { messagingConfig: { email: { smtpPassword: '' } } };
+    const existing = { messagingConfig: { slack: { webhookUrl: '' } } };
 
     const { config, smErrors } = await prepareConfigForSave(incoming, existing);
     expect(smErrors.length).toBeGreaterThan(0);
-    expect(config.messagingConfig.email.smtpPassword).not.toBe('new-secret');
-    expect(config.messagingConfig.email.smtpPassword).not.toEqual({ _sm: 'OSCAL/smtp-password' });
+    expect(config.messagingConfig.slack.webhookUrl).not.toBe('new-secret-url');
+    expect(config.messagingConfig.slack.webhookUrl).not.toEqual({ _sm: 'OSCAL/slack-webhook-url' });
   });
 });

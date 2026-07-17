@@ -11,11 +11,12 @@ import { isCfgEncPointer } from './configFieldCrypto.js';
  * Order: messaging, ai, then SSO (nested under ssoConfig.oauth.providers).
  */
 export const SENSITIVE_CONFIG_KEYS = [
-  { path: 'messagingConfig.email.smtpPassword', smEntry: 'OSCAL/smtp-password', passEntry: 'OSCAL/smtp-password' },
   { path: 'messagingConfig.slack.webhookUrl', smEntry: 'OSCAL/slack-webhook-url', passEntry: 'OSCAL/slack-webhook-url' },
   { path: 'aiConfig.apiToken', smEntry: 'OSCAL/ai-api-token', passEntry: 'OSCAL/ai-api-token' },
   { path: 'aiConfig.awsAccessKeyId', smEntry: 'OSCAL/ai-aws-access-key-id', passEntry: 'OSCAL/ai-aws-access-key-id' },
   { path: 'aiConfig.awsSecretAccessKey', smEntry: 'OSCAL/ai-aws-secret-access-key', passEntry: 'OSCAL/ai-aws-secret-access-key' },
+  { path: 'aiConfig.bedrockAssumeRoleArn', smEntry: 'OSCAL/ai-bedrock-assume-role-arn', passEntry: 'OSCAL/ai-bedrock-assume-role-arn' },
+  { path: 'aiConfig.bedrockExternalId', smEntry: 'OSCAL/ai-bedrock-external-id', passEntry: 'OSCAL/ai-bedrock-external-id' },
   { path: 'ssoConfig.oauth.providers.azure.clientSecret', smEntry: 'OSCAL/sso-oauth-azure-client-secret', passEntry: 'OSCAL/sso-oauth-azure-client-secret' },
   { path: 'ssoConfig.oauth.providers.google.clientSecret', smEntry: 'OSCAL/sso-oauth-google-client-secret', passEntry: 'OSCAL/sso-oauth-google-client-secret' },
   { path: 'ssoConfig.oauth.providers.okta.clientSecret', smEntry: 'OSCAL/sso-oauth-okta-client-secret', passEntry: 'OSCAL/sso-oauth-okta-client-secret' },

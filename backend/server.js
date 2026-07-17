@@ -25,7 +25,17 @@ import { initializeSecretsCache, resolveSecretPointer, isAwsSmMode } from './uti
 import { evaluateReadiness } from './utils/healthReady.js';
 import { isSecretPointer } from './utils/sensitiveConfigKeys.js';
 import { isCfgEncPointer, decryptConfigSecret } from './utils/configFieldCrypto.js';
-import { coalesceSecretForTest, maskSensitiveConfigForClient } from './utils/resolveStoredSecret.js';
+import {
+  applyRoleBasedConfigRedaction,
+  coalesceSecretForTest,
+  maskSensitiveConfigForClient,
+} from './utils/resolveStoredSecret.js';
+import {
+  buildAdminSettingsResponse,
+  buildRuntimeSettingsResponse,
+  logSettingsAccess,
+  sanitizeSettingsSaveResponse,
+} from './utils/settingsClientResponse.js';
 import { oidcAxiosRequestOptions } from './utils/oidcHttpsAgent.js';
 import { suggestControlImplementation, suggestMultipleControls } from './controlSuggestionEngine.js';
 import { checkMistralAvailability, loadMistralConfig } from './mistralService.js';
@@ -111,9 +121,6 @@ import {
   cleanupOldStates,
   getStateStats
 } from './debugStateManager.js';
-import { isEmailBlocklisted } from './auth/emailBlocklist.js';
-import { registrationRateLimiter } from './middleware/rateLimiter.js';
-import { sendUserCredentials } from './messagingService.js';
 import { scheduleUserCleanup } from './jobs/userCleanup.js';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
@@ -121,8 +128,13 @@ import { csrfProtection } from './middleware/csrfProtection.js';
 import { validateUrl, validateUrlMiddleware } from './utils/urlValidator.js';
 import { fetchCatalogueFromUrl } from './utils/fetchCatalogueFromUrl.js';
 import { extractCatalogUrlFromSsp, isValidCatalogHref } from './utils/extractCatalogUrlFromSsp.js';
-import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS } from './utils/securityConfig.js';
+import { SECURITY_CONFIG, CSRF_EXEMPT_PATHS, CSRF_PROTECTED_PATHS, getSsrfValidationOptions } from './utils/securityConfig.js';
 import { validateExportGenerationLimits } from './utils/exportLimits.js';
+import {
+  buildProxyFetchHeaders,
+  isAllowedProxyFetchMethod,
+  sanitizeProxyResponseHeaders,
+} from './utils/proxyFetchHelpers.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -672,107 +684,6 @@ app.get('/api/auth/diagnostic', (req, res) => {
 });
 
 // ===== AUTHENTICATION & AUTHORIZATION ENDPOINTS =====
-
-/**
- * Self-registration endpoint
- * Allows users to create an account with their email
- * Password is auto-generated and sent via email
- */
-app.post('/api/auth/self-register', registrationRateLimiter, async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    console.log(`📝 Self-registration request received for: ${email}`);
-    
-    // 1. Validate email format
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid email format',
-        message: 'Please provide a valid email address'
-      });
-    }
-    
-    // 2. Check if email is blocklisted (30-day cooldown)
-    const blocklistEntry = await isEmailBlocklisted(email);
-    if (blocklistEntry) {
-      const daysRemaining = Math.ceil((new Date(blocklistEntry.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
-      console.log(`⚠️ Email is blocklisted: ${email} (expires in ${daysRemaining} days)`);
-      return res.status(403).json({
-        success: false,
-        error: 'Email not available',
-        message: `This email address cannot be used for registration. It will become available in ${daysRemaining} days.`,
-        reason: blocklistEntry.reason
-      });
-    }
-    
-    // 3. Check if user already exists
-    const existingUsers = await getAllUsers();
-    const existingUser = existingUsers.find(u => 
-      u.email.toLowerCase() === email.toLowerCase() ||
-      u.username.toLowerCase() === email.toLowerCase()
-    );
-    
-    if (existingUser) {
-      console.log(`⚠️ User already exists with email: ${email}`);
-      return res.status(409).json({
-        success: false,
-        error: 'User already exists',
-        message: 'An account with this email address already exists. Please login or use a different email.'
-      });
-    }
-    
-    // 4. Generate password
-    const generatedPassword = generatePassword(12);
-    
-    // 5. Create user with self-registration flag
-    const userData = {
-      username: email,
-      email: email,
-      role: ROLES.USER, // Self-registered users always get 'User' role
-      fullName: email.split('@')[0], // Use email prefix as default full name
-      createdVia: 'self-registration'
-    };
-    
-    const newUser = await createUser(userData, generatedPassword);
-    console.log(`✅ Self-registered user created: ${newUser.username}`);
-    
-    // 6. Send credentials via email
-    const sendResult = await sendUserCredentials(
-      newUser.email,
-      newUser.username,
-      newUser.plainPassword,
-      newUser.fullName
-    );
-    
-    if (!sendResult.success) {
-      console.error(`❌ Failed to send credentials email: ${sendResult.error}`);
-      // User was created but email failed - return warning
-      return res.status(201).json({
-        success: true,
-        warning: 'Account created but email delivery failed',
-        message: 'Your account has been created, but we could not send your password via email. Please contact the administrator for assistance.',
-        email: email
-      });
-    }
-    
-    // 7. Return success
-    console.log(`✅ Self-registration completed successfully for: ${email}`);
-    res.status(201).json({
-      success: true,
-      message: 'Registration successful! Your password has been sent to your email address.',
-      email: email
-    });
-    
-  } catch (error) {
-    console.error('❌ Self-registration error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Registration failed',
-      message: error.message || 'An error occurred during registration. Please try again later.'
-    });
-  }
-});
 
 /**
  * Login endpoint
@@ -2867,10 +2778,7 @@ app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFOR
     }
     
     // SECURITY: Validate URL to prevent SSRF attacks
-    const urlValidation = await validateUrl(metadataUrl, {
-      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
-      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
-    });
+    const urlValidation = await validateUrl(metadataUrl, getSsrfValidationOptions('strictUserFetch'));
     
     if (!urlValidation.valid) {
       console.warn('🚫 SSRF attempt blocked:', metadataUrl, urlValidation.error);
@@ -2930,42 +2838,6 @@ app.post('/api/sso/saml/fetch-metadata', authenticate, requireRole(ROLES.PLATFOR
 });
 
 // Messaging Configuration Test Endpoints
-/**
- * Test email configuration
- */
-app.post('/api/messaging/test-email', authenticate, requireRole(ROLES.PLATFORM_ADMIN), async (req, res) => {
-  try {
-    const { emailConfig: bodyEmailConfig } = req.body;
-    if (!bodyEmailConfig) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email configuration is required'
-      });
-    }
-    const resolved = getResolvedConfig();
-    const raw = loadConfig();
-    const emailConfig = {
-      ...resolved.messagingConfig?.email,
-      ...bodyEmailConfig,
-      smtpPassword: coalesceSecretForTest(
-        bodyEmailConfig.smtpPassword,
-        resolved.messagingConfig?.email?.smtpPassword,
-        raw.messagingConfig?.email?.smtpPassword
-      ),
-    };
-    const { testEmailConfig } = await import('./messagingService.js');
-    const result = await testEmailConfig(emailConfig);
-    
-    res.json(result);
-  } catch (error) {
-    console.error('❌ Test email error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message || 'Failed to test email configuration' 
-    });
-  }
-});
-
 /**
  * Test Slack configuration
  */
@@ -3142,10 +3014,7 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       return res.sendFile(filePath);
     }
-    const urlValidation = await validateUrl(url, {
-      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
-      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
-    });
+    const urlValidation = await validateUrl(url, getSsrfValidationOptions('strictUserFetch'));
     if (!urlValidation.valid) {
       return res.status(400).json({ error: 'Invalid or blocked URL', details: urlValidation.error });
     }
@@ -3153,6 +3022,8 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
     const resp = await axios.get(urlValidation.url, {
       responseType: 'json',
       timeout: 30000,
+      maxRedirects: 0,
+      ssrfStrict: true,
       headers: { Accept: 'application/json' },
     });
     res.setHeader('Content-Type', 'application/json');
@@ -3167,37 +3038,34 @@ app.get('/api/baseline-report', optionalAuth, async (req, res) => {
 });
 
 // Settings Management Endpoints (Server-side persistence)
-// Get current settings (all authenticated users can view)
-app.get('/api/settings', optionalAuth, (req, res) => {
+// Minimal runtime flags for authenticated non-admin clients
+app.get('/api/settings/runtime', authenticate, (req, res) => {
   try {
     const raw = loadConfig();
-    const config = JSON.parse(JSON.stringify(raw));
-    if (config.aiConfig) {
-      if (!config.aiConfig.awsRegion || !String(config.aiConfig.awsRegion).trim()) {
-        config.aiConfig.awsRegion = 'us-east-1';
-      }
-      if (!config.aiConfig.bedrockAuthMode) {
-        config.aiConfig.bedrockAuthMode = 'access-keys';
-      }
-    }
-    applyDatabaseEnvOverrides(config);
-    if (config.databaseConfig?.authMode === 'iam') {
-      config.databaseConfig.password = '';
-    }
-    const skipMask = config.databaseConfig?.authMode === 'iam'
-      ? ['databaseConfig.password']
-      : [];
-    if (config.aiConfig?.bedrockAuthMode === 'iam-role') {
-      skipMask.push('aiConfig.awsAccessKeyId', 'aiConfig.awsSecretAccessKey');
-    }
-    maskSensitiveConfigForClient(config, { skipPaths: skipMask });
-    console.log('📖 Settings loaded and sent to client');
+    const runtime = buildRuntimeSettingsResponse(raw);
+    logSettingsAccess('settings_runtime_get', req.user, 'success');
+    res.json(runtime);
+  } catch (error) {
+    logSettingsAccess('settings_runtime_get', req.user, 'failure', { 'error.message': error.message });
+    console.error('❌ Error loading runtime settings:', error.message);
+    res.status(500).json({
+      error: 'Failed to load runtime settings',
+    });
+  }
+});
+
+// Full settings (Platform Admin only; secrets masked)
+app.get('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), (req, res) => {
+  try {
+    const raw = loadConfig();
+    const config = buildAdminSettingsResponse(raw, req.user);
+    logSettingsAccess('settings_get', req.user, 'success');
     res.json(config);
   } catch (error) {
+    logSettingsAccess('settings_get', req.user, 'failure', { 'error.message': error.message });
     console.error('❌ Error loading settings:', error.message);
     res.status(500).json({
       error: 'Failed to load settings',
-      details: error.message
     });
   }
 });
@@ -3229,14 +3097,11 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
           ...incomingConfig.apiGateways?.azure
         }
       },
-      // Ensure messagingConfig structure is properly merged
+      // Ensure messagingConfig structure is properly merged (Slack only)
       messagingConfig: {
         ...existingConfig.messagingConfig,
         ...incomingConfig.messagingConfig,
-        email: {
-          ...existingConfig.messagingConfig?.email,
-          ...incomingConfig.messagingConfig?.email
-        },
+        channel: 'slack',
         slack: {
           ...existingConfig.messagingConfig?.slack,
           ...incomingConfig.messagingConfig?.slack
@@ -3291,17 +3156,28 @@ app.post('/api/settings', authenticate, authorize(PERMISSIONS.EDIT_SETTINGS), as
       console.log('✅ Settings saved successfully');
       const savedConfig = loadConfig();
       console.log('✅ Verified saved publishedSoaUrl:', savedConfig.publishedSoaUrl);
-      
-      // Construct detailed response with verification info
-      const response = { 
+      logSettingsAccess('settings_post', req.user, 'success');
+      if (saveResult.configPath) {
+        console.log(JSON.stringify({
+          level: 'info',
+          message: 'Settings saved to disk',
+          'service.name': 'oscal-report-generator',
+          'event.action': 'settings_save',
+          'event.category': 'configuration',
+          'event.outcome': 'success',
+          'config.path': saveResult.configPath,
+        }));
+      }
+
+      // Construct detailed response with verification info (no server paths or raw secrets)
+      const response = {
         success: true,
         message: saveResult.message || 'Settings saved successfully',
-        config: savedConfig,
+        config: sanitizeSettingsSaveResponse(savedConfig, req.user),
         verification: {
           verified: saveResult.verified,
           timestamp: saveResult.timestamp,
-          configPath: saveResult.configPath
-        }
+        },
       };
       if (secretWarnings.length > 0) {
         response.secretWarnings = secretWarnings;
@@ -3434,39 +3310,41 @@ app.post('/api/database/merge-control-extended-data', authenticate, async (req, 
 });
 
 // API Proxy endpoint - forwards requests to avoid CORS issues
-// SECURITY: Protected against SSRF attacks with URL validation
-app.post('/api/proxy-fetch', async (req, res) => {
+// SECURITY: Authenticated, strict SSRF validation, GET-only, no redirects
+app.post('/api/proxy-fetch', authenticate, async (req, res) => {
   const { url, method = 'GET', headers = {} } = req.body;
-  
+
   if (!url) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'URL is required' 
+    return res.status(400).json({
+      success: false,
+      error: 'URL is required',
     });
   }
 
-  // SECURITY: Validate URL to prevent SSRF attacks
-  const urlValidation = await validateUrl(url, {
-    allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
-    allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
-  });
+  if (!isAllowedProxyFetchMethod(method)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Only GET and HEAD methods are allowed',
+      code: 'METHOD_NOT_ALLOWED',
+    });
+  }
+
+  const urlValidation = await validateUrl(url, getSsrfValidationOptions('strictUserFetch'));
 
   if (!urlValidation.valid) {
     console.warn('🚫 SSRF attempt blocked in proxy-fetch:', url, urlValidation.error);
-    
-    // Return 403 for blocked URLs (security restriction)
+
     if (urlValidation.blocked) {
-      return res.status(403).json({ 
-        success: false, 
+      return res.status(403).json({
+        success: false,
         error: 'Access to this URL is forbidden',
         details: urlValidation.error,
         code: 'SSRF_BLOCKED',
       });
     }
-    
-    // Return 400 for invalid URLs (bad request)
-    return res.status(400).json({ 
-      success: false, 
+
+    return res.status(400).json({
+      success: false,
       error: 'Invalid URL',
       details: urlValidation.error,
     });
@@ -3476,43 +3354,26 @@ app.post('/api/proxy-fetch', async (req, res) => {
   console.log(`[API Proxy] Method: ${method}`);
 
   try {
-    // Forward cookies from the original request if present
-    const cookieHeader = req.headers.cookie || '';
-    
-    // Merge headers - include cookies if available
-    const requestHeaders = {
-      'Accept': 'application/json, text/plain, */*',
-      'User-Agent': 'Mozilla/5.0 (compatible; OSCAL-Report-Generator/1.0)',
-      ...headers,
-    };
-    
-    // Add cookies if they exist
-    if (cookieHeader) {
-      requestHeaders['Cookie'] = cookieHeader;
-    }
+    const requestHeaders = buildProxyFetchHeaders(headers);
 
-    console.log(`[API Proxy] Request headers:`, requestHeaders);
-
-    // Use axios instead of fetch for better compatibility
     const response = await axios({
       method: method,
-      url: urlValidation.url, // Use validated URL
+      url: urlValidation.url,
       headers: requestHeaders,
-      timeout: 30000, // 30 second timeout
-      maxRedirects: 5, // Follow up to 5 redirects
-      validateStatus: () => true, // Don't throw on any status code
+      timeout: 30000,
+      maxRedirects: 0,
+      ssrfStrict: true,
+      validateStatus: () => true,
       httpsAgent: new https.Agent({
-        rejectUnauthorized: false // Allow self-signed certificates
-      })
+        rejectUnauthorized: false,
+      }),
     });
 
     console.log(`[API Proxy] Response received - Status: ${response.status}, StatusText: ${response.statusText}`);
     console.log(`[API Proxy] Content-Type: ${response.headers['content-type']}`);
 
     let data = response.data;
-    const contentType = response.headers['content-type'] || '';
 
-    // If response is a string, try to parse as JSON
     if (typeof data === 'string') {
       try {
         data = JSON.parse(data);
@@ -3522,15 +3383,12 @@ app.post('/api/proxy-fetch', async (req, res) => {
       }
     }
 
-    console.log(`[API Proxy] Data type: ${typeof data}`);
-    console.log(`[API Proxy] Data keys: ${typeof data === 'object' && data !== null ? Object.keys(data).slice(0, 10).join(', ') : 'N/A'}`);
-
     res.json({
       success: response.status >= 200 && response.status < 300,
       status: response.status,
       statusText: response.statusText,
       data: data,
-      headers: response.headers,
+      headers: sanitizeProxyResponseHeaders(response.headers),
     });
 
   } catch (error) {
@@ -3580,14 +3438,11 @@ app.post('/api/proxy-fetch', async (req, res) => {
 });
 
 // Fetch OSCAL catalogue from URL
-// SECURITY: Protected against SSRF attacks with URL validation
-app.post('/api/fetch-catalogue', async (req, res) => {
+// SECURITY: Authenticated, strict SSRF validation, no redirects
+app.post('/api/fetch-catalogue', authenticate, async (req, res) => {
   try {
     const { url } = req.body;
-    const result = await fetchCatalogueFromUrl(url, {
-      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
-      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
-    });
+    const result = await fetchCatalogueFromUrl(url, getSsrfValidationOptions('strictCatalogueFetch'));
     res.json(result);
   } catch (error) {
     if (error.statusCode === 400) {
@@ -6120,14 +5975,11 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       }
       
       // SECURITY: Validate URL to prevent SSRF attacks
-      const urlValidation = await validateUrl(url, {
-        allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
-        allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
-      });
-      
+      const urlValidation = await validateUrl(url, getSsrfValidationOptions('aiIntegration'));
+
       if (!urlValidation.valid) {
         console.warn('🚫 SSRF attempt blocked in Mistral API test:', url, urlValidation.error);
-        
+
         // Return 403 for blocked URLs (security restriction)
         if (urlValidation.blocked) {
           return res.status(403).json({
@@ -6137,7 +5989,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
             code: 'SSRF_BLOCKED',
           });
         }
-        
+
         // Return 400 for invalid URLs (bad request)
         return res.status(400).json({
           success: false,
@@ -6265,10 +6117,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
     console.log(`   URL: ${fullUrl}`);
     
     // SECURITY: Validate URL to prevent SSRF attacks
-    const urlValidation = await validateUrl(fullUrl, {
-      allowPrivateIPs: SECURITY_CONFIG.urlValidation.allowPrivateIPs,
-      allowLocalhost: SECURITY_CONFIG.urlValidation.allowLocalhost,
-    });
+    const urlValidation = await validateUrl(fullUrl, getSsrfValidationOptions('aiIntegration'));
     
     if (!urlValidation.valid) {
       console.warn('🚫 SSRF attempt blocked in AI test:', fullUrl, urlValidation.error);

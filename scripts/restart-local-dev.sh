@@ -26,20 +26,47 @@ for arg in "$@"; do
   fi
 done
 
+port_is_listening() {
+  local port="$1"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 1 localhost "$port" 2>/dev/null
+    return $?
+  fi
+  if netstat -an -p tcp 2>/dev/null | grep -qE "LISTEN.+[.*:]${port}[[:space:]]"; then
+    return 0
+  fi
+  return 1
+}
+
 kill_port() {
   local port="$1"
-  if command -v lsof >/dev/null 2>&1; then
-    local pids
-    pids=$(lsof -ti:"$port" 2>/dev/null || true)
-    if [[ -n "$pids" ]]; then
-      # shellcheck disable=SC2086
-      kill -9 $pids 2>/dev/null || true
-      echo "Stopped process(es) on port $port (PIDs: $pids)"
-    else
-      echo "Nothing listening on port $port"
-    fi
+  if ! port_is_listening "$port"; then
+    echo "Nothing listening on port $port"
+    return 0
+  fi
+
+  echo "Stopping listener on port $port ..."
+  # Avoid lsof: on some macOS + EDR setups (e.g. CrowdStrike) lsof -ti:PORT hangs
+  # even when the port is free. Use project-specific process patterns instead.
+  case "$port" in
+    3020)
+      pkill -f 'nodemon server\.js' 2>/dev/null || true
+      pkill -f 'node server\.js' 2>/dev/null || true
+      ;;
+    3021)
+      pkill -f 'vite --host' 2>/dev/null || true
+      ;;
+    *)
+      echo "No kill pattern for port $port; stop the process manually" >&2
+      ;;
+  esac
+  pkill -f 'concurrently.*dev:backend' 2>/dev/null || true
+
+  sleep 1
+  if port_is_listening "$port"; then
+    echo "Warning: port $port still in use after pkill; stop manually (Activity Monitor)" >&2
   else
-    echo "lsof not found; stop dev manually (Ctrl+C) if something runs on $port" >&2
+    echo "Stopped service on port $port"
   fi
 }
 
