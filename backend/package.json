@@ -20,12 +20,12 @@
     "lint:fix": "npx eslint . --ext .js --fix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.1075.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1075.0",
-    "@aws-sdk/client-lambda": "^3.1075.0",
-    "@aws-sdk/client-secrets-manager": "^3.1075.0",
-    "@aws-sdk/credential-providers": "^3.1075.0",
-    "@aws-sdk/rds-signer": "^3.1075.0",
+    "@aws-sdk/client-bedrock": "^3.1086.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1086.0",
+    "@aws-sdk/client-lambda": "^3.1086.0",
+    "@aws-sdk/client-secrets-manager": "^3.1086.0",
+    "@aws-sdk/credential-providers": "^3.1086.0",
+    "@aws-sdk/rds-signer": "^3.1086.0",
     "@oscal/oscal-deep-diff": "^1.0.0",
     "@smithy/node-http-handler": "^4.8.2",
     "ajv": "^8.20.0",
