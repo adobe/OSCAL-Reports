@@ -110,6 +110,8 @@ import {
   listJobs, 
   deleteJob, 
   cleanupOldJobs,
+  countActiveJobsForUser,
+  MAX_CONCURRENT_JOBS_PER_USER,
   JOB_TYPE,
   JOB_STATUS
 } from './jobQueue.js';
@@ -135,6 +137,12 @@ import {
   isAllowedProxyFetchMethod,
   sanitizeProxyResponseHeaders,
 } from './utils/proxyFetchHelpers.js';
+import {
+  canAccessJob,
+  isJobAdmin,
+  logJobSecurityEvent,
+  sanitizeJobForClient,
+} from './utils/jobAccess.js';
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -177,6 +185,63 @@ const oidcExchangeTokenRateLimiter = rateLimit({
   },
 });
 const oktaExchangeTokenRateLimiter = oidcExchangeTokenRateLimiter;
+
+/** Per-user throttle for expensive async job creation (VULN-37000). Runs after authenticate. */
+const jobCreationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: true },
+  keyGenerator: (req) => req.user.id,
+  handler: (req, res) => {
+    logJobSecurityEvent('job_create_rate_limited', req.user, 'failure', {
+      'client.address': req.ip,
+      reason: 'window_limit',
+    });
+    res.status(429).json({
+      success: false,
+      error: 'Too many job creation requests',
+      message: 'Job creation is rate limited. Try again later.',
+    });
+  },
+});
+
+function enforceJobConcurrencyLimit(req, res, next) {
+  const activeCount = countActiveJobsForUser(req.user?.id);
+  if (activeCount >= MAX_CONCURRENT_JOBS_PER_USER) {
+    logJobSecurityEvent('job_create_rate_limited', req.user, 'failure', {
+      'client.address': req.ip,
+      reason: 'concurrent_limit',
+      'job.active.count': activeCount,
+    });
+    return res.status(429).json({
+      success: false,
+      error: 'Too many active jobs',
+      message: `Maximum ${MAX_CONCURRENT_JOBS_PER_USER} concurrent jobs allowed. Wait for existing jobs to finish.`,
+    });
+  }
+  return next();
+}
+
+function denyJobAccess(req, res, access) {
+  logJobSecurityEvent('job_access_denied', req.user, 'failure', {
+    'job.id': req.params.jobId,
+    'http.status_code': access.status,
+    'client.address': req.ip,
+  });
+  return res.status(access.status).json({
+    success: false,
+    error: access.error,
+  });
+}
+
+function buildJobOwnerMetadata(req) {
+  return {
+    userId: req.user.id,
+    username: req.user.username,
+  };
+}
 
 // Configure CORS to allow authentication headers through reverse proxy
 app.use(cors({
@@ -4984,7 +5049,7 @@ app.post('/api/generate-excel', async (req, res) => {
  * POST /api/jobs/pdf
  * Returns job ID immediately, client polls for completion
  */
-app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
+app.post('/api/jobs/pdf', authenticate, jobCreationRateLimiter, enforceJobConcurrencyLimit, async (req, res) => {
   try {
     const { controls, systemInfo, metadata } = req.body;
 
@@ -4996,11 +5061,7 @@ app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
     const jobId = createJob(
       JOB_TYPE.PDF_EXPORT,
       { controls, systemInfo, metadata },
-      {
-        userId: req.user?.id,
-        username: req.user?.username,
-        ip: req.ip
-      }
+      buildJobOwnerMetadata(req)
     );
     
     res.json({
@@ -5024,7 +5085,7 @@ app.post('/api/jobs/pdf', optionalAuth, async (req, res) => {
  * Create async Excel export job
  * POST /api/jobs/excel
  */
-app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
+app.post('/api/jobs/excel', authenticate, jobCreationRateLimiter, enforceJobConcurrencyLimit, async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
 
@@ -5036,11 +5097,7 @@ app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
     const jobId = createJob(
       JOB_TYPE.EXCEL_EXPORT,
       { controls, systemInfo },
-      {
-        userId: req.user?.id,
-        username: req.user?.username,
-        ip: req.ip
-      }
+      buildJobOwnerMetadata(req)
     );
     
     res.json({
@@ -5064,7 +5121,7 @@ app.post('/api/jobs/excel', optionalAuth, async (req, res) => {
  * Create async CCM export job
  * POST /api/jobs/ccm
  */
-app.post('/api/jobs/ccm', optionalAuth, async (req, res) => {
+app.post('/api/jobs/ccm', authenticate, jobCreationRateLimiter, enforceJobConcurrencyLimit, async (req, res) => {
   try {
     const { controls, systemInfo } = req.body;
 
@@ -5076,11 +5133,7 @@ app.post('/api/jobs/ccm', optionalAuth, async (req, res) => {
     const jobId = createJob(
       JOB_TYPE.CCM_EXPORT,
       { controls, systemInfo },
-      {
-        userId: req.user?.id,
-        username: req.user?.username,
-        ip: req.ip
-      }
+      buildJobOwnerMetadata(req)
     );
     
     res.json({
@@ -5104,21 +5157,19 @@ app.post('/api/jobs/ccm', optionalAuth, async (req, res) => {
  * Get job status
  * GET /api/jobs/:jobId
  */
-app.get('/api/jobs/:jobId', (req, res) => {
+app.get('/api/jobs/:jobId', authenticate, (req, res) => {
   try {
     const { jobId } = req.params;
     const job = getJob(jobId);
-    
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        error: 'Job not found'
-      });
+
+    const access = canAccessJob(job, req.user);
+    if (!access.allowed) {
+      return denyJobAccess(req, res, access);
     }
     
     res.json({
       success: true,
-      job
+      job: sanitizeJobForClient(job)
     });
   } catch (error) {
     console.error('Error getting job status:', error);
@@ -5134,20 +5185,18 @@ app.get('/api/jobs/:jobId', (req, res) => {
  * Download job result
  * GET /api/jobs/:jobId/download
  */
-app.get('/api/jobs/:jobId/download', (req, res) => {
+app.get('/api/jobs/:jobId/download', authenticate, (req, res) => {
   try {
     const { jobId } = req.params;
     const job = getJob(jobId);
-    
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        error: 'Job not found'
-      });
+
+    const access = canAccessJob(job, req.user);
+    if (!access.allowed) {
+      return denyJobAccess(req, res, access);
     }
     
     if (job.status !== JOB_STATUS.COMPLETED) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
         error: 'Job not completed yet',
         status: job.status,
@@ -5218,7 +5267,7 @@ app.get('/api/jobs', authenticate, async (req, res) => {
       type
     };
     
-    if (req.user.role !== ROLES.ADMIN) {
+    if (!isJobAdmin(req.user)) {
       filters.userId = req.user.id;
     }
     
@@ -5227,7 +5276,7 @@ app.get('/api/jobs', authenticate, async (req, res) => {
     res.json({
       success: true,
       count: jobs.length,
-      jobs
+      jobs: jobs.map(sanitizeJobForClient)
     });
   } catch (error) {
     console.error('Error listing jobs:', error);
@@ -5248,19 +5297,9 @@ app.delete('/api/jobs/:jobId', authenticate, (req, res) => {
     const { jobId } = req.params;
     const job = getJob(jobId);
     
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        error: 'Job not found'
-      });
-    }
-    
-    // Only admin or job owner can delete
-    if (req.user.role !== ROLES.ADMIN && job.metadata?.userId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Not authorized to delete this job'
-      });
+    const access = canAccessJob(job, req.user);
+    if (!access.allowed) {
+      return denyJobAccess(req, res, access);
     }
     
     deleteJob(jobId);

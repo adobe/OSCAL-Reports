@@ -87,6 +87,11 @@
 - **Issue**: CSRF middleware caused 403 on many API endpoints.
 - **Fix**: API routes under `/api/` exempted; Bearer token used for API (CSRF not applicable). State-changing browser flows still use CSRF tokens.
 
+### v1.7.27 – Async job auth / IDOR / DoS (VULN-37000) (July 2026)
+- **Issue:** Unauthenticated async job creation (`optionalAuth`); job status/download accessible by UUID without ownership check; requester IP in status JSON; job flooding DoS.
+- **Fix:** `authenticate` on all job routes; `canAccessJob` owner-or-Platform-Admin checks; `sanitizeJobForClient`; per-user rate limit and concurrent job cap. See [RELEASE_1.7.27.md](RELEASE_1.7.27.md).
+- **Post-deploy:** Pentest retest steps 1–4; Jira → Remediated – Pending Retest.
+
 ### v1.7.25 – Settings disclosure (VULN-36998) (July 2026)
 - **Issue:** Unauthenticated `GET /api/settings` returned full platform configuration (DB, SSO, group mappings, Bedrock ARNs, legacy SMTP). CWE-200; CVSS 8.2 on production pentest.
 - **Fix:** Platform Admin required for full settings; `GET /api/settings/runtime` for allowlisted runtime flags; POST save responses redacted; SMTP/email and self-registration removed. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md#4-settings-disclosure-and-smtp-retirement-vuln-36998).
@@ -115,4 +120,4 @@
 
 ---
 
-**Version:** 1.7.25 · **Last updated:** July 2026
+**Version:** 1.7.27 · **Last updated:** July 2026

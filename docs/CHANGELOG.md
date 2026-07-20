@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.7.27] - 2026-07-20
+
+Release **1.7.27** remediates async job authorization (**VULN-37000**), hardens Blue/Green deploy to prevent ALB 502 during AMI refresh, and adds proactive API auth inventory tests.
+
+**Full release record and regression-prevention checklist:** [docs/RELEASE_1.7.27.md](RELEASE_1.7.27.md).
+
+### Security
+
+- **Job auth / IDOR / DoS (VULN-37000):** `authenticate` required on `POST /api/jobs/pdf`, `/excel`, `/ccm` and on `GET /api/jobs/:jobId` / `/download`; owner-or-Platform-Admin authorization via `backend/utils/jobAccess.js`; job status responses redacted (no requester IP or export payload); per-user rate limit (10/15 min) and concurrent job cap (5).
+- **Proactive guard:** `test_cases/backend/unit/api-auth-inventory.test.js` + `fixtures/public-api-allowlist.json` fail CI when object-access or mutating `/api/*` routes lack auth.
+
+### Changed
+
+- **Deploy resilience:** Passive-first Blue/Green rollout (`deploy_passive_first_both`), pre-AMI ALB failover, post-refresh S3 deploy hook, and safe maintenance state dir handling in `scripts/lib/deploy-maintenance.sh` (502 prevention during ASG refresh).
+- **Version reconcile:** `deploy-to-ec2.sh` reconciles root, `backend/`, and `frontend/` `package.json` from S3 installer manifest (fixes footer version drift).
+
+### Tests
+
+- `jobs-auth-idor.test.js`, `jobAccess.test.js`, `api-auth-inventory.test.js`.
+
+### Deploy
+
+- **Docker Hub:** `keekar/oscal_reports:v1.7.27` when published.
+- **GHCR:** `ghcr.io/adobe/oscal-report-generator:v1.7.27` when published.
 ## [1.7.25] - 2026-07-18
 
 Release **1.7.25** merges Dependabot dependency updates on **Development**, remediates pentest findings (**VULN-36986** SSRF, **VULN-36998** settings disclosure, **VULN-37020** Bedrock access control), closes AMS Non-Prod InfraSec tickets (**SSAAU-216**, **SSAAU-212**), and aligns Terraform/GHCR paths with the canonical [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) repository.

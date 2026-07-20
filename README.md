@@ -96,6 +96,17 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ---
 
+## What's new in 1.7.27
+
+- **Security (VULN-37000):** Authentication and ownership on async job create/status/download; per-user job rate limits; status response redaction; regression + proactive API auth inventory tests.
+- **Deploy:** Passive-first Blue/Green rollout and 502 prevention during AMI/ASG refresh; installer manifest reconciles root, backend, and frontend `package.json` (footer version fix).
+- **Deploy:** `keekar/oscal_reports:v1.7.27` and `ghcr.io/adobe/oscal-report-generator:v1.7.27` when published.
+- **Full record:** [docs/RELEASE_1.7.27.md](docs/RELEASE_1.7.27.md).
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1727---2026-07-20).
+
+---
+
 ## What's new in 1.7.25
 
 - **Security:** SSRF remediation (VULN-36986) — authenticated proxy/catalogue fetch, strict URL profiles, no redirects. Settings disclosure (VULN-36998) — admin-only `/api/settings`, runtime allowlist endpoint, SMTP/email retired, self-registration removed. Bedrock access control (VULN-37020) — settings redaction, Terraform ExternalId gate.
@@ -147,4 +158,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.25 (see root `package.json`) · **Last updated:** July 2026
+**Version:** 1.7.27 (see root `package.json`) · **Last updated:** July 2026
