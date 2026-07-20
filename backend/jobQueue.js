@@ -20,6 +20,8 @@ const jobs = new Map();
 const JOB_STORAGE_DIR = path.join(__dirname, '../data/jobs');
 const MAX_COMPLETED_JOBS = 100; // Keep only last 100 completed jobs
 const JOB_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
+/** Max queued/processing jobs per authenticated user (VULN-37000 DoS mitigation). */
+export const MAX_CONCURRENT_JOBS_PER_USER = 5;
 
 // Job statuses
 export const JOB_STATUS = {
@@ -124,6 +126,24 @@ export function deleteJob(jobId) {
   if (fs.existsSync(jobFile)) {
     fs.unlinkSync(jobFile);
   }
+}
+
+/**
+ * Count active (queued or processing) jobs owned by a user.
+ * @param {string} userId
+ * @returns {number}
+ */
+export function countActiveJobsForUser(userId) {
+  if (!userId) {
+    return 0;
+  }
+
+  return Array.from(jobs.values()).filter((job) => {
+    if (job.metadata?.userId !== userId) {
+      return false;
+    }
+    return job.status === JOB_STATUS.QUEUED || job.status === JOB_STATUS.PROCESSING;
+  }).length;
 }
 
 /**

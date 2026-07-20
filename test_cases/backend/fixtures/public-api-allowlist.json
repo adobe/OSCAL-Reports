@@ -1,0 +1,42 @@
+{
+  "description": "Intentionally public or optionalAuth API routes documented for api-auth-inventory.test.js",
+  "publicRoutes": [
+    { "method": "GET", "path": "/health" },
+    { "method": "GET", "path": "/health/ready" },
+    { "method": "GET", "path": "/api/csrf-token" },
+    { "method": "POST", "path": "/api/auth/login" },
+    { "method": "GET", "path": "/api/auth/default-credentials" },
+    { "method": "GET", "path": "/api/auth/diagnostics" },
+    { "method": "GET", "path": "/api/auth/diagnostic" },
+    { "method": "GET", "path": "/api/auth/okta/authorize" },
+    { "method": "POST", "path": "/api/auth/okta/exchange-token" },
+    { "method": "GET", "path": "/api/auth/sso/login-providers" },
+    { "method": "GET", "path": "/api/auth/oidc/generic-oidc/authorize" },
+    { "method": "POST", "path": "/api/auth/oidc/generic-oidc/exchange-token" },
+    { "method": "GET", "path": "/api/test-suggestions" },
+    { "method": "POST", "path": "/api/debug-integrity" },
+    { "method": "GET", "path": "/api/system/volume-status" },
+    { "method": "GET", "path": "/api/published-soa/:filename" },
+    { "method": "GET", "path": "/api/baseline-report" },
+    { "method": "GET", "path": "/api/database/adobe-team-options" },
+    { "method": "GET", "path": "/api/validator/status" },
+    { "method": "POST", "path": "/api/extract-catalog-from-ssp" },
+    { "method": "POST", "path": "/api/extract-controls-from-ssp" },
+    { "method": "POST", "path": "/api/compare-ssp" },
+    { "method": "POST", "path": "/api/compare-multiple-reports" },
+    { "method": "POST", "path": "/api/import-ccm" },
+    { "method": "POST", "path": "/api/prepare-ssp-export" },
+    { "method": "POST", "path": "/api/generate-ssp" },
+    { "method": "POST", "path": "/api/generate-sar" },
+    { "method": "POST", "path": "/api/generate-ccm" },
+    { "method": "POST", "path": "/api/generate-pdf" },
+    { "method": "POST", "path": "/api/generate-excel" },
+    { "method": "POST", "path": "/api/validate-oscal" }
+  ],
+  "optionalAuthAllowed": [
+    { "method": "GET", "path": "/api/system/volume-status" },
+    { "method": "GET", "path": "/api/published-soa/:filename" },
+    { "method": "GET", "path": "/api/baseline-report" },
+    { "method": "GET", "path": "/api/database/adobe-team-options" }
+  ]
+}

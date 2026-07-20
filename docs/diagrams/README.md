@@ -85,4 +85,4 @@ To modify the diagrams:
 
 ---
 
-**Version:** 1.7.25 · **Last updated:** July 2026
+**Version:** 1.7.27 · **Last updated:** July 2026

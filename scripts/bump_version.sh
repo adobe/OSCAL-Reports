@@ -243,6 +243,7 @@ print_header "Updating Version Numbers"
 update_package_json "package.json" "$NEW_VERSION"
 update_package_json "backend/package.json" "$NEW_VERSION"
 update_package_json "frontend/package.json" "$NEW_VERSION"
+update_package_json "test_cases/backend/package.json" "$NEW_VERSION"
 
 echo ""
 print_header "Updating Changelog"
@@ -271,7 +272,7 @@ print_header "Git Operations"
 # Check if git is available and we're in a git repository
 if command -v git &> /dev/null && [ -d .git ]; then
   # Stage changes
-  git add package.json backend/package.json frontend/package.json docs/CHANGELOG.md .validation/learnings.json 2>/dev/null || true
+  git add package.json backend/package.json frontend/package.json test_cases/backend/package.json docs/CHANGELOG.md .validation/learnings.json 2>/dev/null || true
   print_success "Staged version files"
   
   # Create commit
@@ -283,6 +284,7 @@ Updated files:
 - package.json
 - backend/package.json
 - frontend/package.json
+- test_cases/backend/package.json
 - docs/CHANGELOG.md"
   
   git commit -m "$COMMIT_MESSAGE" 2>/dev/null || print_warning "No changes to commit (files may be unchanged)"

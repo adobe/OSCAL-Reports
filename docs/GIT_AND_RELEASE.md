@@ -108,7 +108,7 @@ Development (default branch)
 
 ### AMS Non-Prod regression prevention (AWS4403)
 
-Before merging a release that touches Terraform or security-sensitive API paths, confirm items in **[RELEASE_1.7.25.md](RELEASE_1.7.25.md)** §6 (Release checklist). Minimum gates:
+Before merging a release that touches Terraform or security-sensitive API paths, confirm items in **[RELEASE_1.7.27.md](RELEASE_1.7.27.md)** §4 (Release checklist) and **[RELEASE_1.7.25.md](RELEASE_1.7.25.md)** §6 where applicable. Minimum gates:
 
 | Check | Command / artifact |
 |-------|-------------------|
