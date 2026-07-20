@@ -432,7 +432,7 @@ CodeQL and similar analyzers flag unsafe composition of outbound HTTP requests (
 | **Import** | In `backend/`, use `import axios from './utils/safeAxios.js'` (adjust relative path). **Do not** add `import … from 'axios'` except inside `backend/utils/safeAxios.js`. |
 | **Behavior** | `safeAxios` runs a request interceptor that rejects `\r` and `\n` in merged outbound header **names** and **values**, and validates `auth` username/password fields, before the HTTP adapter runs. |
 | **Tests** | `test_cases/backend/unit/safeAxios.test.js` — extend when changing interceptor behavior. |
-| **SSRF** | User- or attacker-controlled URLs must use **`validateUrl()`** with the correct profile (`strictUserFetch` / `strictCatalogueFetch` for public fetch; `aiIntegration` only for admin-configured AI URLs). `safeAxios` does not replace URL validation. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md). |
+| **SSRF** | User- or attacker-controlled URLs must use **`validateUrl()`** with the correct profile (`strictUserFetch` / `strictCatalogueFetch` for public fetch; `aiIntegration` only for admin-configured AI URLs). `safeAxios` does not replace URL validation. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md). Async job routes require auth — see [RELEASE_1.7.27.md](RELEASE_1.7.27.md). |
 
 ### SSRF on public fetch endpoints
 

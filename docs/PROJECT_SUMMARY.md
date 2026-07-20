@@ -6,7 +6,7 @@ contact: mukesh.kesharwani@adobe.com
 # Project summary — OSCAL Report Generator
 
 **Application:** Keekar’s OSCAL SOA / SSP / CCM Generator (npm: `keekars-oscal-soa-ssp-ccm-generator`).  
-**Version:** See root `package.json` (currently **1.7.25**).  
+**Version:** See root `package.json` (currently **1.7.27**).  
 **Last updated:** July 2026
 
 ---
@@ -32,15 +32,15 @@ Default local ports: backend **3020**, frontend dev **3021**.
 
 ---
 
-## Recent release (1.7.25)
+## Recent release (1.7.27)
 
 | Area | What changed | Why |
 |------|----------------|-----|
-| **Security** | SSRF + Bedrock access-control fixes | Pentest VULN-36986 / VULN-37020 |
-| **AMS Non-Prod** | Image Factory EMR 3.0.2; Splunk UF bootstrap | InfraSec SSAAU-216 / SSAAU-212 |
-| **Dependencies** | Dependabot merges on Development | Supply-chain hygiene |
+| **Security** | VULN-37000 job auth / IDOR / DoS | Pentest async job endpoints |
+| **Deploy** | Passive-first Blue/Green; 502 prevention | Production AMI refresh incident |
+| **Tests** | API auth inventory + job IDOR regression | Proactive BOLA detection |
 
-Full notes and **regression-prevention checklist:** [RELEASE_1.7.25.md](RELEASE_1.7.25.md).
+Full notes and **regression-prevention checklist:** [RELEASE_1.7.27.md](RELEASE_1.7.27.md).
 
 ---
 

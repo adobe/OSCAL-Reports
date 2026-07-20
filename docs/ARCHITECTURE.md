@@ -2,8 +2,8 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.25**)  
-**Last Updated**: April 2026
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.27**)  
+**Last Updated**: July 2026
 
 ---
 
@@ -1270,6 +1270,12 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 1.7.27 (July 2026)
+- VULN-37000: async job auth, IDOR prevention, rate limits (`jobAccess.js`)
+- Deploy: passive-first Blue/Green; 502 prevention during AMI refresh
+- Proactive API auth inventory tests
+- Docker image `keekar/oscal_reports:v1.7.27` (multi-arch) when published
 
 ### Version 1.7.25 (July 2026)
 - Terraform GHCR path `ghcr.io/adobe/oscal-report-generator` for EC2 Docker mode

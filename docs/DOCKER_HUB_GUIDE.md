@@ -118,7 +118,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 
 **Steps**
 
-1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.7.25`), then pushes that tag and also `latest`:
+1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.7.27`), then pushes that tag and also `latest`:
 
    ```bash
    DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
@@ -127,7 +127,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 2. To use an explicit tag (e.g. a specific version or `latest` only):
 
    ```bash
-   ./scripts/build-and-push-dockerhub.sh v1.7.25
+   ./scripts/build-and-push-dockerhub.sh v1.7.27
    ```
 
 3. If your Docker Hub username is not `keekar`, set it in the environment:
@@ -137,7 +137,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
    ./scripts/build-and-push-dockerhub.sh
    ```
 
-The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.7.25`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
+The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.7.27`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
 
 ---
 
@@ -1104,4 +1104,4 @@ This project is licensed under the **MIT License**. See [LICENSE](https://github
 
 **Last Updated**: April 2026  
 **Maintained By**: Mukesh Kesharwani  
-**Version**: 1.7.25
+**Version**: 1.7.27
