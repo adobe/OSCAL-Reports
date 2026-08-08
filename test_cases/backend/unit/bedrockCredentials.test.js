@@ -10,7 +10,8 @@ import {
   buildBedrockAiConfigFromRequest,
   getBedrockStaticCredentials,
   BEDROCK_AUTH_ACCESS_KEYS,
-  BEDROCK_AUTH_IAM_ROLE
+  BEDROCK_AUTH_IAM_ROLE,
+  BEDROCK_ASSUME_ROLE_SESSION_NAME,
 } from '../../../backend/utils/bedrockCredentials.js';
 import { MASK } from '../../../backend/utils/sensitiveConfigKeys.js';
 
@@ -65,5 +66,10 @@ describe('bedrockCredentials', () => {
     expect(
       getBedrockStaticCredentials({ awsAccessKeyId: 'A', awsSecretAccessKey: 'B' })
     ).toEqual({ accessKeyId: 'A', secretAccessKey: 'B' });
+  });
+
+  it('uses fixed AssumeRole session name for cross-account trust policy', () => {
+    expect(BEDROCK_ASSUME_ROLE_SESSION_NAME).toBe('oscal-bedrock-session');
+    expect(BEDROCK_ASSUME_ROLE_SESSION_NAME.startsWith('oscal-bedrock-')).toBe(true);
   });
 });

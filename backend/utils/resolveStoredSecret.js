@@ -8,6 +8,34 @@ import { isCfgEncPointer, decryptConfigSecret } from './configFieldCrypto.js';
 import { isSmPointer, resolveSecretPointer } from './secretsManager.js';
 import { isPassPointer } from './passResolver.js';
 import { MASK, SENSITIVE_CONFIG_KEYS, getByPath, setByPath } from './sensitiveConfigKeys.js';
+import { hasPermission, PERMISSIONS } from '../auth/roles.js';
+
+/** Cross-account Bedrock infra paths — visible only to users with EDIT_SETTINGS. */
+const BEDROCK_CROSS_ACCOUNT_PATHS = [
+  'aiConfig.bedrockAssumeRoleArn',
+  'aiConfig.bedrockExternalId',
+];
+
+/**
+ * Redact cross-account Bedrock identifiers for non-admin clients.
+ * Returns skipPaths for maskSensitiveConfigForClient when user may view values.
+ * @param {Object} config - Mutable config clone
+ * @param {{ role?: string }|null|undefined} user
+ * @returns {string[]}
+ */
+export function applyRoleBasedConfigRedaction(config, user) {
+  const canEditSettings = Boolean(user?.role && hasPermission(user.role, PERMISSIONS.EDIT_SETTINGS));
+  if (canEditSettings) {
+    return [...BEDROCK_CROSS_ACCOUNT_PATHS];
+  }
+  for (const keyPath of BEDROCK_CROSS_ACCOUNT_PATHS) {
+    const v = getByPath(config, keyPath);
+    if (typeof v === 'string' && v.trim() && v !== MASK) {
+      setByPath(config, keyPath, MASK);
+    }
+  }
+  return [];
+}
 
 /**
  * @param {*} value

@@ -80,6 +80,35 @@
   outline-offset: 2px;
 }
 
+.footer-distribution {
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.footer-distribution a {
+  color: #007bff;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.footer-distribution a:hover {
+  color: #0056b3;
+  text-decoration: underline;
+  background: rgba(0, 123, 255, 0.05);
+}
+
+.footer-distribution-hint {
+  color: #6c757d;
+  font-size: 0.95em;
+}
+
 .divider {
   margin: 0 8px;
   color: #dee2e6;

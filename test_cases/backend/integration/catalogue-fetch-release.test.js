@@ -12,6 +12,7 @@ import {
   getCustomCatalogueUrls,
 } from '../../../backend/utils/sampleCatalogues.js';
 import { fetchCatalogueFromUrl } from '../../../backend/utils/fetchCatalogueFromUrl.js';
+import { getSsrfValidationOptions } from '../../../backend/utils/securityConfig.js';
 
 const skipLiveFetch = ['1', 'true', 'yes'].includes(
   String(process.env.OSCAL_SKIP_CATALOGUE_FETCH || '').toLowerCase()
@@ -21,11 +22,8 @@ jest.setTimeout(180000);
 
 const describeLive = skipLiveFetch ? describe.skip : describe;
 
-const urlOptions = {
-  allowPrivateIPs: false,
-  allowLocalhost: false,
-  timeoutMs: 120000,
-};
+const urlOptions = getSsrfValidationOptions('strictCatalogueFetch');
+urlOptions.timeoutMs = 120000;
 
 async function assertCatalogueFetch(entry, category) {
   const minControls = entry.minControls ?? 1;

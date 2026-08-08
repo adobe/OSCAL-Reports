@@ -80,20 +80,32 @@ Include in your request: account ID `442277170733`, that you need **ec2:RunInsta
 
 If apply fails with **AccessDenied: You are not authorized to use launch template**, set an approved Image Factory AMI in `terraform.tfvars`: `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (get from platform team).
 
-## SSAAU-169 (Image Factory Amazon Linux 2023 EMR)
+## SSAAU-169 / SSAAU-209 / SSAAU-216 (Image Factory Amazon Linux 2023 EMR)
 
-InfraSec tickets for AMS-OSCAL-Reporter Non-Prod (account **442277170733**) require the **latest** [Amazon Linux 2023 **EMR** flavor](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) from Image Factory, not the public Amazon `al2023-ami-*` fallback.
+InfraSec tickets for AMS-OSCAL-Reporter Non-Prod (account **442277170733**) require the **latest** [Amazon Linux 2023 **EMR** flavor](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) from Image Factory (target **IF 3.0.2** or newer for SSAAU-216), not the public Amazon `al2023-ami-*` fallback.
 
 1. **Confirm env:** `TERRAFORM_DIR=$PWD/terraform/envs/aws4403`, `AWS_PASS_ENTRY=AWS/AMS_4403-STG`, `aws_region = "us-east-1"` in `terraform.tfvars`.
-2. **Get AMI:** Open Image Factory EMR flavor (use your org if not DME), copy the newest **us-east-1** AMI for **x86_64** (this env uses `t3a.small`) or **arm64** if you use `t4g.small`. Optionally run (from repo root, with AWS creds):
+2. **Dynamic AMI (recommended):** Set `image_factory_dynamic_emr_lookup_enabled = true`, `image_factory_prefer_dynamic_emr_lookup = true`, and `image_factory_amazon_linux_ami_us_east_1 = null` in `terraform.tfvars`. Optionally list candidates:
    ```bash
    ./terraform/scripts/list-emr-candidate-amis.sh us-east-1 x86_64
    ```
-3. **Pin:** Set `image_factory_amazon_linux_ami_us_east_1 = "ami-..."` in `terraform.tfvars` and keep `instance_architecture` aligned.
-4. **Apply:** `./terraform/run-with-aws-pass.sh plan -out=tfplan` then `./terraform/run-with-aws-pass.sh apply tfplan`.
-5. **Data / app:** New instances get new **root** volumes each launch; when **persistent EBS** is enabled, **`/opt/oscal`** survives replacement on the same gp3 volume (AZ must stay aligned with each role’s subnet). Otherwise restore `/opt/oscal/data` from S3 (ec2_automation backups) and run `./scripts/deploy-to-ec2.sh` with the same `TERRAFORM_DIR` and Pass entries. Optional **`oscal_ssm_release_s3_prefix`** can sync packaged app bits from the logs bucket on an SSM schedule. Check ALB target health and `/health` on port **3020** (both Green and Blue).
-6. **Close ticket:** After CrowdStrike/Nexpose rescan is clean, close **SSAAU-169** (or use Adobe exception tooling if blocked).
+3. **Apply + refresh:** `./terraform/run-with-aws-pass.sh plan -out=tfplan` then `apply tfplan`. With `oscal_ami_auto_refresh_on_change = true`, apply runs staggered ASG refresh (Green then Blue). Or manually: `TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./scripts/oscal-staggered-ami-refresh.sh`
+4. **Verify:** `terraform output oscal_resolved_ami_id` (must not be stale). Check SSM Patch Manager compliance and CrowdStrike `If_Info` ≥ latest EMR.
+5. **Drift check:** `TERRAFORM_DIR=$PWD/terraform/envs/aws4403 ./scripts/check-ami-drift.sh` (weekly via `.github/workflows/ami-drift-check.yml` on personal fork).
+
+## SSAAU-212 (Splunk SCC / NotSendingSyslog)
+
+Security syslog compliance requires Splunk UF configured for Adobe SCC:
+
+- `oscal_splunk_uf_bootstrap_enabled = true` (default) — writes `deploymentclient.conf` + `00-secops_meta_app/local/inputs.conf` via user-data and SSM post-boot
+- `oscal_splunk_client_name = "DC-ue1-journald_seclogs-ams-oscal"` (AL2023 journald)
+- `oscal_splunk_deployment_server = "ds2.splunk.adobe.net:443"`
+- After bootstrap, wait up to **30 minutes** for deployment-server handshake (`Handshake done` in `splunkd.log`)
+
+6. **Splunk UF version:** SSM post-boot warns when Universal Forwarder is below `oscal_splunk_uf_min_version` (default 9.3.9).
+7. **Data / app:** When **persistent EBS** is enabled, **`/opt/oscal`** survives replacement. Otherwise restore from S3 and run `./scripts/deploy-to-ec2.sh`. Check ALB `/health/ready` on port **3020**.
+8. **Close tickets:** After CrowdStrike/Nexpose rescan and Splunk verification dashboard show logs, Zeus auto-closes SSAAU-216 (~2 days) and SSAAU-212 (~4 days).
 
 ---
 
-**Version:** 1.7.23 · **Last updated:** June 2026
+**Version:** 1.7.27 · **Last updated:** July 2026

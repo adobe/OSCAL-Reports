@@ -62,16 +62,16 @@ locals {
 set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
-podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman pull ${var.oscal_container_image}
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ${var.oscal_container_image}
 EOT
   oscal_user_data_blue_docker  = <<-EOT
 #!/bin/bash
 set -e
 dnf install -y curl podman
 systemctl enable --now podman.socket
-podman pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
-podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ghcr.io/adobemanagedservices/oscal-report-generator:latest
+podman pull ${var.oscal_container_image}
+podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ${var.oscal_container_image}
 EOT
   # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
   oscal_direct_user_data_green = <<-EOT
@@ -87,6 +87,8 @@ SVC_HOME="/var/lib/svc_ams-oscal"
 # Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
 systemctl start amazon-ssm-agent 2>/dev/null || true
 systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+${local.oscal_splunk_bootstrap_user_data_fragment}
 
 # Service account for OSCAL (app and cron run as this user, not root)
 getent group $SVC_GROUP >/dev/null 2>&1 || groupadd -r $SVC_GROUP
@@ -139,6 +141,8 @@ ${local.bedrock_bootstrap_fragment}
 
 ${local.first_boot_install_fragment}
 
+${local.bedrock_apply_from_s3_fragment}
+
 systemctl daemon-reload
 systemctl enable oscal-reporter.service
 systemctl start oscal-reporter.service
@@ -157,6 +161,8 @@ SVC_HOME="/var/lib/svc_ams-oscal"
 # Start SSM agent so Session Manager works (instance role has AmazonSSMManagedInstanceCore)
 systemctl start amazon-ssm-agent 2>/dev/null || true
 systemctl enable amazon-ssm-agent 2>/dev/null || true
+
+${local.oscal_splunk_bootstrap_user_data_fragment}
 
 # Service account for OSCAL (app and cron run as this user, not root)
 getent group $SVC_GROUP >/dev/null 2>&1 || groupadd -r $SVC_GROUP
@@ -209,6 +215,8 @@ ${local.rds_bootstrap_fragment}
 ${local.bedrock_bootstrap_fragment}
 
 ${local.first_boot_install_fragment}
+
+${local.bedrock_apply_from_s3_fragment}
 
 systemctl daemon-reload
 systemctl enable oscal-reporter.service

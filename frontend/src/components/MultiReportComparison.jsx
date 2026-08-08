@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import axios from '../utils/safeAxios.js';
-import buildInfo from '../utils/buildInfo';
+import AuthorCreditsFooter from './AuthorCreditsFooter';
 import { useAuth } from '../contexts/AuthContext';
 import { exportErrorMessage } from '../utils/exportErrorMessage';
 import {
@@ -157,7 +157,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
             }
             if (!prefs.baselineUrl) {
               try {
-                const settingsRes = await axios.get('/api/settings', getAuthConfig());
+                const settingsRes = await axios.get('/api/settings/runtime', getAuthConfig());
                 const legacyUrl = (settingsRes.data?.publishedSoaUrl || '').trim();
                 if (legacyUrl && !legacyUrl.startsWith('/api/published-soa/')) {
                   setSlotUrls((prev) => ({ ...prev, baseline: legacyUrl }));
@@ -170,7 +170,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
           }
         }
 
-        const response = await axios.get('/api/settings', getAuthConfig());
+        const response = await axios.get('/api/settings/runtime', getAuthConfig());
         const serverSettings = response.data;
         const dbEnabled = !!(serverSettings.databaseConfig?.enabled);
         setDatabaseIntegrationEnabled(dbEnabled);
@@ -954,13 +954,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
         {renderAssessmentExportPanel()}
 
         <footer className="app-footer">
-          <p>
-            <strong>Made with Passion by Mukesh Kesharwani</strong><br />
-            <small>mukesh.kesharwani@adobe.com | Adobe - Built with React and Node.js</small><br />
-            <small style={{ opacity: 0.7, fontSize: '0.85em' }}>
-              {buildInfo.getFormattedInfo()} | {buildInfo.environment === 'development' ? '🔧 Development Mode' : '🚀 Production Build'}
-            </small>
-          </p>
+          <AuthorCreditsFooter showTechStack />
         </footer>
       </div>
     );
@@ -1028,13 +1022,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
       </div>
 
       <footer className="app-footer">
-        <p>
-          <strong>Made with Passion by Mukesh Kesharwani</strong><br />
-          <small>mukesh.kesharwani@adobe.com | Adobe - Built with React and Node.js</small><br />
-          <small style={{ opacity: 0.7, fontSize: '0.85em' }}>
-            {buildInfo.getFormattedInfo()} | {buildInfo.environment === 'development' ? '🔧 Development Mode' : '🚀 Production Build'}
-          </small>
-        </p>
+        <AuthorCreditsFooter showTechStack />
       </footer>
     </div>
   );

@@ -31,24 +31,24 @@ describe('configSecretMigration', () => {
 
   it('findPlaintextSecretPaths lists sensitive plaintext fields', () => {
     const config = {
-      messagingConfig: { email: { smtpPassword: 'plain-smtp' } },
+      messagingConfig: { slack: { webhookUrl: 'plain-webhook' } },
       aiConfig: { apiToken: { _cfgenc: 'v1$placeholder' } },
     };
     const paths = findPlaintextSecretPaths(config);
-    expect(paths).toContain('messagingConfig.email.smtpPassword');
+    expect(paths).toContain('messagingConfig.slack.webhookUrl');
     expect(paths).not.toContain('aiConfig.apiToken');
   });
 
   it('migrateConfigSecretsInPlace encrypts plaintext to _cfgenc', async () => {
     const config = {
-      messagingConfig: { email: { smtpPassword: 'migrate-me' } },
+      messagingConfig: { slack: { webhookUrl: 'migrate-me' } },
     };
     const { changed, migrated, errors } = await migrateConfigSecretsInPlace(config);
     expect(errors).toEqual([]);
     expect(changed).toBe(true);
-    expect(migrated).toContain('messagingConfig.email.smtpPassword');
-    expect(isCfgEncPointer(config.messagingConfig.email.smtpPassword)).toBe(true);
-    expect(decryptConfigSecret(config.messagingConfig.email.smtpPassword)).toBe('migrate-me');
+    expect(migrated).toContain('messagingConfig.slack.webhookUrl');
+    expect(isCfgEncPointer(config.messagingConfig.slack.webhookUrl)).toBe(true);
+    expect(decryptConfigSecret(config.messagingConfig.slack.webhookUrl)).toBe('migrate-me');
   });
 
   it('validateConfigSecretsProtected fails when plaintext present', () => {

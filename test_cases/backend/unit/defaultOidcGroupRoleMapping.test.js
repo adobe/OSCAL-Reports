@@ -14,7 +14,7 @@ describe('defaultOidcGroupRoleMapping', () => {
   it('includes Adobe AMS default groups with correct roles', () => {
     expect(DEFAULT_OIDC_GROUP_TO_ROLE_MAPPING['GRP-TECHGRC-ALL']).toBe(ROLES.ASSESSOR);
     expect(DEFAULT_OIDC_GROUP_TO_ROLE_MAPPING['GRP-TECHGRC-ASSURANCE-MANAGERS']).toBe(ROLES.ASSESSOR);
-    expect(DEFAULT_OIDC_GROUP_TO_ROLE_MAPPING['DL-AMS-Security']).toBe(ROLES.USER);
+    expect(DEFAULT_OIDC_GROUP_TO_ROLE_MAPPING['DL-AMS-Security']).toBe(ROLES.PLATFORM_ADMIN);
     expect(DEFAULT_OIDC_GROUP_TO_ROLE_MAPPING.Adobe_MS_IDP_Admin).toBe(ROLES.PLATFORM_ADMIN);
   });
 

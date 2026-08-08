@@ -120,9 +120,21 @@ variable "image_factory_ami_name_pattern" {
 
 # Optional: set Image Factory Amazon Linux 2023 AMI per region from tfvars (no need to edit image_factory_ami.tf).
 variable "image_factory_amazon_linux_ami_us_east_1" {
-  description = "Optional: Adobe Image Factory Amazon Linux 2023 **EMR** (or approved AL2023) AMI ID for us-east-1. When set, used for Green and Blue. Get latest from Image Factory UI EMR flavor; optional CLI: terraform/scripts/list-emr-candidate-amis.sh. Leave null to use static map in image_factory_ami.tf or native AL2023."
+  description = "Optional: Adobe Image Factory Amazon Linux 2023 **EMR** (or approved AL2023) AMI ID for us-east-1. When set, used for Green and Blue unless image_factory_prefer_dynamic_emr_lookup is true. Get latest from Image Factory UI EMR flavor; optional CLI: terraform/scripts/list-emr-candidate-amis.sh. Leave null to use dynamic lookup or native AL2023."
   type        = string
   default     = null
+}
+
+variable "image_factory_dynamic_emr_lookup_enabled" {
+  description = "When true (default), resolve the newest launchable Image Factory Amazon Linux 2023 EMR AMI shared with this account (executable-users self). Requires AWS creds at plan/apply. See terraform/scripts/resolve-latest-emr-ami.sh."
+  type        = bool
+  default     = true
+}
+
+variable "image_factory_prefer_dynamic_emr_lookup" {
+  description = "When true (default), dynamic EMR lookup takes precedence over image_factory_amazon_linux_ami_us_east_1 static pin. Set false to freeze a specific AMI ID for compliance holds."
+  type        = bool
+  default     = true
 }
 
 variable "use_rhel9" {
@@ -150,6 +162,13 @@ variable "run_oscal_via_docker" {
   default     = false
 }
 
+# GHCR image for run_oscal_via_docker = true (canonical: adobe/OSCAL-Reports packages)
+variable "oscal_container_image" {
+  description = "Container image for Docker/podman mode on EC2 (GHCR). Default matches adobe/OSCAL-Reports GitHub Container Registry."
+  type        = string
+  default     = "ghcr.io/adobe/oscal-report-generator:latest"
+}
+
 # Persistent EBS + ASG (see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
 variable "oscal_persistent_ebs_enabled" {
   description = "When true and run_oscal_via_docker is false, provision dedicated gp3 volumes and mount at /opt/oscal on boot (Auto Scaling launch template user_data). Ignored for Docker mode."
@@ -167,6 +186,78 @@ variable "oscal_asg_health_check_grace_period" {
   description = "Seconds after instance launch before ELB health checks count for ASG (allow volume mount, Node install, service start)."
   type        = number
   default     = 420
+}
+
+variable "oscal_traffic_mode" {
+  description = "Blue/Green traffic: active_passive (primary color only; passive scale-to-zero when idle) or active_active (50/50 ALB weights)."
+  type        = string
+  default     = "active_passive"
+
+  validation {
+    condition     = contains(["active_passive", "active_active"], var.oscal_traffic_mode)
+    error_message = "oscal_traffic_mode must be active_passive or active_active."
+  }
+}
+
+variable "oscal_active_role" {
+  description = "Primary color when oscal_traffic_mode is active_passive (receives production ALB weight)."
+  type        = string
+  default     = "blue"
+
+  validation {
+    condition     = contains(["blue", "green"], var.oscal_active_role)
+    error_message = "oscal_active_role must be blue or green."
+  }
+}
+
+variable "oscal_passive_role" {
+  description = "Standby color when oscal_traffic_mode is active_passive (scale-to-zero when idle)."
+  type        = string
+  default     = "green"
+
+  validation {
+    condition     = contains(["blue", "green"], var.oscal_passive_role)
+    error_message = "oscal_passive_role must be blue or green."
+  }
+}
+
+variable "oscal_passive_min_size" {
+  description = "ASG min_size for the passive color when oscal_traffic_mode is active_passive (0 allows scale-to-zero)."
+  type        = number
+  default     = 0
+}
+
+variable "oscal_passive_max_size" {
+  description = "ASG max_size for the passive color when oscal_traffic_mode is active_passive."
+  type        = number
+  default     = 1
+}
+
+variable "oscal_passive_idle_shutdown_hours" {
+  description = "Hours of no ALB traffic to passive target group before idle shutdown automation scales passive ASG to 0."
+  type        = number
+  default     = 4
+}
+
+variable "oscal_standby_automation_enabled" {
+  description = "When true and active_passive, create Lambda + CloudWatch for passive idle shutdown and primary-unhealthy failover wake."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_deploy_edge_canary_enabled" {
+  description = "When true, deploy_green traffic mode may route Edge User-Agent to passive Green via ALB listener rule (scripts)."
+  type        = bool
+  default     = true
+}
+
+resource "terraform_data" "oscal_traffic_mode_validation" {
+  lifecycle {
+    precondition {
+      condition     = var.oscal_traffic_mode != "active_passive" || var.oscal_active_role != var.oscal_passive_role
+      error_message = "When oscal_traffic_mode is active_passive, oscal_active_role and oscal_passive_role must differ."
+    }
+  }
 }
 
 variable "oscal_ssm_post_boot_association_enabled" {
@@ -210,14 +301,62 @@ variable "oscal_os_patch_reboot_option" {
 }
 
 variable "oscal_os_patch_approval_days" {
-  description = "Auto-approve patches released within this many days (patch baseline approval rule)."
+  description = "Auto-approve patches released within this many days (patch baseline approval rule). Default 1 for ≤7-day unpatched SLA; use 0 for immediate approval."
   type        = number
-  default     = 7
+  default     = 1
 
   validation {
     condition     = var.oscal_os_patch_approval_days >= 0 && var.oscal_os_patch_approval_days <= 180
     error_message = "oscal_os_patch_approval_days must be between 0 and 180."
   }
+}
+
+variable "oscal_os_patch_weekly_scan_enabled" {
+  description = "When true and oscal_os_patch_enabled, run AWS-RunPatchBaseline Scan every Sunday (UTC) on Stack-tagged instances for early CVE detection between Install windows."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_os_patch_on_launch_enabled" {
+  description = "When true and oscal_os_patch_enabled, EventBridge triggers AWS-RunPatchBaseline Install when OSCAL-tagged EC2 instances enter running state."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_ami_auto_refresh_on_change" {
+  description = "When true, run staggered ASG instance refresh (Green then Blue) via local-exec after launch template AMI changes. Requires AWS CLI creds during terraform apply. See scripts/oscal-staggered-ami-refresh.sh."
+  type        = bool
+  default     = false
+}
+
+variable "oscal_splunk_uf_upgrade_enabled" {
+  description = "When true, SSM post-boot document checks Splunk Universal Forwarder version and upgrades when below oscal_splunk_uf_min_version (requires splunk repo/package on host)."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_splunk_uf_min_version" {
+  description = "Minimum Splunk Universal Forwarder version for compliance (e.g. SSAAU-209 CVE-2025-9230 requires 9.3.9+)."
+  type        = string
+  default     = "9.3.9"
+}
+
+variable "oscal_splunk_uf_bootstrap_enabled" {
+  description = "When true, user-data and SSM post-boot configure Splunk UF for Security SCC (deploymentclient.conf + secops metadata; SSAAU-212)."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_splunk_deployment_server" {
+  description = "Splunk deployment server targetUri for Security SCC (Adobe standard: ds2.splunk.adobe.net:443)."
+  type        = string
+  default     = "ds2.splunk.adobe.net:443"
+}
+
+variable "oscal_splunk_client_name" {
+  description = "Splunk UF deployment clientName. AL2023 without rsyslog must include journald_seclogs (e.g. DC-ue1-journald_seclogs-ams-oscal)."
+  type        = string
+  default     = "DC-ue1-journald_seclogs-ams-oscal"
 }
 
 # S3 (best practice: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
@@ -395,6 +534,11 @@ variable "bedrock_cross_account_enabled" {
   description = "When true, grant OSCAL EC2 instance role sts:AssumeRole on the Bedrock account IAM role (requires bedrock_external_id and role ARN or bedrock_account_id)."
   type        = bool
   default     = false
+
+  validation {
+    condition = !var.bedrock_cross_account_enabled || trimspace(var.bedrock_external_id) != ""
+    error_message = "bedrock_external_id must be set when bedrock_cross_account_enabled is true (must match Account B trust policy sts:ExternalId)."
+  }
 }
 
 variable "bedrock_account_id" {

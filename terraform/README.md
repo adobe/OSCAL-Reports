@@ -23,7 +23,8 @@ This directory contains Terraform to provision the AWS architecture for the OSCA
 - `security_groups.tf` – ALB, OSCAL security groups
 - `alb.tf` – Application Load Balancer and target groups (Green and Blue, same app port)
 - `oscal_instances.tf` – Green/Blue user data (Node/Docker), locals for persistent EBS snippets
-- `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (size 1), optional gp3 volumes, ALB attachments
+- `oscal_asg_ebs.tf` – Launch templates, Auto Scaling Groups (active-passive: primary size 1, passive scale-to-zero), optional gp3 volumes, ALB attachments
+- `oscal_standby_automation.tf` – SSM traffic-mode parameter, Lambda idle shutdown + failover wake (active_passive)
 - `oscal_ssm.tf` – SSM Command document and optional periodic association (post-boot checks / optional S3 sync)
 - `oscal_ssm_patch.tf` – SSM Patch Manager baseline, patch groups, and staggered Blue/Green maintenance windows
 - `rds.tf` – Amazon RDS PostgreSQL (Database Integration; IAM DB auth) when `create_rds_postgres = true` (default **true**; set `false` in `terraform.tfvars` to skip RDS)
@@ -39,7 +40,7 @@ Each env has its own `terraform.tfvars` (copy from `envs/<env>/terraform.tfvars.
 
 **Image Factory EMR (InfraSec):** To list candidate **Amazon Linux 2023 EMR** AMIs launchable in your account, run [scripts/list-emr-candidate-amis.sh](scripts/list-emr-candidate-amis.sh) with AWS credentials (see [docs/AWS_OPERATIONS.md – Image Factory](../docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform) and [envs/aws4403/README.md](envs/aws4403/README.md) § SSAAU-169).
 
-**Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js; config/users live under **`/opt/oscal/data`** on the instance (persistent gp3 at **`/opt/oscal`** when enabled) with **ec2_automation** backups to S3. After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` in that env’s `terraform.tfvars`.
+**Run mode:** By default (`run_oscal_via_docker = false`) EC2 runs OSCAL directly with Node.js; config/users live under **`/opt/oscal/data`** on the instance (persistent gp3 at **`/opt/oscal`** when enabled) with **ec2_automation** backups to S3. After apply, deploy code from repo root: `./scripts/deploy-to-ec2.sh`. To use Docker on EC2 instead, set `run_oscal_via_docker = true` and optionally `oscal_container_image` (default **`ghcr.io/adobe/oscal-report-generator:latest`**) in that env’s `terraform.tfvars`.
 
 **Credentials from Pass (default aws4403):** With [Pass](https://www.passwordstore.org/) and credentials in `AWS/AMS_4403-STG`:
 
@@ -110,4 +111,4 @@ Then run `terraform plan` and `terraform apply` again. AWS credentials must be s
 
 ---
 
-**Version:** 1.7.23 · **Last updated:** June 2026
+**Version:** 1.7.27 · **Last updated:** July 2026

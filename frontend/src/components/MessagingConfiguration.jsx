@@ -30,23 +30,12 @@ function MessagingConfiguration({ embedded = false }) {
   const [lastSaved, setLastSaved] = useState(null);
   const [messagingConfig, setMessagingConfig] = useState({
     enabled: false,
-    channel: 'email',
-    email: {
-      enabled: false,
-      smtpHost: '',
-      smtpPort: 587,
-      smtpSecure: false,
-      smtpUser: '',
-      smtpPassword: '',
-      fromEmail: '',
-      fromName: 'OSCAL Report Generator',
-      loginUrl: ''
-    },
+    channel: 'slack',
     slack: {
       enabled: false,
       webhookUrl: '',
-      channel: '#general'
-    }
+      channel: '#general',
+    },
   });
 
   useEffect(() => {
@@ -59,31 +48,27 @@ function MessagingConfiguration({ embedded = false }) {
       const response = await axios.get('/api/settings', getAuthConfig());
       const config = response.data.messagingConfig || {
         enabled: false,
-        channel: 'email',
-        email: {
-          enabled: false,
-          smtpHost: '',
-          smtpPort: 587,
-          smtpSecure: false,
-          smtpUser: '',
-          smtpPassword: '',
-          fromEmail: '',
-          fromName: 'OSCAL Report Generator',
-          loginUrl: ''
-        },
+        channel: 'slack',
         slack: {
           enabled: false,
           webhookUrl: '',
-          channel: '#general'
-        }
+          channel: '#general',
+        },
       };
-      setMessagingConfig(config);
-      
-      // Set last modified timestamp if available
+      setMessagingConfig({
+        enabled: !!config.enabled,
+        channel: 'slack',
+        slack: {
+          enabled: !!config.slack?.enabled,
+          webhookUrl: config.slack?.webhookUrl || '',
+          channel: config.slack?.channel || '#general',
+        },
+      });
+
       if (response.data.lastModified) {
         setLastSaved(response.data.lastModified);
       }
-      
+
       setMessage('');
       setVerificationStatus(null);
     } catch (error) {
@@ -103,29 +88,31 @@ function MessagingConfiguration({ embedded = false }) {
     try {
       setSaving(true);
       setVerificationStatus(null);
-      
+
       const response = await axios.get('/api/settings', getAuthConfig());
       const currentConfig = response.data;
-      
+
       const updatedConfig = {
         ...currentConfig,
-        messagingConfig: messagingConfig
+        messagingConfig: {
+          enabled: messagingConfig.enabled,
+          channel: 'slack',
+          slack: messagingConfig.slack,
+        },
       };
 
       const saveResponse = await axios.post('/api/settings', updatedConfig, getAuthConfig());
-      
-      // Handle verification status
+
       const verification = saveResponse.data.verification;
       if (verification) {
         setVerificationStatus({
           verified: verification.verified,
           timestamp: verification.timestamp,
-          configPath: verification.configPath,
           discrepancies: verification.discrepancies,
-          warning: verification.warning
+          warning: verification.warning,
         });
         setLastSaved(verification.timestamp);
-        
+
         if (verification.verified) {
           setMessage('✅ Configuration saved and verified on disk');
         } else {
@@ -133,12 +120,11 @@ function MessagingConfiguration({ embedded = false }) {
           console.warn('Verification discrepancies:', verification.discrepancies);
         }
       } else {
-        setMessage('✅ Messaging configuration saved successfully');
+        setMessage('✅ Slack messaging configuration saved successfully');
       }
-      
-      // Reload config to ensure UI shows what's actually on disk
+
       await loadMessagingConfig();
-      
+
       setTimeout(() => {
         setMessage('');
         setVerificationStatus(null);
@@ -152,30 +138,6 @@ function MessagingConfiguration({ embedded = false }) {
     }
   };
 
-  const handleTestEmail = async () => {
-    try {
-      setTesting(true);
-      const response = await axios.post('/api/messaging/test-email',
-        {
-          emailConfig: {
-            ...messagingConfig.email,
-            smtpPassword: normalizeSecretField(messagingConfig.email.smtpPassword),
-          },
-        },
-        getAuthConfig()
-      );
-      if (response.data.success) {
-        setMessage('✅ Email test successful');
-      } else {
-        setMessage('❌ Email test failed: ' + response.data.error);
-      }
-    } catch (error) {
-      setMessage('❌ Email test failed: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setTesting(false);
-    }
-  };
-
   const handleTestSlack = async () => {
     try {
       setTesting(true);
@@ -186,8 +148,7 @@ function MessagingConfiguration({ embedded = false }) {
             webhookUrl: normalizeSecretField(messagingConfig.slack.webhookUrl),
           },
         },
-        getAuthConfig()
-      );
+        getAuthConfig());
       if (response.data.success) {
         setMessage('✅ Slack test successful - Check your Slack channel');
       } else {
@@ -201,7 +162,7 @@ function MessagingConfiguration({ embedded = false }) {
   };
 
   if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading messaging configuration...</div>;
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading Slack messaging configuration...</div>;
   }
 
   const canEdit = canManageUsers();
@@ -210,18 +171,18 @@ function MessagingConfiguration({ embedded = false }) {
     <div className={`messaging-config-container ${embedded ? 'embedded' : ''}`} style={{ display: 'block', visibility: 'visible', opacity: 1 }}>
       {!embedded && (
         <div className="messaging-config-header">
-          <h2>📧 Messaging Configuration</h2>
+          <h2>💬 Slack Notifications</h2>
           <p className="section-description">
-            Configure Email or Slack to automatically send user credentials when new users are created. Use <strong>Test</strong> with the values in this form (nothing is saved until you click Save Configuration).
+            Configure Slack to automatically send user credentials when new users are created. Use <strong>Test</strong> with the values in this form (nothing is saved until you click Save Configuration).
           </p>
         </div>
       )}
-      
+
       {embedded && (
         <div className="messaging-config-header" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #e0e0e0', marginBottom: '1.5rem' }}>
-          <h3 style={{ margin: '0 0 0.5rem 0', color: '#1976d2' }}>📧 Messaging Configuration</h3>
+          <h3 style={{ margin: '0 0 0.5rem 0', color: '#1976d2' }}>💬 Slack Notifications</h3>
           <p className="section-description" style={{ margin: 0, fontSize: '0.9rem' }}>
-            Configure Email or Slack to automatically send user credentials when new users are created. Use <strong>Test</strong> with the values in this form (nothing is saved until you click Save Configuration).
+            Configure Slack to automatically send user credentials when new users are created. Use <strong>Test</strong> with the values in this form (nothing is saved until you click Save Configuration).
           </p>
         </div>
       )}
@@ -238,7 +199,6 @@ function MessagingConfiguration({ embedded = false }) {
         </div>
       )}
 
-      {/* Config Verification Status */}
       {verificationStatus && (
         <div className={`verification-status ${verificationStatus.verified ? 'verified' : 'warning'}`}>
           <div className="verification-header">
@@ -256,7 +216,6 @@ function MessagingConfiguration({ embedded = false }) {
           </div>
           <div className="verification-details">
             <div>Saved at: {new Date(verificationStatus.timestamp).toLocaleString()}</div>
-            <div>Location: {verificationStatus.configPath}</div>
             {verificationStatus.discrepancies && (
               <div className="verification-warning">
                 Issues found: {verificationStatus.discrepancies.join(', ')}
@@ -266,7 +225,6 @@ function MessagingConfiguration({ embedded = false }) {
         </div>
       )}
 
-      {/* Last Saved Indicator */}
       {lastSaved && !verificationStatus && (
         <div className="last-saved-indicator">
           <span className="last-saved-icon">💾</span>
@@ -274,7 +232,6 @@ function MessagingConfiguration({ embedded = false }) {
         </div>
       )}
 
-      {/* Enable/Disable Messaging */}
       <div className="config-group">
         <div className="form-group">
           <label>
@@ -283,224 +240,19 @@ function MessagingConfiguration({ embedded = false }) {
               checked={messagingConfig.enabled}
               onChange={(e) => setMessagingConfig({
                 ...messagingConfig,
-                enabled: e.target.checked
+                enabled: e.target.checked,
               })}
               disabled={!canEdit}
             />
-            Enable Messaging (Send credentials automatically when users are created)
+            Enable Slack messaging (send credentials when users are created)
           </label>
         </div>
-
-        {messagingConfig.enabled && (
-          <div className="form-group">
-            <label>Messaging Channel</label>
-            <select
-              value={messagingConfig.channel}
-              onChange={(e) => setMessagingConfig({
-                ...messagingConfig,
-                channel: e.target.value
-              })}
-              disabled={!canEdit}
-            >
-              <option value="email">Email</option>
-              <option value="slack">Slack</option>
-            </select>
-          </div>
-        )}
       </div>
 
-      {/* Email Configuration */}
-      {messagingConfig.enabled && messagingConfig.channel === 'email' && (
-        <div className="config-group">
-          <h3>📧 Email Configuration</h3>
-          
-          <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={messagingConfig.email.enabled}
-                onChange={(e) => setMessagingConfig({
-                  ...messagingConfig,
-                  email: {
-                    ...messagingConfig.email,
-                    enabled: e.target.checked
-                  }
-                })}
-                disabled={!canEdit}
-              />
-              Enable Email Notifications
-            </label>
-          </div>
-
-          {(messagingConfig.email.enabled || canEdit) && (
-            <>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>SMTP Host *</label>
-                  <input
-                    type="text"
-                    placeholder="smtp.gmail.com"
-                    value={messagingConfig.email.smtpHost}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        smtpHost: e.target.value
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>SMTP Port *</label>
-                  <input
-                    type="number"
-                    placeholder="587"
-                    value={messagingConfig.email.smtpPort}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        smtpPort: parseInt(e.target.value) || 587
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={messagingConfig.email.smtpSecure}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        smtpSecure: e.target.checked
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                  Use SSL/TLS (check for port 465)
-                </label>
-                <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-                  <strong>Port Configuration Guide:</strong><br/>
-                  • Port 587 (STARTTLS): Uncheck SSL/TLS ✓<br/>
-                  • Port 465 (SSL/TLS): Check SSL/TLS ✓<br/>
-                  • Port 25 (Plain SMTP): Uncheck SSL/TLS
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>SMTP Username *</label>
-                  <input
-                    type="text"
-                    placeholder="your-email@example.com"
-                    value={messagingConfig.email.smtpUser}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        smtpUser: e.target.value
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>SMTP Password *</label>
-                  <input
-                    type="password"
-                    placeholder="Your email password or app password"
-                    value={messagingConfig.email.smtpPassword}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        smtpPassword: e.target.value
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>From Email *</label>
-                  <input
-                    type="email"
-                    placeholder="noreply@example.com"
-                    value={messagingConfig.email.fromEmail}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        fromEmail: e.target.value
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>From Name</label>
-                  <input
-                    type="text"
-                    placeholder="OSCAL Report Generator"
-                    value={messagingConfig.email.fromName}
-                    onChange={(e) => setMessagingConfig({
-                      ...messagingConfig,
-                      email: {
-                        ...messagingConfig.email,
-                        fromName: e.target.value
-                      }
-                    })}
-                    disabled={!canEdit}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Login URL</label>
-                <input
-                  type="url"
-                  placeholder="https://your-platform-url"
-                  value={messagingConfig.email.loginUrl}
-                  onChange={(e) => setMessagingConfig({
-                    ...messagingConfig,
-                    email: {
-                      ...messagingConfig.email,
-                      loginUrl: e.target.value
-                    }
-                  })}
-                  disabled={!canEdit}
-                />
-                <small>URL where users can log in (included in email)</small>
-              </div>
-
-              {canEdit && (
-                <button
-                  type="button"
-                  className="btn-test"
-                  onClick={handleTestEmail}
-                  disabled={saving || testing}
-                >
-                  {testing ? '⏳ Testing…' : '🧪 Test Email Configuration'}
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Slack Configuration */}
-      {messagingConfig.enabled && messagingConfig.channel === 'slack' && (
+      {messagingConfig.enabled && (
         <div className="config-group">
           <h3>💬 Slack Configuration</h3>
-          
+
           <div className="form-group">
             <label>
               <input
@@ -510,8 +262,8 @@ function MessagingConfiguration({ embedded = false }) {
                   ...messagingConfig,
                   slack: {
                     ...messagingConfig.slack,
-                    enabled: e.target.checked
-                  }
+                    enabled: e.target.checked,
+                  },
                 })}
                 disabled={!canEdit}
               />
@@ -531,8 +283,8 @@ function MessagingConfiguration({ embedded = false }) {
                     ...messagingConfig,
                     slack: {
                       ...messagingConfig.slack,
-                      webhookUrl: e.target.value
-                    }
+                      webhookUrl: e.target.value,
+                    },
                   })}
                   disabled={!canEdit}
                 />
@@ -554,8 +306,8 @@ function MessagingConfiguration({ embedded = false }) {
                     ...messagingConfig,
                     slack: {
                       ...messagingConfig.slack,
-                      channel: e.target.value
-                    }
+                      channel: e.target.value,
+                    },
                   })}
                   disabled={!canEdit}
                 />
@@ -602,4 +354,3 @@ function MessagingConfiguration({ embedded = false }) {
 }
 
 export default MessagingConfiguration;
-

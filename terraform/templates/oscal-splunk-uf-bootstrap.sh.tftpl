@@ -1,0 +1,97 @@
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
+#
+# Idempotent Splunk Universal Forwarder SCC bootstrap (SSAAU-212).
+# Configures deployment server client + secops metadata for Security Splunk SCC.
+
+SPLUNK_HOME="/opt/splunkforwarder"
+SPLUNK_BIN="$${SPLUNK_HOME}/bin/splunk"
+DEPLOYMENT_SERVER="${deployment_server}"
+CLIENT_NAME="${client_name}"
+META_CLOUD_ID="${aws_account_id}"
+BOOTSTRAP_LOG_TAG="oscal-splunk-uf"
+
+log_msg() {
+  echo "$${BOOTSTRAP_LOG_TAG}: $*"
+}
+
+warn_msg() {
+  echo "$${BOOTSTRAP_LOG_TAG}: WARNING $*" >&2
+}
+
+if [ ! -x "$${SPLUNK_BIN}" ]; then
+  warn_msg "Splunk UF not installed at $${SPLUNK_BIN} — open LOGREQ or install via platform CST repo"
+  exit 0
+fi
+
+imds_token=""
+instance_id=""
+if command -v curl >/dev/null 2>&1; then
+  for _try in 1 2 3 4 5; do
+    imds_token="$$(curl -sf -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+      http://169.254.169.254/latest/api/token 2>/dev/null || true)"
+    if [ -n "$${imds_token}" ]; then
+      instance_id="$$(curl -sf -H "X-aws-ec2-metadata-token: $${imds_token}" \
+        http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || true)"
+      if [ -n "$${instance_id}" ]; then
+        break
+      fi
+    fi
+    sleep 2
+  done
+fi
+
+if [ -z "$${instance_id}" ] && command -v aws >/dev/null 2>&1; then
+  instance_id="$$(aws ec2 describe-instances \
+    --filters "Name=private-ip-address,Values=$$(hostname -I 2>/dev/null | awk '{print $$1}')" \
+    --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null || true)"
+  if [ "$${instance_id}" = "None" ] || [ -z "$${instance_id}" ]; then
+    instance_id=""
+  fi
+fi
+
+if [ -z "$${instance_id}" ]; then
+  warn_msg "Could not resolve instance-id from IMDSv2; using placeholder for meta_instance_id"
+  instance_id="unknown"
+fi
+
+dc_app_dir="$${SPLUNK_HOME}/etc/apps/DC-seclogs/local"
+meta_app_dir="$${SPLUNK_HOME}/etc/apps/00-secops_meta_app/local"
+mkdir -p "$${dc_app_dir}" "$${meta_app_dir}"
+
+cat >"$${dc_app_dir}/deploymentclient.conf" <<EOF
+[deployment-client]
+disabled = false
+clientName = $${CLIENT_NAME}
+phoneHomeIntervalInSecs = 1800
+sslCommonNameToCheck = *.splunk.adobe.net
+sslVerifyServerCert = false
+
+[target-broker:deploymentServer]
+targetUri = $${DEPLOYMENT_SERVER}
+EOF
+
+cat >"$${meta_app_dir}/inputs.conf" <<EOF
+[default]
+_meta = meta_cloud_id::$${META_CLOUD_ID} meta_instance_id::$${instance_id}
+EOF
+
+if ! id splunk >/dev/null 2>&1 && id splunkfwd >/dev/null 2>&1; then
+  splunk_user="splunkfwd"
+else
+  splunk_user="splunk"
+fi
+
+chown -R "$${splunk_user}:$${splunk_user}" "$${SPLUNK_HOME}/etc/apps/DC-seclogs" "$${SPLUNK_HOME}/etc/apps/00-secops_meta_app"
+
+if command -v setfacl >/dev/null 2>&1; then
+  setfacl -Rm "u:$${splunk_user}:r-x,d:u:$${splunk_user}:r-x" /var/log 2>/dev/null || true
+fi
+
+if ! "$${SPLUNK_BIN}" status 2>/dev/null | grep -qi running; then
+  "$${SPLUNK_BIN}" enable boot-start -user "$${splunk_user}" --accept-license --answer-yes --no-prompt 2>/dev/null || true
+fi
+
+log_msg "Configured deploymentclient.conf clientName=$${CLIENT_NAME} target=$${DEPLOYMENT_SERVER} instance=$${instance_id}"
+"$${SPLUNK_BIN}" restart 2>/dev/null || systemctl restart splunk 2>/dev/null || service splunk restart 2>/dev/null || true
+log_msg "Splunk UF restart requested (allow up to 30 min for deployment-server handshake)"

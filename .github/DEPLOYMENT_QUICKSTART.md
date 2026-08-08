@@ -10,7 +10,7 @@
 
 **What happens:**
 1. ✅ Tests run (backend + frontend)
-2. 🐳 Docker image built → `ghcr.io/adobemanagedservices/oscal-report-generator`
+2. 🐳 Docker image built → `ghcr.io/adobe/oscal-report-generator`
 3. 📧 Notifications sent with URLs
 4. 🔐 Credentials available in artifacts
 
@@ -59,7 +59,7 @@ gh workflow run manual-deploy.yml -f environment=both
 
 ```bash
 # Pull latest image
-docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+docker pull ghcr.io/adobe/oscal-report-generator:latest
 
 # Run container
 docker run -d \
@@ -67,7 +67,7 @@ docker run -d \
   -p 3020:3020 \
   -v $(pwd)/config:/app/config \
   --restart unless-stopped \
-  ghcr.io/adobemanagedservices/oscal-report-generator:latest
+  ghcr.io/adobe/oscal-report-generator:latest
 
 # Verify
 curl http://localhost:3020/health
@@ -115,7 +115,7 @@ open http://nas.keekar.au:3020
 ### From Docker Container
 
 ```bash
-docker create --name temp-oscal ghcr.io/adobemanagedservices/oscal-report-generator:latest
+docker create --name temp-oscal ghcr.io/adobe/oscal-report-generator:latest
 docker cp temp-oscal:/app/credentials.txt .
 docker rm temp-oscal
 cat credentials.txt

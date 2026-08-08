@@ -2,8 +2,8 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.23**)  
-**Last Updated**: April 2026
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.27**)  
+**Last Updated**: July 2026
 
 ---
 
@@ -495,9 +495,8 @@ App State:
 - **Purpose**: Get default user passwords (for login UI display)
 - **Output**: `{ success: boolean, passwords: object, format: string }`
 - **Processing**:
-  1. Generate timestamp-based passwords for default users
-  2. Return passwords in format: `username#DDMMYYHH`
-  3. Include format explanation
+  1. Generate timestamp-based passwords for default users (deployment-unique, format intentionally undocumented)
+  2. Return generated passwords for login UI display
 
 #### GET `/api/auth/validate`
 - **Purpose**: Validate session token
@@ -779,9 +778,9 @@ After setup, test the integration:
    - **Migration**: Automatic migration from legacy SHA-256 passwords
 
 2. **Password Generation**
-   - Default passwords use timestamp format: `username#DDMMYYHH`
-   - Generated based on build/startup timestamp
+   - Default passwords are generated from the build/startup timestamp (exact derivation intentionally undocumented)
    - Unique per deployment instance
+   - Retrieve via login UI, `/api/auth/default-credentials`, or the generated credentials file — change immediately after first login
 
 ### Authentication & Authorization
 
@@ -809,8 +808,8 @@ After setup, test the integration:
    - Script integration for secure deployment
 
 3. **Pass-backed sensitive config**
-   - Passwords, tokens, and keys (SMTP password, Slack webhook, AI API token, AWS Bedrock credentials, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager.
-   - `config.json` holds only pointers, e.g. `{ "_pass": "OSCAL/smtp-password" }`. The backend resolves these at runtime via `getResolvedConfig()` and never persists plaintext secrets. GET APIs return raw config (pointers or masked values) so the client never receives resolved secrets.
+   - Passwords, tokens, and keys (Slack webhook URL, AI API token, AWS Bedrock credentials, SSO client secrets) are stored in the [pass](https://www.passwordstore.org/) password manager or AWS Secrets Manager on EC2.
+   - `config.json` holds only pointers, e.g. `{ "_sm": "OSCAL/slack-webhook-url" }`. The backend resolves these at runtime via `getResolvedConfig()`. `GET /api/settings` is Platform Admin only and returns masked values; non-admin clients use `GET /api/settings/runtime` for allowlisted fields only.
 
 ### General Security
 
@@ -1078,14 +1077,7 @@ Implemented FIPS 140-2 compliant password hashing using PBKDF2 with SHA-256, rep
 Default user passwords now use a timestamp-based format that includes build/startup time, replacing static passwords.
 
 **Password Format:**
-```
-username#DDMMYYHH
-```
-Where:
-- `DD` = Day (2 digits)
-- `MM` = Month (2 digits)
-- `YY` = Last 2 digits of year
-- `HH` = Hour in 24-hour format (2 digits)
+Default passwords are derived deterministically from the build/startup timestamp, giving each deployment a unique default. The exact derivation is intentionally not published here to avoid making default credentials guessable — retrieve the generated value via the login UI banner, the `/api/auth/default-credentials` endpoint (first run only), or the generated credentials file (see [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md#default-credentials)), then change it immediately after first login.
 
 **Features:**
 - ✅ Unique passwords based on build/startup timestamp
@@ -1270,6 +1262,17 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 1.7.27 (July 2026)
+- VULN-37000: async job auth, IDOR prevention, rate limits (`jobAccess.js`)
+- Deploy: passive-first Blue/Green; 502 prevention during AMI refresh
+- Proactive API auth inventory tests
+- Docker image `keekar/oscal_reports:v1.7.27` (multi-arch) when published
+
+### Version 1.7.25 (July 2026)
+- Terraform GHCR path `ghcr.io/adobe/oscal-report-generator` for EC2 Docker mode
+- Docker publish workflow: GHCR + Docker Hub
+- Docker image `keekar/oscal_reports:v1.7.25` (multi-arch) when published
 
 ### Version 1.7.23 (June 2026)
 - Dependabot dependency updates merged into Quality (#45–#61)

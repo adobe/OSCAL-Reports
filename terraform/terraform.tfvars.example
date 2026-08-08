@@ -56,11 +56,13 @@ s3_logs_bucket_name = "ams-oscal-442277170733"
 # ------------------------------------------------------------------------------
 # - use_image_factory_ami = true (default): Image Factory Amazon Linux 2023 if AMI set below or in image_factory_ami.tf; else native AL2023.
 # - use_image_factory_ami = false: use only native Amazon Linux 2023 (e.g. sandbox without Image Factory access).
-# - Set image_factory_amazon_linux_ami_us_east_1 to Adobe Image Factory Amazon Linux 2023 AMI (from Image Factory UI) so Green and Blue use it.
-# - Leave oscal_ami_id null so both use the same chain (Image Factory AL2023 or native AL2023).
+# - Set image_factory_amazon_linux_ami_us_east_1 to pin a specific EMR AMI, or leave null and enable dynamic lookup below.
+# - Leave oscal_ami_id null so both use the same chain (Image Factory EMR or native AL2023).
 # ------------------------------------------------------------------------------
 # use_image_factory_ami = true
-# image_factory_amazon_linux_ami_us_east_1 = null   # Set to "ami-xxxxxxxx" from Image Factory UI (Amazon Linux 2023) for us-east-1
+# image_factory_amazon_linux_ami_us_east_1 = null
+# image_factory_dynamic_emr_lookup_enabled = true
+# image_factory_prefer_dynamic_emr_lookup  = true
 # oscal_ami_id          = null
 # instance_architecture = "arm64"   # default for t4g (Graviton); use "x86_64" for t3a (AMD)
 
@@ -83,6 +85,16 @@ common_tags = {
 # oscal_persistent_ebs_enabled      = true   # extra gp3 per Green/Blue, mounted at /opt/oscal
 # oscal_data_volume_size_gb         = 50
 # oscal_asg_health_check_grace_period = 420  # seconds before ELB health affects ASG (tune if flapping)
+
+# Blue/Green active-passive (Blue primary, Green standby scale-to-zero when idle)
+# oscal_traffic_mode                  = "active_passive"  # or "active_active" for legacy 50/50
+# oscal_active_role                   = "blue"
+# oscal_passive_role                  = "green"
+# oscal_passive_min_size              = 0
+# oscal_passive_idle_shutdown_hours   = 4
+# oscal_standby_automation_enabled    = true
+# oscal_deploy_edge_canary_enabled    = true
+
 # oscal_ssm_post_boot_association_enabled = true   # periodic SSM document on tag OSCAL_SSM_TARGET=true
 # oscal_ssm_release_s3_prefix       = null  # e.g. "releases/current" inside s3_logs_bucket_name for SSM sync
 
@@ -90,7 +102,21 @@ common_tags = {
 # oscal_os_patch_enabled          = true
 # oscal_os_patch_hour             = 2      # UTC; 02:00 UTC ≈ 12:00/13:00 Sydney (AEST/AEDT)
 # oscal_os_patch_reboot_option     = "RebootIfNeeded"   # or "NoReboot"
-# oscal_os_patch_approval_days      = 7
+# oscal_os_patch_approval_days      = 1      # default 1 for ≤7-day SLA (was 7)
+# oscal_os_patch_weekly_scan_enabled = true
+# oscal_os_patch_on_launch_enabled   = true
+# oscal_ami_auto_refresh_on_change   = false  # set true during AMI bump apply (staggered ASG refresh)
+# oscal_splunk_uf_upgrade_enabled  = true
+# oscal_splunk_uf_min_version        = "9.3.9"
+# oscal_splunk_uf_bootstrap_enabled  = true
+# oscal_splunk_deployment_server     = "ds2.splunk.adobe.net:443"
+# oscal_splunk_client_name           = "DC-ue1-journald_seclogs-ams-oscal"
+
+# ------------------------------------------------------------------------------
+# Docker on EC2 (optional; default is direct Node.js run + deploy-to-ec2.sh)
+# ------------------------------------------------------------------------------
+# run_oscal_via_docker   = false
+# oscal_container_image  = "ghcr.io/adobe/oscal-report-generator:latest"
 
 # ------------------------------------------------------------------------------
 # Cross-account Bedrock (Account B) — see docs/CROSS_ACCOUNT_BEDROCK_PHASE1.md

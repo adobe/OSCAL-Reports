@@ -138,6 +138,33 @@ ensure_current_ip_in_tfvars() {
   echo "Added $cur_ip/32 to default_allowed_cidr_blocks in terraform.tfvars (current IP)." >&2
 }
 
+# Wake passive Green (standby) before plan/apply when active_passive and desired=0.
+oscal_wake_passive_for_terraform() {
+  local subcmd="${1:-}"
+  case "$subcmd" in
+    plan|apply)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+  local lib_dir
+  lib_dir="$(cd "$SCRIPT_DIR/../scripts/lib" && pwd)"
+  [ -f "${lib_dir}/oscal-traffic-mode.sh" ] || return 0
+  [ -f "${lib_dir}/oscal-standby.sh" ] || return 0
+  # shellcheck source=../scripts/lib/oscal-traffic-mode.sh disable=SC1091
+  source "${lib_dir}/oscal-traffic-mode.sh"
+  # shellcheck source=../scripts/lib/oscal-standby.sh disable=SC1091
+  source "${lib_dir}/oscal-standby.sh"
+  export TERRAFORM_DIR
+  if declare -F oscal_traffic_mode_is_active_passive >/dev/null 2>&1 && oscal_traffic_mode_is_active_passive; then
+    echo "Active-passive: ensuring passive standby is running before terraform ${subcmd}..." >&2
+    oscal_standby_wake_passive_if_needed || {
+      echo "Warning: passive wake failed; terraform ${subcmd} continues (Green may be scaled to 0)." >&2
+    }
+  fi
+}
+
 case "${1:-}" in
   import-key)
     import_ec2_key "${2:-us-east-1}"
@@ -146,6 +173,7 @@ case "${1:-}" in
     load_aws_credentials
     verify_aws_credentials
     ensure_current_ip_in_tfvars
+    oscal_wake_passive_for_terraform apply
     remove_orphan_alb_listeners_if_needed
     exec terraform "$@"
     ;;
@@ -153,6 +181,7 @@ case "${1:-}" in
     load_aws_credentials
     verify_aws_credentials
     ensure_current_ip_in_tfvars
+    oscal_wake_passive_for_terraform "${1:-}"
     exec terraform "$@"
     ;;
 esac

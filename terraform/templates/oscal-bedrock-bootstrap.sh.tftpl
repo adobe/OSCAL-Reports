@@ -14,3 +14,17 @@ Environment=BEDROCK_EXTERNAL_ID=__BEDROCK_EXTERNAL_ID__
 BEDROCKENVEOF
 sed -i "s|__BEDROCK_ASSUME_ROLE_ARN__|${bedrock_assume_role_arn}|g;s|__BEDROCK_EXTERNAL_ID__|${bedrock_external_id}|g" "$DROPIN"
 chmod 644 "$DROPIN"
+
+CONFIG_PATH="/opt/oscal/data/config.json"
+if [ -f "$CONFIG_PATH" ] && command -v jq >/dev/null 2>&1; then
+  jq \
+    --arg arn "${bedrock_assume_role_arn}" \
+    --arg eid "${bedrock_external_id}" \
+    --arg mode "iam-role" \
+    '.aiConfig = (.aiConfig // {}) |
+     .aiConfig.bedrockAuthMode = $mode |
+     .aiConfig.bedrockAssumeRoleArn = $arn |
+     .aiConfig.bedrockExternalId = $eid' \
+    "$CONFIG_PATH" > "$${CONFIG_PATH}.tmp" && mv "$${CONFIG_PATH}.tmp" "$CONFIG_PATH"
+  chown ec2-user:oscal "$CONFIG_PATH" 2>/dev/null || true
+fi

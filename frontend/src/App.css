@@ -71,6 +71,15 @@
   font-size: 0.85rem;
 }
 
+.author-credits-links a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.author-credits-links a:hover {
+  text-decoration: underline;
+}
+
 /* Alert */
 .alert {
   display: flex;

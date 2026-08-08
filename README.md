@@ -96,6 +96,30 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/AWS_OPERATIONS.md](do
 
 ---
 
+## What's new in 1.7.27
+
+- **Security (VULN-37000):** Authentication and ownership on async job create/status/download; per-user job rate limits; status response redaction; regression + proactive API auth inventory tests.
+- **Deploy:** Passive-first Blue/Green rollout and 502 prevention during AMI/ASG refresh; installer manifest reconciles root, backend, and frontend `package.json` (footer version fix).
+- **Deploy:** `keekar/oscal_reports:v1.7.27` and `ghcr.io/adobe/oscal-report-generator:v1.7.27` when published.
+- **Full record:** [docs/RELEASE_1.7.27.md](docs/RELEASE_1.7.27.md).
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1727---2026-07-20).
+
+---
+
+## What's new in 1.7.25
+
+- **Security:** SSRF remediation (VULN-36986) — authenticated proxy/catalogue fetch, strict URL profiles, no redirects. Settings disclosure (VULN-36998) — admin-only `/api/settings`, runtime allowlist endpoint, SMTP/email retired, self-registration removed. Bedrock access control (VULN-37020) — settings redaction, Terraform ExternalId gate.
+- **AMS Non-Prod:** Image Factory EMR **3.0.2** (SSAAU-216); Splunk UF SCC bootstrap (SSAAU-212).
+- **Terraform / GHCR:** Docker mode on EC2 uses `ghcr.io/adobe/oscal-report-generator`; CI publishes to GHCR and Docker Hub.
+- **Dependencies:** Dependabot library updates merged on Development (AWS SDK 3.1086, fast-xml-parser 5.10.1, lucide-react 1.24, vite 8.1.4); backend SMTP/`nodemailer` removed.
+- **Deploy:** `keekar/oscal_reports:v1.7.25` and `ghcr.io/adobe/oscal-report-generator:v1.7.25` when published.
+- **Full record:** [docs/RELEASE_1.7.25.md](docs/RELEASE_1.7.25.md) (checklist so issues do not regress).
+
+Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1725---2026-07-18).
+
+---
+
 ## What's new in 1.7.23
 
 - **Dependencies:** Dependabot updates merged into Quality — AWS SDK, `express-rate-limit` 8.x, `pdfkit` 0.19, `pg`, React 19.2.7, and related security/toolchain bumps (#45–#61).
@@ -134,4 +158,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.23 (see root `package.json`) · **Last updated:** June 2026
+**Version:** 1.7.27 (see root `package.json`) · **Last updated:** July 2026

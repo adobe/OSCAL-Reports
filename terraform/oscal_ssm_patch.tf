@@ -203,3 +203,30 @@ resource "aws_ssm_maintenance_window_task" "oscal_patch" {
     }
   }
 }
+
+# Weekly Scan (Sunday UTC) — detect CVE drift between Install maintenance windows.
+resource "aws_ssm_association" "oscal_patch_weekly_scan" {
+  count = var.oscal_os_patch_enabled && var.oscal_os_patch_weekly_scan_enabled ? 1 : 0
+
+  association_name = "${var.project_name}-oscal-patch-weekly-scan"
+  name             = "AWS-RunPatchBaseline"
+
+  schedule_expression         = "cron(0 ${var.oscal_os_patch_hour} ? * SUN *)"
+  apply_only_at_cron_interval = true
+  compliance_severity         = "MEDIUM"
+
+  parameters = {
+    Operation = "Scan"
+  }
+
+  targets {
+    key    = "tag:Stack"
+    values = [var.project_name]
+  }
+
+  depends_on = [
+    aws_ssm_patch_baseline.oscal_al2023,
+    aws_ssm_patch_group.oscal_blue,
+    aws_ssm_patch_group.oscal_green,
+  ]
+}
