@@ -150,6 +150,17 @@ case "$ROLE_FILTER" in
   *) echo "Invalid --role: $ROLE_FILTER" >&2; exit 1 ;;
 esac
 
+for color in "${refresh_roles[@]}"; do
+  if [ "$color" = "green" ]; then
+    start_refresh "$GREEN_ASG" "green"
+  else
+    start_refresh "$BLUE_ASG" "blue"
+  fi
+done
+
+echo ""
+echo "Staggered instance refresh complete."
+echo "Next: verify AMI/If_Info on instances, run deploy if needed, check SSM Patch Manager compliance."
 pre_blue_refresh_cutover() {
   if [ "$DRY_RUN" = true ]; then
     echo "[dry-run] pre-blue: wake passive + ALB failover"

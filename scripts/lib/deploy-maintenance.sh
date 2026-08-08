@@ -314,6 +314,33 @@ deploy_maintenance_enter() {
     oscal_standby_wake_passive || echo "deploy-maintenance: passive wake failed (continuing)" >&2
   fi
 
+  if declare -F oscal_traffic_mode_is_active_passive >/dev/null 2>&1 \
+    && oscal_traffic_mode_is_active_passive && [ "$role" = "green" ]; then
+    echo "deploy-maintenance: active_passive: waking passive and entering deploy_green Edge canary..." >&2
+    oscal_standby_wake_passive || {
+      echo "deploy-maintenance: passive wake failed" >&2
+      return 1
+    }
+    oscal_traffic_mode_enter deploy_green || {
+      echo "deploy-maintenance: deploy_green traffic mode failed" >&2
+      return 1
+    }
+    touch "${DEPLOY_MAINTENANCE_STATE_DIR}/${role}/deploy_green_mode"
+    deploy_maintenance__suspend_asg "$role" || return 1
+    deploy_maintenance__protect_instance "$role" || {
+      deploy_maintenance__resume_asg "$role" || true
+      return 1
+    }
+    DEPLOY_MAINTENANCE_ACTIVE_ROLES="${DEPLOY_MAINTENANCE_ACTIVE_ROLES} ${role}"
+    return 0
+  fi
+
+  if declare -F oscal_traffic_mode_is_active_passive >/dev/null 2>&1 \
+    && oscal_traffic_mode_is_active_passive && [ "$role" = "blue" ]; then
+    echo "deploy-maintenance: active_passive — waking passive peer before Blue deploy drain..." >&2
+    oscal_standby_wake_passive || echo "deploy-maintenance: passive wake failed (continuing)" >&2
+  fi
+
   if deploy_maintenance__drain_alb_traffic "$role"; then
     : # saved + drained
   else
