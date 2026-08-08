@@ -163,7 +163,7 @@ export TERRAFORM_DIR=$PWD/terraform/envs/aws4403   # if not already the default
 
 **Config/users during deploy:** By default deploy **does not force-overwrite** `/opt/oscal/data/config.json` from S3. Local EBS config is backed up to `s3://<bucket>/config/active/` before any optional pull; S3 is used only when files are missing or `DEPLOY_CONFIG_S3_FORCE=1`. Skip S3 config sync entirely on code-only deploys: `DEPLOY_CONFIG_S3_SKIP=1`. The SM migration script (`migrate-config-to-sm.mjs`) runs only when `DEPLOY_MIGRATE_CONFIG_SM=1` (not on every deploy). If local config is missing or smaller than 256 bytes after sync, deploy **automatically restores** from the golden prefix **`s3://<bucket>/config/default/`** (config.default) when that snapshot exists.
 
-**Golden config.default (quick restore):** After SSO/SMTP/OIDC are verified on an instance, publish a operator-controlled snapshot:
+**Golden config.default (quick restore):** After SSO/Slack/OIDC are verified on an instance, publish a operator-controlled snapshot:
 
 ```bash
 # On Green (or any instance with good /opt/oscal/data):
@@ -180,7 +180,7 @@ sudo bash /opt/oscal/scripts/debug/restore-config-from-s3-default.sh
 sudo systemctl restart oscal-reporter.service   # omitted if script runs without --no-restart
 ```
 
-If SSO/SMTP settings were lost and config.default is stale, run on the instance: `node scripts/debug/repair-ec2-config-from-backups.mjs` then `node scripts/debug/fix-ec2-generic-oidc-secret.mjs` (with `OSCAL_FIX_GENERIC_OIDC_SECRET` if needed), then **re-publish** config.default.
+If SSO/Slack settings were lost and config.default is stale, run on the instance: `node scripts/debug/repair-ec2-config-from-backups.mjs` then `node scripts/debug/fix-ec2-generic-oidc-secret.mjs` (with `OSCAL_FIX_GENERIC_OIDC_SECRET` if needed), then **re-publish** config.default.
 
 **Amazon Linux 2023 (Image Factory or native):** Use `SSH_USER=ec2-user ./scripts/deploy-to-ec2.sh`.
 
@@ -192,7 +192,7 @@ export TERRAFORM_DIR=$PWD/terraform/envs/aws4403
 ./scripts/deploy-to-ec2.sh --blue-only "$(./terraform/run-with-aws-pass.sh output -raw oscal_blue_public_ip 2>/dev/null || ./terraform/run-with-aws-pass.sh output -raw oscal_blue_private_ip)"
 ```
 
-Config and users live on each instance at `/opt/oscal/data`; the deploy script does **not** sync them to S3 (ec2_automation performs backups every 10 min). To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply.
+Config and users live on each instance at `/opt/oscal/data`; the deploy script does **not** sync them to S3 (ec2_automation performs backups every 10 min). To use **Docker on EC2** instead of direct run, set `run_oscal_via_docker = true` in `terraform.tfvars` and apply (default image: `ghcr.io/adobe/oscal-report-generator:latest`; override with `oscal_container_image`).
 
 ##### S3 backup layout (ec2_automation)
 
@@ -334,9 +334,11 @@ Default **`oscal_traffic_mode = "active_passive"`**: production traffic goes to 
 
 1. `./terraform/run-with-aws-pass.sh plan` — wakes Green if scaled to 0.
 2. `./scripts/deploy-to-ec2.sh --update-s3` — publish installer + standby libs to S3.
-3. `./scripts/deploy-to-ec2.sh` (Green) — enters **deploy_green** (Edge → Green; Chrome/Firefox → Blue).
-4. Test with **Microsoft Edge** on `https://oscal.amsgovcloud.com.au/` (Green); verify production browsers still hit Blue.
-5. On success, deploy maintenance exits → **steady** (Blue primary). Green idles; shutdown after 4 h no Edge traffic.
+3. `./scripts/deploy-to-ec2.sh` — **passive-first both** (default when `active_passive`): deploy **Green (passive)** → ALB **failover** to Green → deploy **Blue (active)** → restore **steady** Blue-primary weights. Set `DEPLOY_PASSIVE_FIRST=0` only for intentional single-color deploys.
+4. After **Terraform AMI refresh** (`oscal_ami_auto_refresh_on_change`), `oscal-staggered-ami-refresh.sh` **cutsover to passive before Blue refresh** and runs post-refresh deploy by default (`OSCAL_POST_REFRESH_DEPLOY=1`).
+5. Verify: `./scripts/debug/alb-target-health.sh` and `https://oscal.amsgovcloud.com.au/health/ready` → 200.
+
+**Why 502 happens:** ASG instance refresh replaces the **active** Blue target before app code is deployed on the new instance, or deploy maintenance fails (missing state dir). Passive-first deploy + pre-Blue cutover prevents serving traffic to an empty target.
 
 **Failover:** If Blue is unhealthy, automation wakes Green and sets **failover** routing. When Blue is healthy again, **failover-restore** alarm returns **steady** Blue-primary weights (Green stays up until idle alarm).
 
@@ -421,6 +423,7 @@ Stage-account PCL (Policy Compliance Layer) may flag the ALB for **port 443** an
 | `instance_architecture` | **arm64** for t4g (default), **x86_64** for t3a | `arm64` |
 | `key_name` | EC2 key pair name (or null) | (required or null) |
 | `run_oscal_via_docker` | If false, EC2 runs Node.js directly with S3-mounted config/users; if true, Docker/podman + GHCR image | `false` |
+| `oscal_container_image` | GHCR image when `run_oscal_via_docker = true` | `ghcr.io/adobe/oscal-report-generator:latest` |
 | `s3_logs_bucket_name` | S3 bucket for logs and activity | (required) |
 | `default_allowed_cidr_blocks` | CIDRs allowed for ALB HTTPS and SSH ingress | `["130.248.32.17/32", "203.191.182.150/32"]` (do not use `0.0.0.0/0`) |
 | `alb_ssl_certificate_arn` | ACM cert for HTTPS | `null` (HTTP only) |
@@ -428,7 +431,6 @@ Stage-account PCL (Policy Compliance Layer) may flag the ALB for **port 443** an
 | `alb_green_hostname` | Hostname for Green (e.g. green.oscal.example.com); ALB routes by Host header | `null` |
 | `alb_port_justification` | Free-form text for Adobe:PortJustification tag on ALB (AMS PCL requirement); only letters, numbers, spaces, _.:/=+-@ | `"OSCAL Report Generator web access HTTPS and HTTP"` |
 | `use_image_factory_ami` | Use Image Factory Amazon Linux 2023 when available | `true` |
-| `run_oscal_via_docker` | If true, EC2 runs Docker/podman + GHCR image | `false` |
 | `common_tags` | Tags applied to all resources (e.g. Team, Account) | `{}` |
 
 See `terraform/variables.tf` and `terraform/terraform.tfvars.example` (or `terraform/envs/<env>/`) for the full list. **AI** is via AWS Bedrock or Mistral API; configure in the app (Settings or config.json). See [Amazon Bedrock setup](#amazon-bedrock-integration-step-by-step-aws-setup).
@@ -660,7 +662,8 @@ The Terraform template uses the **same** AMI resolution for Ollama as for Green/
 |------|--------|
 | AMI preference | **First choice:** Adobe Image Factory **Amazon Linux 2023 EMR** (or approved AL2023) when pinned or resolved. **Fallback:** native Amazon Linux 2023. **Ollama and OSCAL use the same chain.** |
 | Where to find AMIs | [Image Factory UI](https://imagefactory.corp.adobe.com/imagefactoryui/ui/) — **EMR:** [Amazon Linux 2023 EMR flavor](https://imagefactory.corp.adobe.com/imagefactoryui/ui/flavor?orgName=DME&ownerTeamName=ImageFactory&typeName=aws&flavorName=Amazon%20Linux%202023%20EMR) |
-| SSAAU-169 / InfraSec | Pin latest EMR `ami-*` in `terraform.tfvars`; run `terraform/scripts/list-emr-candidate-amis.sh` to list candidates; replace EC2 via `terraform apply`. |
+| SSAAU-169 / SSAAU-216 / InfraSec | Dynamic EMR lookup + `check-ami-drift.sh`; staggered ASG refresh to latest IF EMR (e.g. **3.0.2**). See [RELEASE_1.7.25.md](RELEASE_1.7.25.md) §4. |
+| SSAAU-212 / Splunk SCC | `oscal_splunk_uf_bootstrap_enabled` (default true); SSM post-boot re-runs bootstrap. See [terraform/envs/aws4403/README.md](../terraform/envs/aws4403/README.md) and [RELEASE_1.7.25.md](RELEASE_1.7.25.md) §5. |
 | Terraform variables | `use_image_factory_ami` (default **true** = Image Factory Amazon Linux 2023 when in map, else native AL2023); `oscal_ami_id`, `ollama_ami_id` (null = use preference order) |
 | Add Image Factory Amazon Linux | In `terraform.tfvars` set `image_factory_amazon_linux_ami_us_east_1 = "ami-xxxxxxxx"` (from Image Factory UI), or add entries in `terraform/image_factory_ami.tf` in `image_factory_amazon_linux_by_region`. Both Green/Blue and Ollama use it. |
 | Replace Ollama instance for new AMI | Legacy Ollama path only; current stacks use Bedrock (see [Amazon Bedrock Integration](#amazon-bedrock-integration-step-by-step-aws-setup)). |

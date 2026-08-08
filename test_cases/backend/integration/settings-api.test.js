@@ -22,12 +22,13 @@ describe('Settings API Integration Tests', () => {
     mockLoadConfig = () => ({
       publishedSoaUrl: 'https://example.com',
       messagingConfig: {
-        email: {
+        enabled: true,
+        channel: 'slack',
+        slack: {
           enabled: true,
-          smtpHost: 'smtp.example.com',
-          smtpPort: 587,
-          smtpUser: 'test@example.com'
-        }
+          webhookUrl: 'https://hooks.slack.com/services/test',
+          channel: '#general',
+        },
       },
       aiConfig: {
         enabled: false,
@@ -84,7 +85,6 @@ describe('Settings API Integration Tests', () => {
             verification: {
               verified: saveResult.verified,
               timestamp: saveResult.timestamp,
-              configPath: saveResult.configPath
             }
           };
           
@@ -115,13 +115,13 @@ describe('Settings API Integration Tests', () => {
       expect(response.body).toHaveProperty('aiConfig');
     });
 
-    test('should return email configuration', async () => {
+    test('should return Slack messaging configuration', async () => {
       const response = await request(app)
         .get('/api/settings')
         .expect(200);
 
-      expect(response.body.messagingConfig).toHaveProperty('email');
-      expect(response.body.messagingConfig.email).toHaveProperty('smtpHost');
+      expect(response.body.messagingConfig).toHaveProperty('slack');
+      expect(response.body.messagingConfig.channel).toBe('slack');
     });
   });
 
@@ -130,13 +130,14 @@ describe('Settings API Integration Tests', () => {
       const newConfig = {
         publishedSoaUrl: 'https://new-example.com',
         messagingConfig: {
-          email: {
+          enabled: true,
+          channel: 'slack',
+          slack: {
             enabled: true,
-            smtpHost: 'smtp.new-example.com',
-            smtpPort: 587,
-            smtpUser: 'new@example.com'
-          }
-        }
+            webhookUrl: 'https://hooks.slack.com/services/new',
+            channel: '#alerts',
+          },
+        },
       };
 
       const response = await request(app)
@@ -153,12 +154,13 @@ describe('Settings API Integration Tests', () => {
       const newConfig = {
         publishedSoaUrl: 'https://test.com',
         messagingConfig: {
-          email: {
+          enabled: true,
+          channel: 'slack',
+          slack: {
             enabled: true,
-            smtpHost: 'smtp.test.com',
-            smtpPort: 587
-          }
-        }
+            webhookUrl: 'https://hooks.slack.com/services/test',
+          },
+        },
       };
 
       const response = await request(app)
@@ -168,7 +170,7 @@ describe('Settings API Integration Tests', () => {
 
       expect(response.body.verification).toHaveProperty('verified', true);
       expect(response.body.verification).toHaveProperty('timestamp');
-      expect(response.body.verification).toHaveProperty('configPath');
+      expect(response.body.verification).not.toHaveProperty('configPath');
     });
 
     test('should handle async save operation properly', async () => {

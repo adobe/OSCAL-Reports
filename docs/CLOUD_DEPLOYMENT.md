@@ -50,7 +50,7 @@ az webapp create \
   --resource-group oscal-rg \
   --plan oscal-plan \
   --name oscal-report-generator \
-  --deployment-container-image-name ghcr.io/adobemanagedservices/oscal-report-generator:latest
+  --deployment-container-image-name ghcr.io/adobe/oscal-report-generator:latest
 
 # Configure container settings
 az webapp config appsettings set \
@@ -200,7 +200,7 @@ ssh -i your-key.pem ubuntu@ec2-xx-xx-xx-xx.compute-1.amazonaws.com
 
 ```bash
 # Pull Docker image
-docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+docker pull ghcr.io/adobe/oscal-report-generator:latest
 
 # Run container
 docker run -d \
@@ -209,7 +209,7 @@ docker run -d \
   -p 80:3020 \
   -p 3020:3020 \
   -e NODE_ENV=production \
-  ghcr.io/adobemanagedservices/oscal-report-generator:latest
+  ghcr.io/adobe/oscal-report-generator:latest
 
 # Verify container is running
 docker ps
@@ -277,7 +277,7 @@ cat > ~/update-oscal.sh << 'EOF'
 echo "Updating OSCAL Report Generator..."
 
 # Pull latest image
-docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+docker pull ghcr.io/adobe/oscal-report-generator:latest
 
 # Stop and remove old container
 docker stop oscal-report-generator
@@ -290,7 +290,7 @@ docker run -d \
   -p 80:3020 \
   -p 3020:3020 \
   -e NODE_ENV=production \
-  ghcr.io/adobemanagedservices/oscal-report-generator:latest
+  ghcr.io/adobe/oscal-report-generator:latest
 
 # Clean up old images
 docker image prune -f
@@ -336,7 +336,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             # Pull latest image
-            docker pull ghcr.io/adobemanagedservices/oscal-report-generator:latest
+            docker pull ghcr.io/adobe/oscal-report-generator:latest
             
             # Stop and remove old container
             docker stop oscal-report-generator || true
@@ -349,7 +349,7 @@ jobs:
               -p 80:3020 \
               -p 3020:3020 \
               -e NODE_ENV=production \
-              ghcr.io/adobemanagedservices/oscal-report-generator:latest
+              ghcr.io/adobe/oscal-report-generator:latest
             
             # Clean up
             docker image prune -f
@@ -625,7 +625,7 @@ spec:
     spec:
       containers:
       - name: oscal-report-generator
-        image: ghcr.io/adobemanagedservices/oscal-report-generator:latest
+        image: ghcr.io/adobe/oscal-report-generator:latest
         ports:
         - containerPort: 3020
         env:
@@ -831,7 +831,7 @@ gcloud services enable containerregistry.googleapis.com
 
 # Deploy from existing image
 gcloud run deploy oscal-report-generator \
-  --image ghcr.io/adobemanagedservices/oscal-report-generator:latest \
+  --image ghcr.io/adobe/oscal-report-generator:latest \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
@@ -869,7 +869,7 @@ jobs:
         uses: google-github-actions/deploy-cloudrun@v1
         with:
           service: oscal-report-generator
-          image: ghcr.io/adobemanagedservices/oscal-report-generator:latest
+          image: ghcr.io/adobe/oscal-report-generator:latest
           region: us-central1
 ```
 
@@ -972,7 +972,7 @@ jobs:
 1. Go to DigitalOcean → App Platform
 2. Click **Create App**
 3. Choose **Docker Hub or Container Registry**
-4. Enter: `ghcr.io/adobemanagedservices/oscal-report-generator`
+4. Enter: `ghcr.io/adobe/oscal-report-generator`
 5. Configure:
    - Name: `oscal-report-generator`
    - Port: `3020`
@@ -996,7 +996,7 @@ services:
     image:
       registry_type: GHCR
       registry: ghcr.io
-      repository: adobemanagedservices/oscal-report-generator
+      repository: adobe/oscal-report-generator
       tag: latest
     http_port: 3020
     instance_count: 1

@@ -161,3 +161,58 @@ done
 echo ""
 echo "Staggered instance refresh complete."
 echo "Next: verify AMI/If_Info on instances, run deploy if needed, check SSM Patch Manager compliance."
+pre_blue_refresh_cutover() {
+  if [ "$DRY_RUN" = true ]; then
+    echo "[dry-run] pre-blue: wake passive + ALB failover"
+    return 0
+  fi
+  # shellcheck source=./lib/oscal-traffic-mode.sh disable=SC1091
+  source "$SCRIPT_DIR/lib/oscal-traffic-mode.sh"
+  # shellcheck source=./lib/oscal-standby.sh disable=SC1091
+  source "$SCRIPT_DIR/lib/oscal-standby.sh"
+  if ! oscal_traffic_mode_is_active_passive; then
+    return 0
+  fi
+  echo ""
+  echo "=== Pre-Blue refresh: wake passive and cutover ALB (avoid 502 on active refresh) ==="
+  oscal_standby_wake_passive || echo "Warning: passive wake failed (continuing)" >&2
+  oscal_traffic_mode_enter failover || {
+    echo "Error: ALB cutover before Blue instance refresh failed." >&2
+    return 1
+  }
+}
+
+post_refresh_deploy() {
+  if [ "${OSCAL_POST_REFRESH_DEPLOY:-1}" != "1" ]; then
+    echo "Skipping post-refresh deploy (OSCAL_POST_REFRESH_DEPLOY=0)."
+    return 0
+  fi
+  local repo_root
+  repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+  echo ""
+  echo "=== Post-refresh passive-first app deploy ==="
+  if [ "$DRY_RUN" = true ]; then
+    echo "[dry-run] TERRAFORM_DIR=$TERRAFORM_DIR $repo_root/scripts/deploy-to-ec2.sh"
+    return 0
+  fi
+  TERRAFORM_DIR="$TERRAFORM_DIR" "$repo_root/scripts/deploy-to-ec2.sh" || {
+    echo "Error: post-refresh deploy failed. Run ./scripts/deploy-to-ec2.sh manually to avoid 502." >&2
+    return 1
+  }
+}
+
+for color in "${refresh_roles[@]}"; do
+  if [ "$color" = "blue" ]; then
+    pre_blue_refresh_cutover || exit 1
+    start_refresh "$BLUE_ASG" "blue"
+  else
+    start_refresh "$GREEN_ASG" "green"
+  fi
+done
+
+post_refresh_deploy || exit 1
+
+echo ""
+echo "Staggered instance refresh complete."
+echo "Post-refresh deploy ran when OSCAL_POST_REFRESH_DEPLOY=1 (default)."
+echo "Verify: ./scripts/debug/alb-target-health.sh and https://oscal.amsgovcloud.com.au/health/ready"

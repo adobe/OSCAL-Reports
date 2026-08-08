@@ -8,7 +8,9 @@ import { describe, test, expect } from '@jest/globals';
 import { 
   SECURITY_CONFIG, 
   CSRF_EXEMPT_PATHS, 
-  SSRF_PROTECTED_ENDPOINTS 
+  SSRF_PROTECTED_ENDPOINTS,
+  SSRF_VALIDATION_PROFILES,
+  getSsrfValidationOptions,
 } from '../../../backend/utils/securityConfig.js';
 
 describe('Security Configuration Tests', () => {
@@ -97,12 +99,28 @@ describe('Security Configuration Tests', () => {
   });
 
   describe('URL Validation Configuration', () => {
-    test('should allow localhost for AI services', () => {
-      expect(SECURITY_CONFIG.urlValidation.allowLocalhost).toBe(true);
+    test('aiIntegration profile allows localhost for AI services', () => {
+      expect(SSRF_VALIDATION_PROFILES.aiIntegration.allowLocalhost).toBe(true);
     });
 
-    test('should allow private IPs for AI services', () => {
-      expect(SECURITY_CONFIG.urlValidation.allowPrivateIPs).toBe(true);
+    test('aiIntegration profile allows private IPs for AI services', () => {
+      expect(SSRF_VALIDATION_PROFILES.aiIntegration.allowPrivateIPs).toBe(true);
+    });
+
+    test('strictUserFetch profile blocks private network targets', () => {
+      const strict = getSsrfValidationOptions('strictUserFetch');
+      expect(strict.allowLocalhost).toBe(false);
+      expect(strict.allowPrivateIPs).toBe(false);
+      expect(strict.maxRedirects).toBe(0);
+    });
+
+    test('legacy urlValidation fields mirror aiIntegration profile', () => {
+      expect(SECURITY_CONFIG.urlValidation.allowLocalhost).toBe(
+        SSRF_VALIDATION_PROFILES.aiIntegration.allowLocalhost,
+      );
+      expect(SECURITY_CONFIG.urlValidation.allowPrivateIPs).toBe(
+        SSRF_VALIDATION_PROFILES.aiIntegration.allowPrivateIPs,
+      );
     });
 
     test('should have trusted domains defined', () => {
@@ -171,7 +189,7 @@ describe('Security Configuration Tests', () => {
     test('should document rationale for CSRF exemptions', () => {
       // This test ensures the security decisions are properly documented
       const documentation = {
-        version: '1.7.23',
+        version: '1.7.27',
         decision: 'Exempt all /api/ endpoints from CSRF protection',
         rationale: [
           'Protected endpoints use Bearer token authentication (immune to CSRF)',
@@ -188,7 +206,7 @@ describe('Security Configuration Tests', () => {
         ],
       };
 
-      expect(documentation.version).toBe('1.7.23');
+      expect(documentation.version).toBe('1.7.27');
       expect(documentation.rationale.length).toBeGreaterThan(0);
       expect(documentation.remainingProtections.length).toBeGreaterThanOrEqual(5);
     });

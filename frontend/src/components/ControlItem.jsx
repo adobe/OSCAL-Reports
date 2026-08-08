@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { buildAuthenticatedJsonHeaders } from '../utils/authenticatedFetch.js';
 import ControlSuggestions from './ControlSuggestions';
 import './ControlItem.css';
 
@@ -20,7 +21,7 @@ const STATUS_OPTIONS = [
 ];
 
 function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = [], databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
-  const { canEditImplementationStatus } = useAuth();
+  const { canEditImplementationStatus, getAuthConfig } = useAuth();
   const [fetchingData, setFetchingData] = useState({});
   const [credentials, setCredentials] = useState([]);
 
@@ -125,11 +126,8 @@ function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = []
       // API Gateway handles all authentication - no custom headers needed
       const response = await fetch('/api/proxy-fetch', {
         method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies for SSO
+        headers: buildAuthenticatedJsonHeaders(getAuthConfig),
+        credentials: 'include',
         body: JSON.stringify({
           url: finalUrl,
           method: 'GET',

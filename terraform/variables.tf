@@ -162,6 +162,13 @@ variable "run_oscal_via_docker" {
   default     = false
 }
 
+# GHCR image for run_oscal_via_docker = true (canonical: adobe/OSCAL-Reports packages)
+variable "oscal_container_image" {
+  description = "Container image for Docker/podman mode on EC2 (GHCR). Default matches adobe/OSCAL-Reports GitHub Container Registry."
+  type        = string
+  default     = "ghcr.io/adobe/oscal-report-generator:latest"
+}
+
 # Persistent EBS + ASG (see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
 variable "oscal_persistent_ebs_enabled" {
   description = "When true and run_oscal_via_docker is false, provision dedicated gp3 volumes and mount at /opt/oscal on boot (Auto Scaling launch template user_data). Ignored for Docker mode."
@@ -332,6 +339,24 @@ variable "oscal_splunk_uf_min_version" {
   description = "Minimum Splunk Universal Forwarder version for compliance (e.g. SSAAU-209 CVE-2025-9230 requires 9.3.9+)."
   type        = string
   default     = "9.3.9"
+}
+
+variable "oscal_splunk_uf_bootstrap_enabled" {
+  description = "When true, user-data and SSM post-boot configure Splunk UF for Security SCC (deploymentclient.conf + secops metadata; SSAAU-212)."
+  type        = bool
+  default     = true
+}
+
+variable "oscal_splunk_deployment_server" {
+  description = "Splunk deployment server targetUri for Security SCC (Adobe standard: ds2.splunk.adobe.net:443)."
+  type        = string
+  default     = "ds2.splunk.adobe.net:443"
+}
+
+variable "oscal_splunk_client_name" {
+  description = "Splunk UF deployment clientName. AL2023 without rsyslog must include journald_seclogs (e.g. DC-ue1-journald_seclogs-ams-oscal)."
+  type        = string
+  default     = "DC-ue1-journald_seclogs-ams-oscal"
 }
 
 # S3 (best practice: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
@@ -509,6 +534,11 @@ variable "bedrock_cross_account_enabled" {
   description = "When true, grant OSCAL EC2 instance role sts:AssumeRole on the Bedrock account IAM role (requires bedrock_external_id and role ARN or bedrock_account_id)."
   type        = bool
   default     = false
+
+  validation {
+    condition = !var.bedrock_cross_account_enabled || trimspace(var.bedrock_external_id) != ""
+    error_message = "bedrock_external_id must be set when bedrock_cross_account_enabled is true (must match Account B trust policy sts:ExternalId)."
+  }
 }
 
 variable "bedrock_account_id" {

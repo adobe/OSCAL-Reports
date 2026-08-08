@@ -467,6 +467,15 @@
   opacity: 0.8;
 }
 
+.usecases-credits .author-credits-links a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.usecases-credits .author-credits-links a:hover {
+  text-decoration: underline;
+}
+
 /* Animations */
 @keyframes fadeInDown {
   from {

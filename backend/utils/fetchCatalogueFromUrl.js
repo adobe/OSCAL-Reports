@@ -43,6 +43,8 @@ export async function fetchCatalogueFromUrl(rawUrl, urlValidationOptions = {}) {
       headers: { Accept: 'application/json' },
       httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       timeout: timeoutMs,
+      maxRedirects: 0,
+      ssrfStrict: true,
     });
   } catch (error) {
     const httpStatus = error.response?.status;

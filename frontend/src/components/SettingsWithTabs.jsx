@@ -77,7 +77,7 @@ function SettingsWithTabs({ onClose }) {
           className={`settings-tab-btn ${activeTab === 'messaging' ? 'active' : ''}`}
           onClick={() => setActiveTab('messaging')}
         >
-          📧 Messaging
+          💬 Slack Notifications
         </button>
         <button
           className={`settings-tab-btn ${activeTab === 'ai' ? 'active' : ''}`}

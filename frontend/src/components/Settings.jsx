@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
 import { useAuth } from '../contexts/AuthContext';
+import { buildAuthenticatedJsonHeaders } from '../utils/authenticatedFetch.js';
 import './Settings.css';
 
 function Settings() {
@@ -39,7 +40,7 @@ function Settings() {
   const loadSettings = async () => {
     setIsLoading(true);
     try {
-      const settingsRes = await axios.get('/api/settings');
+      const settingsRes = await axios.get('/api/settings', getAuthConfig());
       const config = settingsRes.data;
 
       if (config.apiGateways) {
@@ -192,7 +193,8 @@ function Settings() {
       setSaveMessage(`🔄 Testing ${provider.toUpperCase()} connection using the URL in this form…`);
       const response = await fetch('/api/proxy-fetch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthenticatedJsonHeaders(getAuthConfig),
+        credentials: 'include',
         body: JSON.stringify({
           url,
           method: 'GET'

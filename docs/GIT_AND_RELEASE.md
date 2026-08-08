@@ -100,6 +100,26 @@ Development (default branch)
 - **Tar:** Use `tar --exclude=... -czf archive.tar.gz files` (exclude before file args).
 - **Version mismatch:** Always use `scripts/bump_version.sh`, never edit version by hand in one place only.
 - **Wrong PR base:** Prefer Quality → main/Prod for releases; never feature branch → main directly.
+- **InfraSec regression:** Skipping AMI refresh or Splunk bootstrap after Terraform apply — see [AMS Non-Prod regression prevention](#ams-non-prod-regression-prevention).
+
+---
+
+<a id="ams-non-prod-regression-prevention"></a>
+
+### AMS Non-Prod regression prevention (AWS4403)
+
+Before merging a release that touches Terraform or security-sensitive API paths, confirm items in **[RELEASE_1.7.27.md](RELEASE_1.7.27.md)** §4 (Release checklist) and **[RELEASE_1.7.25.md](RELEASE_1.7.25.md)** §6 where applicable. Minimum gates:
+
+| Check | Command / artifact |
+|-------|-------------------|
+| AMI not stale | `TERRAFORM_DIR=terraform/envs/aws4403 ./scripts/check-ami-drift.sh` |
+| Splunk UF configured | SSM: `deploymentclient.conf` exists; `clientName` contains `journald_seclogs` |
+| SSRF tests green | `cd test_cases/backend && npm test -- urlValidator-ssrf proxyFetchHelpers ssrf-auth` |
+| Settings redaction | `npm test -- settingsRedaction` |
+| Bedrock tfvars valid | `bedrock_external_id` set if `bedrock_cross_account_enabled = true` |
+| Post ASG refresh | `./scripts/deploy-to-ec2.sh --both`; ALB `/health/ready` → 200 |
+
+Do **not** disable `oscal_splunk_uf_bootstrap_enabled` or dynamic EMR lookup without a documented InfraSec exception.
 
 ---
 
@@ -674,9 +694,9 @@ Or run (with sufficient `gh` permissions):
 
 **Repo-side mitigation:** `scripts/ci/validate_workflow_yaml.py` and `.github/codeql/codeql-config.yml` narrow Python scope when Python remains enabled.
 
-#### GHCR migration (deferred)
+#### GHCR container image
 
-Container images still reference `ghcr.io/adobemanagedservices/oscal-report-generator` in Terraform and deployment docs. A follow-up phase will republish to `ghcr.io/adobe/oscal-report-generator` and update infrastructure references.
+Terraform Docker mode (`run_oscal_via_docker = true`) pulls **`ghcr.io/adobe/oscal-report-generator`** (override with `oscal_container_image` in `terraform.tfvars`). Images are published from [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) via the Docker publish workflow (Docker Hub + GHCR).
 
 ---
 

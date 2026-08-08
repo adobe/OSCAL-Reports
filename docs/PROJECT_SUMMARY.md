@@ -6,8 +6,8 @@ contact: mukesh.kesharwani@adobe.com
 # Project summary — OSCAL Report Generator
 
 **Application:** Keekar’s OSCAL SOA / SSP / CCM Generator (npm: `keekars-oscal-soa-ssp-ccm-generator`).  
-**Version:** See root `package.json` (currently **1.7.23**).  
-**Last updated:** June 2026
+**Version:** See root `package.json` (currently **1.7.27**).  
+**Last updated:** July 2026
 
 ---
 
@@ -32,19 +32,31 @@ Default local ports: backend **3020**, frontend dev **3021**.
 
 ---
 
-## Recent release (1.7.23)
+## Recent release (1.7.27)
 
 | Area | What changed | Why |
 |------|----------------|-----|
-| **Dependencies** | Dependabot #45–#61 merged (AWS SDK, express-rate-limit 8, pdfkit, pg, React) | Security patches and toolchain updates on Quality |
-| **CI / tests** | OIDC and Docker bootstrap unit tests CI-stable; optional live OIDC probe | Reliable Quality Gates on personal fork |
-| **Versioning** | Manifests and docs aligned to **1.7.23** | Release traceability before Adobe promotion |
+| **Security** | VULN-37000 job auth / IDOR / DoS | Pentest async job endpoints |
+| **Deploy** | Passive-first Blue/Green; 502 prevention | Production AMI refresh incident |
+| **Tests** | API auth inventory + job IDOR regression | Proactive BOLA detection |
 
-Full notes: [CHANGELOG.md](CHANGELOG.md#1723---2026-06-29).
+Full notes and **regression-prevention checklist:** [RELEASE_1.7.27.md](RELEASE_1.7.27.md).
 
 ---
 
-## Previous release (1.7.22)
+## Release 1.7.25 (July 2026)
+
+| Area | What changed | Why |
+|------|----------------|-----|
+| **Terraform / GHCR** | `oscal_container_image` default `ghcr.io/adobe/oscal-report-generator:latest` | Single-repo migration (`adobe/OSCAL-Reports`) |
+| **CI** | Docker publish to GHCR + Docker Hub | Canonical container registry for AWS/docker deploy docs |
+| **Tests** | `secretsManager.test.js` nested `it` block fix | Restore intended test isolation |
+
+Full notes: [CHANGELOG.md](CHANGELOG.md#1725---2026-07-10).
+
+---
+
+## Previous release (1.7.23)
 
 | Area | What changed | Why |
 |------|----------------|-----|
