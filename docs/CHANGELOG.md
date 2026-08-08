@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.28] - 2026-08-09
+
+### Changed
+- CI/CD workflow fixes (Main branch triggers, Node 24 runtime, AWS OIDC auth), dependency security updates, and secret-scanning remediation
+
 ## [1.7.27] - 2026-07-20
 
 Release **1.7.27** remediates async job authorization (**VULN-37000**), hardens Blue/Green deploy to prevent ALB 502 during AMI refresh, and adds proactive API auth inventory tests.
