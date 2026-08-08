@@ -495,9 +495,8 @@ App State:
 - **Purpose**: Get default user passwords (for login UI display)
 - **Output**: `{ success: boolean, passwords: object, format: string }`
 - **Processing**:
-  1. Generate timestamp-based passwords for default users
-  2. Return passwords in format: `username#DDMMYYHH`
-  3. Include format explanation
+  1. Generate timestamp-based passwords for default users (deployment-unique, format intentionally undocumented)
+  2. Return generated passwords for login UI display
 
 #### GET `/api/auth/validate`
 - **Purpose**: Validate session token
@@ -779,9 +778,9 @@ After setup, test the integration:
    - **Migration**: Automatic migration from legacy SHA-256 passwords
 
 2. **Password Generation**
-   - Default passwords use timestamp format: `username#DDMMYYHH`
-   - Generated based on build/startup timestamp
+   - Default passwords are generated from the build/startup timestamp (exact derivation intentionally undocumented)
    - Unique per deployment instance
+   - Retrieve via login UI, `/api/auth/default-credentials`, or the generated credentials file — change immediately after first login
 
 ### Authentication & Authorization
 
@@ -1078,14 +1077,7 @@ Implemented FIPS 140-2 compliant password hashing using PBKDF2 with SHA-256, rep
 Default user passwords now use a timestamp-based format that includes build/startup time, replacing static passwords.
 
 **Password Format:**
-```
-username#DDMMYYHH
-```
-Where:
-- `DD` = Day (2 digits)
-- `MM` = Month (2 digits)
-- `YY` = Last 2 digits of year
-- `HH` = Hour in 24-hour format (2 digits)
+Default passwords are derived deterministically from the build/startup timestamp, giving each deployment a unique default. The exact derivation is intentionally not published here to avoid making default credentials guessable — retrieve the generated value via the login UI banner, the `/api/auth/default-credentials` endpoint (first run only), or the generated credentials file (see [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md#default-credentials)), then change it immediately after first login.
 
 **Features:**
 - ✅ Unique passwords based on build/startup timestamp
