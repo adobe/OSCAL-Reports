@@ -11,15 +11,15 @@
 # For more information on Codacy Analysis CLI in general, see
 # https://github.com/codacy/codacy-analysis-cli.
 
-# Codacy / SARIF upload for Adobe org repo. Personal fork: skipped (use Shell validation + local scans in dev).
+# Codacy / SARIF upload for Adobe org repo (Main branch).
 name: Codacy Security Scan
 
 on:
   push:
-    branches: [ "Quality", "Prod" ]
+    branches: [ "Main" ]
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ "Quality" ]
+    branches: [ "Main" ]
   schedule:
     - cron: '31 19 * * 0'
 

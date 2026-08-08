@@ -6,6 +6,9 @@
   "type": "module",
   "author": "Mukesh Kesharwani <mukesh.kesharwani@adobe.com>",
   "license": "MIT",
+  "engines": {
+    "node": ">=24.9.0"
+  },
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",

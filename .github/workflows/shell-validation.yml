@@ -1,6 +1,4 @@
-# Runs only on the personal fork for fast feedback (ShellCheck, hooks, pass-sync tests).
-# Shell validation for adobe/OSCAL-Reports.
-# for checks that should fail first on personal Quality.
+# Shell validation for adobe/OSCAL-Reports (ShellCheck, hooks, pass-sync tests).
 #
 # Consolidated: one job runs ShellCheck + hooks + best-practices + dry-run (single checkout);
 # ec2_automation tests stay parallel on a second runner.
@@ -9,19 +7,14 @@ name: Shell Script Validation
 on:
   pull_request:
     branches:
-      - Quality
-      - Quality_Test
-      - Quality
-      - main
+      - Main
     paths:
       - '**.sh'
       - '.github/workflows/**.yml'
       - '.githooks/**'
   push:
     branches:
-      - Quality
-      - Quality_Test
-      - Quality
+      - Main
     paths:
       - '**.sh'
       - '.github/workflows/**.yml'

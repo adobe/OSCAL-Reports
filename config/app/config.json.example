@@ -73,7 +73,7 @@
           "discoveryUrl": "https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration",
           "clientId": "oscal-report-generator",
           "clientSecret": {
-            "_cfgenc": "v1$EXAMPLE_SALT_PLACEHOLDER$EXAMPLE_IV_PLACEHOLDER$EXAMPLE_CIPHERTEXT_PLACEHOLDER$EXAMPLE_AUTHTAG_PLACEHOLDER"
+            "_cfgenc": "v1$095g0fKeTFi-_TuymiAdfQ$jABBWg8eIcok1p0U$MpvcOd9MNCfad6Za0oq1Kw$-9927d1Q6Y-2zlmY6Bea-gRVSaTL6JpbTFkIkoXY4g"
           },
           "callbackPath": "/auth/callback",
           "scope": "openid profile email groups",

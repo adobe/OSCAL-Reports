@@ -1,3 +1,11 @@
+# DISABLED: no Snyk account/SNYK_TOKEN configured for this repo (was failing 401
+# Unauthorized on every run) and this file is still unmodified GitHub sample
+# boilerplate (placeholder `your/image-to-test` Docker tag). Moved out of
+# .github/workflows/ so GitHub Actions stops scanning it. To re-enable: move
+# this file back to .github/workflows/, add a real `SNYK_TOKEN` repo secret,
+# and replace the placeholder Docker build step with this project's actual
+# Dockerfile/image name.
+#
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
 # separate terms of service, privacy policy, and support

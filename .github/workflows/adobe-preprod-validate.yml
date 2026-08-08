@@ -1,15 +1,13 @@
-# Release validation for adobe/OSCAL-Reports (Quality staging, main/Prod production).
+# Release validation for adobe/OSCAL-Reports (single Main branch).
 name: Adobe PreProd Validation
 
 on:
   pull_request:
     branches:
-      - Quality
-      - main
-      - Prod
+      - Main
   push:
     branches:
-      - Quality
+      - Main
 
 jobs:
   version-check:
