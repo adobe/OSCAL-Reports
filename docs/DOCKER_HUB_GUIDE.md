@@ -617,20 +617,7 @@ docker-compose up -d
 
 ## Default Credentials
 
-The Docker image generates timestamp-based default credentials during build.
-
-### Credential Format
-
-```
-Username: [role]
-Password: [role]#DDMMYYHH
-```
-
-Where:
-- `DD` = Day of build (UTC)
-- `MM` = Month of build (UTC)
-- `YY` = Year (last 2 digits)
-- `HH` = Hour of build (UTC)
+The Docker image generates timestamp-based default credentials during build. Each build gets a unique default password derived from its build time; the exact derivation is intentionally not published here so defaults can't be guessed from a known build timestamp. Retrieve the actual generated value using one of the methods below, and change it immediately after first login.
 
 ### Default Roles
 
