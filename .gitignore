@@ -140,6 +140,8 @@ config/app/published-soa/
 
 # Terraform (tfvars may contain secrets)
 terraform/*.tfvars
+terraform/**/*.tfvars
+!terraform/**/*.tfvars.example
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
