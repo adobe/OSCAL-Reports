@@ -7,6 +7,10 @@
 # Usage: echo '{"region":"us-east-1","architecture":"x86_64"}' | ./resolve-latest-emr-ami.sh
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../scripts/lib/image-factory-emr-pattern.sh disable=SC1091
+source "$SCRIPT_DIR/../../scripts/lib/image-factory-emr-pattern.sh"
+
 if ! command -v aws >/dev/null 2>&1; then
   echo '{"ami_id":"","ami_name":"","creation_date":"","error":"aws CLI not found"}'
   exit 0
@@ -28,7 +32,7 @@ RESULT="$(
     --executable-users self \
     --filters \
     "Name=architecture,Values=${ARCH}" \
-    "Name=name,Values=*Amazon*Linux*2023*EMR*,*amazon*linux*2023*emr*" \
+    "Name=name,Values=${IMAGE_FACTORY_EMR_NAME_PATTERN}" \
     "Name=state,Values=available" \
     --query 'sort_by(Images,&CreationDate)[-1].[ImageId,Name,CreationDate]' \
     --output json 2>/dev/null

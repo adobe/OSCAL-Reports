@@ -15,6 +15,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/ec2-common.sh disable=SC1091
 source "$SCRIPT_DIR/lib/ec2-common.sh"
+# shellcheck source=./lib/image-factory-emr-pattern.sh disable=SC1091
+source "$SCRIPT_DIR/lib/image-factory-emr-pattern.sh"
 MAX_AMI_AGE_DAYS="${MAX_AMI_AGE_DAYS:-7}"
 REGION="${AWS_REGION:-us-east-1}"
 ARCH="${INSTANCE_ARCHITECTURE:-x86_64}"
@@ -53,7 +55,7 @@ LATEST_LINE="$(
     --executable-users self \
     --filters \
     "Name=architecture,Values=${ARCH}" \
-    "Name=name,Values=*Amazon*Linux*2023*EMR*,*amazon*linux*2023*emr*" \
+    "Name=name,Values=${IMAGE_FACTORY_EMR_NAME_PATTERN}" \
     "Name=state,Values=available" \
     --query 'sort_by(Images,&CreationDate)[-1].[ImageId,Name,CreationDate]' \
     --output text 2>/dev/null || true

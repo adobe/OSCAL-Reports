@@ -103,6 +103,22 @@ locals {
   ) : null
 }
 
+# Surface a specific, actionable error instead of the generic "coalesce: no non-null
+# arguments" failure that would otherwise be the only signal when the EMR lookup fails
+# (e.g. Image Factory renames its EMR AMIs and terraform/scripts/resolve-latest-emr-ami.sh
+# stops matching anything). See docs/RELEASE_1.7.25.md SSAAU-216 prevention checklist.
+check "image_factory_emr_lookup" {
+  assert {
+    condition = (
+      !var.use_image_factory_ami ||
+      !var.image_factory_dynamic_emr_lookup_enabled ||
+      length(data.external.image_factory_emr) == 0 ||
+      try(data.external.image_factory_emr[0].result.error, "") == ""
+    )
+    error_message = "Image Factory EMR AMI lookup failed: ${try(data.external.image_factory_emr[0].result.error, "unknown error")}. Check that terraform/scripts/resolve-latest-emr-ami.sh's IMAGE_FACTORY_EMR_NAME_PATTERN (scripts/lib/image-factory-emr-pattern.sh) still matches Image Factory's current AMI naming, or set image_factory_amazon_linux_ami_us_east_1 as a temporary static pin."
+  }
+}
+
 # Fallback only when Image Factory is not used or not available: native Amazon Linux 2023.
 data "aws_ami" "amazon_linux" {
   most_recent = true
