@@ -136,6 +136,17 @@ else
 fi
 
 echo ""
+echo "You are about to OVERWRITE: $ENTRY"
+echo -n "Type the entry path exactly to confirm: "
+read -r update_confirm
+update_confirm="${update_confirm#"${update_confirm%%[![:space:]]*}"}"
+update_confirm="${update_confirm%"${update_confirm##*[![:space:]]}"}"
+if [[ "$update_confirm" != "$ENTRY" ]]; then
+  echo "Confirmation did not match. Aborting." >&2
+  exit 1
+fi
+
+echo ""
 echo "Paste your secret/credentials below (key=value lines or freeform). When done, press Ctrl+D:"
 echo ""
 
@@ -171,6 +182,39 @@ for line in "${out[@]}"; do
   content+="$line"$'\n'
 done
 content="${content%$'\n'}"
+
+# Sanity check: warn if the entry name and pasted content look mismatched (e.g. an
+# "-SSH" entry name being overwritten with AWS credentials, or vice versa). This is a
+# heuristic, not validation of the secret itself — it exists to catch exactly the kind
+# of wrong-numbered-menu-item mistake that has silently destroyed SSH keys before.
+looks_like_private_key=0
+if [[ "$content" == *"BEGIN OPENSSH PRIVATE KEY"* || "$content" == *"BEGIN RSA PRIVATE KEY"* || "$content" == *"BEGIN EC PRIVATE KEY"* || "$content" == *"BEGIN PRIVATE KEY"* ]]; then
+  looks_like_private_key=1
+fi
+looks_like_aws_creds=0
+if [[ "$content" == *"aws_access_key_id="* || "$content" == *"aws_secret_access_key="* ]]; then
+  looks_like_aws_creds=1
+fi
+entry_lower="$(printf '%s' "$ENTRY" | tr '[:upper:]' '[:lower:]')"
+if [[ "$entry_lower" == *ssh* && "$looks_like_private_key" -eq 0 ]]; then
+  echo "" >&2
+  echo "⚠  '$ENTRY' looks like an SSH key entry, but the pasted content does not look like a private key (no BEGIN ... PRIVATE KEY header)." >&2
+  echo -n "Overwrite anyway? Type YES to confirm: " >&2
+  read -r mismatch_confirm
+  [[ "$mismatch_confirm" == "YES" ]] || { echo "Aborting." >&2; exit 1; }
+elif [[ "$entry_lower" != *ssh* && "$looks_like_private_key" -eq 1 ]]; then
+  echo "" >&2
+  echo "⚠  The pasted content looks like a private key, but '$ENTRY' doesn't look like an SSH key entry." >&2
+  echo -n "Overwrite anyway? Type YES to confirm: " >&2
+  read -r mismatch_confirm
+  [[ "$mismatch_confirm" == "YES" ]] || { echo "Aborting." >&2; exit 1; }
+elif [[ "$entry_lower" == *ssh* && "$looks_like_aws_creds" -eq 1 ]]; then
+  echo "" >&2
+  echo "⚠  '$ENTRY' looks like an SSH key entry, but the pasted content looks like AWS credentials (aws_access_key_id/aws_secret_access_key)." >&2
+  echo -n "Overwrite anyway? Type YES to confirm: " >&2
+  read -r mismatch_confirm
+  [[ "$mismatch_confirm" == "YES" ]] || { echo "Aborting." >&2; exit 1; }
+fi
 
 echo "$content" | pass insert -m "$ENTRY" --force
 
