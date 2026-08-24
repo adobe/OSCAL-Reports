@@ -42,7 +42,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.2",
     "express-session": "^1.19.0",
-    "fast-xml-parser": "5.10.1",
+    "fast-xml-parser": "5.11.0",
     "ipaddr.js": "^2.4.0",
     "nodemailer": "^9.0.3",
     "pdfkit": "^0.19.1",
