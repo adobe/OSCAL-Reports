@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "express": "^5.2.1",
-    "qs": "^6.15.3"
+    "qs": "^6.16.0"
   },
   "overrides": {
     "axios": ">=1.19.0",
