@@ -1,0 +1,56 @@
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
+#
+# Generates a CycloneDX SBOM (docs/sbom.json) for the OSCAL Report Generator on
+# pushes/PRs to the release branches, and on demand. The SBOM is uploaded as a
+# build artifact. This is a JavaScript/Node project, so no CBOM is produced
+# (CBOM applies to Java/Python).
+name: SBOM Generation
+
+on:
+  push:
+    branches: [Main, main, master, Prod, production]
+  pull_request:
+    branches: [Main, main, master, Prod, production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies (root, backend, frontend)
+        run: |
+          npm ci || npm install
+          (cd backend && (npm ci || npm install))
+          (cd frontend && (npm ci || npm install))
+
+      - name: Generate CycloneDX SBOM
+        env:
+          FETCH_LICENSE: "true"
+        run: |
+          npx --yes @cyclonedx/cdxgen@latest \
+            -r -o docs/sbom.json \
+            --spec-version 1.5 --json-pretty --evidence
+
+      - name: Validate SBOM was produced
+        run: |
+          test -s docs/sbom.json
+          node -e "const b=require('./docs/sbom.json'); if(b.bomFormat!=='CycloneDX'){process.exit(1)}; console.log('components:', (b.components||[]).length)"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: docs/sbom.json
+          if-no-files-found: error
