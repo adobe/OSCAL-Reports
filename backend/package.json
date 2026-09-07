@@ -44,16 +44,15 @@
     "express-session": "^1.19.0",
     "fast-xml-parser": "5.11.1",
     "ipaddr.js": "^2.4.0",
-    "nodemailer": "^9.0.3",
-    "qs": "^6.16.0",
-    "pdfkit": "^0.20.2",
-    "pg": "^8.23.0",
+    "nodemailer": "^10.0.0",
+    "pdfkit": "^0.19.1",
+    "pg": "^8.22.0",
     "qs": "^6.15.2",
     "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@jest/globals": "^30.4.1",
-    "jest": "^30.4.2",
+    "@jest/globals": "^30.5.1",
+    "jest": "^30.5.1",
     "nodemon": "^3.1.14",
     "supertest": "^7.2.2"
   },
