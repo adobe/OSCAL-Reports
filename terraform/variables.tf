@@ -92,15 +92,15 @@ variable "key_name" {
   default     = null
 }
 
-# Image Factory best practices: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – prefer Image Factory, fallback to native Amazon Linux.
+# Image Factory best practices: docs/DEPLOYMENT_AND_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – prefer Image Factory, fallback to native Amazon Linux.
 variable "oscal_ami_id" {
-  description = "AMI ID for OSCAL instances. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform."
+  description = "AMI ID for OSCAL instances. Leave null to use Image Factory (when use_image_factory_ami = true) or native Amazon Linux 2023 fallback. Override with explicit AMI if needed. See docs/DEPLOYMENT_AND_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform."
   type        = string
   default     = null
 }
 
 variable "use_image_factory_ami" {
-  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 (use EMR flavor for AMS InfraSec, e.g. SSAAU-169) if resolved; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform."
+  description = "Prefer Adobe Image Factory images. true (default) = Image Factory Amazon Linux 2023 (use EMR flavor for AMS InfraSec, e.g. SSAAU-169) if resolved; else native Amazon Linux 2023. false = use only native Amazon Linux 2023. See docs/DEPLOYMENT_AND_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform."
   type        = bool
   default     = true
 }
@@ -169,7 +169,7 @@ variable "oscal_container_image" {
   default     = "ghcr.io/adobe/oscal-report-generator:latest"
 }
 
-# Persistent EBS + ASG (see docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
+# Persistent EBS + ASG (see docs/DEPLOYMENT_AND_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock): extra gp3 per Green/Blue, mounted at /opt/oscal when enabled (direct-run only).
 variable "oscal_persistent_ebs_enabled" {
   description = "When true and run_oscal_via_docker is false, provision dedicated gp3 volumes and mount at /opt/oscal on boot (Auto Scaling launch template user_data). Ignored for Docker mode."
   type        = bool
@@ -359,7 +359,7 @@ variable "oscal_splunk_client_name" {
   default     = "DC-ue1-journald_seclogs-ams-oscal"
 }
 
-# S3 (best practice: docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
+# S3 (best practice: docs/DEPLOYMENT_AND_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform – bucket names must be lowercase; AMS prefix ams-oscal-<account-id>)
 variable "s3_logs_bucket_name" {
   description = "Globally unique S3 bucket name. Best practice (AMS): lowercase, e.g. ams-oscal-<account-id>. Terraform lowercases the value. Subfolders: logs, config, users."
   type        = string

@@ -3,16 +3,14 @@
  * Contact: mukesh.kesharwani@adobe.com
  *
  * AWS Secrets Manager bundle for EC2 (single JSON secret). In-memory cache only — no process.env.
- * Local/Docker uses OSCAL_SECRETS_MODE=config (default) and config.json / optional pass.
+ * Local/Docker uses OSCAL_SECRETS_MODE=config (default) and config.json with _cfgenc field encryption.
  */
 import {
   GetSecretValueCommand,
   PutSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
-import { getPassBundleSecret } from './passBundle.js';
 import { normalizeSecretValueForKey, mergePartialIntoBundle, parseBundle, canonicalBundleJson } from './bundleSchema.js';
-import { passShow } from './passResolver.js';
 
 /** @type {Map<string, string>} */
 let cache = new Map();
@@ -202,7 +200,6 @@ export async function mergeAndPutBundle(partialEntries, client) {
 
 /**
  * Resolve { _sm: "OSCAL/..." } pointers from in-memory cache (mutates obj).
- * Legacy { _pass } is left for passResolver when mode is config.
  * @param {Object|Array} obj
  */
 export async function ensureSmCacheReady() {
@@ -243,13 +240,7 @@ export function resolveSecretPointer(v) {
   if (v == null) return '';
   if (typeof v === 'string') return v.trim();
   if (isSmPointer(v)) {
-    const fromSm = getSecret(v._sm);
-    if (fromSm) return fromSm;
-    // Local testing: SM cache empty — fall back to laptop pass bundle (PROD/OSCAL/AWS_SM).
-    return (getPassBundleSecret(v._sm) || '').trim();
-  }
-  if (v && typeof v === 'object' && typeof v._pass === 'string' && v._pass.trim()) {
-    return (passShow(v._pass) || '').trim();
+    return getSecret(v._sm) || '';
   }
   return '';
 }

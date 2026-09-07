@@ -8,7 +8,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { atomicWriteJSON } from './utils/atomicWrite.js';
-import { resolvePassPointers, passShow, isPassPointer } from './utils/passResolver.js';
 import {
   isAwsSmMode,
   isSmPointer,
@@ -458,18 +457,12 @@ export function applyBedrockEnvOverrides(config) {
 }
 
 /**
- * Resolve secret pointers in a mutable config clone (pass and/or SM per mode).
+ * Resolve secret pointers in a mutable config clone (_cfgenc and/or _sm per mode).
  * @param {Object} clone
  */
 function resolveSecretsInConfig(clone) {
   resolveCfgEncPointers(clone);
-  if (isAwsSmMode()) {
-    resolveSmPointers(clone);
-    resolvePassPointers(clone);
-  } else {
-    resolveSmPointers(clone);
-    resolvePassPointers(clone);
-  }
+  resolveSmPointers(clone);
 }
 
 /**
@@ -536,9 +529,7 @@ function pointerFromExisting(existing, smEntry, _passEntry) {
   }
   if (isSmPointer(existing)) return existing;
   if (isCfgEncPointer(existing)) return existing;
-  if (existing && typeof existing === 'object' && existing._pass) {
-    return isAwsSmMode() ? entryKeyToConfigPointer(smEntry) : existing;
-  }
+  // Legacy _pass pointers are preserved verbatim; pass is no longer runtime-resolved.
   return existing;
 }
 
@@ -562,25 +553,11 @@ async function prepareConfigForSave(configToSave, existingRaw) {
 
     if (isMaskedOrEmpty(incoming)) {
       if (isAwsSmMode() && !isSecretCached(smEntry)) {
-        if (isPassPointer(existing)) {
-          const fromPass = passShow(existing._pass) || '';
-          if (fromPass.trim()) smPartial[smEntry] = fromPass.trim();
-        } else if (isCfgEncPointer(existing)) {
+        if (isCfgEncPointer(existing)) {
           const fromCfg = tryDecryptCfgEncSecret(existing);
           if (fromCfg) smPartial[smEntry] = fromCfg;
         } else if (typeof existing === 'string' && !isMaskedOrEmpty(existing)) {
           smPartial[smEntry] = existing.trim();
-        }
-      }
-      if (!isAwsSmMode() && isPassPointer(existing)) {
-        const fromPass = (passShow(existing._pass) || '').trim();
-        if (fromPass) {
-          try {
-            setByPath(result, keyPath, encryptConfigSecret(fromPass));
-            continue;
-          } catch (err) {
-            passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
-          }
         }
       }
       const pointer = pointerFromExisting(existing, smEntry, passEntry);
@@ -705,33 +682,6 @@ function preserveGenericOidcClientSecretOnSave(result, configToSave, existingRaw
   if (isCfgEncPointer(incoming)) {
     setByPath(result, GENERIC_OIDC_SECRET_PATH, incoming);
   }
-}
-
-function prepareConfigWithPassPointers(configToSave, existingRaw) {
-  if (isAwsSmMode()) {
-    throw new Error('prepareConfigWithPassPointers is sync; use prepareConfigForSave in aws-sm mode');
-  }
-  const result = JSON.parse(JSON.stringify(configToSave));
-  const passErrors = [];
-  for (const { path: keyPath } of SENSITIVE_CONFIG_KEYS) {
-    if (shouldSkipSensitiveKey(keyPath, configToSave)) {
-      setByPath(result, keyPath, '');
-      continue;
-    }
-    const incoming = getByPath(configToSave, keyPath);
-    const existing = getByPath(existingRaw, keyPath);
-    if (isMaskedOrEmpty(incoming)) {
-      setByPath(result, keyPath, existing !== undefined ? existing : '');
-    } else if (typeof incoming === 'string' && incoming.trim() !== '') {
-      try {
-        setByPath(result, keyPath, encryptConfigSecret(incoming.trim()));
-      } catch (err) {
-        passErrors.push(`${keyPath}: _cfgenc encrypt failed (${err.message || 'unknown'})`);
-        setByPath(result, keyPath, existing !== undefined ? existing : '');
-      }
-    }
-  }
-  return { config: result, passErrors };
 }
 
 /**
@@ -1021,7 +971,6 @@ export {
   getResolvedConfigAsync,
   getResolvedDatabaseConfigForTest,
   prepareConfigForSave,
-  prepareConfigWithPassPointers,
   ensureConfigSecretsProtected,
   saveConfig,
   updateConfig,

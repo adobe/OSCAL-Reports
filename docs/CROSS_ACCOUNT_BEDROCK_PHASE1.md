@@ -246,7 +246,7 @@ If cross-account Bedrock abuse is suspected (chained from SSRF / IMDS):
 4. Review CloudTrail in Account A and B for unexpected `AssumeRole` session names.
 5. Redeploy OSCAL with SSRF fixes and settings redaction (cross-account ARN hidden from non-admin `GET /api/settings`).
 
-See [logs/BEDROCK_ACCESS_CONTROL_OPS_2026-07.md](../logs/BEDROCK_ACCESS_CONTROL_OPS_2026-07.md).
+Record incident-response actions in the operational log under `logs/` (git-ignored; not committed to the repo).
 
 ---
 
@@ -477,5 +477,5 @@ Existing deployments keep **access-keys** until an admin selects **IAM role** in
 
 ## References
 
-- [AWS_OPERATIONS.md — Cross-account Bedrock](AWS_OPERATIONS.md#cross-account-bedrock-terraform-and-account-b-runbook)
+- [DEPLOYMENT_AND_OPERATIONS.md — Cross-account Bedrock](DEPLOYMENT_AND_OPERATIONS.md#cross-account-bedrock-terraform-and-account-b-runbook)
 - [AI_INTEGRATION.md](AI_INTEGRATION.md)

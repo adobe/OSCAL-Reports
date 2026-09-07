@@ -302,7 +302,7 @@ jobs:
 
       - name: 🔍 Required docs
         run: |
-          for doc in README.md docs/CHANGELOG.md docs/GIT_AND_RELEASE.md docs/DEPLOYMENT.md; do
+          for doc in README.md docs/CHANGELOG.md docs/GIT_AND_RELEASE.md docs/DEPLOYMENT_AND_OPERATIONS.md; do
             [ -f "$doc" ] && echo "✅ $doc" || echo "⚠️ missing $doc"
           done
 

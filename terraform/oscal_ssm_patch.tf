@@ -5,7 +5,7 @@
 
 # SSM Patch Manager: baseline, patch groups, and staggered Blue/Green maintenance windows.
 # Instances receive Patch Group tags from launch templates (oscal_asg_ebs.tf).
-# See docs/AWS_OPERATIONS.md — OS patching (SSM Patch Manager).
+# See docs/DEPLOYMENT_AND_OPERATIONS.md — OS patching (SSM Patch Manager).
 
 locals {
   oscal_patch_group_blue  = "${var.project_name}-blue"
