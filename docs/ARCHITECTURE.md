@@ -534,7 +534,7 @@ The `sspComparisonV3.js` module:
 
 The application integrates **Mistral 7B** for AI-powered control implementation text generation. This provides intelligent, context-aware suggestions that are unique for each control.
 
-> **Note**: For TrueNAS deployment, see [TRUENAS_DEPLOYMENT.md](TRUENAS_DEPLOYMENT.md#mistral-7b-ai-integration) for deployment-specific instructions.
+> **Note**: For TrueNAS / standalone Docker deployment, see [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md); for Mistral AI setup see [AI_INTEGRATION.md](AI_INTEGRATION.md).
 
 ### Architecture
 
@@ -570,7 +570,7 @@ controlSuggestionEngine.js
 - ✅ IAM-based access control
 - ✅ Pay per use
 
-**Setup:** Configure in Settings → AI Integration: choose AWS Bedrock, set region and credentials (or use IAM role on EC2). See [AWS_OPERATIONS.md – Bedrock](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup).
+**Setup:** Configure in Settings → AI Integration: choose AWS Bedrock, set region and credentials (or use IAM role on EC2). See [DEPLOYMENT_AND_OPERATIONS.md – Bedrock](DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup).
 
 #### Option 2: Mistral AI API (Cloud)
 
@@ -682,7 +682,7 @@ controlSuggestionEngine.js
 **Solutions:**
 1. Increase `timeout` value in config (default: 30000ms)
 2. Check network connectivity
-3. For AI: Use AWS Bedrock or Mistral API (see [AWS_OPERATIONS.md](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) and [AI_INTEGRATION.md](AI_INTEGRATION.md))
+3. For AI: Use AWS Bedrock or Mistral API (see [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) and [AI_INTEGRATION.md](AI_INTEGRATION.md))
 
 ### Performance Considerations
 
@@ -859,7 +859,7 @@ cd ../backend && NODE_ENV=production node server.js
 ### Environment Variables
 - `NODE_ENV`: Set to `production` for production deployments
 - `PORT`: Backend server port (default: 3020)
-- **AI**: Configure via Settings → AI Integration or `config/app/config.json` (AWS Bedrock or Mistral API). See [AWS_OPERATIONS.md – Bedrock](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) and [AI_INTEGRATION.md](AI_INTEGRATION.md).
+- **AI**: Configure via Settings → AI Integration or `config/app/config.json` (AWS Bedrock or Mistral API). See [DEPLOYMENT_AND_OPERATIONS.md – Bedrock](DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) and [AI_INTEGRATION.md](AI_INTEGRATION.md).
 - `AWS_REGION`: AWS region for Bedrock (e.g., us-east-1)
 - `BUILD_TIMESTAMP`: Build timestamp for password generation
 - Frontend dev server port: 3021 (configured in `vite.config.js`)
@@ -946,8 +946,8 @@ OSCAL_Reports/
 │
 ├── docs/                             # Documentation
 │   ├── ARCHITECTURE.md               # This file
-│   ├── DEPLOYMENT.md                 # Deployment guide
-│   ├── AWS_OPERATIONS.md             # Terraform, Bedrock, EC2, costs (consolidated)
+│   ├── DEPLOYMENT_AND_OPERATIONS.md                 # Deployment guide
+│   ├── DEPLOYMENT_AND_OPERATIONS.md             # Terraform, Bedrock, EC2, costs (consolidated)
 │   ├── GIT_AND_RELEASE.md            # Git branching, dual remotes, PRs (consolidated)
 │   └── ...                           # See docs/README.md for full index
 │

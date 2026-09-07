@@ -4,7 +4,7 @@
 # Licensed under the MIT License. See LICENSE file for details.
 
 # ------------------------------------------------------------------------------
-# Adobe Image Factory – AMI best practices (docs/AWS_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform)
+# Adobe Image Factory – AMI best practices (docs/DEPLOYMENT_AND_OPERATIONS.md#adobe-image-factory-ami-usage-for-terraform)
 # ------------------------------------------------------------------------------
 # Resolution order when use_image_factory_ami = true:
 #   1) Owner + name pattern (image_factory_owner_id + image_factory_ami_name_pattern)
@@ -106,7 +106,7 @@ locals {
 # Surface a specific, actionable error instead of the generic "coalesce: no non-null
 # arguments" failure that would otherwise be the only signal when the EMR lookup fails
 # (e.g. Image Factory renames its EMR AMIs and terraform/scripts/resolve-latest-emr-ami.sh
-# stops matching anything). See docs/RELEASE_1.7.25.md SSAAU-216 prevention checklist.
+# stops matching anything). See docs/CHANGELOG.md#1725---2026-07-18 SSAAU-216 prevention checklist.
 check "image_factory_emr_lookup" {
   assert {
     condition = (

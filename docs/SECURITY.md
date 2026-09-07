@@ -38,7 +38,7 @@
 
 - **EC2 (production):** Sensitive platform settings (Slack webhook URL, AI tokens, SSO client secrets) use **`OSCAL_SECRETS_MODE=aws-sm`** and a single AWS Secrets Manager JSON bundle; `config.json` holds `{ "_sm": "OSCAL/..." }` pointers only. Saves **fail** if SM is unavailable (no plaintext fallback). Startup auto-migrates any plaintext to SM. See **`backend/utils/secretsManager.js`** and **`backend/utils/configSecretMigration.js`**.
 - **Local / Docker / offline:** Secrets are stored as **`{ "_cfgenc": "v1$..." }`** envelopes in `config.json` using PBKDF2-SHA256 + AES-256-GCM (`backend/utils/configFieldCrypto.js`). Set **`OSCAL_CONFIG_FIELD_SECRET`** or **`SESSION_SECRET`**. Docker entrypoint generates and persists keys under `/data/.field-secret` and `/data/.session-secret`. **Pass vault is not required.**
-- **Optional operator tooling:** Legacy pass bundle sync scripts (`push-pass-to-secrets-manager.sh`, etc.) remain for migrating secrets to SM; set **`OSCAL_PASS_DISABLED=1`** in Docker (default in compose).
+- **Optional operator tooling:** The laptop pass vault is optional; set **`OSCAL_PASS_DISABLED=1`** in Docker (default in compose).
 - **Never commit** plaintext secrets; use `config.json.example` pointers or `_cfgenc` placeholders only.
 
 #### Password storage (PBKDF2 and legacy SHA-256 migration)
@@ -89,17 +89,17 @@
 
 ### v1.7.27 – Async job auth / IDOR / DoS (VULN-37000) (July 2026)
 - **Issue:** Unauthenticated async job creation (`optionalAuth`); job status/download accessible by UUID without ownership check; requester IP in status JSON; job flooding DoS.
-- **Fix:** `authenticate` on all job routes; `canAccessJob` owner-or-Platform-Admin checks; `sanitizeJobForClient`; per-user rate limit and concurrent job cap. See [RELEASE_1.7.27.md](RELEASE_1.7.27.md).
+- **Fix:** `authenticate` on all job routes; `canAccessJob` owner-or-Platform-Admin checks; `sanitizeJobForClient`; per-user rate limit and concurrent job cap. See [CHANGELOG.md](CHANGELOG.md#1727---2026-07-20).
 - **Post-deploy:** Pentest retest steps 1–4; Jira → Remediated – Pending Retest.
 
 ### v1.7.25 – Settings disclosure (VULN-36998) (July 2026)
 - **Issue:** Unauthenticated `GET /api/settings` returned full platform configuration (DB, SSO, group mappings, Bedrock ARNs, legacy SMTP). CWE-200; CVSS 8.2 on production pentest.
-- **Fix:** Platform Admin required for full settings; `GET /api/settings/runtime` for allowlisted runtime flags; POST save responses redacted; SMTP/email and self-registration removed. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md#4-settings-disclosure-and-smtp-retirement-vuln-36998).
+- **Fix:** Platform Admin required for full settings; `GET /api/settings/runtime` for allowlisted runtime flags; POST save responses redacted; SMTP/email and self-registration removed. See [CHANGELOG.md](CHANGELOG.md#1725---2026-07-18).
 - **Post-deploy:** Rotate exposed credentials; review OAuth redirect URIs in Okta Admin Console.
 
 ### v1.7.25 – SSRF and proxy endpoints (VULN-36986) (July 2026)
 - **Issue**: Unauthenticated `/api/proxy-fetch` and `/api/fetch-catalogue` allowed SSRF (hex IP bypass, redirect to IMDS).
-- **Fix**: Session auth required; `strictUserFetch` / `strictCatalogueFetch` profiles; no redirects on protected axios calls; encoded-IP rejection. See [RELEASE_1.7.25.md](RELEASE_1.7.25.md).
+- **Fix**: Session auth required; `strictUserFetch` / `strictCatalogueFetch` profiles; no redirects on protected axios calls; encoded-IP rejection. See [CHANGELOG.md](CHANGELOG.md#1725---2026-07-18).
 
 ### v1.7.25 – Cross-account Bedrock exposure (VULN-37020) (July 2026)
 - **Issue**: Stolen instance creds could assume cross-account Bedrock role; settings API leaked role ARN to non-admins.

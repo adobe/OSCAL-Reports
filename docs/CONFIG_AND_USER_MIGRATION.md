@@ -99,7 +99,7 @@ On TrueNAS (e.g. truenas.keekar.au) or any host running **multiple OSCAL contain
 
 **Port 3021:** The codebase only defines Blue (3020) and Green (3019). If you have a third instance on **3021**, it was likely created separately (e.g. another TrueNAS Custom App or chart release). Its data lives in **whatever storage path that app was given** (e.g. a third host path or PVC for that release). To see which directory a 3021 instance uses, check that app’s **Storage** or **Volumes** in the TrueNAS Apps UI, or the deploy path for that clone.
 
-**TrueNAS volume paths (examples):** If you use `scripts/install_from_dockerhub.sh` or custom compose paths, Blue might be `/mnt/pool/oscal-data-blue` and Green `/mnt/pool/oscal-data-green`. Mounts and data directories follow your `docker-compose.yml` / install script layout under each clone (see [DEPLOYMENT.md](DEPLOYMENT.md)).
+**TrueNAS volume paths (examples):** If you use `scripts/install_from_dockerhub.sh` or custom compose paths, Blue might be `/mnt/pool/oscal-data-blue` and Green `/mnt/pool/oscal-data-green`. Mounts and data directories follow your `docker-compose.yml` / install script layout under each clone (see [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md)).
 
 ---
 
@@ -188,37 +188,14 @@ BLUE_PASSWORD='...' GREEN_PASSWORD='...' ./scripts/consolidate-users.sh --auto
 
 ## Recovery After Accidental Rollback
 
-If Blue (or Green) was rolled back to an old version and **config and users were wiped**, you can recover in one of two ways. Run these steps **on the host** where the instance runs (e.g. 192.168.1.200 for blue.oscal.keekar.au), from the **deployment directory** that contains `scripts/` and `data-blue/` (or `data-green/`).
-
-### Option 1: Restore from deploy backup
-
-The deploy script (`scripts/install_from_dockerhub.sh`) creates a backup tarball in `backups/dockerhub-deploy-YYYYMMDD-HHMMSS/` each time it runs. Use the restore script to put the latest backup back into the Blue data volume:
+If Green (or Blue) was rolled back and **config and users were wiped**, restore `/opt/oscal/data` from the golden `config/default/` S3 snapshot. On the affected instance (via `./scripts/ssh-ec2.sh green|blue`):
 
 ```bash
-cd /path/to/OSCAL_Reports_Blue   # or your Blue deployment root
-./scripts/debug/restore-blue-config.sh --from-backup
+sudo bash /opt/oscal/scripts/debug/restore-config-from-s3-default.sh
+sudo systemctl restart oscal-reporter.service
 ```
 
-This finds the most recent `data-volume-backup.tar.gz` (or legacy backup), extracts it into `data-blue/`, and restarts the Blue container.
-
-### Option 2: Copy from Green to Blue
-
-If Green is on the same host and has the correct config and users, copy them to Blue:
-
-```bash
-cd /path/to/OSCAL_Reports   # repo root where both data-blue and data-green exist
-./scripts/debug/restore-blue-config.sh --from-green
-```
-
-This copies `config.json` and `users.json` from `data-green/` to `data-blue/` and restarts the Blue container.
-
-### Manual restore (no script)
-
-If you have a backup tarball or files elsewhere:
-
-1. Copy `config.json` and `users.json` into the Blue data volume (e.g. `data-blue/` or the mounted volume used by the Blue container).
-2. Set permissions: `chmod 644 data-blue/config.json data-blue/users.json`
-3. Restart the container: `docker restart oscal-report-generator-blue`
+Then verify `/health/ready` and SSO login. See **Golden config.default** and the recovery runbook in [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) for publishing a fresh snapshot and rebuilding config from local backups (`repair-ec2-config-from-backups.mjs`).
 
 ### Verification
 
@@ -239,9 +216,9 @@ If you have a backup tarball or files elsewhere:
 
 ## Related Documentation
 
-- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md)
 - [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md)
-- [TrueNAS / Blue-Green](./DEPLOYMENT.md)
+- [TrueNAS / Blue-Green](./DEPLOYMENT_AND_OPERATIONS.md)
 
 ---
 

@@ -108,7 +108,7 @@ Development (default branch)
 
 ### AMS Non-Prod regression prevention (AWS4403)
 
-Before merging a release that touches Terraform or security-sensitive API paths, confirm items in **[RELEASE_1.7.27.md](RELEASE_1.7.27.md)** §4 (Release checklist) and **[RELEASE_1.7.25.md](RELEASE_1.7.25.md)** §6 where applicable. Minimum gates:
+Before merging a release that touches Terraform or security-sensitive API paths, confirm the regression-prevention checklists in **[CHANGELOG.md](CHANGELOG.md#1727---2026-07-20)** (1.7.27) and **[CHANGELOG.md](CHANGELOG.md#1725---2026-07-18)** (1.7.25) where applicable. Minimum gates:
 
 | Check | Command / artifact |
 |-------|-------------------|
@@ -831,7 +831,7 @@ git checkout -B main origin/main   # or Quality, per your deploy policy
 
 ## Dual Repository Setup Guide (retired)
 
-> **Deprecated July 2026.** This project no longer uses dual remotes. See [Single Repository Setup Guide](#single-repository-setup-guide). Historical mirror automation is documented in [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md) (also deprecated).
+> **Deprecated July 2026.** This project no longer uses dual remotes. See [Single Repository Setup Guide](#single-repository-setup-guide). The historical dual-repo mirror playbook has been retired.
 
 ---
 

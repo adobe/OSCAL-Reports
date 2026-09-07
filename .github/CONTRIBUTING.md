@@ -92,7 +92,7 @@ npm run dev
 1. **Read the documentation**:
    - `README.md` - Project overview
    - `docs/ARCHITECTURE.md` - Technical architecture
-   - `docs/BEST_PRACTICES_IMPLEMENTATION.md` - Coding standards
+   - `docs/BEST_PRACTICES.md` - Coding standards
 
 2. **Check existing issues**:
    - Look for open issues that interest you
@@ -613,9 +613,8 @@ function applyFirewallRules(deviceIp, reason) {
 
 - **README.md**: User-facing changes, new features, setup changes
 - **ARCHITECTURE.md**: Structural changes, new modules, design decisions
-- **DEPLOYMENT.md**: Deployment process changes
-- **CONFIGURATION.md**: New configuration options
-- **BEST_PRACTICES_IMPLEMENTATION.md**: New patterns, lessons learned
+- **DEPLOYMENT_AND_OPERATIONS.md**: Deployment process changes
+- **BEST_PRACTICES.md**: New configuration options, new patterns, lessons learned
 
 #### Documentation Checklist
 

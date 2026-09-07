@@ -88,7 +88,7 @@ ${BLUE}Environment Variables:${NC}
 ${BLUE}Documentation:${NC}
   README.md           - Quick start guide
   docs/ARCHITECTURE.md - Technical architecture
-  docs/DEPLOYMENT.md  - Deployment guides
+  docs/DEPLOYMENT_AND_OPERATIONS.md  - Deployment guides
 
 ${BLUE}Support:${NC}
   GitHub: https://github.com/adobe/OSCAL-Reports
@@ -480,7 +480,7 @@ EOF
   print_info "Documentation:"
   echo "  README.md            - Quick start guide"
   echo "  docs/ARCHITECTURE.md - Technical details"
-  echo "  docs/DEPLOYMENT.md   - Deployment options"
+  echo "  docs/DEPLOYMENT_AND_OPERATIONS.md   - Deployment options"
   echo ""
 }
 

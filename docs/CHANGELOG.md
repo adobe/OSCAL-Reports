@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.7.29] - 2026-09-08
+
+### Security
+
+- **Pass vault removed as a runtime dependency:** the running server no longer resolves `_pass` pointers or falls back to the pass bundle. `secretsManager.resolveSecretPointer` resolves only `_sm`/plaintext; `configManager` no longer calls `passShow`/`resolvePassPointers` on config resolve or save (dead `prepareConfigWithPassPointers` removed). Legacy `_pass` pointers are preserved verbatim; migrating them now requires the opt-in operator CLI (`migrate-config-to-cfgenc.mjs`, `allowPassResolution` — default off, so boot never shells out to `pass`). `pass` stays a laptop-only deploy/migration helper. Completes the earlier `_cfgenc`/SM-only hardening.
+
+### Added
+
+- **`backend/utils/configSecretMigration.js`:** Startup and CLI migration of plaintext / legacy `_pass` to `_cfgenc` (local) or `_sm` (EC2); S3 upload validation helper.
+- **`backend/scripts/migrate-config-to-cfgenc.mjs`:** Offline migration for local/Docker config.
+- **`scripts/debug/audit-config-secrets.sh`:** Audit config secret storage shapes on S3 or local path (no secret values printed).
+- **`scripts/lib/config-secrets-plaintext-check.mjs`:** Blocks S3 backup when `config.json` contains plaintext secrets.
+- **Unit tests:** `cfgencConfigSave.test.js`, `configSecretMigration.test.js`, `failSecureSmSave.test.js`.
+
+### Removed
+
+- **Obsolete debug/legacy scripts:** deleted completed one-time migrations, self-declared one-off incident fixes, orphaned code, and deprecated helpers — `scripts/debug/{merge-ec2-sso-config.mjs, fix-blue-no-cron.sh, fix-ec2-generic-oidc-secret.mjs, migrate-pass-entries-to-bundle.sh, migrate-config-secrets-to-sm.sh, pull-secrets-manager-to-pass.sh, push-pass-to-secrets-manager.sh, restore-blue-config.sh}` and `scripts/remove-legacy-os-patch-cron.sh`.
+- **Consolidated docs (26 → 17):** retired `PROJECT_SUMMARY.md` (→ `README.md` index), `RELEASE_1.7.25.md`/`RELEASE_1.7.27.md` (→ `CHANGELOG.md`), `VALIDATION_SYSTEM.md` (→ `QUALITY_ASSURANCE.md` Part 4), `DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md` (retired), and `TERRAFORM_NETWORK_PCL_AND_TAGS.md` + `TLS_CERTIFICATE_AND_PKI.md` (→ `BEST_PRACTICES.md` Part 5). Merged `AWS_OPERATIONS.md` + `DEPLOYMENT.md` + `CLOUD_DEPLOYMENT.md` into new `DEPLOYMENT_AND_OPERATIONS.md` (CLOUD_DEPLOYMENT content dropped as stale). Rewrote `docs/README.md` as a categorized/role-based index and repointed all inbound references repo-wide.
+
+### Changed
+
+- **Local/Docker:** GUI save stores secrets as **`_cfgenc`** (PBKDF2 + AES-256-GCM); pass vault **not required**. Docker entrypoint bootstraps `OSCAL_CONFIG_FIELD_SECRET` and `SESSION_SECRET` under `/data/`.
+- **EC2:** Removed plaintext fallback when AWS SM put fails; settings/SSO save returns **503**; startup auto-migrates plaintext secrets to SM (refuses start on EC2 if migration fails).
+- **Dockerfile:** Removed pass/gnupg and build-time `credentials.txt` (default user passwords generated at runtime in app logs).
+- **Docs sync:** refreshed `scripts/README.md` to the current Terraform/EC2 model (dropped the retired Docker volume-persistence upgrade flow), rewrote `docs/README.md` as a categorized/role-based index, and pruned references to removed scripts/docs across `docs/` and `README.md`.
+- **Deploy:** `deploy-to-ec2.sh` no longer copies the deprecated pass-sync scripts to instances or prints the secrets-migration fallback hint.
+
 ## [1.7.28] - 2026-08-09
 
 ### Changed
@@ -9,7 +36,15 @@
 
 Release **1.7.27** remediates async job authorization (**VULN-37000**), hardens Blue/Green deploy to prevent ALB 502 during AMI refresh, and adds proactive API auth inventory tests.
 
-**Full release record and regression-prevention checklist:** [docs/RELEASE_1.7.27.md](RELEASE_1.7.27.md).
+Permanent record for **Development → Quality** promotion. Prevents regression of **VULN-37000** and the production **502** incident during AMI/ASG refresh.
+
+**Regression prevention:**
+
+- Unauthenticated `POST /api/jobs/pdf` → **401**; user B `GET /api/jobs/{userA-jobId}` → **403**; status JSON must not contain `metadata.ip` or `data`.
+- `npm test -- jobs-auth-idor jobAccess api-auth-inventory` passes in CI.
+- After AMI refresh: `/health/ready` **200** on production URL; footer version matches the installer manifest (root/backend/frontend `package.json` aligned).
+- Sync export routes (`/api/generate-pdf`, etc.) stay in `test_cases/backend/fixtures/public-api-allowlist.json`; revisit if pentest scope expands.
+- Release gate: version = 1.7.27 across all `package.json`; `./scripts/deploy-to-ec2.sh --update-s3` writes `installer/.installer-build.json`; pentest retest VULN-37000; Jira → **Remediated – Pending Retest**.
 
 ### Security
 
@@ -33,7 +68,16 @@ Release **1.7.27** remediates async job authorization (**VULN-37000**), hardens 
 
 Release **1.7.25** merges Dependabot dependency updates on **Development**, remediates pentest findings (**VULN-36986** SSRF, **VULN-36998** settings disclosure, **VULN-37020** Bedrock access control), closes AMS Non-Prod InfraSec tickets (**SSAAU-216**, **SSAAU-212**), and aligns Terraform/GHCR paths with the canonical [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports) repository.
 
-**Full release record and regression-prevention checklist:** [docs/RELEASE_1.7.25.md](RELEASE_1.7.25.md).
+Permanent record for **Quality → main** promotion (work completed 2026-07-18, AMS Non-Prod / AWS4403).
+
+**Regression prevention:**
+
+- **SSRF (VULN-36986):** never set `allowPrivateIPs: true` on public URL-fetch endpoints; all server-side user-URL fetches use `validateUrl()` + `safeAxios`; retest unauthenticated `POST /api/proxy-fetch` → **401**, `http://0x7f000001/` → **400/`SSRF_BLOCKED`**.
+- **Settings disclosure (VULN-36998):** unauthenticated `GET /api/settings` → **401**, non-admin → **403**; `GET /api/settings/runtime` returns allowlist only; rotate any pentest-exposed credentials (legacy SMTP app password, OIDC client secrets) and clean Okta redirect URIs.
+- **Bedrock (VULN-37020):** `bedrock_external_id` must be set in `terraform.tfvars` when `bedrock_cross_account_enabled = true` (Terraform validation enforces); non-admins must not receive `bedrockAssumeRoleArn`/`bedrockExternalId` (test `settingsRedaction.test.js`); enable Account B model-invocation logging.
+- **Image Factory AMI (SSAAU-216):** weekly `./scripts/check-ami-drift.sh`; never pin a stale `ami-*` when dynamic EMR lookup is available; post-refresh `./scripts/deploy-to-ec2.sh --both` + ALB `/health/ready`.
+- **Splunk SCC (SSAAU-212):** keep `oscal_splunk_uf_bootstrap_enabled = true`; after every ASG replacement confirm `deploymentclient.conf` exists (handshake ≤30 min); `clientName` must include `journald_seclogs` on AL2023; `_meta` must carry real `meta_cloud_id`/`meta_instance_id`.
+- Dependencies: resolve Dependabot conflicts by accepting the newer version unless a breaking change is documented here; run `npm audit --audit-level=high` and `cd test_cases/backend && npm test` after merges; never hand-edit one lockfile without its sibling manifests.
 
 ### Security
 
@@ -80,23 +124,6 @@ Release **1.7.23** merges Dependabot dependency updates into Quality, stabilizes
 ### Documentation
 
 - Version footers, README release notes, and deployment examples updated to **1.7.23**.
-
-## [Unreleased] - Secrets hardening (_cfgenc / SM-only)
-
-### Added
-
-- **`backend/utils/configSecretMigration.js`:** Startup and CLI migration of plaintext / legacy `_pass` to `_cfgenc` (local) or `_sm` (EC2); S3 upload validation helper.
-- **`backend/scripts/migrate-config-to-cfgenc.mjs`:** Offline migration for local/Docker config.
-- **`scripts/debug/audit-config-secrets.sh`:** Audit config secret storage shapes on S3 or local path (no secret values printed).
-- **`scripts/lib/config-secrets-plaintext-check.mjs`:** Blocks S3 backup when `config.json` contains plaintext secrets.
-- **Unit tests:** `cfgencConfigSave.test.js`, `configSecretMigration.test.js`, `failSecureSmSave.test.js`.
-
-### Changed
-
-- **Local/Docker:** GUI save stores secrets as **`_cfgenc`** (PBKDF2 + AES-256-GCM); pass vault **not required**. Docker entrypoint bootstraps `OSCAL_CONFIG_FIELD_SECRET` and `SESSION_SECRET` under `/data/`.
-- **EC2:** Removed plaintext fallback when AWS SM put fails; settings/SSO save returns **503**; startup auto-migrates plaintext secrets to SM (refuses start on EC2 if migration fails).
-- **Dockerfile:** Removed pass/gnupg and build-time `credentials.txt` (default user passwords generated at runtime in app logs).
-- **Docs:** SECURITY, DEPLOYMENT, AWS_OPERATIONS, OIDC updated for _cfgenc-first model.
 
 ## [1.7.22] - 2026-06-26
 
@@ -191,7 +218,7 @@ Development baseline for release **1.7.20**.
 
 - **Generic_OIDC (Authentik):** Built-in Generic SSO provider (`backend/auth/genericOidc.js`) with PKCE, discovery, signed state, redirect allowlist, and `{ "_cfgenc" }` / SM secret resolution.
 - **`frontend/src/components/GenericOidcCallback.jsx`:** Browser callback route `/auth/callback` for Generic_OIDC.
-- **`docs/TLS_CERTIFICATE_AND_PKI.md`:** Corporate PKI / ACM import runbook (replaces ad-hoc LE notes where applicable).
+- **Corporate PKI / ACM import runbook** (replaces ad-hoc LE notes where applicable); now in `docs/BEST_PRACTICES.md` Part 5.
 - **Debug/ops scripts:** `migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`, and shared `scripts/lib/config-s3-sync.sh`, `deploy-maintenance.sh`, `installer-s3-reconcile.sh`.
 - **Unit tests:** `genericOidc.test.js`, `configFieldCrypto.test.js`, `defaultGenericOidcConfig.test.js`, `secretsManager.test.js`, `bedrockCredentials.test.js`.
 

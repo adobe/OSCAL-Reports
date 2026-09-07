@@ -600,10 +600,10 @@ Any **backend** OIDC-related HTTP client code that uses **Axios** must import **
 On **local/Docker** (`OSCAL_SECRETS_MODE=config`), OAuth client secrets and other sensitive config values are stored as **`_cfgenc`** envelopes in `config.json` (same PBKDF2 + AES-256-GCM stack as user password hashing). Set **`OSCAL_CONFIG_FIELD_SECRET`** or **`SESSION_SECRET`**.
 
 - **Migrate legacy plaintext/_pass:** `node backend/scripts/migrate-config-to-cfgenc.mjs` (runs automatically in Docker entrypoint)
-- **Optional laptop ↔ SM sync:** `./scripts/debug/push-pass-to-secrets-manager.sh`, `./scripts/debug/pull-secrets-manager-to-pass.sh` (operators only; pass not required for app runtime)
+- **Laptop pass vault:** Optional for operators; pass is not required for app runtime (EC2 reads secrets from AWS Secrets Manager directly)
 - **EC2 production:** AWS SM only; startup auto-migrates plaintext/`_cfgenc`/`_pass` to SM
 
-See [DEPLOYMENT.md](DEPLOYMENT.md#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) and [AWS_OPERATIONS.md](AWS_OPERATIONS.md).
+See [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md#sensitive-settings-and-_cfgenc-localdocker-or-aws-sm-ec2) and [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md).
 
 ---
 

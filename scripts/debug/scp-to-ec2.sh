@@ -11,7 +11,7 @@
 # Uses Pass for the SSH private key (temp file) and Terraform for the IP.
 #
 # Usage (from repo root):
-#   ./scripts/debug/scp-to-ec2.sh green scripts/debug/pull-secrets-manager-to-pass.sh /tmp/
+#   ./scripts/debug/scp-to-ec2.sh green scripts/debug/sync-config-from-s3-newest.sh /tmp/
 #   ./scripts/debug/scp-to-ec2.sh blue scripts/debug/backup-config-to-s3.sh /tmp/
 #
 # Env: SSH_USER, TERRAFORM_DIR, AWS_PASS_SSH_ENTRY (see scripts/lib/ec2-common.sh)

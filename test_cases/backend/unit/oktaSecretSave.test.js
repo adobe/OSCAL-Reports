@@ -53,7 +53,7 @@ describe('Okta client secret save (aws-sm migration)', () => {
     delete process.env.OSCAL_SECRETS_MANAGER_ARN;
   });
 
-  it('migrates _pass pointer to SM on masked save', async () => {
+  it('preserves a legacy _pass pointer verbatim on masked save without invoking pass', async () => {
     const existing = {
       ssoConfig: {
         oauth: {
@@ -68,7 +68,7 @@ describe('Okta client secret save (aws-sm migration)', () => {
         oauth: {
           providers: {
             okta: {
-              clientSecret: { _pass: 'OSCAL/sso-oauth-okta-client-secret' },
+              clientSecret: '********',
               domain: 'adobe.okta.com',
               clientId: 'cid',
             },
@@ -79,9 +79,11 @@ describe('Okta client secret save (aws-sm migration)', () => {
 
     const { config, smErrors } = await prepareConfigForSave(incoming, existing);
     expect(smErrors).toEqual([]);
-    expect(mockPassShow).toHaveBeenCalledWith('OSCAL/sso-oauth-okta-client-secret');
+    // Pass is no longer a runtime dependency: the server must never shell out to it.
+    expect(mockPassShow).not.toHaveBeenCalled();
+    // The legacy pointer is left untouched, not opportunistically rewritten to _sm.
     expect(config.ssoConfig.oauth.providers.okta.clientSecret).toEqual({
-      _sm: 'OSCAL/sso-oauth-okta-client-secret',
+      _pass: 'OSCAL/sso-oauth-okta-client-secret',
     });
   });
 });

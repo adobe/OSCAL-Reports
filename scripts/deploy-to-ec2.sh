@@ -709,7 +709,7 @@ INSTALLERSYNC
     fi
     if [ -d \"\$APP/scripts/debug\" ]; then
       sudo mkdir -p /opt/oscal/scripts/debug
-      for _dbg in update-pass-credential.sh backup-config-to-s3.sh sync-config-from-s3-newest.sh push-pass-to-secrets-manager.sh pull-secrets-manager-to-pass.sh; do
+      for _dbg in update-pass-credential.sh backup-config-to-s3.sh sync-config-from-s3-newest.sh; do
         if [ -f \"\$APP/scripts/debug/\$_dbg\" ]; then
           sudo cp \"\$APP/scripts/debug/\$_dbg\" /opt/oscal/scripts/debug/
           sudo chmod +x \"/opt/oscal/scripts/debug/\$_dbg\"
@@ -1471,9 +1471,8 @@ if [ -f "$DEPLOY_RESULTS_FILE" ] && [ -s "$DEPLOY_RESULTS_FILE" ]; then
   done < "$DEPLOY_RESULTS_FILE"
 fi
 echo ""
-# Post-deploy: secrets migration reminder
-print_info "EC2 secrets: config.json should use { \"_sm\": \"OSCAL/...\" } pointers only (see docs/AWS_OPERATIONS.md)."
-print_info "If plaintext remains after deploy, run: ./scripts/debug/migrate-config-secrets-to-sm.sh green|blue"
+# Post-deploy: secrets reminder
+print_info "EC2 secrets: config.json should use { \"_sm\": \"OSCAL/...\" } pointers only (see docs/DEPLOYMENT_AND_OPERATIONS.md)."
 echo ""
 # Fail script if any instance failed health check (ok_ssh counts as success -- SG blocks public app ports by design)
 # Use wc -l so HEALTH_FAIL is always a single integer (grep -c in a subshell can yield newlines on some systems)
