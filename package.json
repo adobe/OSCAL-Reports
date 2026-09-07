@@ -24,12 +24,12 @@
     "node": ">=24.9.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
-    "concurrently": "^10.0.4"
+    "@playwright/test": "^1.63.0",
+    "concurrently": "^10.0.5"
   },
   "dependencies": {
     "express": "^5.2.1",
-    "qs": "^6.15.3"
+    "qs": "^6.16.0"
   },
   "overrides": {
     "axios": ">=1.19.0",
