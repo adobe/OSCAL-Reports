@@ -1054,10 +1054,10 @@ curl http://localhost:3020/health       # Check health
 
 ## Related Documentation
 
-- [TrueNAS / Blue-Green](./DEPLOYMENT.md) (Docker Hub + `install_from_dockerhub.sh`)
-- [Cloud Deployment](./CLOUD_DEPLOYMENT.md)
+- [TrueNAS / Blue-Green](./DEPLOYMENT_AND_OPERATIONS.md) (Docker Hub + `install_from_dockerhub.sh`)
+- [Cloud Deployment](./DEPLOYMENT_AND_OPERATIONS.md)
 - [Architecture](./ARCHITECTURE.md)
-- [Deployment Guide](./DEPLOYMENT.md)
+- [Deployment Guide](./DEPLOYMENT_AND_OPERATIONS.md)
 
 ---
 

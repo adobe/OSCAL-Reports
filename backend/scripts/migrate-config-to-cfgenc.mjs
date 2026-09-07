@@ -36,7 +36,10 @@ async function main() {
     process.exit(1);
   }
 
-  const result = await ensureConfigSecretsProtected(configPath, { refusePlaintext: true });
+  const result = await ensureConfigSecretsProtected(configPath, {
+    refusePlaintext: true,
+    allowPassResolution: true,
+  });
   if (!result.ok) {
     console.error('Migration failed:', result.errors.join('; '));
     if (result.plaintextPaths?.length) {

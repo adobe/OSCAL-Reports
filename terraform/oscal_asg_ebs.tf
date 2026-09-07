@@ -6,7 +6,7 @@
 # OSCAL Green/Blue: Auto Scaling Groups + Launch Templates + optional persistent gp3 volumes.
 # Replaces standalone aws_instance (resilience: ASG replaces terminated/unhealthy instances).
 # active_passive: primary ASG min=1; passive ASG min=0 desired=0 (desired managed by standby scripts/Lambda).
-# See docs/AWS_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock.
+# See docs/DEPLOYMENT_AND_OPERATIONS.md#aws-terraform-for-oscal-ai-via-bedrock.
 
 locals {
   oscal_active_passive = var.oscal_traffic_mode == "active_passive"

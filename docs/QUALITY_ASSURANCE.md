@@ -47,7 +47,7 @@ Use this checklist before creating a new release:
 ### Documentation
 - [ ] README.md is up to date
 - [ ] ARCHITECTURE.md reflects current structure
-- [ ] DEPLOYMENT.md has correct instructions
+- [ ] DEPLOYMENT_AND_OPERATIONS.md has correct instructions
 - [ ] All new features are documented
 - [ ] API changes are documented
 - [ ] Breaking changes clearly marked
@@ -608,7 +608,7 @@ Verify deployment process:
 
 - [ ] **README.md up to date:** ✅ / ❌
 - [ ] **ARCHITECTURE.md reflects current state:** ✅ / ❌
-- [ ] **DEPLOYMENT.md has correct instructions:** ✅ / ❌
+- [ ] **DEPLOYMENT_AND_OPERATIONS.md has correct instructions:** ✅ / ❌
 - [ ] **CONFIGURATION.md complete:** ✅ / ❌
 - [ ] **CHANGELOG.md updated for this release:** ✅ / ❌
 - [ ] **API endpoints documented:** ✅ / ❌
@@ -849,8 +849,64 @@ This document consolidates the following QA files (as of December 29, 2025):
 
 ---
 
-**Document Version:** 1.3.0  
-**Last Updated:** December 29, 2025  
+# ═══════════════════════════════════════════════════════════════════════
+# PART 4: VALIDATION SYSTEM (pre-commit / CI)
+# ═══════════════════════════════════════════════════════════════════════
+
+The automated **validation system** enforces best practices and detects security issues on every commit (pre-commit hook) and in CI. Rules live under `.validation/`; the runner is `test_cases/scripts/run-all-tests.sh`.
+
+## Directory structure
+
+```
+.validation/
+├── best_practices.json      # Best-practice rules
+├── security_rules.json      # Security vulnerability patterns
+└── learnings.json           # Auto-generated project learnings
+
+test_cases/scripts/
+├── run-all-tests.sh         # Main validation runner
+├── update_best_practices.sh # Rule update (npm audit + commit-history)
+└── run_tests.sh             # Full test suite
+```
+
+## Usage
+
+```bash
+./test_cases/scripts/run-all-tests.sh          # full validation
+./test_cases/scripts/update_best_practices.sh  # refresh rules from npm audit / history
+```
+
+Validation runs automatically **pre-commit** and in **CI** (`.github/workflows/ci-cd.yml`). `git commit --no-verify` skips the local hook only — CI still enforces.
+
+## Rules
+
+**Security (CRITICAL/HIGH — block commit):** SEC-001 hardcoded secrets · SEC-002 `eval()` · SEC-003 SQL injection · SEC-006 weak crypto · SEC-007 path traversal · SEC-008 sensitive files. **Warn:** SEC-004/005 XSS.
+
+**Code quality:** CQ-001 `console.log` (warn) · CQ-002 `debugger` (block) · CQ-003 empty catch (warn) · CQ-004 TODO/FIXME (info). **Performance:** PERF-001 sync ops (warn). **Files:** FM-001 large files >1MB (warn). **Version:** VER-001 version mismatch (block).
+
+**Backend HTTP client (BP-SEC-011):** flags `from 'axios'` / `from "axios"` outside allowed paths so backend code uses `backend/utils/safeAxios.js` (CWE-113 / CodeQL-aligned). See [BEST_PRACTICES.md](BEST_PRACTICES.md) — *Outbound HTTP (Axios)*.
+
+## Severity → action
+
+| Severity | Blocks commit | Examples |
+|----------|---------------|----------|
+| Critical | Yes | hardcoded secrets, `eval()`, path traversal |
+| Error | Yes | SQL injection, weak crypto, `debugger` |
+| Warning | No | `console.log`, XSS risk, sync ops |
+| Info | No | TODO/FIXME, doc gaps |
+
+## Customizing rules
+
+Add or disable rules in `.validation/best_practices.json` / `security_rules.json` (rule object: `id`, `name`, `severity`, `pattern`, `exclude`, `message`, `autoFix`; set a category's `"enabled": false` to disable it), then re-run `run-all-tests.sh`. Rules also self-update from `npm audit` and the last 30 days of commit history via `update_best_practices.sh`.
+
+**Troubleshooting:** script not found → `chmod +x test_cases/scripts/*.sh`. False positives → tighten the rule `pattern` or add an `exclude` path. Slow runs → validation is staged-files-only by default; keep patterns specific.
+
+**See also:** [.validation/README.md](../.validation/README.md) · [BEST_PRACTICES.md](BEST_PRACTICES.md) · [SECURITY.md](SECURITY.md) · [OWASP Top 10](https://owasp.org/www-project-top-ten/) · [CWE Top 25](https://cwe.mitre.org/top25/).
+
+---
+
+**Document Version:** 1.4.0  
+**Last Updated:** September 2026  
 **Maintainer:** Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
 
 

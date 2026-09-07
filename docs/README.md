@@ -1,176 +1,113 @@
-# 📚 OSCAL Report Generator Documentation
+<!--
+Concept: Mukesh Kesharwani
+Contact: mukesh.kesharwani@adobe.com
+-->
 
-**Organized documentation for development, deployment, and maintenance.**
+# OSCAL Report Generator — Documentation
 
----
-
-## 📖 Quick navigation
-
-### 🚀 Getting started
-
-| Document | Description | For |
-|----------|-------------|-----|
-| [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | One-page project purpose, stack, layout, and doc links | **Overview** |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Complete deployment guide (Docker, local, cloud overview) | **Start here** |
-| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image (pull, run, CI/CD, troubleshooting) | Docker users |
+Start here. This page is the map for every guide under `docs/`. For a one-page repo quick start and directory tree, see [../README.md](../README.md).
 
 ---
 
-### 🏗️ Architecture & development
+## Overview
 
-| Document | Description |
-|----------|-------------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
-| [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards and best practices |
-| [AI_INTEGRATION.md](AI_INTEGRATION.md) | **Consolidated:** AI security/architecture, models (Mistral, Gemma), Bedrock/Mistral config, token limits, troubleshooting |
-| [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security standards integration |
-| [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) | Optional PostgreSQL/RDS, export sync, `extended_data` fields |
+**Application:** Keekar's OSCAL SOA / SSP / CCM Generator (npm `keekars-oscal-soa-ssp-ccm-generator`). A full-stack web app that produces **Statement of Applicability (SOA)**, **System Security Plan (SSP)**, and **Cloud Control Matrix (CCM)** artefacts from **OSCAL** catalogues and profiles (NIST 800-53, Australian ISM, Singapore IM8, German BSI). A React UI drives a Node.js/Express backend for APIs, auth, config, and optional AI-assisted control suggestions.
 
----
+| Layer | Technology |
+|-------|------------|
+| Frontend | React, Vite (dev proxy to backend) |
+| Backend | Node.js, Express |
+| Auth | Session users (`config/app/users.json`, PBKDF2); optional OIDC/Okta |
+| AI (optional) | AWS Bedrock and/or Mistral API — configured in app settings |
+| Data (optional) | PostgreSQL / AWS RDS for extended/export sync |
+| Deploy | Docker; AWS via Terraform (ALB, Green/Blue EC2, S3) |
 
-### 🔧 Git, release, and workflow
+Default local ports: backend **3020**, frontend dev **3021**. Current version and release history: [CHANGELOG.md](CHANGELOG.md). Canonical repo: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports); default branch **Development**.
 
-| Document | Description |
-|----------|-------------|
-| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | **Consolidated:** version bumping & release, branching (Development → Quality → main/Prod), single remote, GitHub auth, PR checklist |
-| [RELEASE_1.7.27.md](RELEASE_1.7.27.md) | **July 2026 release:** VULN-37000 job auth/IDOR, deploy 502 prevention, API auth inventory tests |
-| [RELEASE_1.7.25.md](RELEASE_1.7.25.md) | **July 2026 release:** SSRF/settings/Bedrock fixes (VULN-36986/36998/37020), SSAAU-216/212, Dependabot — full record + regression prevention |
-| [VALIDATION_SYSTEM.md](VALIDATION_SYSTEM.md) | Pre-commit validation system |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
-
-**Current release:** see [CHANGELOG.md](CHANGELOG.md). Canonical repository: [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports). Default branch: **Development**.
+**Repository layout:** `backend/` (API, auth, OSCAL processing, AI) · `frontend/` (SPA) · `config/app/` (runtime config/user patterns) · `terraform/` (AWS infra) · `scripts/` (deploy, automation, SSH; see [../scripts/README.md](../scripts/README.md)) · `test_cases/backend/` (Jest) · `docs/` (this folder).
 
 ---
 
-### ☁️ AWS & cloud
+## Start here by role
 
-| Document | Description |
-|----------|-------------|
-| [AWS_OPERATIONS.md](AWS_OPERATIONS.md) | **Consolidated:** Terraform (ALB, Green/Blue ASG + EBS, S3 `installer/`/`config`/`logs`, RDS), Image Factory AMIs, Amazon Bedrock setup, EC2/S3 deploy scripts, cost estimates |
-| [TLS_CERTIFICATE_AND_PKI.md](TLS_CERTIFICATE_AND_PKI.md) | Corporate PKI / PLM CSR, `OSCAL_Reports_data/tls/` paths, ACM import, DigiCert cutover history, Let's Encrypt emergency fallback |
-| [CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md) | Cross-account Bedrock Phase 1: Account B IAM runbook, Terraform AssumeRole, validation (no app change) |
-| [TERRAFORM_NETWORK_PCL_AND_TAGS.md](TERRAFORM_NETWORK_PCL_AND_TAGS.md) | **Portability:** VPC segments, SG allow lists, Australia prefix lists, **ALB tags** (`Adobe:PublicPorts`, `Adobe:PortJustification`), PCL notes — copy to other projects |
-| [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) | Cloud platforms (Azure, AWS, GCP) |
+| Role | Read in this order |
+|------|--------------------|
+| 👨‍💻 **Developer** | [ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) |
+| 🚀 **DevOps / deploy** | [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) |
+| 👤 **End user** | [USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) |
+| 🔐 **Security reviewer** | [SECURITY.md](SECURITY.md) → [AI_INTEGRATION.md](AI_INTEGRATION.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) |
+| ✅ **QA / tester** | [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) |
 
----
-
-### 🐳 Docker & migration
-
-| Document | Description |
-|----------|-------------|
-| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub guide (same as above quick link) |
-| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Local dev paths, config migration, user consolidation (Blue/Green) |
+From the repo root: `npm run install:all`, `npm run dev`, `npm run lint:all`. Backend tests: `cd backend && npm test`.
 
 ---
 
-### 👥 User documentation
+## Documentation map
 
-| Document | Description |
-|----------|-------------|
-| [USER_GUIDE.md](USER_GUIDE.md) | Application features |
-| [OSCAL_SAR.md](OSCAL_SAR.md) | OSCAL Security Assessment Results (SAR) |
+### Architecture & development
+| Document | What's inside |
+|----------|---------------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design. |
+| [BEST_PRACTICES.md](BEST_PRACTICES.md) | Coding standards, security patterns, configuration reference, and infrastructure best practices (network/ALB tags, TLS/PKI — Part 5). |
+| [AI_INTEGRATION.md](AI_INTEGRATION.md) | AI security/architecture, models (Mistral, Gemma), Bedrock/Mistral config, token limits, troubleshooting. |
+| [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) | Optional PostgreSQL/RDS, export sync, `extended_data` fields. |
+| [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security-standards integration. |
 
----
+### Deployment & Docker
+| Document | What's inside |
+|----------|---------------|
+| [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) | Complete deployment guide (Docker, local, cloud overview). **Start here for deploy.** |
+| [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image: pull, run, CI/CD publishing, troubleshooting. |
+| [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) | Cloud platforms (Azure, AWS, GCP) overview. |
+| [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Local dev config paths, config migration, Blue/Green user consolidation, S3-default recovery. |
 
-### 🔐 Authentication / SSO
+### AWS & infrastructure
+| Document | What's inside |
+|----------|---------------|
+| [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) | Terraform (ALB, Green/Blue ASG + EBS, S3, RDS), Image Factory AMIs, Bedrock setup, EC2/S3 deploy runbooks, costs. **Main AWS runbook.** |
+| [CROSS_ACCOUNT_BEDROCK_PHASE1.md](CROSS_ACCOUNT_BEDROCK_PHASE1.md) | Cross-account Bedrock Phase 1: Account B IAM runbook, Terraform AssumeRole, validation. |
+| [BEST_PRACTICES.md](BEST_PRACTICES.md#part-5-infrastructure-best-practices-network--alb-tags--tls--pki) — Part 5 | Network segments, SG allow lists, prefix lists, ALB tags (`Adobe:PublicPorts`/`Adobe:PortJustification`), and corporate PKI / TLS / ACM import runbook. |
 
-| Document | Description |
-|----------|-------------|
-| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | OIDC/SSO: Okta (EC2/production), **Generic SSO implementation reference** (button, callback, backend flow, config, portable checklist for other projects), login page policy |
+### Authentication / SSO
+| Document | What's inside |
+|----------|---------------|
+| [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) | Okta SSO, Generic OIDC (button, callback, backend flow, config), IdP-group role inheritance, portable checklist. |
 
----
+### Security & quality
+| Document | What's inside |
+|----------|---------------|
+| [SECURITY.md](SECURITY.md) | OWASP alignment, security features, vulnerability history. |
+| [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA checklists, verification report template, BSI testing, **and the pre-commit/CI validation system (Part 4)**. |
 
-### 🔒 Security & quality
+### Git, release & history
+| Document | What's inside |
+|----------|---------------|
+| [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) | Version bumping & release, branching (Development → Quality → main/Prod), single remote, GitHub auth, PR checklist. |
+| [CHANGELOG.md](CHANGELOG.md) | Version history + per-release regression-prevention checklists (folds the former `RELEASE_*.md` records). |
 
-| Document | Description |
-|----------|-------------|
-| [SECURITY.md](SECURITY.md) | OWASP alignment, security features, vulnerability notes |
-| [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) | QA processes and testing |
+### User documentation
+| Document | What's inside |
+|----------|---------------|
+| [USER_GUIDE.md](USER_GUIDE.md) | Application features and workflows. |
+| [OSCAL_SAR.md](OSCAL_SAR.md) | OSCAL Security Assessment Results (SAR) export and NIST 800-53 mapping. |
 
----
-
-### 📐 Diagrams
-
-| Document | Description |
-|----------|-------------|
-| [diagrams/README.md](diagrams/README.md) | Architecture diagrams and generators |
-
----
-
-## 📊 Documentation statistics
-
-- **Core guides in `docs/`:** consolidated where topics overlapped (Git/release, AI, AWS).
-- **Categories:** Getting started, architecture, Git/release, AWS/cloud, Docker, users, SSO, security/QA.
-
----
-
-## 🎯 Quick links by role
-
-### 👨‍💻 Developer
-
-[ARCHITECTURE.md](ARCHITECTURE.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md) → [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md)
-
-From repo root: **`npm run install:all`**, **`npm run dev`**, **`npm run lint:all`** (ESLint root + backend + frontend). Backend tests: **`cd backend && npm test`** (Jest config under `test_cases/backend/`).
-
-### 🚀 DevOps / deployment
-
-[DEPLOYMENT.md](DEPLOYMENT.md) → [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) → [AWS_OPERATIONS.md](AWS_OPERATIONS.md)
-
-### 👤 End user
-
-[USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md)
-
-### 🔐 Security reviewer / assessor
-
-[USER_GUIDE.md](USER_GUIDE.md) → [OSCAL_SAR.md](OSCAL_SAR.md) → [AI_INTEGRATION.md](AI_INTEGRATION.md) → [BEST_PRACTICES.md](BEST_PRACTICES.md)
-
-### ✅ QA / tester
-
-[QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md) → [DEPLOYMENT.md](DEPLOYMENT.md)
+### Diagrams
+| Document | What's inside |
+|----------|---------------|
+| [diagrams/README.md](diagrams/README.md) | Architecture diagrams and generators. |
 
 ---
 
-## 📝 Documentation guidelines
+## Documentation guidelines
 
-1. **Location:** All permanent docs live under `/docs/` (see repository rules for `logs/` vs `docs/`).
-2. **Naming:** `DESCRIPTIVE_NAME.md` (UPPERCASE for major guides).
-3. **Format:** Table of contents and clear headings for long guides.
-4. **Index:** Update this file when adding a **new** top-level guide.
+- **Location:** permanent docs live under `docs/`; only `README.md` sits at the repo root.
+- **Naming:** `DESCRIPTIVE_NAME.md` (UPPERCASE for major guides).
+- **No duplicates:** extend an existing guide rather than adding a near-duplicate; add a row here only when introducing a new top-level guide.
+- **No session logs or one-off troubleshooting dumps** in `docs/`.
+- **Release records** go into [CHANGELOG.md](CHANGELOG.md) under the version heading — do not create per-version `RELEASE_*.md` files.
 
-### What not to add
-
-- Session logs or one-off troubleshooting dumps in `docs/`
-- Duplicate content—extend an existing guide or add a section with a link from this index
+**Need help?** Open an issue or PR on [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports/issues).
 
 ---
 
-## 🔄 Consolidation (2026-04)
-
-The following former files are merged (edit the **consolidated** doc only):
-
-| Former files | Now |
-|--------------|-----|
-| `VERSION_AND_RELEASE.md`, `BRANCHING_STRATEGY.md`, `DUAL_REPO_SETUP.md`, `GITHUB_ACCOUNT_GUIDE.md`, `PR_SUBMISSION_CHECKLIST.md` | [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md) |
-| `AI_ARCHITECTURE_SECURITY.md`, `AI_MODELS_AND_CONFIG.md` | [AI_INTEGRATION.md](AI_INTEGRATION.md) |
-| `AWS_TERRAFORM.md`, `IMAGE_FACTORY.md`, `AWS_BEDROCK_SETUP.md`, `EC2_WEB_HOSTING_BEST_PRACTICES.md`, `AWS_COST_ESTIMATE.md` | [AWS_OPERATIONS.md](AWS_OPERATIONS.md) |
-
-To regenerate merged files from historical sources (only if those sources exist in a branch), use git history on the consolidated docs listed above (the one-time `build-consolidated-docs.py` helper was removed in **1.7.20**).
-
----
-
-## 🆘 Need help?
-
-- **Issue:** Open a GitHub issue on [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports/issues).
-- **Updates:** Submit a PR to [adobe/OSCAL-Reports](https://github.com/adobe/OSCAL-Reports).
-
----
-
-## Historical / deprecated
-
-| Document | Notes |
-|----------|--------|
-| [DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md](DUAL_REPO_QUALITY_MIRROR_PLAYBOOK.md) | Retired July 2026 — dual-repo mirror pattern; superseded by [GIT_AND_RELEASE.md](GIT_AND_RELEASE.md#single-repository-setup-guide) |
-
----
-
-**Last updated:** July 2026
+**Last updated:** September 2026

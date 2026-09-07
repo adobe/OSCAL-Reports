@@ -8,7 +8,7 @@
 
 # Obtain a Let's Encrypt certificate (manual DNS-01 in Route53), import it into AWS ACM,
 # and optionally update Terraform tfvars so the ALB uses it for HTTPS.
-# Core emergency fallback when corporate PKI / DigiCert is unavailable — see docs/TLS_CERTIFICATE_AND_PKI.md.
+# Core emergency fallback when corporate PKI / DigiCert is unavailable — see docs/BEST_PRACTICES.md (Part 5: TLS certificates and corporate PKI).
 #
 # Route53 is assumed to be in a DIFFERENT AWS account (credentials not in Pass). This script
 # prompts you with exact steps to create/update the DNS TXT record manually; certbot then

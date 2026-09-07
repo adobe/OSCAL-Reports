@@ -4,7 +4,7 @@
 # Licensed under the MIT License. See LICENSE file for details.
 
 # Splunk Universal Forwarder SCC bootstrap (SSAAU-212 NotSendingSyslog).
-# See docs/AWS_OPERATIONS.md and Adobe wiki: Getting Your Logs into Security Splunk SCC.
+# See docs/DEPLOYMENT_AND_OPERATIONS.md and Adobe wiki: Getting Your Logs into Security Splunk SCC.
 
 locals {
   oscal_splunk_bootstrap_script_body = var.oscal_splunk_uf_bootstrap_enabled ? templatefile("${path.module}/templates/oscal-splunk-uf-bootstrap.sh.tftpl", {

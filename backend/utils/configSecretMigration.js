@@ -66,10 +66,14 @@ export function shouldSkipSecretMigration(keyPath, config) {
 
 /**
  * Extract plaintext secret from stored value (string, _pass, _cfgenc).
+ * Resolving a legacy _pass pointer requires the pass CLI and is opt-in via
+ * allowPassResolution — only the standalone operator migration tools set it,
+ * never the running server. Without it, _pass pointers are left untouched.
  * @param {*} value
+ * @param {{ allowPassResolution?: boolean }} [options]
  * @returns {string|null}
  */
-export function extractPlaintextSecret(value) {
+export function extractPlaintextSecret(value, options = {}) {
   if (value == null) return null;
   if (typeof value === 'string') {
     const t = value.trim();
@@ -78,6 +82,7 @@ export function extractPlaintextSecret(value) {
   }
   if (isSmPointer(value)) return null;
   if (isPassPointer(value)) {
+    if (!options.allowPassResolution) return null;
     const resolved = (passShow(value._pass) || '').trim();
     return resolved || null;
   }
@@ -112,11 +117,12 @@ export function findPlaintextSecretPaths(config) {
 /**
  * Migrate secrets in a mutable config clone. Does not write to disk.
  * @param {Object} config - mutable config object
- * @param {{ logger?: Function }} [options]
+ * @param {{ logger?: Function, allowPassResolution?: boolean }} [options]
  * @returns {Promise<{ changed: boolean, migrated: string[], errors: string[] }>}
  */
 export async function migrateConfigSecretsInPlace(config, options = {}) {
   const log = options.logger || (() => {});
+  const allowPassResolution = options.allowPassResolution === true;
   const migrated = [];
   const errors = [];
   let changed = false;
@@ -150,9 +156,9 @@ export async function migrateConfigSecretsInPlace(config, options = {}) {
       continue;
     }
 
-    const plain = extractPlaintextSecret(current);
+    const plain = extractPlaintextSecret(current, { allowPassResolution });
     if (!plain) {
-      if (shape === '_pass') {
+      if (shape === '_pass' && allowPassResolution) {
         errors.push(`${keyPath}: _pass pointer could not be resolved (pass unavailable)`);
       }
       continue;
@@ -205,11 +211,12 @@ export async function migrateConfigSecretsInPlace(config, options = {}) {
 /**
  * Load config from path, migrate if needed, atomic write when changed.
  * @param {string} configPath
- * @param {{ logger?: Function, refusePlaintext?: boolean }} [options]
+ * @param {{ logger?: Function, refusePlaintext?: boolean, allowPassResolution?: boolean }} [options]
  * @returns {Promise<{ ok: boolean, migrated: string[], errors: string[], plaintextPaths: string[] }>}
  */
 export async function ensureConfigSecretsProtected(configPath, options = {}) {
   const log = options.logger || (() => {});
+  const allowPassResolution = options.allowPassResolution === true;
 
   if (!configPath || !fs.existsSync(configPath)) {
     return { ok: true, migrated: [], errors: [], plaintextPaths: [] };
@@ -229,15 +236,23 @@ export async function ensureConfigSecretsProtected(configPath, options = {}) {
   const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const plaintextBefore = findPlaintextSecretPaths(raw);
 
-  if (plaintextBefore.length === 0 && !SENSITIVE_CONFIG_KEYS.some(({ path: p }) => {
+  // Legacy _pass pointers only trigger migration when pass resolution is
+  // explicitly enabled (operator CLI tools). The running server leaves them
+  // untouched — pass is no longer a runtime dependency.
+  const hasPassToMigrate = allowPassResolution && SENSITIVE_CONFIG_KEYS.some(({ path: p }) => {
     const v = getByPath(raw, p);
     return getSecretStorageShape(v) === '_pass';
-  })) {
+  });
+
+  if (plaintextBefore.length === 0 && !hasPassToMigrate) {
     return { ok: true, migrated: [], errors: [], plaintextPaths: [] };
   }
 
   const clone = JSON.parse(JSON.stringify(raw));
-  const { changed, migrated, errors } = await migrateConfigSecretsInPlace(clone, { logger: log });
+  const { changed, migrated, errors } = await migrateConfigSecretsInPlace(clone, {
+    logger: log,
+    allowPassResolution,
+  });
 
   if (errors.length > 0 && options.refusePlaintext) {
     log('error', 'Config contains plaintext secrets that could not be migrated', {

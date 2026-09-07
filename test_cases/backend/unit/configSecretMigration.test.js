@@ -51,6 +51,18 @@ describe('configSecretMigration', () => {
     expect(decryptConfigSecret(config.messagingConfig.slack.webhookUrl)).toBe('migrate-me');
   });
 
+  it('leaves a legacy _pass pointer untouched without allowPassResolution', async () => {
+    const config = {
+      messagingConfig: { slack: { webhookUrl: { _pass: 'OSCAL/slack-webhook' } } },
+    };
+    const { changed, migrated, errors } = await migrateConfigSecretsInPlace(config);
+    // Pass is no longer resolved at runtime: skip silently, no error, no mutation.
+    expect(errors).toEqual([]);
+    expect(migrated).toEqual([]);
+    expect(changed).toBe(false);
+    expect(config.messagingConfig.slack.webhookUrl).toEqual({ _pass: 'OSCAL/slack-webhook' });
+  });
+
   it('validateConfigSecretsProtected fails when plaintext present', () => {
     const bad = { aiConfig: { apiToken: 'token-plain' } };
     const good = { aiConfig: { apiToken: '' } };

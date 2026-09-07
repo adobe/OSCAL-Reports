@@ -181,8 +181,8 @@ docker image prune -a --filter "label=org.opencontainers.image.source=https://gi
 
 ## Resources
 
-- 📖 **Full Guide**: [docs/GITHUB_ACTIONS_DEPLOYMENT.md](../docs/GITHUB_ACTIONS_DEPLOYMENT.md)
-- 🚀 **Deployment Guide**: [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md)
+- 📖 **CI/CD publishing**: [docs/DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md) and `.github/workflows/`
+- 🚀 **Deployment Guide**: [docs/DEPLOYMENT_AND_OPERATIONS.md](../docs/DEPLOYMENT_AND_OPERATIONS.md)
 - 🏗️ **Architecture**: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
 
 ---

@@ -1,482 +1,101 @@
-# OSCAL Reports Deployment Scripts
+<!--
+Concept: Mukesh Kesharwani
+Contact: mukesh.kesharwani@adobe.com
+-->
 
-This directory contains upgrade and consolidation scripts for Blue-Green deployments.
+# OSCAL Reports Scripts
 
-**Repeated-use helpers** at repo [`scripts/`](.): [`ssh-ec2.sh`](ssh-ec2.sh) (SSH to Green/Blue via Terraform IPs), [`restart-local-dev.sh`](restart-local-dev.sh) (local npm dev restart), [`letsencrypt-acm-import.sh`](letsencrypt-acm-import.sh) (Let's Encrypt → ACM emergency TLS fallback; see [docs/TLS_CERTIFICATE_AND_PKI.md](../docs/TLS_CERTIFICATE_AND_PKI.md)). Shared EC2/Pass/Terraform helpers: [`lib/ec2-common.sh`](lib/ec2-common.sh).
+Operational scripts for the OSCAL Report Generator. Production runs on **AWS
+(Terraform-managed EC2, Green/Blue behind an ALB)**; secrets live in **AWS
+Secrets Manager** and config/users are backed to **S3**.
 
-**Debug and one-off tools** under [`scripts/debug/`](debug/): Okta diagnosis (`diagnose-okta-on-ec2.sh`), ALB target health (`alb-target-health.sh`), Terraform SG dependency lookup (`terraform-find-sg-dependencies.sh`), EC2 config/SM helpers (`migrate-config-secrets-to-sm.sh`, `backup-config-to-s3.sh`, `sync-config-from-s3-newest.sh`, `scp-to-ec2.sh`), laptop pass bundle sync (`push-pass-to-secrets-manager.sh`, `pull-secrets-manager-to-pass.sh`, `migrate-pass-entries-to-bundle.sh`), Blue config restore (`restore-blue-config.sh`), and related utilities.
+Run everything from the **repository root**. Terraform-dependent scripts read
+AWS credentials from Pass via `terraform/run-with-aws-pass.sh` and derive
+instance IPs from Terraform output.
 
-## 📋 Available Scripts
+## Layout
 
-### 1. `build-and-push-dockerhub.sh`
-Build the OSCAL Report Generator Docker image locally and push it to Docker Hub (e.g. for use when GitHub Actions is unavailable or you prefer to publish from your machine).
+- [`scripts/`](.) — top-level deploy and operations scripts.
+- [`scripts/lib/`](lib/) — shared helpers sourced by other scripts (EC2/Pass/Terraform, config↔S3 sync, Bedrock drop-ins, systemd env). Not run directly.
+- [`scripts/ci/`](ci/) — CI helpers (post-deploy smoke test, workflow/CodeQL validation).
+- [`scripts/debug/`](debug/) — diagnostics and on-instance operator tools (see below).
 
-**What it does:**
-- Builds the image from the repo root using the project Dockerfile
-- Tags the image using version from `package.json` (e.g. `v1.7.27`) or an optional tag argument
-- Pushes the image to Docker Hub; when the tag is a version, also tags and pushes `latest`
+## Deploy & operations (top-level)
 
-**Usage:** From the repository root (after `docker login`):
-```bash
-DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
-# Or with an explicit tag:
-./scripts/build-and-push-dockerhub.sh v1.7.27
-```
+| Script | Purpose |
+|--------|---------|
+| [`deploy-to-ec2.sh`](deploy-to-ec2.sh) | Full deploy to Green/Blue: sync repo to `/opt/oscal/app`, `npm install` + frontend build, config seed, `ec2_automation` cron, systemd, `/health/ready` + smoke checks. Use `--both`, `--green`, or `--blue`. |
+| [`ssh-ec2.sh`](ssh-ec2.sh) | SSH to Green/Blue using Terraform-derived IPs. |
+| [`ec2_automation.sh`](ec2_automation.sh) | On-instance cron: backup config/users to S3; optional installer sync + build + restart. |
+| [`reactivate-admin.sh`](reactivate-admin.sh) | Reactivate an admin user in `users.json` (repo or `/opt/oscal/data/users.json`). |
+| [`oscal-staggered-ami-refresh.sh`](oscal-staggered-ami-refresh.sh) | Staggered ASG AMI refresh with health gating between roles. |
+| [`check-ami-drift.sh`](check-ami-drift.sh) | Report AMI drift between launch templates and the latest published image. |
+| [`oscal-standby.sh`](oscal-standby.sh) | Toggle standby/traffic mode for an instance. |
+| [`letsencrypt-acm-import.sh`](letsencrypt-acm-import.sh) | Let's Encrypt → ACM emergency TLS fallback (see [docs/BEST_PRACTICES.md](../docs/BEST_PRACTICES.md) Part 5: TLS/PKI). |
+| [`restart-local-dev.sh`](restart-local-dev.sh) | Restart the local npm dev stack (frontend + backend). |
 
-**Environment:** `DOCKERHUB_USERNAME` (default: `keekar`) – your Docker Hub username.
+## Build & release
 
-**Requirements:** Docker installed and running; run `docker login` before first use.
+| Script | Purpose |
+|--------|---------|
+| [`build-and-push-dockerhub.sh`](build-and-push-dockerhub.sh) | Build the image locally and push to Docker Hub (version-tagged, plus `latest`). Requires `docker login`; `DOCKERHUB_USERNAME` defaults to `keekar`. |
+| [`install_from_dockerhub.sh`](install_from_dockerhub.sh) | Pull-based deploy from Docker Hub with backup + auto-rollback (used for standalone/TrueNAS hosts, not the AWS ASG path). |
+| [`bump_version.sh`](bump_version.sh) | Bump the version in `package.json` and related files. |
+| [`push-and-merge-main.sh`](push-and-merge-main.sh) | Repo git-flow helper for pushing/merging. |
+| [`setup-git-hooks.sh`](setup-git-hooks.sh) | Install the repo's `.githooks`. |
+| [`switch-github-account.sh`](switch-github-account.sh) | Switch the active GitHub account for pushes. |
 
----
+## User consolidation
 
-### 2. `upgrade-blue-deployment.sh`
-Upgrades Blue deployment from v1.5.0 to v1.6.5+ with volume persistence.
+| Script | Purpose |
+|--------|---------|
+| [`consolidate-users.sh`](consolidate-users.sh) | Merge users between Blue and Green with duplicate detection (no overwrites). |
+| [`sync-consolidation-script.sh`](sync-consolidation-script.sh) | Copy `consolidate-users.sh` to Blue/Green script folders so all copies stay in sync. |
 
-**What it does:**
-- Backs up Blue users and configuration
-- Runs build script to upgrade Docker image
-- Restores users and configuration to persistent volume
-- Verifies volume persistence is enabled
+See [CONFIG_AND_USER_MIGRATION.md](../docs/CONFIG_AND_USER_MIGRATION.md#user-consolidation).
 
-**Usage:**
-```bash
-cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
-./upgrade-blue-deployment.sh
-```
+## Debug & on-instance tools ([`scripts/debug/`](debug/))
 
-**Requirements:**
-- Blue container must be running (or at least exist)
-- Admin credentials for Blue deployment
-- Blue deployment directory path
+Diagnostics and operator tools. Five of these are copied onto instances by the
+deploy script (`update-pass-credential.sh`, `backup-config-to-s3.sh`,
+`sync-config-from-s3-newest.sh`, plus the S3 restore/publish helpers used on the
+host); the rest run from a laptop over SSH.
 
----
+| Script | Purpose |
+|--------|---------|
+| `diagnose-okta-on-ec2.sh` | Diagnose SSO/Okta on EC2 (SM env, config, systemd, legacy pass); calls `probe-sso-secrets.mjs`. |
+| `probe-sso-secrets.mjs` | Resolve SSO client secrets under the production env (also invoked by the Terraform SSM document). |
+| `alb-target-health.sh` | Print ALB Green/Blue target health via AWS CLI. |
+| `terraform-find-sg-dependencies.sh` | List ENIs/SGs depending on a security group (when Terraform hits `DependencyViolation`). |
+| `audit-config-secrets.sh` | Audit `config.json` secret-storage shape (`_sm`/`_pass`/`_cfgenc`/plaintext); prints no secret values. |
+| `backup-config-to-s3.sh` | On-instance backup of config/users to S3 (cron companion). |
+| `publish-config-default-to-s3.sh` | Publish the golden config/users snapshot to `s3://<bucket>/config/default/`. |
+| `restore-config-from-s3-default.sh` | Restore `/opt/oscal/data` from the golden snapshot (fast rollback). |
+| `sync-config-from-s3-newest.sh` | Pull the newest shared config from S3 (`config/active|green|blue`). |
+| `scp-to-ec2.sh` | Copy a debug script from the laptop to Green/Blue over SSH. |
+| `repair-ec2-config-from-backups.mjs` | Break-glass: rebuild `config.json` from local backups and repoint `_sm`. |
+| `update-pass-credential.sh` | Interactive Pass entry management (list/add/delete; credentials read from stdin, never written to disk). |
 
-### 3. `upgrade-green-deployment.sh`
-Upgrades Green deployment from v1.6.2 to v1.6.5+ with volume persistence.
+## Testing
 
-**What it does:**
-- Backs up Green users and configuration
-- Runs build script to upgrade Docker image
-- Restores users and configuration to persistent volume
-- Verifies volume persistence is enabled
-
-**Usage:**
-```bash
-cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
-./upgrade-green-deployment.sh
-```
-
-**Requirements:**
-- Green container must be running (or at least exist)
-- Admin credentials for Green deployment
-- Green deployment directory path
-
----
-
-### 4. `upgrade-both-deployments.sh`
-Upgrades BOTH Blue and Green deployments together.
-
-**What it does:**
-- Backs up both Blue and Green users and configurations
-- Upgrades both deployments sequentially
-- Restores users and configurations to persistent volumes
-- Verifies volume persistence for both
-
-**Usage:**
-```bash
-cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
-./upgrade-both-deployments.sh
-```
-
-**Requirements:**
-- Blue and/or Green containers running
-- Admin credentials for both deployments
-- Blue and Green deployment directory paths
-
-**Benefits:**
-- Single script for complete upgrade
-- Consistent backup naming
-- Consolidated verification
-
----
-
-### 5. `consolidate-users.sh`
-Merges users between Blue and Green deployments after upgrade.
-
-**What it does:**
-- Exports users from one or both deployments
-- Imports users with duplicate detection
-- Preserves existing users (no overwrites)
-- Provides bi-directional sync option
-
-**Usage:**
-```bash
-cd /Users/mkesharw/Documents/OSCAL_Reports/scripts
-./consolidate-users.sh
-```
-
-**Options:**
-1. **Blue → Green**: Merge Blue users into Green
-2. **Green → Blue**: Merge Green users into Blue
-3. **Bi-directional**: Merge both ways (recommended)
-
-**Requirements:**
-- Both containers must be running
-- Admin credentials for both deployments
-- Volume persistence must be enabled (upgrade first!)
-
-**Keeping script in sync (Local, Blue, Green):** Use `sync-consolidation-script.sh` to copy the same script to Blue and Green folders so you can check in from all three. See [CONFIG_AND_USER_MIGRATION.md](../docs/CONFIG_AND_USER_MIGRATION.md#user-consolidation).
-
----
-
-### 6. `sync-consolidation-script.sh`
-Copies `consolidate-users.sh` to Blue and Green script folders so Local, Blue, and Green all have the same script for check-in.
-
-**Usage (from repo root):**
-```bash
-./scripts/sync-consolidation-script.sh
-```
-
-**Custom paths:**
-```bash
-BLUE_SCRIPTS_DIR=/path/to/Blue/scripts GREEN_SCRIPTS_DIR=/path/to/Green/scripts ./scripts/sync-consolidation-script.sh
-```
-
-**Default targets:** `/mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Blue/scripts` and `...-Green/scripts`. Override with env vars if your paths differ.
-
----
-
-### 7. `install_from_dockerhub.sh` ⭐ NEW
-Fast deployment script that pulls pre-built images from Docker Hub.
-
-**What it does:**
-- Detects Blue/Green instance automatically
-- Backs up data (API export + volume directory)
-- Pulls latest image from Docker Hub (1-3 min vs 10-15 min build)
-- Deploys with automatic health verification
-- Auto-rollback on failure
-
-**Usage:**
-```bash
-# From Blue or Green deployment directory
-cd /path/to/OSCAL_Blue  # or OSCAL_Green
-./scripts/install_from_dockerhub.sh
-```
-
-**Options:**
-```bash
-# Force deployment (override lock file)
-./scripts/install_from_dockerhub.sh --force
-
-# Skip API backup (use volume backup only)
-./scripts/install_from_dockerhub.sh --skip-backup
-
-# Combine options
-./scripts/install_from_dockerhub.sh --force --skip-backup
-```
-
-**Advantages:**
-- ⚡ **Fast**: 1-3 minutes (vs 10-15 for build)
-- 🔄 **Auto Rollback**: Reverts on failure
-- 💾 **Safe**: Automatic backup before changes
-- 🏥 **Health Verified**: 60-second health check
-- 🔒 **Concurrent Safe**: Lock prevents conflicts
-- 📦 **Tested**: Uses CI/CD tested images
-
-**Requirements:**
-- Docker Hub connectivity
-- Internet access (~400MB download)
-- Sufficient disk space (>500MB)
-
-**Perfect for:**
-- Production deployments on TrueNAS
-- Monthly scheduled updates (via cron)
-- Quick security patches
-- Minimal downtime requirements
-
-**See also:**
-- [DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md) - Complete guide
-- [DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md) - Build vs Pull comparison (see "Deployment Methods Comparison")
-- [DEPLOYMENT_TESTING_GUIDE.md](../docs/DEPLOYMENT_TESTING_GUIDE.md) - Test procedures
-
----
-
-## 🚀 Recommended Deployment Workflows
-
-### For TrueNAS Production (Recommended)
-
-**Use the pull-based deployment for fast, safe updates:**
+Run the deployment script test suite from the repo root:
 
 ```bash
-# Navigate to your deployment directory
-cd /mnt/pool/OSCAL_Blue  # or OSCAL_Green
-
-# Run deployment
-./scripts/install_from_dockerhub.sh
-
-# The script will:
-# - Backup your data automatically
-# - Pull latest from Docker Hub
-# - Deploy with health verification
-# - Rollback automatically if anything fails
-```
-
-**Schedule monthly updates:**
-```bash
-# Add to crontab (crontab -e)
-
-# Blue: 2nd & 4th Sunday at 2 AM
-0 2 8-14,22-28 * 0 cd /mnt/pool/OSCAL_Blue && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-blue-deploy.log 2>&1
-
-# Green: 1st, 3rd, 5th Sunday at 2 AM
-0 2 1-7,15-21,29-31 * 0 cd /mnt/pool/OSCAL_Green && ./scripts/install_from_dockerhub.sh >> /var/log/oscal-green-deploy.log 2>&1
-```
-
-### For Custom Builds or Development
-
-**Build from source when you need image changes not on Docker Hub:**
-
-```bash
-cd /path/to/OSCAL-Reports
-docker build -t oscal-report-generator:local .
-# Then run or compose using that tag (see docs/DOCKER_HUB_GUIDE.md)
-```
-
-### Legacy: One-Time Upgrade to Volume Persistence
-
-**Option A: Upgrade One at a Time (Safer)**
-
-**Step 1: Upgrade Green first (test deployment)**
-```bash
-./upgrade-green-deployment.sh
-# Test Green thoroughly at http://YOUR_SERVER:3020
-```
-
-**Step 2: If Green works, upgrade Blue**
-```bash
-./upgrade-blue-deployment.sh
-# Test Blue at http://YOUR_SERVER:3020
-```
-
-**Step 3: Consolidate users**
-```bash
-./consolidate-users.sh
-# Choose option 3 (bi-directional)
-```
-
-**Option B: Upgrade Both Together (Faster)**
-
-**Step 1: Upgrade both**
-```bash
-./upgrade-both-deployments.sh
-# Follows interactive prompts
-```
-
-**Step 2: Consolidate users**
-```bash
-./consolidate-users.sh
-# Choose option 3 (bi-directional)
-```
-
----
-
-## 🧪 Testing
-
-### Automated Test Suite
-
-Run comprehensive tests on the deployment script:
-
-```bash
-# From repository root
 ./test_cases/scripts/test-deployment-script.sh
-
-# Tests include:
-# - Blue/Green detection
-# - Concurrent deployment protection
-# - Backup creation
-# - Health checks
-# - Volume persistence
-# - Architecture detection
-# - Error handling
-# - Cleanup verification
 ```
 
-**Manual Testing Guide**: See [DEPLOYMENT_TESTING_GUIDE.md](../docs/DEPLOYMENT_TESTING_GUIDE.md)
+Shell scripts are lint-checked in CI via `.github/workflows/shell-validation.yml`.
+
+## More documentation
+
+- **AWS operations & runbooks:** [docs/DEPLOYMENT_AND_OPERATIONS.md](../docs/DEPLOYMENT_AND_OPERATIONS.md)
+- **Config & user migration:** [docs/CONFIG_AND_USER_MIGRATION.md](../docs/CONFIG_AND_USER_MIGRATION.md)
+- **Docker Hub deploys:** [docs/DOCKER_HUB_GUIDE.md](../docs/DOCKER_HUB_GUIDE.md)
+- **Security:** [docs/SECURITY.md](../docs/SECURITY.md)
+
+Support: open an issue at https://github.com/adobe/OSCAL-Reports/issues
 
 ---
 
-## 📂 Backup Locations
-
-All scripts create backups in your home directory:
-
-```
-~/oscal-blue-backup-YYYYMMDD-HHMMSS/
-├── users.json
-├── config.json
-└── backup-info.txt
-
-~/oscal-green-backup-YYYYMMDD-HHMMSS/
-├── users.json
-├── config.json
-└── backup-info.txt
-
-~/oscal-backup-YYYYMMDD-HHMMSS/
-├── blue/
-│   ├── users.json
-│   └── config.json
-└── green/
-    ├── users.json
-    └── config.json
-
-~/oscal-user-consolidation-YYYYMMDD-HHMMSS/
-├── blue-users.json
-└── green-users.json
-```
-
----
-
-## ✅ Pre-Upgrade Checklist
-
-Before running any upgrade script:
-
-- [ ] Verify current deployment versions
-  - Blue: v1.5.0 (check at http://YOUR_SERVER:3020)
-  - Green: v1.6.2 (check at http://YOUR_SERVER:3020)
-
-- [ ] Have admin credentials ready
-  - Blue admin username and password
-  - Green admin username and password
-
-- [ ] Know deployment directory paths
-  - Blue directory (contains "Blue" in name)
-  - Green directory (contains "Green" in name)
-
-- [ ] Check container status
-  ```bash
-  docker ps | grep oscal
-  ```
-
-- [ ] Ensure sufficient disk space
-  ```bash
-  df -h
-  ```
-
-- [ ] Install required tools (if missing)
-  ```bash
-  # jq for JSON parsing
-  sudo apt-get install jq  # Ubuntu/Debian
-  # or
-  brew install jq  # macOS
-  ```
-
----
-
-## 🔍 Post-Upgrade Verification
-
-After upgrading, verify volume persistence:
-
-### Check Blue:
-```bash
-curl http://localhost:3020/api/system/volume-status | jq '.persistence'
-```
-
-Expected output:
-```json
-{
-  "enabled": true,
-  "recommendation": "Volume persistence is properly configured"
-}
-```
-
-### Check Green:
-```bash
-curl http://localhost:3020/api/system/volume-status | jq '.persistence'
-```
-
-Expected output:
-```json
-{
-  "enabled": true,
-  "recommendation": "Volume persistence is properly configured"
-}
-```
-
----
-
-## ⚠️ Troubleshooting
-
-### "Authentication failed"
-- Check your password carefully
-- Try retrieving from container logs:
-  ```bash
-  docker logs oscal-report-generator-blue | grep Password
-  docker logs oscal-report-generator-green | grep Password
-  ```
-
-### "Container not found"
-- Check container name:
-  ```bash
-  docker ps -a | grep oscal
-  ```
-- Containers might be named differently on your system
-
-### "Directory not found"
-- Use absolute paths (full path from root)
-- Example: `/mnt/pool/oscal/Blue/` not `~/Blue/`
-
-### "Permission denied"
-- Make scripts executable:
-  ```bash
-  chmod +x /Users/mkesharw/Documents/OSCAL_Reports/scripts/*.sh
-  ```
-
-### "jq: command not found"
-- Install jq:
-  ```bash
-  # Ubuntu/Debian
-  sudo apt-get install jq
-  
-  # macOS
-  brew install jq
-  
-  # TrueNAS
-  pkg install jq
-  ```
-
----
-
-## 📖 Additional Documentation
-
-For more information, see:
-
-- **Migration Guide**: `../docs/DOCKER_VOLUME_MIGRATION.md`
-- **Test Guide**: `../docs/VOLUME_PERSISTENCE_TEST_GUIDE.md`
-- **Implementation Details**: `../docs/VOLUME_PERSISTENCE_IMPLEMENTATION.md`
-
----
-
-## 🆘 Support
-
-If you encounter issues:
-
-1. Check container logs:
-   ```bash
-   docker logs oscal-report-generator-blue
-   docker logs oscal-report-generator-green
-   ```
-
-2. Check volume status:
-   ```bash
-   curl http://localhost:3020/api/system/volume-status
-   curl http://localhost:3020/api/system/volume-status
-   ```
-
-3. Review backup files in `~/oscal-*-backup-*/`
-
-4. Open an issue: https://github.com/adobe/OSCAL-Reports/issues
-
----
-
-**Author:** Mukesh Kesharwani  
-**Version:** 1.7.27  
-**Last Updated:** April 2026
+**Author:** Mukesh Kesharwani
+**Last Updated:** September 2026

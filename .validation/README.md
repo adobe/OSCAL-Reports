@@ -83,7 +83,7 @@ Tracks project-specific security learnings and patterns discovered over time.
 
 ## Documentation
 
-See [docs/VALIDATION_SYSTEM.md](../docs/VALIDATION_SYSTEM.md) for complete documentation.
+See [docs/QUALITY_ASSURANCE.md](../docs/QUALITY_ASSURANCE.md) — *Part 4: Validation System* — for complete documentation.
 
 ## Maintenance
 

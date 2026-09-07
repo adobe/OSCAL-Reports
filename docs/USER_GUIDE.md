@@ -344,7 +344,7 @@ Use consistent formats:
 ## Additional Resources
 
 - [OSCAL SAR Guide](OSCAL_SAR.md) - Detailed SAR documentation
-- [Deployment Guide](DEPLOYMENT.md) - Installation and setup
+- [Deployment Guide](DEPLOYMENT_AND_OPERATIONS.md) - Installation and setup
 - [Architecture](ARCHITECTURE.md) - Technical details
 
 ## Support

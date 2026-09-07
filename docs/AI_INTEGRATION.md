@@ -436,8 +436,7 @@ Example with **AWS Bedrock** (no URL):
 
 ### Related Documentation
 
-- **Security:** `docs/SECURITY.md`
-- **Security Reference:** `docs/SECURITY_QUICK_REFERENCE.md`
+- **Security:** [SECURITY.md](SECURITY.md)
 - **SSRF Implementation:** `backend/utils/urlValidator.js`
 - **Security Config:** `backend/utils/securityConfig.js`
 - **Integration Tests:** `test_cases/backend/integration/ssrf-protection.test.js`
@@ -551,7 +550,7 @@ No settings change is required; ensure the active catalogue/profile is loaded so
   }
 }
 ```
-See `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_) for IAM and setup.
+See `DEPLOYMENT_AND_OPERATIONS.md` (section _Amazon Bedrock Integration_) for IAM and setup.
 
 #### Mistral API (Cloud)
 ```json
@@ -580,7 +579,7 @@ See `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_) for IAM and setup
 }
 ```
 
-**Ollama (self-hosted) has been removed.** Use **AWS Bedrock** or **Mistral API** (see Quick Start above and [AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup](AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup)).
+**Ollama (self-hosted) has been removed.** Use **AWS Bedrock** or **Mistral API** (see Quick Start above and [DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup](DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup)).
 
 ---
 
@@ -614,11 +613,11 @@ Token limits are configurable in `config/app/config.json` under `aiConfig.maxTok
 
 ### Quick Start by Provider
 
-**AWS Bedrock (production):** Configure IAM and region (see `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_)), set `provider` to `"aws-bedrock"` and `bedrockModelId` to your chosen model (e.g. `mistral.mistral-large-2402-v1:0` or a Gemma model ID). Restart and verify with `GET /api/ai/status`.
+**AWS Bedrock (production):** Configure IAM and region (see `DEPLOYMENT_AND_OPERATIONS.md` (section _Amazon Bedrock Integration_)), set `provider` to `"aws-bedrock"` and `bedrockModelId` to your chosen model (e.g. `mistral.mistral-large-2402-v1:0` or a Gemma model ID). Restart and verify with `GET /api/ai/status`.
 
 **Mistral or Google AI (cloud):** Set `provider` to `"mistral-api"` or `"google-ai"`, add `apiToken` and `model`. Restart and verify with `GET /api/ai/status`.
 
-**Ollama is no longer supported.** Use **AWS Bedrock** or **Mistral API** for Gemma/Mistral models (see AWS_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup and config above).
+**Ollama is no longer supported.** Use **AWS Bedrock** or **Mistral API** for Gemma/Mistral models (see DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup and config above).
 
 ---
 
@@ -644,7 +643,7 @@ Gemma3 is supported via the same pattern matching: any model name containing `"g
 ### Troubleshooting
 
 - **Ollama – model not found**: Run `ollama pull <model>` and confirm with `ollama list`.
-- **Bedrock – access denied**: Check IAM role or credentials; region and `bedrockModelId`; see `AWS_OPERATIONS.md` (section _Amazon Bedrock Integration_).
+- **Bedrock – access denied**: Check IAM role or credentials; region and `bedrockModelId`; see `DEPLOYMENT_AND_OPERATIONS.md` (section _Amazon Bedrock Integration_).
 - **Wrong service**: Ensure `aiConfig.model` (and `bedrockModelId` for Bedrock) matches the intended family (gemma vs mistral); restart after config change.
 - **API key errors (Mistral/Google)**: Verify key, permissions, and billing.
 - **Responses cut off**: Increase the relevant `maxTokens` value in `aiConfig`.
