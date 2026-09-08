@@ -23,31 +23,30 @@
     "lint:fix": "npx eslint . --ext .js --fix"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.1106.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1106.0",
-    "@aws-sdk/client-lambda": "^3.1106.0",
-    "@aws-sdk/client-secrets-manager": "^3.1106.0",
-    "@aws-sdk/credential-providers": "^3.1106.0",
-    "@aws-sdk/rds-signer": "^3.1106.0",
+    "@aws-sdk/client-bedrock": "^3.1127.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1127.0",
+    "@aws-sdk/client-lambda": "^3.1127.0",
+    "@aws-sdk/client-secrets-manager": "^3.1127.0",
+    "@aws-sdk/credential-providers": "^3.1127.0",
+    "@aws-sdk/rds-signer": "^3.1127.0",
     "@oscal/oscal-deep-diff": "^1.0.0",
-    "@smithy/node-http-handler": "^4.8.2",
+    "@smithy/node-http-handler": "^4.12.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "axios": ">=1.19.0",
+    "axios": ">=1.20.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csrf": "^3.1.0",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.6.2",
+    "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
     "fast-xml-parser": "5.11.1",
-    "ipaddr.js": "^2.4.0",
-    "nodemailer": "^10.0.0",
-    "pdfkit": "^0.19.1",
-    "pg": "^8.22.0",
-    "qs": "^6.15.2",
+    "ipaddr.js": "^2.5.0",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.0",
+    "qs": "^6.16.0",
     "uuid": "^14.0.2"
   },
   "devDependencies": {
@@ -58,7 +57,7 @@
   },
   "overrides": {
     "@babel/core": ">=7.29.6",
-    "axios": ">=1.19.0",
+    "axios": ">=1.20.0",
     "lodash": ">=4.17.23",
     "cookie": ">=0.7.0",
     "js-yaml": ">=5.2.3",
@@ -71,7 +70,7 @@
     "body-parser": ">=2.3.0",
     "yaml": ">=1.10.3",
     "exceljs": {
-      "uuid": "^14.0.1"
+      "uuid": "^11.1.1"
     },
     "@aws-sdk/xml-builder": {
       "fast-xml-parser": "5.7.3"
