@@ -14,7 +14,7 @@
 }
 
 .login-box {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   max-width: 500px;
@@ -117,7 +117,7 @@
 }
 
 .login-button.okta-login-btn {
-  background: #fff;
+  background: var(--surface-card);
   color: #007dc1;
   border: 2px solid #007dc1;
   box-shadow: none;

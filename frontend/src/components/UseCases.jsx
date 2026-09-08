@@ -120,7 +120,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
       featureComparison: [
         { feature: 'Load Existing Report', value: '✅ Multiple' },
         { feature: 'Catalog Selection', value: '✅ Auto-detect' },
-        { feature: 'Control Documentation', value: '❌' },
+        { feature: 'Control Documentation', value: '✅ First report only' },
         { feature: 'Change Tracking', value: '✅ Multi-source' },
         { feature: 'Export Formats', value: '✅ Comparison Report' }
       ]
@@ -178,60 +178,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
               </div>
             </div>
 
-            {/* Feature Comparison Tooltip - Same for all cards */}
-            <div className="feature-comparison-tooltip">
-              <div className="tooltip-header">📋 Feature Comparison</div>
-              <table className="tooltip-table">
-                <thead>
-                  <tr>
-                    <th>Feature</th>
-                    <th>Fresh Deployment</th>
-                    <th>Update Existing</th>
-                    <th>Analyse Changes</th>
-                    <th>Multi Reports Comparison</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Load Existing Report</td>
-                    <td>❌</td>
-                    <td>✅</td>
-                    <td>✅</td>
-                    <td>✅ Multiple</td>
-                  </tr>
-                  <tr>
-                    <td>Catalog Selection</td>
-                    <td>✅ New</td>
-                    <td>✅ Update</td>
-                    <td>✅ Compare</td>
-                    <td>✅ Auto-detect</td>
-                  </tr>
-                  <tr>
-                    <td>Control Documentation</td>
-                    <td>✅ Full</td>
-                    <td>✅ Incremental</td>
-                    <td>✅ Changed Only</td>
-                    <td>❌</td>
-                  </tr>
-                  <tr>
-                    <td>Change Tracking</td>
-                    <td>❌</td>
-                    <td>✅</td>
-                    <td>✅ Detailed</td>
-                    <td>✅ Multi-source</td>
-                  </tr>
-                  <tr>
-                    <td>Export Formats</td>
-                    <td>✅ All (JSON, Excel, PDF, CCM)</td>
-                    <td>✅ All</td>
-                    <td>✅ All + Summary</td>
-                    <td>✅ Comparison Report</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <button 
+            <button
               className={`btn btn-${useCase.color} usecase-btn`}
               onClick={useCase.isSpecial ? onMultiReportComparison : onGetStarted}
             >
@@ -239,6 +186,59 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
             </button>
           </div>
         ))}
+
+        {/* Single shared Feature Comparison table — one centered pop-up shown on hover of any tile */}
+        <div className="feature-comparison-tooltip">
+          <div className="tooltip-header">📋 Feature Comparison</div>
+          <table className="tooltip-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Fresh Deployment</th>
+                <th>Update Existing</th>
+                <th>Analyse Changes</th>
+                <th>Multi Reports Comparison</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Load Existing Report</td>
+                <td>❌</td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>✅ Multiple</td>
+              </tr>
+              <tr>
+                <td>Catalog Selection</td>
+                <td>✅ New</td>
+                <td>✅ Update</td>
+                <td>✅ Compare</td>
+                <td>✅ Auto-detect</td>
+              </tr>
+              <tr>
+                <td>Control Documentation</td>
+                <td>✅ Full</td>
+                <td>✅ Incremental</td>
+                <td>✅ Changed Only</td>
+                <td>✅ First report only</td>
+              </tr>
+              <tr>
+                <td>Change Tracking</td>
+                <td>❌</td>
+                <td>✅</td>
+                <td>✅ Detailed</td>
+                <td>✅ Multi-source</td>
+              </tr>
+              <tr>
+                <td>Export Formats</td>
+                <td>✅ All (JSON, Excel, PDF, CCM)</td>
+                <td>✅ All</td>
+                <td>✅ All + Summary</td>
+                <td>✅ Comparison Report</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="usecases-footer">

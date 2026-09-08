@@ -5,7 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 .control-item {
-  background: white;
+  background: var(--surface-card);
   border: 2px solid var(--border);
   border-radius: 8px;
   transition: all 0.2s;
@@ -245,7 +245,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 1rem;
-  max-height: 300px;
+  max-height: var(--panel-max-h);
   overflow-y: auto;
 }
 
@@ -304,7 +304,7 @@
 
 /* API Data History */
 .api-history-container {
-  max-height: 600px;
+  max-height: var(--panel-max-h);
   overflow-y: auto;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -313,7 +313,7 @@
 }
 
 .api-history-entry {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   padding: 12px;

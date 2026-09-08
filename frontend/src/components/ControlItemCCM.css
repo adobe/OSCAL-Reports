@@ -67,7 +67,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 1rem;
-  max-height: 300px;
+  max-height: var(--panel-max-h);
   overflow-y: auto;
 }
 

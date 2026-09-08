@@ -34,7 +34,7 @@
 }
 
 .settings-section {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -81,7 +81,7 @@
 }
 
 .credential-form-card {
-  background: #fff;
+  background: var(--surface-card);
   border-color: #ED1C24;
 }
 
@@ -131,7 +131,7 @@
 }
 
 .credential-preview {
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   padding: 12px;
@@ -291,7 +291,7 @@ textarea.form-control {
 }
 
 .btn-secondary {
-  background: white;
+  background: var(--surface-card);
   color: #475569;
   border: 2px solid #e2e8f0;
 }
@@ -303,7 +303,7 @@ textarea.form-control {
 
 .btn-icon {
   padding: 8px 12px;
-  background: white;
+  background: var(--surface-card);
   border: 1px solid #e2e8f0;
   font-size: 16px;
 }
@@ -415,7 +415,7 @@ textarea.form-control {
   left: 3px;
   width: 20px;
   height: 20px;
-  background: white;
+  background: var(--surface-card);
   border-radius: 50%;
   transition: transform 0.3s ease;
 }

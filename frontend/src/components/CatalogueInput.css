@@ -9,10 +9,11 @@
   flex-direction: column;
   gap: 1.5rem;
   max-width: 100%;
+  margin-inline: auto;
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 1.5rem;
@@ -131,7 +132,7 @@
 
 .sample-card:hover:not(:disabled) {
   border-color: var(--primary);
-  background: white;
+  background: var(--surface-card);
   transform: translateX(2px);
   box-shadow: 0 2px 8px rgba(237, 28, 36, 0.15);
 }
@@ -206,7 +207,7 @@
 }
 
 .info-card {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 1.5rem;

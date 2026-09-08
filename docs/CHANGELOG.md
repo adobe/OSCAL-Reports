@@ -4,6 +4,14 @@ Full release history. Deep operational reference material previously kept in sta
 `RELEASE_1.7.*.md` files is consolidated here — see the Appendices at the end for the Splunk /
 Security SCC runbook (SSAAU-212) and the cross-account Bedrock SCP escalation.
 
+## [1.7.31] - 2026-09-08
+
+### Changed
+
+- **Responsive layout system (frontend):** added `frontend/src/styles/layout.css` — fluid, viewport-relative design tokens (`--content-wide`, `--content-readable`, `--gutter`, `--section-gap`, `--panel-max-h`, `--tile-min`), utility classes (`.container-wide` / `.container-readable` / `.fluid-grid` / `.panel-scroll`), and an optional `<PageSection>` wrapper. All screens now use the full viewport width and auto-adapt to monitor size; the hard-coded 1400px width caps and fixed scroll-box heights are removed. Width/spacing is now a single-token change, and new screens inherit it automatically (they fill `.app-main`).
+- **Centralized surface tokens:** added `--surface-card`, `--surface-card-translucent`, `--surface-info` and routed 24 component stylesheets (83 usages) through them. Card / panel / info backgrounds are now one-knob and fully opaque — fixes the page-background bleed-through on boxes like "Keep Current Catalog" and the catalog update-info banner.
+- **Use-case hub:** the Feature Comparison table is now a single shared pop-up shown on hover of any tile (previously duplicated inside all four cards and jumping between them); updated the *Control Documentation × Multi-Report Comparison* cell from ❌ to "✅ First report only".
+
 ## [1.7.30] - 2026-09-08
 
 Restores fixes that were documented as shipped in `RELEASE_1.7.29`/`RELEASE_1.7.30` and the

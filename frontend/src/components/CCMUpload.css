@@ -9,10 +9,11 @@
   flex-direction: column;
   gap: 1.5rem;
   max-width: 100%;
+  margin-inline: auto;
 }
 
 .ccm-upload-card {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border-radius: 12px;
   box-shadow: 0 4px 6px var(--shadow);
@@ -292,7 +293,7 @@
 }
 
 .btn-secondary {
-  background: white;
+  background: var(--surface-card);
   color: #6b7280;
   border: 2px solid #d1d5db;
 }

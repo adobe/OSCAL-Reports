@@ -5,7 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 .user-management-container {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
   max-height: 100%;
@@ -127,7 +127,7 @@
 .users-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--surface-card);
   table-layout: fixed;
   min-width: 0;
 }
@@ -299,7 +299,7 @@
 
 /* Option styling for dropdown */
 .role-select option {
-  background: white;
+  background: var(--surface-card);
   color: #333;
   padding: 0.5rem;
   font-weight: 600;

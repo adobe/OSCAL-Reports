@@ -4,10 +4,10 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
+/* Fills the parent .app-main (which holds the single width token). */
 .initial-choice-container {
-  max-width: 1400px;
+  max-width: 100%;
   margin: 1rem auto;
-  padding: 0 2rem;
 }
 
 .initial-choice-header {
@@ -38,7 +38,7 @@
 }
 
 .choice-card {
-  background: white;
+  background: var(--surface-card);
   border-radius: 16px;
   padding: 1.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);

@@ -1,0 +1,71 @@
+/*
+ * Concept: Mukesh Kesharwani
+ * Contact: mukesh.kesharwani@adobe.com
+ *
+ * Shared responsive layout system for the OSCAL Generator UI.
+ *
+ * Goal: content auto-adapts to the user's monitor (fluid, viewport-relative
+ * sizing) and any feature gets consistent layout by applying ONE class instead
+ * of hard-coding pixel widths per component.
+ *
+ * Usage going forward:
+ *   - Data / results / tables / card-grids:  class="container-wide"
+ *   - Text-entry forms / prose:              class="container-readable"
+ *   - Rows of tiles/cards:                   class="fluid-grid"   (auto-reflows columns)
+ *   - Scroll areas that must stay bounded:   class="panel-scroll" (scales to screen height)
+ * Change a token below and the whole app follows — one knob per concern.
+ */
+
+:root {
+  /* Responsive spacing — grow with the viewport, clamped to sane bounds */
+  --gutter: clamp(1rem, 3vw, 3rem);          /* side padding for page containers */
+  --section-gap: clamp(1rem, 2vw, 2rem);     /* gap between grid tiles/cards      */
+
+  /* Widths */
+  --content-readable: clamp(320px, 92vw, 1100px); /* forms/prose: readable, fluid */
+  --content-wide: 2400px;                          /* data: fill screen; ceiling on ultrawide */
+
+  /* Heights — viewport-relative so bounded panels scale to the screen */
+  --panel-max-h: 78vh;
+
+  /* Auto-fit grid cell floor (tiles reflow their column count to the monitor) */
+  --tile-min: clamp(160px, 18vw, 240px);
+
+  /* Surfaces — all OPAQUE so nothing bleeds through the page's red gradient.
+     Change these once to re-theme every card / panel / info box in the app. */
+  --surface-card: #ffffff;                                /* standard opaque card            */
+  --surface-card-translucent: rgba(255, 255, 255, 0.95);  /* blurred headers / floating cards */
+  --surface-info: #eff6ff;                                /* info / note panels (light blue) */
+}
+
+/* Full-width data container: fills the viewport (minus a responsive gutter),
+   capped only on ultra-wide monitors, always centered. */
+.container-wide {
+  width: 100%;
+  max-width: var(--content-wide);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Readable centered container for forms / text-entry / prose. */
+.container-readable {
+  width: 100%;
+  max-width: var(--content-readable);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Card/tile grid that reflows column count to the available width — no media
+   queries needed. min(100%, --tile-min) keeps a single column from overflowing
+   on very narrow screens. */
+.fluid-grid {
+  display: grid;
+  gap: var(--section-gap);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--tile-min)), 1fr));
+}
+
+/* Opt-in bounded scroll area, sized to the screen height rather than fixed px. */
+.panel-scroll {
+  max-height: var(--panel-max-h);
+  overflow: auto;
+}

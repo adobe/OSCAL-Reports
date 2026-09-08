@@ -156,7 +156,7 @@
 .suggestions-reasoning {
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background: #eff6ff;
+  background: var(--surface-info);
   border-left: 4px solid #3b82f6;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -185,7 +185,7 @@
 }
 
 .suggestion-item {
-  background: white;
+  background: var(--surface-card);
   padding: 1rem;
   border-radius: 6px;
   border: 1px solid #e2e8f0;

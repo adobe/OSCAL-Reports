@@ -5,7 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 .save-load-panel {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 1rem;

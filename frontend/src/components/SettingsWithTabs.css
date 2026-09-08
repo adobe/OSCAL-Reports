@@ -5,7 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 .settings-tabs-container {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   overflow: hidden;
   display: flex;
@@ -72,7 +72,7 @@
 .settings-tab-btn.active {
   color: #ED1C24;
   border-bottom-color: #ED1C24;
-  background: white;
+  background: var(--surface-card);
 }
 
 .settings-tabs-content {
@@ -89,7 +89,7 @@
   flex-direction: column !important;
   height: 100% !important;
   min-height: 500px !important;
-  background: white !important;
+  background: var(--surface-card) !important;
 }
 
 .settings-tabs-content > .sso-integration-container > .sso-content {

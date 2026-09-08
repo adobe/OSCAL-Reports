@@ -11,7 +11,7 @@
 }
 
 .app-header {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   padding: 1rem 2rem;
   text-align: center;
@@ -54,14 +54,14 @@
 
 .app-main {
   flex: 1;
-  max-width: 1400px;
+  max-width: var(--content-wide);
   width: 100%;
   margin: 1rem auto;
-  padding: 0 2rem;
+  padding-inline: var(--gutter);
 }
 
 .app-footer {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   padding: 0.75rem 1rem;
   text-align: center;
@@ -88,7 +88,7 @@
   padding: 0.75rem 1rem;
   border-radius: 8px;
   margin-bottom: 1rem;
-  background: white;
+  background: var(--surface-card);
   box-shadow: 0 2px 8px var(--shadow);
   font-size: 0.9rem;
 }
@@ -198,7 +198,7 @@
   gap: 2rem;
   margin-bottom: 1rem;
   padding: 0.75rem 1.25rem;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border-radius: 10px;
   box-shadow: 0 3px 6px var(--shadow);
@@ -305,7 +305,7 @@
   align-items: center;
   margin-bottom: 1rem;
   padding: 1rem 1.5rem;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border-radius: 12px;
   box-shadow: 0 4px 6px var(--shadow);
@@ -353,7 +353,7 @@
 }
 
 .btn-secondary {
-  background: white;
+  background: var(--surface-card);
   color: var(--primary);
   border: 2px solid var(--primary);
 }
@@ -463,7 +463,7 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-card);
   border-radius: 16px;
   max-width: 900px;
   width: 100%;
@@ -534,7 +534,7 @@
 }
 
 .user-menu-btn {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-card-translucent);
   backdrop-filter: blur(10px);
   border: 2px solid rgba(237, 28, 36, 0.2);
   padding: 0.75rem 1.25rem;
@@ -551,7 +551,7 @@
 }
 
 .user-menu-btn:hover {
-  background: white;
+  background: var(--surface-card);
   border-color: rgba(237, 28, 36, 0.4);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
   transform: translateY(-2px);
@@ -562,7 +562,7 @@
   top: calc(100% + 0.5rem);
   left: 0;
   min-width: 280px;
-  background: white;
+  background: var(--surface-card);
   border-radius: 8px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   padding: 1rem;

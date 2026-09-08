@@ -36,13 +36,14 @@
 
 .usecases-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: var(--section-gap);
   margin-bottom: 3rem;
-  max-width: 1400px;
+  max-width: var(--content-wide);
   margin-left: auto;
   margin-right: auto;
   align-items: stretch;
+  position: relative; /* anchor for the single shared .feature-comparison-tooltip */
 }
 
 /* Responsive grid - stack on smaller screens */
@@ -53,7 +54,7 @@
 }
 
 .usecase-card {
-  background: white;
+  background: var(--surface-card);
   border-radius: 16px;
   padding: 2rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
@@ -213,7 +214,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -227,10 +228,12 @@
 }
 
 .usecase-card {
-  position: relative;
+  position: relative; /* anchor for in-card absolutes (e.g. .step-arrow) */
 }
 
-.usecase-card:hover .feature-comparison-tooltip {
+/* Single shared tooltip is anchored to (and centered over) the grid, and shown
+   whenever any tile in the grid is hovered — one consistent pop-up, not one per card. */
+.usecases-grid:hover .feature-comparison-tooltip {
   opacity: 1;
   visibility: visible;
 }
@@ -249,7 +252,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  background: white;
+  background: var(--surface-card);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -271,7 +274,7 @@
 }
 
 .tooltip-table tbody tr {
-  background: white;
+  background: var(--surface-card);
   transition: background 0.2s ease;
 }
 
@@ -296,14 +299,14 @@
 
 /* Footer Section */
 .usecases-footer {
-  max-width: 1400px;
+  max-width: var(--content-wide);
   margin: 0 auto;
   animation: fadeIn 0.8s ease-out 0.4s;
   animation-fill-mode: both;
 }
 
 .comparison-table {
-  background: #ffffff;
+  background: var(--surface-card);
   border-radius: 16px;
   padding: 2rem;
   margin-bottom: 2rem;
@@ -324,7 +327,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -347,7 +350,7 @@
 }
 
 .comparison-table tbody tr {
-  background: white;
+  background: var(--surface-card);
   transition: background 0.2s ease;
 }
 
@@ -391,7 +394,7 @@
 }
 
 .getting-started-section {
-  background: white;
+  background: var(--surface-card);
   border-radius: 16px;
   padding: 3rem 2rem;
   margin-bottom: 2rem;
@@ -425,7 +428,7 @@
 }
 
 .info-box {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 1.5rem;
   text-align: center;

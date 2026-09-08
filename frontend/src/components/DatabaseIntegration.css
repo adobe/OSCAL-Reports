@@ -6,7 +6,7 @@
  */
 .database-integration-container {
   padding: 1.5rem;
-  background: white;
+  background: var(--surface-card);
   border-radius: 8px;
   max-width: 100%;
   margin: 0 auto;

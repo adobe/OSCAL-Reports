@@ -5,7 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 .sso-integration-container {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
   max-height: 90vh;
@@ -121,7 +121,7 @@
 .sso-tab.active {
   color: #ED1C24;
   border-bottom-color: #ED1C24;
-  background: white;
+  background: var(--surface-card);
 }
 
 .sso-content {
@@ -297,7 +297,7 @@ textarea.form-control {
   height: 20px;
   left: 3px;
   top: 3px;
-  background-color: white;
+  background-color: var(--surface-card);
   border-radius: 50%;
   transition: all 0.3s ease;
 }
@@ -353,7 +353,7 @@ textarea.form-control {
 }
 
 .provider-config {
-  background: white;
+  background: var(--surface-card);
   padding: 1.5rem;
   border-radius: 8px;
   margin-bottom: 1.5rem;

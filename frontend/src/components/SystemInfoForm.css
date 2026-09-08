@@ -4,9 +4,11 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
+/* Width is governed by the parent .app-main (var(--content-wide) in styles/layout.css).
+   Fill it — no per-screen cap, so one token change cascades everywhere. */
 .system-info-container {
   max-width: 100%;
-  margin: 0 auto;
+  margin-inline: auto;
 }
 
 .system-form {

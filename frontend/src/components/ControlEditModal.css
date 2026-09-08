@@ -20,7 +20,7 @@
 }
 
 .control-edit-modal {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   width: 100%;
@@ -147,7 +147,7 @@ textarea.form-control {
 
 select.form-control {
   cursor: pointer;
-  background-color: white;
+  background-color: var(--surface-card);
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -394,7 +394,7 @@ select.form-control {
 .ai-panel {
   margin-top: 1rem;
   padding: 1rem;
-  background: #eff6ff;
+  background: var(--surface-info);
   border: 2px solid #93c5fd;
   border-radius: 8px;
   animation: slideDown 0.3s ease-out;

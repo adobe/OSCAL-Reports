@@ -4,10 +4,10 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
+/* Fills the parent .app-main (which holds the single width token). */
 .catalog-choice-container {
-  max-width: 1200px;
+  max-width: 100%;
   margin: 1rem auto;
-  padding: 0 2rem;
 }
 
 .catalog-choice-header {
@@ -22,7 +22,7 @@
 }
 
 .catalog-option-card {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 1.25rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -35,7 +35,9 @@
 
 .catalog-option-card.keep-existing {
   border: 2px solid var(--success);
-  background: linear-gradient(135deg, rgba(22, 163, 74, 0.05), rgba(34, 197, 94, 0.05));
+  /* Opaque light surface like the other cards (was a ~5% gradient that let the
+     red page background bleed through). Green border keeps the "current" accent. */
+  background: var(--surface-card);
 }
 
 .option-icon {
@@ -87,14 +89,14 @@
 
 .divider span {
   position: relative;
-  background: white;
+  background: var(--surface-card);
   padding: 0 1rem;
   color: var(--muted);
   font-weight: 600;
 }
 
 .update-catalog-section {
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 1.25rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -133,7 +135,7 @@
 
 .catalog-card:not(:disabled):hover {
   border-color: var(--primary);
-  background: white;
+  background: var(--surface-card);
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
@@ -192,7 +194,9 @@
   align-items: flex-start;
   gap: 0.75rem;
   padding: 1rem;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(59, 130, 246, 0.1));
+  /* Opaque light-blue info surface (was a ~10% gradient that let the red page
+     background bleed through). Matches the app's other info boxes. */
+  background: var(--surface-info);
   border: 2px solid var(--primary);
   border-radius: 12px;
 }
