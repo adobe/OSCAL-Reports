@@ -113,6 +113,25 @@ update_package_json() {
   print_success "Updated: $file"
 }
 
+update_readme_version() {
+  local new_version="$1"
+  local file="README.md"
+
+  if [ ! -f "$file" ]; then
+    print_warning "File not found: $file (skipping)"
+    return
+  fi
+
+  # Keep the root README "**Version:** X.Y.Z" footer in sync with package.json.
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s/\*\*Version:\*\* [0-9][0-9.]*/\*\*Version:\*\* $new_version/" "$file"
+  else
+    sed -i "s/\*\*Version:\*\* [0-9][0-9.]*/\*\*Version:\*\* $new_version/" "$file"
+  fi
+
+  print_success "Updated: $file (version footer)"
+}
+
 update_changelog() {
   local new_version="$1"
   local message="$2"
@@ -273,6 +292,9 @@ update_package_json "package.json" "$NEW_VERSION"
 update_package_json "backend/package.json" "$NEW_VERSION"
 update_package_json "frontend/package.json" "$NEW_VERSION"
 update_package_json "test_cases/backend/package.json" "$NEW_VERSION"
+
+# Keep the root README version footer in sync
+update_readme_version "$NEW_VERSION"
 
 echo ""
 print_header "Updating Changelog"
