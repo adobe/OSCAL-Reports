@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from './utils/safeAxios.js';
+import { DEFAULT_SYSTEM_STATUS } from './constants/systemStatus.js';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import OktaCallback from './components/OktaCallback';
@@ -46,7 +47,7 @@ function App() {
     confidentiality: 'moderate',
     integrity: 'moderate',
     availability: 'moderate',
-    status: 'under-development'
+    status: DEFAULT_SYSTEM_STATUS
   });
   const [loading, setLoading] = useState(false);
   /** Which export is in progress: 'oscal' | 'sar' | 'excel' | 'ccm' | 'pdf' | null. Used for per-button spinner only. */
@@ -641,7 +642,7 @@ function App() {
       confidentiality: 'moderate',
       integrity: 'moderate',
       availability: 'moderate',
-      status: 'under-development'
+      status: DEFAULT_SYSTEM_STATUS
     });
     setLastSaveTime(null);
   };

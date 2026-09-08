@@ -1,0 +1,12 @@
+{
+  "_comment": "Concept: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>. Single source of truth for system lifecycle status. Consumed by SystemInfoForm (dropdown + default), backend pdfExport (label map), and the several places that defaulted to 'under-development'.",
+  "version": 1,
+  "options": [
+    { "value": "under-development", "label": "Under Development" },
+    { "value": "operational", "label": "Operational" },
+    { "value": "under-major-modification", "label": "Under Major Modification" },
+    { "value": "disposition", "label": "Disposition" },
+    { "value": "other", "label": "Other" }
+  ],
+  "default": "under-development"
+}

@@ -1,0 +1,9 @@
+{
+  "_comment": "Concept: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>. Single source of truth for role NAME strings, shared by backend/auth/roles.js and frontend AuthContext. Values must stay identical across tiers or auth checks break.",
+  "version": 1,
+  "roles": {
+    "PLATFORM_ADMIN": "Platform Admin",
+    "USER": "User",
+    "ASSESSOR": "Assessor"
+  }
+}

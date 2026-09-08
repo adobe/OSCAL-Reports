@@ -5,6 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 import express from 'express';
+import { getDefaultSystemStatus } from './utils/constants.js';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import axios from './utils/safeAxios.js';
@@ -4598,7 +4599,7 @@ app.post('/api/generate-ssp', async (req, res) => {
             "security-objective-availability": sanitizeOSCALString(systemInfo.availability) || "moderate"
           },
           status: {
-            state: sanitizeOSCALString(systemInfo.status) || "under-development"
+            state: sanitizeOSCALString(systemInfo.status) || getDefaultSystemStatus()
           },
           "authorization-boundary": {
             description: sanitizeOSCALString(systemInfo.authorizationBoundary) || "System authorization boundary description"

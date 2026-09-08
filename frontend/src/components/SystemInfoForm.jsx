@@ -6,50 +6,15 @@
  */
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { CLASSIFICATION_LEVELS, detectFramework } from '../constants/classifications.js';
+import { SYSTEM_STATUS_OPTIONS, DEFAULT_SYSTEM_STATUS } from '../constants/systemStatus.js';
 import './SystemInfoForm.css';
-
-// Framework-specific classification levels
-const CLASSIFICATION_LEVELS = {
-  'ACSC': [
-    { value: 'Non-Classified', label: 'Non-Classified' },
-    { value: 'Official Sensitive', label: 'Official Sensitive' },
-    { value: 'Protected', label: 'Protected' },
-    { value: 'Secret', label: 'Secret' },
-    { value: 'Top Secret', label: 'Top Secret' }
-  ],
-  'NIST': [
-    { value: 'low', label: 'Low' },
-    { value: 'moderate', label: 'Moderate' },
-    { value: 'high', label: 'High' }
-  ],
-  'Singapore': [
-    { value: 'low', label: 'Low' },
-    { value: 'moderate', label: 'Moderate' },
-    { value: 'high', label: 'High' }
-  ],
-  'default': [
-    { value: 'low', label: 'Low' },
-    { value: 'moderate', label: 'Moderate' },
-    { value: 'high', label: 'High' }
-  ]
-};
 
 function SystemInfoForm({ onSubmit, onBack, catalogueUrl, initialClassification, initialValues }) {
   const { canEditAssessorDetails, canEditSystemInfo } = useAuth();
   
-  // Detect framework type from catalogue URL
-  const frameworkType = useMemo(() => {
-    if (!catalogueUrl) return 'default';
-    const url = catalogueUrl.toLowerCase();
-    if (url.includes('acsc') || url.includes('ism-oscal') || url.includes('australiancybersecuritycentre')) {
-      return 'ACSC';
-    } else if (url.includes('nist')) {
-      return 'NIST';
-    } else if (url.includes('govtechsg') || url.includes('singapore') || url.includes('im8')) {
-      return 'Singapore';
-    }
-    return 'default';
-  }, [catalogueUrl]);
+  // Detect framework type from catalogue URL (rules live in the shared constants).
+  const frameworkType = useMemo(() => detectFramework(catalogueUrl), [catalogueUrl]);
 
   const classificationLevels = CLASSIFICATION_LEVELS[frameworkType] || CLASSIFICATION_LEVELS['default'];
   // Use initialClassification if provided, otherwise use first option
@@ -70,7 +35,7 @@ function SystemInfoForm({ onSubmit, onBack, catalogueUrl, initialClassification,
     confidentiality: initialValues?.confidentiality || 'moderate',
     integrity: initialValues?.integrity || 'moderate',
     availability: initialValues?.availability || 'moderate',
-    status: initialValues?.status || 'under-development',
+    status: initialValues?.status || DEFAULT_SYSTEM_STATUS,
     systemType: initialValues?.systemType || '',
     authorizationDate: initialValues?.authorizationDate || ''
   });
@@ -274,11 +239,9 @@ function SystemInfoForm({ onSubmit, onBack, catalogueUrl, initialClassification,
                 value={formData.status}
                 onChange={handleChange}
               >
-                <option value="under-development">Under Development</option>
-                <option value="operational">Operational</option>
-                <option value="under-major-modification">Under Major Modification</option>
-                <option value="disposition">Disposition</option>
-                <option value="other">Other</option>
+                {SYSTEM_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
             </div>
           </div>

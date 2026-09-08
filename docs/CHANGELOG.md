@@ -4,6 +4,28 @@ Full release history. Deep operational reference material previously kept in sta
 `RELEASE_1.7.*.md` files is consolidated here — see the Appendices at the end for the Splunk /
 Security SCC runbook (SSAAU-212) and the cross-account Bedrock SCP escalation.
 
+## [1.8.00] - 2026-09-08
+
+Catalogue library expansion + an app-wide "single source of truth" refactor for shared
+reference data. (Builds on the 1.7.31 responsive-UI work below.)
+
+### Added
+
+- **New sample catalogues (+8):** FedRAMP Rev 5 (High/Moderate/Low/LI-SaaS) from the OSCAL Foundation repo, and CMS ARS 5.0 (Full catalog + High/Moderate/Low) — all fetch-validated. The preset list is now **25 catalogues across 7 publishers** (ACSC, BSI, CCCS, CMS, FedRAMP, GovTech SG, NIST).
+- **"New" / "Updated" badges** and a **country flag** for non-English catalogues (🇩🇪 BSI Grundschutz++) in both catalogue pickers, driven by `status`/`flag` fields in the manifest.
+- **Shared constants module** `config/constants/*.json` (control-status, classification-levels, system-status, service-models, roles), read by both tiers via `backend/utils/constants.js` and `frontend/src/constants/*` — the single-source pattern already used for catalogues.
+
+### Fixed
+
+- **BSI Grundschutz++ catalogue URL** was 404 (repo restructured) → repointed to `control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json`.
+- **Australian ISM baselines** updated from `v2025.10.8` to the latest release `v2026.09.4`; the Protected baseline was pinned off a moving branch onto the tag (consistent with the others).
+- **"Supported Catalogs" copy no longer drifts** — the 3 hardcoded prose lists on the landing/choice screens are now derived from the catalogue manifest.
+- **Control-status duplication removed** (was defined 6+ times FE+BE). Two latent bugs fixed in the process: the bulk-status list in `ControlsList` only mapped 4 of 7 statuses; and SAR generation classified **`alternate-control` as not-satisfied** — it now maps to satisfied via the shared OSCAL mapping.
+
+### Changed
+
+- **De-duplicated shared reference data** onto the new constants module: classification levels + framework detection (`SystemInfoForm`), role name strings (`backend/auth/roles.js` + frontend `AuthContext`), system lifecycle status (dropdown, PDF labels, and 6 scattered `under-development` defaults), and cloud service models (`MultiReportComparison`, `comparisonReportPrefs`).
+
 ## [1.7.31] - 2026-09-08
 
 ### Changed

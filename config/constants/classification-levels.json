@@ -1,0 +1,33 @@
+{
+  "_comment": "Concept: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>. Single source of truth for security classification levels per framework, plus the URL→framework detection rules. Consumed by SystemInfoForm.",
+  "version": 1,
+  "byFramework": {
+    "ACSC": [
+      { "value": "Non-Classified", "label": "Non-Classified" },
+      { "value": "Official Sensitive", "label": "Official Sensitive" },
+      { "value": "Protected", "label": "Protected" },
+      { "value": "Secret", "label": "Secret" },
+      { "value": "Top Secret", "label": "Top Secret" }
+    ],
+    "NIST": [
+      { "value": "low", "label": "Low" },
+      { "value": "moderate", "label": "Moderate" },
+      { "value": "high", "label": "High" }
+    ],
+    "Singapore": [
+      { "value": "low", "label": "Low" },
+      { "value": "moderate", "label": "Moderate" },
+      { "value": "high", "label": "High" }
+    ],
+    "default": [
+      { "value": "low", "label": "Low" },
+      { "value": "moderate", "label": "Moderate" },
+      { "value": "high", "label": "High" }
+    ]
+  },
+  "frameworkDetection": [
+    { "patterns": ["acsc", "ism-oscal", "australiancybersecuritycentre"], "framework": "ACSC" },
+    { "patterns": ["nist"], "framework": "NIST" },
+    { "patterns": ["govtechsg", "singapore", "im8"], "framework": "Singapore" }
+  ]
+}

@@ -86,7 +86,18 @@ function CatalogChoice({ existingCatalogUrl, onKeepExisting, onUpdateCatalog, lo
               {catalog.url === existingCatalogUrl && (
                 <span className="current-badge">Current</span>
               )}
-              <div className="catalog-name">{catalog.name}</div>
+              {catalog.status === 'new' && (
+                <span className="status-badge status-new" title="Newly added catalogue">🆕 New</span>
+              )}
+              {catalog.status === 'updated' && (
+                <span className="status-badge status-updated" title="Reference updated to the latest version">🔄 Updated</span>
+              )}
+              <div className="catalog-name">
+                {catalog.flag && (
+                  <span className="catalogue-flag" title="Non-English catalogue">{catalog.flag}</span>
+                )}
+                {catalog.name}
+              </div>
               <div className="catalog-description">{catalog.description}</div>
             </button>
           ))}

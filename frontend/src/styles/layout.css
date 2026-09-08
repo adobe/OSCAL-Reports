@@ -69,3 +69,28 @@
   max-height: var(--panel-max-h);
   overflow: auto;
 }
+
+/* Small status pills for catalogue lists (New / Updated). Opaque, bleed-proof. */
+.status-badge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.status-badge.status-new {
+  background: #dcfce7;  /* green-100 */
+  color: #166534;       /* green-800 */
+}
+.status-badge.status-updated {
+  background: #fef9c3;  /* amber-100 */
+  color: #854d0e;       /* amber-800 */
+}
+/* Country flag marker for non-English catalogues. */
+.catalogue-flag {
+  margin-right: 0.35rem;
+}

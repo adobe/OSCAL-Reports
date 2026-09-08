@@ -85,7 +85,18 @@ function CatalogueInput({ onSubmit, loading }) {
               <div className="sample-icon">📋</div>
               <div className="sample-content">
                 <div className="sample-header">
-                  <div className="sample-name">{sample.name}</div>
+                  <div className="sample-name">
+                    {sample.flag && (
+                      <span className="catalogue-flag" title="Non-English catalogue">{sample.flag}</span>
+                    )}
+                    {sample.name}
+                  </div>
+                  {sample.status === 'new' && (
+                    <span className="status-badge status-new" title="Newly added catalogue">🆕 New</span>
+                  )}
+                  {sample.status === 'updated' && (
+                    <span className="status-badge status-updated" title="Reference updated to the latest version">🔄 Updated</span>
+                  )}
                   {sample.publisher && (
                     <span className="publisher-badge">{sample.publisher}</span>
                   )}

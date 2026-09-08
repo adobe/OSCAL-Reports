@@ -9,6 +9,7 @@ import './ExportButtons.css';
 import { validateSSP, getValidatorStatus } from '../services/oscalValidator';
 import ValidationStatus from './ValidationStatus';
 import { useAuth } from '../contexts/AuthContext';
+import { ROLES } from '../constants/roles.js';
 import { formatExportApiBody } from '../utils/exportErrorMessage';
 
 function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportPDF, loading, exportingType = null, systemInfo, controls }) {
@@ -99,7 +100,7 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportPDF, l
   // Handle OSCAL export with Assessor check
   const handleOSCALExport = () => {
     // Check if user is Assessor role
-    if (user && user.role === 'Assessor') {
+    if (user && user.role === ROLES.ASSESSOR) {
       setShowAssessorWarning(true);
     } else {
       // For other roles, export directly with validation options

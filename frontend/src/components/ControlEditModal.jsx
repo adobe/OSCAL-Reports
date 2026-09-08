@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import ControlSuggestions from './ControlSuggestions';
+import { CONTROL_STATUSES } from '../constants/controlStatus.js';
 import './ControlEditModal.css';
 
 function ControlEditModal({ control, onClose, onSave, allControls = [], organizationName = 'Organization', databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
@@ -157,13 +158,9 @@ function ControlEditModal({ control, onClose, onSave, allControls = [], organiza
                     onChange={(e) => handleChange('status', e.target.value)}
                     className={`form-control status-select status-${editedControl.status || 'not-assessed'}`}
                   >
-                    <option value="not-assessed">🔴 Not Assessed</option>
-                    <option value="effective">🟢 Effective</option>
-                    <option value="alternate-control">🔵 Alternate Control</option>
-                    <option value="ineffective">🟠 Ineffective</option>
-                    <option value="no-visibility">⚪ No Visibility</option>
-                    <option value="not-implemented">🟣 Not Implemented</option>
-                    <option value="not-applicable">⚫ Not Applicable</option>
+                    {CONTROL_STATUSES.map((s) => (
+                      <option key={s.value} value={s.value}>{s.emoji} {s.label}</option>
+                    ))}
                   </select>
                 </div>
 

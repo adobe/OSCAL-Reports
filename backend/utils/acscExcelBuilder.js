@@ -9,6 +9,7 @@ import {
   OSCAL_EXTENSION_COLUMNS,
   normalizeHeader,
 } from './acscTemplateSchemas.js';
+import { getControlStatusLabelMap } from './constants.js';
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
 const GROUP_HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E2F3' } };
@@ -49,20 +50,14 @@ function infoSheetDisplayValue(value) {
  * @returns {string}
  */
 export function formatAcscStatus(status) {
-  const statusMap = {
-    'not-assessed': 'Not Assessed',
-    effective: 'Effective',
-    'alternate-control': 'Alternate Control',
-    ineffective: 'Ineffective',
-    'no-visibility': 'No Visibility',
-    'not-implemented': 'Not Implemented',
-    'not-applicable': 'Not Applicable',
-    'Not Assessed': 'Not Assessed',
-    Effective: 'Effective',
-  };
+  const labelByValue = getControlStatusLabelMap();
+  const validLabels = new Set(Object.values(labelByValue));
   if (!status) return 'Not Assessed';
   const key = String(status).trim();
-  return statusMap[key] || statusMap[key.toLowerCase()] || 'Not Assessed';
+  // Already a canonical label (any of the 7) — pass through.
+  if (validLabels.has(key)) return key;
+  // A status value (any case) — map to its label.
+  return labelByValue[key] || labelByValue[key.toLowerCase()] || 'Not Assessed';
 }
 
 /**

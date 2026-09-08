@@ -9,6 +9,7 @@ import ReactDOM from 'react-dom';
 import axios from '../utils/safeAxios.js';
 import AuthorCreditsFooter from './AuthorCreditsFooter';
 import { useAuth } from '../contexts/AuthContext';
+import { SERVICE_MODELS, DEFAULT_SERVICE_MODELS } from '../constants/serviceModels.js';
 import { exportErrorMessage } from '../utils/exportErrorMessage';
 import {
   exportBaselineSspWithEdits,
@@ -78,11 +79,7 @@ function MultiReportComparison({ onBack, onShowSettings }) {
     csp1: 'Cloud Service Provider Report 1',
     csp2: 'Cloud Service Provider Report 2',
   });
-  const [reportTypes, setReportTypes] = useState({
-    baseline: 'PaaS',
-    csp1: 'IaaS',
-    csp2: 'SaaS'
-  });
+  const [reportTypes, setReportTypes] = useState({ ...DEFAULT_SERVICE_MODELS });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [comparisonResult, setComparisonResult] = useState(null);
@@ -620,9 +617,9 @@ function MultiReportComparison({ onBack, onShowSettings }) {
               value={reportTypes[reportKey]}
               onChange={(e) => handleReportTypeChange(reportKey, e.target.value)}
             >
-              <option value="IaaS">IaaS (Infrastructure)</option>
-              <option value="PaaS">PaaS (Platform)</option>
-              <option value="SaaS">SaaS (Software)</option>
+              {SERVICE_MODELS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
             </select>
           </div>
 

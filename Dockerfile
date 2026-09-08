@@ -18,6 +18,9 @@ COPY frontend/ ./
 # Catalogue preset manifest (imported from src/catalogues/sampleCatalogues.js via ../../../config/...)
 COPY config/catalogues/sample-catalogues.json ../config/catalogues/sample-catalogues.json
 
+# Shared constants (imported from src/constants/*.js via ../../../config/constants/*.json)
+COPY config/constants/ ../config/constants/
+
 # Build frontend
 RUN npm run build
 

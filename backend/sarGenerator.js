@@ -5,6 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 import { v4 as uuidv4 } from 'uuid';
+import { getOscalTargetForStatus } from './utils/constants.js';
 
 // OSCAL empty placeholder for required fields
 const OSCAL_EMPTY_PLACEHOLDER = "No_Input_Recorded";
@@ -219,25 +220,12 @@ function generateFinding(control, observation) {
   
   // Determine finding status from control status
   const status = control.status || 'not-assessed';
-  if (status === 'effective' || status === 'implemented') {
-    finding.target = {
-      'target-id': control.id,
-      status: 'satisfied',
-      implementation: 'implemented'
-    };
-  } else if (status === 'ineffective' || status === 'not-implemented') {
-    finding.target = {
-      'target-id': control.id,
-      status: 'not-satisfied',
-      implementation: 'not-implemented'
-    };
-  } else {
-    finding.target = {
-      'target-id': control.id,
-      status: 'not-satisfied',
-      implementation: 'planned'
-    };
-  }
+  const { status: oscalStatus, implementation } = getOscalTargetForStatus(status);
+  finding.target = {
+    'target-id': control.id,
+    status: oscalStatus,
+    implementation
+  };
   
   return finding;
 }

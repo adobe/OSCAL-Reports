@@ -1,6 +1,6 @@
 {
   "name": "oscal-backend-tests",
-  "version": "1.7.31",
+  "version": "1.8.00",
   "type": "module",
   "description": "Test suite for OSCAL Report Generator Backend - v1.6.5 Security Updates",
   "scripts": {

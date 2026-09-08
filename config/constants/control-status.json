@@ -1,0 +1,13 @@
+{
+  "_comment": "Concept: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>. Single source of truth for control implementation-status values. Consumed by frontend (ControlItem/ControlItemCCM/ControlEditModal/ControlsList) and backend (pdfExport/acscExcelBuilder/sarGenerator). label/hex/emoji preserve existing output verbatim; oscalStatus/oscalImplementation drive SAR generation (alternate-control counts as satisfied).",
+  "version": 1,
+  "statuses": [
+    { "value": "not-assessed", "label": "Not Assessed", "emoji": "🔴", "hex": "#a855f7", "oscalStatus": "not-satisfied", "oscalImplementation": "planned" },
+    { "value": "effective", "label": "Effective", "emoji": "🟢", "hex": "#16a34a", "oscalStatus": "satisfied", "oscalImplementation": "implemented" },
+    { "value": "alternate-control", "label": "Alternate Control", "emoji": "🔵", "hex": "#84cc16", "oscalStatus": "satisfied", "oscalImplementation": "implemented" },
+    { "value": "ineffective", "label": "Ineffective", "emoji": "🟠", "hex": "#ef4444", "oscalStatus": "not-satisfied", "oscalImplementation": "not-implemented" },
+    { "value": "no-visibility", "label": "No Visibility", "emoji": "⚪", "hex": "#64748b", "oscalStatus": "not-satisfied", "oscalImplementation": "planned" },
+    { "value": "not-implemented", "label": "Not Implemented", "emoji": "🟣", "hex": "#f97316", "oscalStatus": "not-satisfied", "oscalImplementation": "not-implemented" },
+    { "value": "not-applicable", "label": "Not Applicable", "emoji": "⚫", "hex": "#9ca3af", "oscalStatus": "not-satisfied", "oscalImplementation": "planned" }
+  ]
+}

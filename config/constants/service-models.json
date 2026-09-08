@@ -1,0 +1,10 @@
+{
+  "_comment": "Concept: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>. Single source of truth for cloud service models. Consumed by MultiReportComparison (dropdown + default slot assignment) and comparisonReportPrefs.",
+  "version": 1,
+  "options": [
+    { "value": "IaaS", "label": "IaaS (Infrastructure)" },
+    { "value": "PaaS", "label": "PaaS (Platform)" },
+    { "value": "SaaS", "label": "SaaS (Software)" }
+  ],
+  "defaults": { "baseline": "PaaS", "csp1": "IaaS", "csp2": "SaaS" }
+}

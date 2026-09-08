@@ -5,6 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 import PDFDocument from 'pdfkit';
+import { getControlStatusLabelMap, getControlStatusColorMap, getSystemStatusLabelMap } from './utils/constants.js';
 export async function generatePDFReport(controls, systemInfo, metadata) {
   return new Promise((resolve, reject) => {
     try {
@@ -299,39 +300,17 @@ function addSectionHeader(doc, title) {
 }
 
 function formatStatus(status) {
-  const statusMap = {
-    'not-assessed': 'Not Assessed',
-    'effective': 'Effective',
-    'alternate-control': 'Alternate Control',
-    'ineffective': 'Ineffective',
-    'no-visibility': 'No Visibility',
-    'not-implemented': 'Not Implemented',
-    'not-applicable': 'Not Applicable'
-  };
+  const statusMap = getControlStatusLabelMap();
   return statusMap[status] || status;
 }
 
 function formatSystemStatus(status) {
-  const statusMap = {
-    'under-development': 'Under Development',
-    'operational': 'Operational',
-    'under-major-modification': 'Under Major Modification',
-    'disposition': 'Disposition',
-    'other': 'Other'
-  };
+  const statusMap = getSystemStatusLabelMap();
   return statusMap[status] || status;
 }
 
 function getStatusColor(status) {
-  const colorMap = {
-    'effective': '#16a34a',
-    'alternate-control': '#84cc16',
-    'ineffective': '#ef4444',
-    'no-visibility': '#64748b',
-    'not-implemented': '#f97316',
-    'not-applicable': '#9ca3af',
-    'not-assessed': '#a855f7'
-  };
+  const colorMap = getControlStatusColorMap();
   return colorMap[status] || '#64748b';
 }
 

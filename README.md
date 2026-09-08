@@ -100,11 +100,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DEPLOYMENT_AND_OPERAT
 Summary of the five most recent versions. Full history — including every prior release and the
 operational runbooks — is in **[docs/CHANGELOG.md](docs/CHANGELOG.md)**.
 
+- **1.8.00** — Catalogue library expansion (+8: FedRAMP Rev 5 ×4, CMS ARS 5.0 ×4; 25 across 7 publishers), BSI/ISM URL fixes, New/Updated badges + non-English flag, and an app-wide single-source-of-truth refactor (`config/constants/`) for control-status/roles/classification/system-status/service-model — fixing the ControlsList 4/7-status and SAR `alternate-control` bugs. [Details](docs/CHANGELOG.md#1800---2026-09-08).
+- **1.7.31** — Responsive full-width UI: shared layout + surface tokens (`styles/layout.css`), single shared Feature Comparison table, background bleed fixes. [Details](docs/CHANGELOG.md#1731---2026-09-08).
 - **1.7.30** — Restored fixes documented but never committed (drift correction): SSAAU-212 Splunk→SCC delivery (`emissary = "trusted"` VPC/subnet tag — the real root cause; errno-104 mutual-TLS resets), Bedrock auth-mode precedence, Bedrock `[object Object]` roleArn + Secrets Manager bundle-write no-op, and a `/health` `version` field. [Details](docs/CHANGELOG.md#1730---2026-09-08).
 - **1.7.29** — Pass vault removed as a runtime dependency; config secrets stored as `_cfgenc` (local) / `_sm` (EC2); docs consolidated. [Details](docs/CHANGELOG.md#1729---2026-09-08).
 - **1.7.28** — Ops/CI/security-maintenance: `Main`-only branching, Node.js 24.9.0+ floor, CI on `Main`, AMI-drift check via GitHub OIDC (no static keys). [Details](docs/CHANGELOG.md#1728---2026-08-09).
-- **1.7.27** — Async job authorization (VULN-37000), Blue/Green 502 prevention during AMI/ASG refresh, proactive API auth inventory tests. [Details](docs/CHANGELOG.md#1727---2026-07-20).
-- **1.7.25** — Pentest remediation (SSRF VULN-36986, settings disclosure VULN-36998, Bedrock access control VULN-37020) and AMS Non-Prod InfraSec (SSAAU-216 / SSAAU-212). [Details](docs/CHANGELOG.md#1725---2026-07-18).
 
 ---
 
@@ -114,4 +114,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.31 (see root `package.json`) · **Last updated:** September 2026
+**Version:** 1.8.00 (see root `package.json`) · **Last updated:** September 2026

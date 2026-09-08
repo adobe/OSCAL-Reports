@@ -8,17 +8,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { buildAuthenticatedJsonHeaders } from '../utils/authenticatedFetch.js';
 import ControlSuggestions from './ControlSuggestions';
+import { STATUS_OPTIONS } from '../constants/controlStatus.js';
 import './ControlItem.css';
-
-const STATUS_OPTIONS = [
-  { value: 'not-assessed', label: 'Not Assessed', color: 'not-assessed' },
-  { value: 'effective', label: 'Effective', color: 'effective' },
-  { value: 'alternate-control', label: 'Alternate Control', color: 'alternate-control' },
-  { value: 'ineffective', label: 'Ineffective', color: 'ineffective' },
-  { value: 'no-visibility', label: 'No Visibility', color: 'no-visibility' },
-  { value: 'not-implemented', label: 'Not Implemented', color: 'not-implemented' },
-  { value: 'not-applicable', label: 'Not Applicable', color: 'not-applicable' }
-];
 
 function ControlItem({ control, isExpanded, onToggle, onUpdate, allControls = [], databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
   const { canEditImplementationStatus, getAuthConfig } = useAuth();

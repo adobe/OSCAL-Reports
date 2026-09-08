@@ -6,6 +6,7 @@
  */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from '../utils/safeAxios.js';
+import { ROLES } from '../constants/roles.js';
 
 const AuthContext = createContext(null);
 
@@ -13,12 +14,8 @@ const AuthContext = createContext(null);
 // In production, frontend is served from backend/public, so relative URLs work
 // In development, vite proxy handles /api requests
 
-// Role constants
-export const ROLES = {
-  PLATFORM_ADMIN: 'Platform Admin',
-  USER: 'User',
-  ASSESSOR: 'Assessor'
-};
+// Role constants — single source of truth in config/constants/roles.json.
+export { ROLES };
 
 // Permission check helpers
 export const PERMISSIONS = {

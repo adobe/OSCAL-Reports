@@ -5,6 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 import { normalizeAdobeTeamResponsibleSlots } from './utils/adobeTeamResponsible.js';
+import { getDefaultSystemStatus } from './utils/constants.js';
 
 /**
  * SSP Comparison Module - Direct Catalog Comparison
@@ -457,7 +458,7 @@ function extractSystemInfoFromSSP(sspData) {
     confidentiality: 'moderate',
     integrity: 'moderate',
     availability: 'moderate',
-    status: 'under-development',
+    status: getDefaultSystemStatus(),
     systemType: '',
     authorizationDate: '',
     organization: '',

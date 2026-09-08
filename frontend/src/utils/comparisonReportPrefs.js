@@ -5,17 +5,15 @@
  * Contact: mukesh.kesharwani@adobe.com
  */
 
+import { DEFAULT_SERVICE_MODELS } from '../constants/serviceModels.js';
+
 export const PREFS_KEY_PREFIX = 'oscal_mrc_prefs_v1_';
 export const WORK_SESSION_KEY_PREFIX = 'oscal_mrc_work_v1_';
 export const MAX_URL_LENGTH = 2048;
 /** Stay under typical ~5MB localStorage quota per origin. */
 export const MAX_WORK_SESSION_BYTES = 4_500_000;
 
-const DEFAULT_REPORT_TYPES = {
-  baseline: 'PaaS',
-  csp1: 'IaaS',
-  csp2: 'SaaS',
-};
+const DEFAULT_REPORT_TYPES = { ...DEFAULT_SERVICE_MODELS };
 
 const DEFAULT_REPORT_NAMES = {
   baseline: 'Assessment Subject Report',

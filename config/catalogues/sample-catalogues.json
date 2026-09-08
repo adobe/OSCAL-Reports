@@ -3,50 +3,57 @@
   "defined": [
     {
       "name": "Australian ISM (Non-Classified Baseline)",
-      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_NON_CLASSIFIED-baseline-resolved-profile_catalog.json",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2026.09.4/ISM_NON_CLASSIFIED-baseline-resolved-profile_catalog.json",
       "description": "Australian Signals Directorate ISM Non-Classified Baseline",
       "classification": "Non-Classified",
       "publisher": "ACSC",
+      "status": "updated",
       "minControls": 1
     },
     {
-      "name": "BSI Grundschutz++ (Kompendium) 🇩🇪",
-      "url": "https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+      "name": "BSI Grundschutz++ (Kompendium)",
+      "url": "https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
       "description": "German IT Security Standards - Grundschutz++ Baseline",
       "classification": "standard",
       "publisher": "BSI",
+      "status": "updated",
+      "flag": "🇩🇪",
       "minControls": 1
     },
     {
       "name": "Australian ISM (Official Sensitive Baseline)",
-      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_OFFICIAL_SENSITIVE-baseline-resolved-profile_catalog.json",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2026.09.4/ISM_OFFICIAL_SENSITIVE-baseline-resolved-profile_catalog.json",
       "description": "Australian Signals Directorate ISM Official Sensitive Baseline",
       "classification": "Official Sensitive",
       "publisher": "ACSC",
+      "status": "updated",
       "minControls": 1
     },
     {
       "name": "Australian ISM (Protected Baseline)",
-      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/heads/main/ISM_PROTECTED-baseline-resolved-profile_catalog.json",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2026.09.4/ISM_PROTECTED-baseline-resolved-profile_catalog.json",
       "description": "Australian Signals Directorate ISM Protected Baseline",
       "classification": "Protected",
       "publisher": "ACSC",
+      "status": "updated",
       "minControls": 1
     },
     {
       "name": "Australian ISM (Secret Baseline)",
-      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_SECRET-baseline-resolved-profile_catalog.json",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2026.09.4/ISM_SECRET-baseline-resolved-profile_catalog.json",
       "description": "Australian Signals Directorate ISM Secret Baseline",
       "classification": "Secret",
       "publisher": "ACSC",
+      "status": "updated",
       "minControls": 1
     },
     {
       "name": "Australian ISM (Top Secret Baseline)",
-      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2025.10.8/ISM_TOP_SECRET-baseline-resolved-profile_catalog.json",
+      "url": "https://raw.githubusercontent.com/AustralianCyberSecurityCentre/ism-oscal/refs/tags/v2026.09.4/ISM_TOP_SECRET-baseline-resolved-profile_catalog.json",
       "description": "Australian Signals Directorate ISM Top Secret Baseline",
       "classification": "Top Secret",
       "publisher": "ACSC",
+      "status": "updated",
       "minControls": 1
     },
     {
@@ -135,6 +142,78 @@
       "description": "Singapore Government IM8 Reform catalog for low-risk cloud systems",
       "classification": "low",
       "publisher": "GovTech SG",
+      "minControls": 1
+    },
+    {
+      "name": "FedRAMP Rev 5 (High Baseline)",
+      "url": "https://raw.githubusercontent.com/OSCAL-Foundation/fedramp-automation/master/dist/content/rev5/baselines/json/FedRAMP_rev5_HIGH-baseline-resolved-profile_catalog.json",
+      "description": "US FedRAMP Rev 5 High impact baseline (resolved profile catalog)",
+      "classification": "high",
+      "publisher": "FedRAMP",
+      "status": "new",
+      "minControls": 1
+    },
+    {
+      "name": "FedRAMP Rev 5 (Moderate Baseline)",
+      "url": "https://raw.githubusercontent.com/OSCAL-Foundation/fedramp-automation/master/dist/content/rev5/baselines/json/FedRAMP_rev5_MODERATE-baseline-resolved-profile_catalog.json",
+      "description": "US FedRAMP Rev 5 Moderate impact baseline (resolved profile catalog)",
+      "classification": "moderate",
+      "publisher": "FedRAMP",
+      "status": "new",
+      "minControls": 1
+    },
+    {
+      "name": "FedRAMP Rev 5 (Low Baseline)",
+      "url": "https://raw.githubusercontent.com/OSCAL-Foundation/fedramp-automation/master/dist/content/rev5/baselines/json/FedRAMP_rev5_LOW-baseline-resolved-profile_catalog.json",
+      "description": "US FedRAMP Rev 5 Low impact baseline (resolved profile catalog)",
+      "classification": "low",
+      "publisher": "FedRAMP",
+      "status": "new",
+      "minControls": 1
+    },
+    {
+      "name": "FedRAMP Rev 5 (LI-SaaS Baseline)",
+      "url": "https://raw.githubusercontent.com/OSCAL-Foundation/fedramp-automation/master/dist/content/rev5/baselines/json/FedRAMP_rev5_LI-SaaS-baseline-resolved-profile_catalog.json",
+      "description": "US FedRAMP Rev 5 Tailored Low-Impact SaaS (LI-SaaS) baseline (resolved profile catalog)",
+      "classification": "low",
+      "publisher": "FedRAMP",
+      "status": "new",
+      "minControls": 1
+    },
+    {
+      "name": "CMS ARS 5.0 (Full Catalog)",
+      "url": "https://raw.githubusercontent.com/CMSgov/ars-machine-readable/main/5.0/oscal/json/CMS_ARS_5_0_catalog.json",
+      "description": "US CMS Acceptable Risk Safeguards (ARS) 5.0 — full catalog (tailored NIST SP 800-53)",
+      "classification": "moderate",
+      "publisher": "CMS",
+      "status": "new",
+      "minControls": 100
+    },
+    {
+      "name": "CMS ARS 5.0 (High Baseline)",
+      "url": "https://raw.githubusercontent.com/CMSgov/ars-machine-readable/main/5.0/oscal/json/cms_ars_50_high.json",
+      "description": "US CMS Acceptable Risk Safeguards (ARS) 5.0 — High baseline",
+      "classification": "high",
+      "publisher": "CMS",
+      "status": "new",
+      "minControls": 1
+    },
+    {
+      "name": "CMS ARS 5.0 (Moderate Baseline)",
+      "url": "https://raw.githubusercontent.com/CMSgov/ars-machine-readable/main/5.0/oscal/json/cms_ars_50_moderate.json",
+      "description": "US CMS Acceptable Risk Safeguards (ARS) 5.0 — Moderate baseline",
+      "classification": "moderate",
+      "publisher": "CMS",
+      "status": "new",
+      "minControls": 1
+    },
+    {
+      "name": "CMS ARS 5.0 (Low Baseline)",
+      "url": "https://raw.githubusercontent.com/CMSgov/ars-machine-readable/main/5.0/oscal/json/cms_ars_50_low.json",
+      "description": "US CMS Acceptable Risk Safeguards (ARS) 5.0 — Low baseline",
+      "classification": "low",
+      "publisher": "CMS",
+      "status": "new",
       "minControls": 1
     }
   ],

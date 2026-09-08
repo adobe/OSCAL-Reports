@@ -6,6 +6,7 @@
  */
 import React, { useState } from 'react';
 import ControlItemCCM from './ControlItemCCM';
+import { STATUS_LABELS } from '../constants/controlStatus.js';
 import './ControlsList.css';
 
 function ControlsList({ controls, onControlUpdate, organizationName = 'Organization', databaseIntegrationEnabled = false, adobeTeamOptions = [] }) {
@@ -68,13 +69,7 @@ function ControlsList({ controls, onControlUpdate, organizationName = 'Organizat
 
   // Bulk actions
   const handleBulkStatusChange = (status) => {
-    const statusLabels = {
-      'effective': 'Effective',
-      'alternate-control': 'Alternate Control',
-      'not-implemented': 'Not Implemented',
-      'not-applicable': 'Not Applicable'
-    };
-    const label = statusLabels[status] || status;
+    const label = STATUS_LABELS[status] || status;
     
     if (window.confirm(`Set status to "${label}" for all filtered controls?`)) {
       filteredControls.forEach(control => {

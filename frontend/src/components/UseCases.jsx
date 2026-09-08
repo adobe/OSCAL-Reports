@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import AuthorCreditsFooter from './AuthorCreditsFooter';
+import { getSupportedCatalogueSummary } from '../catalogues/sampleCatalogues.js';
 import './UseCases.css';
 
 function UseCases({ onGetStarted, onMultiReportComparison }) {
@@ -17,7 +18,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
       subtitle: 'Meet New Regulatory Standards',
       description: 'Starting from scratch with a new compliance framework',
       features: [
-        'Select from Australian ISM, NIST SP 800-53, Singapore IM8, Canadian CCCS, or custom OSCAL catalogs',
+        `Select from ${getSupportedCatalogueSummary()}`,
         'Choose appropriate security classification level',
         'Document controls from the ground up',
         'Generate complete SSP documentation'
@@ -247,7 +248,7 @@ function UseCases({ onGetStarted, onMultiReportComparison }) {
           <div className="info-box">
             <span className="info-icon">📚</span>
             <h4>Supported Frameworks</h4>
-            <p>Australian ISM (5 baselines), NIST SP 800-53 Rev 5 (Full + 3 baselines), Singapore IM8 Reform, Canadian CCCS (6 profiles), and custom OSCAL catalogs</p>
+            <p>{getSupportedCatalogueSummary()}</p>
           </div>
           <div className="info-box">
             <span className="info-icon">📊</span>

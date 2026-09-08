@@ -5,6 +5,7 @@
  * Licensed under the MIT License. See LICENSE file for details.
  */
 import React, { useState } from 'react';
+import { getSupportedCatalogueSummary } from '../catalogues/sampleCatalogues.js';
 import './InitialChoice.css';
 
 function InitialChoice({ onLoadExisting, onStartFresh, loading }) {
@@ -204,7 +205,7 @@ function InitialChoice({ onLoadExisting, onStartFresh, loading }) {
 
       <div className="supported-formats">
         <p className="text-muted">
-          <strong>Supported Catalogs:</strong> Australian ISM (5 baselines), NIST SP 800-53 Rev 5 (Full + 3 baselines), Singapore IM8 Reform, Canadian CCCS (6 profiles), and custom OSCAL catalogs
+          <strong>Supported Catalogs:</strong> {getSupportedCatalogueSummary()}
         </p>
       </div>
     </div>

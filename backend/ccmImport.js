@@ -8,6 +8,7 @@
  * Contact: mukesh.kesharwani@adobe.com
  */
 import ExcelJS from 'exceljs';
+import { getDefaultSystemStatus } from './utils/constants.js';
 import {
   CCM_JUNE_2026,
   SSP_ANNEX_JUNE_2026,
@@ -136,7 +137,7 @@ function extractSystemInfoFromInfoSheet(workbook) {
     cspPaaS: '',
     cspSaaS: '',
     catalogueUrl: '',
-    status: 'under-development',
+    status: getDefaultSystemStatus(),
     confidentiality: 'moderate',
     integrity: 'moderate',
     availability: 'moderate',

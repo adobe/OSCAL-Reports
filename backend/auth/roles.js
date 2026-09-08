@@ -4,12 +4,10 @@
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
-// Define role constants
-export const ROLES = {
-  PLATFORM_ADMIN: 'Platform Admin',
-  USER: 'User',
-  ASSESSOR: 'Assessor'
-};
+import { getRoles } from '../utils/constants.js';
+
+// Role name strings — single source of truth in config/constants/roles.json.
+export const ROLES = getRoles();
 
 // Define permission constants
 export const PERMISSIONS = {
