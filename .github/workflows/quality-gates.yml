@@ -137,6 +137,37 @@ jobs:
           fi
           echo "Consistent version: $ROOT_VERSION"
 
+  docker-build-smoke-test:
+    name: Docker build + startup smoke test
+    runs-on: ubuntu-latest
+    if: github.repository == 'adobe/OSCAL-Reports'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image for linux/amd64
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: oscal-reports:quality-gate
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Catches builds that succeed but crash on startup (e.g. the v1.8.00
+      # regression where config/constants/ was copied into the discarded
+      # frontend-builder stage and never into the production stage — the
+      # image built and pushed fine, but every container crash-looped).
+      - name: Boot image and verify /health + shared config
+        run: ./scripts/docker-smoke-test.sh oscal-reports:quality-gate
+
   quality-gates-summary:
     name: Quality Gates Summary
     runs-on: ubuntu-latest
@@ -146,6 +177,7 @@ jobs:
       - frontend-build
       - npm-audit
       - package-version-consistency
+      - docker-build-smoke-test
     if: always() && github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -157,6 +189,7 @@ jobs:
           echo "- Frontend build: ${{ needs.frontend-build.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- npm audit: ${{ needs.npm-audit.result }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Version consistency: ${{ needs.package-version-consistency.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Docker build + smoke test: ${{ needs.docker-build-smoke-test.result }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail when any gate failed
         if: |
@@ -164,7 +197,8 @@ jobs:
           needs.catalogue-fetch-release.result != 'success' ||
           needs.frontend-build.result != 'success' ||
           needs.npm-audit.result != 'success' ||
-          needs.package-version-consistency.result != 'success'
+          needs.package-version-consistency.result != 'success' ||
+          needs.docker-build-smoke-test.result != 'success'
         run: |
           echo "One or more quality gates failed." >&2
           exit 1

@@ -157,22 +157,33 @@ jobs:
     needs: build-and-push
     # Only run on adobe/OSCAL-Reports
     if: github.repository == 'adobe/OSCAL-Reports'
-    
+
     steps:
-      - name: 📥 Pull and verify image
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+
+      - name: 📥 Pull image
         run: |
           IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}"
           VERSION="${{ needs.build-and-push.outputs.version || 'latest' }}"
-          
-          echo "Pulling image: ${IMAGE}:${VERSION}"
-          docker pull ${IMAGE}:${VERSION}
-          
-          echo ""
-          echo "✅ Image verified successfully!"
+
+          echo "Pulling image: ${IMAGE}:${VERSION} (linux/amd64)"
+          docker pull --platform linux/amd64 "${IMAGE}:${VERSION}"
+
           echo ""
           echo "Image details:"
-          docker inspect ${IMAGE}:${VERSION} --format='
+          docker inspect "${IMAGE}:${VERSION}" --format='
           Size: {{.Size}} bytes
           Created: {{.Created}}
           Architecture: {{.Architecture}}
           OS: {{.Os}}'
+
+          echo "IMAGE_REF=${IMAGE}:${VERSION}" >> "$GITHUB_ENV"
+
+      # Actually boots the just-published image and hits /health, instead of
+      # only inspecting metadata — a pulled image can still crash-loop on
+      # startup (see v1.8.00, ENOENT on config/constants/roles.json, which
+      # this same "Verify Published Image" job previously reported as
+      # "verified successfully" without ever running the container).
+      - name: 🩺 Boot published image and verify /health + shared config
+        run: ./scripts/docker-smoke-test.sh "$IMAGE_REF"

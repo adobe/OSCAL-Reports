@@ -228,6 +228,19 @@ if docker_hub_push_wanted; then
     exit 1
   fi
   echo "Done. Image(s) pushed to Docker Hub: ${FULL_IMAGE} (platforms: ${PLATFORMS})"
+
+  # Pull back the linux/amd64 variant and boot it — a multi-platform push can
+  # still succeed with a broken image (see v1.8.00: build and push both
+  # succeeded, but the production stage was missing config/constants/ and
+  # every container crash-looped on startup). Don't trust push exit code alone.
+  echo "Verifying pushed image actually boots (linux/amd64)..."
+  if docker pull --platform linux/amd64 "$FULL_IMAGE" >/dev/null && "${REPO_ROOT}/scripts/docker-smoke-test.sh" "$FULL_IMAGE"; then
+    echo "Smoke test passed for ${FULL_IMAGE}."
+  else
+    echo "Smoke test FAILED for ${FULL_IMAGE} — the pushed image does not start correctly on linux/amd64." >&2
+    echo "Do not deploy this tag until this is fixed." >&2
+    exit 1
+  fi
 else
   ONE_PLAT="$(docker_host_linux_platform)"
   echo "DOCKERHUB_PUSH=0: building for this machine only (${ONE_PLAT}), --load (no registry push)"
@@ -246,4 +259,11 @@ else
     exit 1
   fi
   echo "Done. Image loaded locally: ${FULL_IMAGE} (platform ${ONE_PLAT}). Run: docker run --rm -p 3020:3020 ${FULL_IMAGE}"
+
+  echo "Verifying image actually boots (${ONE_PLAT})..."
+  if ! "${REPO_ROOT}/scripts/docker-smoke-test.sh" "$FULL_IMAGE"; then
+    echo "Smoke test FAILED for ${FULL_IMAGE} — it does not start correctly." >&2
+    exit 1
+  fi
+  echo "Smoke test passed for ${FULL_IMAGE}."
 fi
