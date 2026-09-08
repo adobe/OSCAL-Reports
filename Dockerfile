@@ -36,6 +36,12 @@ RUN npm install --omit=dev --no-audit --no-fund
 # Copy backend source
 COPY backend/ ./
 
+# Shared constants + catalogue manifest (backend/utils/constants.js and
+# sampleCatalogues.js resolve these via path.resolve(__dirname, '../../config/...'),
+# which lands at /config/... once backend/ is flattened into /app)
+COPY config/constants/ /config/constants/
+COPY config/catalogues/ /config/catalogues/
+
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder /app/frontend/dist ./public
 

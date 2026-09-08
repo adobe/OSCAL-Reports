@@ -4,6 +4,12 @@ Full release history. Deep operational reference material previously kept in sta
 `RELEASE_1.7.*.md` files is consolidated here — see the Appendices at the end for the Splunk /
 Security SCC runbook (SSAAU-212) and the cross-account Bedrock SCP escalation.
 
+## [1.8.01] - 2026-09-08
+
+### Fixed
+
+- **Docker production image crash-loop on startup** (`ENOENT: /config/constants/roles.json`): the 1.8.00 Dockerfile only copied `config/constants/` into the discarded `frontend-builder` stage, never into the `production` stage that actually ships. `backend/auth/roles.js` loads `getRoles()` at module import time, so every 1.8.00 container crashed immediately, before the HTTP server could bind — taking down both direct (`:3019`) and reverse-proxied access. Also fixed the same latent gap for `config/catalogues/sample-catalogues.json` (not yet crashing, since `sampleCatalogues.js` lazy-loads it, but would 500 on first catalogue-list request). The production stage now copies both `config/constants/` and `config/catalogues/` to the absolute paths (`/config/constants`, `/config/catalogues`) that `backend/utils/constants.js` and `backend/utils/sampleCatalogues.js` resolve to at runtime.
+
 ## [1.8.00] - 2026-09-08
 
 Catalogue library expansion + an app-wide "single source of truth" refactor for shared
