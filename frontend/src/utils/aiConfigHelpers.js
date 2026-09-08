@@ -53,8 +53,11 @@ export function normalizeAiConfigFromApi(raw = {}) {
   config.awsRegion = getEffectiveAwsRegion(config);
   config.bedrockModelId = (config.bedrockModelId && String(config.bedrockModelId).trim())
     || DEFAULT_BEDROCK_MODEL;
-  config.bedrockAssumeRoleArn = config.bedrockAssumeRoleArn || '';
-  config.bedrockExternalId = config.bedrockExternalId || '';
+  // Coerce a stored secret-pointer object to a display string here — these fields have no
+  // render-time guard (unlike the aws-key fields), and a downstream `.trim()` on an object
+  // would throw. credentialFieldDisplayValue: string→string, pointer object→mask, else ''.
+  config.bedrockAssumeRoleArn = credentialFieldDisplayValue(config.bedrockAssumeRoleArn);
+  config.bedrockExternalId = credentialFieldDisplayValue(config.bedrockExternalId);
   if (config.allowedUsersForAI == null) config.allowedUsersForAI = '';
   return config;
 }

@@ -458,7 +458,7 @@ output "bedrock_cross_account_configured" {
 | **Access keys** (default) | `bedrockAuthMode`: `access-keys`, `awsAccessKeyId`, `awsSecretAccessKey` | Static IAM user keys (pass vault supported). |
 | **IAM role** | `bedrockAuthMode`: `iam-role`, optional `bedrockAssumeRoleArn`, `bedrockExternalId` | EC2/instance profile via AWS default credential chain; if `bedrockAssumeRoleArn` is set, STS `AssumeRole` before Bedrock calls. |
 
-**Environment overrides** (Terraform/systemd on Account A EC2): `BEDROCK_ASSUME_ROLE_ARN`, `BEDROCK_EXTERNAL_ID` set `bedrockAuthMode` to `iam-role` and populate ARN/external ID without editing `config.json`.
+**Environment overrides** (Terraform/systemd on Account A EC2): `BEDROCK_ASSUME_ROLE_ARN`, `BEDROCK_EXTERNAL_ID` populate `bedrockAssumeRoleArn`/`bedrockExternalId` **only when `bedrockAuthMode` is already explicitly set to `iam-role`** in the stored config. They never change `bedrockAuthMode` itself — an explicit `access-keys` selection in Settings is always authoritative and is never overridden by these env vars (see CHANGELOG.md, 1.7.30).
 
 **Terraform (aws4403 example):** In `terraform/envs/aws4403/terraform.tfvars`:
 

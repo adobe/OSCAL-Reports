@@ -11,6 +11,8 @@ export const BEDROCK_AUTH_ACCESS_KEYS = 'access-keys';
 export const BEDROCK_AUTH_IAM_ROLE = 'iam-role';
 /** Fixed STS session name — must match Account B trust policy StringLike condition. */
 export const BEDROCK_ASSUME_ROLE_SESSION_NAME = 'oscal-bedrock-session';
+/** IAM role ARN shape — guards STS against a malformed/coerced value (e.g. "[object Object]"). */
+export const IAM_ROLE_ARN_PATTERN = /^arn:aws[a-zA-Z-]*:iam::\d{12}:role\/[\w+=,.@-]+$/;
 
 /**
  * @param {Object} [aiConfig]
@@ -106,6 +108,10 @@ export async function resolveBedrockCredentials(aiConfig) {
     (process.env.BEDROCK_EXTERNAL_ID && String(process.env.BEDROCK_EXTERNAL_ID).trim()) ||
     '';
 
+  if (assumeRoleArn && !IAM_ROLE_ARN_PATTERN.test(assumeRoleArn)) {
+    throw new Error(`Invalid Bedrock assume-role ARN format: "${assumeRoleArn}"`);
+  }
+
   const baseProvider = fromNodeProviderChain();
 
   if (assumeRoleArn) {
@@ -190,11 +196,11 @@ export function buildBedrockAiConfigFromRequest(resolvedAiConfig, sources = {}) 
       'awsAccessKeyId',
       'awsSecretAccessKey'
     ]) {
-      if (src[key] == null) return;
+      if (src[key] == null) continue;
       const val = String(src[key]).trim();
-      if (!val) return;
-      if ((key === 'awsAccessKeyId' || key === 'awsSecretAccessKey') && val === MASK) return;
-      overrides[key] = src[key];
+      if (!val) continue;
+      if ((key === 'awsAccessKeyId' || key === 'awsSecretAccessKey') && val === MASK) continue;
+      overrides[key] = val;
     }
   };
   pick(sources.query);

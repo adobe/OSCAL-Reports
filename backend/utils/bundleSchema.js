@@ -77,6 +77,33 @@ export function mergePartialIntoBundle(remote, partialEntries) {
   return merged;
 }
 
+/**
+ * Deterministically re-order object keys at every nesting level (arrays keep their order).
+ * @param {*} value
+ * @returns {*}
+ */
+function deepSortKeys(value) {
+  if (Array.isArray(value)) {
+    return value.map(deepSortKeys);
+  }
+  if (value && typeof value === 'object') {
+    const sorted = {};
+    for (const key of Object.keys(value).sort()) {
+      sorted[key] = deepSortKeys(value[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/**
+ * Canonical, key-order-independent JSON for bundle change-detection.
+ * Must recurse: a top-level `Object.keys(obj).sort()` replacer would allow-list only the outer
+ * keys and silently drop every nested `entries`/`_meta.keys` entry, collapsing every bundle to
+ * `{"_meta":{},"entries":{}}` and making change-detection always report "no change".
+ * @param {Object} obj
+ * @returns {string}
+ */
 export function canonicalBundleJson(obj) {
-  return JSON.stringify(obj, Object.keys(obj).sort());
+  return JSON.stringify(deepSortKeys(obj));
 }

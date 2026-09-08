@@ -169,6 +169,29 @@ EOF
 }
 
 # ============================================================================
+# DEPENDENCY UPDATES
+# ============================================================================
+
+# Pull the latest dependency versions across all workspaces before bumping the
+# app version. '--force' can apply breaking (major) upgrades, so this runs first
+# and the release is expected to be re-tested afterwards.
+run_dependency_updates() {
+  print_warning "'npm audit fix --force' may apply breaking (major) upgrades — re-run the test suites after this release."
+
+  local dirs=("." "backend" "frontend" "test_cases/backend")
+  local dir
+  for dir in "${dirs[@]}"; do
+    if [ -f "$dir/package.json" ]; then
+      print_info "npm audit fix --force in: $dir"
+      ( cd "$dir" && npm audit fix --force ) || print_warning "npm audit fix --force reported issues in $dir (continuing)"
+      print_success "Dependencies processed: $dir"
+    else
+      print_warning "No package.json in $dir (skipping)"
+    fi
+  done
+}
+
+# ============================================================================
 # MAIN SCRIPT
 # ============================================================================
 
@@ -237,6 +260,12 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
+print_header "Updating Dependencies (npm audit fix --force)"
+
+# Refresh dependencies to their latest fixed versions before bumping the app version.
+run_dependency_updates
+
+echo ""
 print_header "Updating Version Numbers"
 
 # Update all package.json files
@@ -271,9 +300,11 @@ print_header "Git Operations"
 
 # Check if git is available and we're in a git repository
 if command -v git &> /dev/null && [ -d .git ]; then
-  # Stage changes
-  git add package.json backend/package.json frontend/package.json test_cases/backend/package.json docs/CHANGELOG.md .validation/learnings.json 2>/dev/null || true
-  print_success "Staged version files"
+  # Stage changes (including lock files updated by npm audit fix --force)
+  git add package.json backend/package.json frontend/package.json test_cases/backend/package.json \
+    package-lock.json backend/package-lock.json frontend/package-lock.json test_cases/backend/package-lock.json \
+    docs/CHANGELOG.md .validation/learnings.json 2>/dev/null || true
+  print_success "Staged version and dependency files"
   
   # Create commit
   COMMIT_MESSAGE="chore(release): bump version to v$NEW_VERSION
@@ -285,6 +316,7 @@ Updated files:
 - backend/package.json
 - frontend/package.json
 - test_cases/backend/package.json
+- package-lock.json (+ backend/frontend/test_cases lock files via npm audit fix --force)
 - docs/CHANGELOG.md"
   
   git commit -m "$COMMIT_MESSAGE" 2>/dev/null || print_warning "No changes to commit (files may be unchanged)"

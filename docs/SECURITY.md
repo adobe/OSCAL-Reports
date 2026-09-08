@@ -108,6 +108,7 @@
 ### v1.7.25 – AMS Non-Prod InfraSec (SSAAU-216 / SSAAU-212) (July 2026)
 - **SSAAU-216:** Stale Image Factory EMR AMI → dynamic lookup + ASG refresh to IF **3.0.2**.
 - **SSAAU-212:** Splunk UF installed but missing `deploymentclient.conf` → automated bootstrap in Terraform user-data/SSM. See [terraform/envs/aws4403/README.md](../terraform/envs/aws4403/README.md).
+- **SSAAU-212, reopened (September 2026):** logs still weren't reaching Security Splunk SCC after the above fix. Live diagnosis on Green/Blue found the deployment-client config, journald input stanzas, and meta fields all already correct — the actual failure was repeated `errno 104` connection resets on Splunk UF's mutual-TLS output path to the indexer tier (`hf3.splunk.adobe.net`), caused by the VPC/subnets never having been tagged for Adobe's Emissary network allowlist. Fixed by tagging `aws_vpc.main` / `aws_subnet.public` with `emissary = "trusted"` (`terraform/vpc.tf`); also added a defensive `etc/system/local/deploymentclient.conf` override and `splunk btool` check (config-precedence hygiene, not the root cause), and fixed a bootstrap-script bug that would have overwritten Image Factory's already-correct `00-secops_meta_app` meta fields. See the **1.7.30** and **1.7.25** entries and **Appendix A** (reusable runbook) in [CHANGELOG.md](CHANGELOG.md), and `scripts/debug/diagnose-splunk-uf-on-ec2.sh`.
 
 ---
 

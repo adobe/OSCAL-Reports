@@ -59,6 +59,17 @@ import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Read once at startup so /health can report which build a given Blue/Green instance is running,
+// without relying on the UI footer. readFileSync (not a JSON import) avoids ESM import-attribute
+// dependency; never block startup if package.json is somehow unreadable.
+let SERVICE_VERSION = 'unknown';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+  SERVICE_VERSION = pkg.version || 'unknown';
+} catch (_) {
+  // leave as 'unknown'
+}
+
 // Load .env from repo root only in development (laptop). Docker and EC2 use their own USERS_PATH/CONFIG_PATH from entrypoint or systemd.
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -344,16 +355,16 @@ app.use(express.static('public'));
 
 // Health check endpoint for Docker (liveness — process listening)
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy', service: 'Keekar\'s OSCAL SOA/SSP/CCM Generator' });
+  res.status(200).json({ status: 'healthy', service: 'Keekar\'s OSCAL SOA/SSP/CCM Generator', version: SERVICE_VERSION });
 });
 
 // Readiness: SPA, config, and (on EC2) Secrets Manager cache for enabled SSO providers
 app.get('/health/ready', (req, res) => {
   const result = evaluateReadiness();
   if (result.ready) {
-    return res.status(200).json({ status: 'ready', checks: result.checks });
+    return res.status(200).json({ status: 'ready', version: SERVICE_VERSION, checks: result.checks });
   }
-  return res.status(503).json({ status: 'not_ready', checks: result.checks });
+  return res.status(503).json({ status: 'not_ready', version: SERVICE_VERSION, checks: result.checks });
 });
 
 /**

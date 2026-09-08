@@ -90,5 +90,13 @@ resource "aws_ssm_association" "oscal_post_boot" {
     values = [var.project_name]
   }
 
+  # Durable, queryable record of each periodic run (health, Splunk UF handshake/btool/errno-104)
+  # without opening a Session Manager shell — reuses the bucket already used for patch output
+  # (see terraform/oscal_ssm_patch.tf). SSAAU-212 visibility.
+  output_location {
+    s3_bucket_name = aws_s3_bucket.logs.id
+    s3_key_prefix  = "ssm/oscal-post-boot/"
+  }
+
   depends_on = [aws_ssm_document.oscal_post_boot]
 }

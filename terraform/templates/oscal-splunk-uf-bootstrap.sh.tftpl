@@ -3,6 +3,11 @@
 #
 # Idempotent Splunk Universal Forwarder SCC bootstrap (SSAAU-212).
 # Configures deployment server client + secops metadata for Security Splunk SCC.
+# Writes the authoritative deployment-client config to etc/system/local so it always wins over
+# any Image-Factory-shipped app (e.g. xif-deployment_client_app), regardless of app-name sort
+# order. NOTE: the confirmed live root cause of SSAAU-212 was a missing Adobe Emissary VPC tag
+# (see terraform/vpc.tf), not deployment-client precedence — this override is cheap, defensive
+# hygiene, and the meta-app guard below prevents clobbering Image Factory's richer meta config.
 
 SPLUNK_HOME="/opt/splunkforwarder"
 SPLUNK_BIN="$${SPLUNK_HOME}/bin/splunk"
@@ -55,12 +60,22 @@ if [ -z "$${instance_id}" ]; then
   instance_id="unknown"
 fi
 
+# Image Factory EMR AMIs ship their own deployment-client app; log its effective target for
+# visibility. Live diagnosis showed it already targets the correct SCC endpoint, so this is
+# informational, not a config we need to override away — but we still write etc/system/local
+# below as a guaranteed authoritative precedence anchor.
+xif_dc_conf="$${SPLUNK_HOME}/etc/apps/xif-deployment_client_app/local/deploymentclient.conf"
+if [ -f "$${xif_dc_conf}" ]; then
+  log_msg "Image Factory deployment-client present; effective target/client below:"
+  grep -E 'targetUri|clientName' "$${xif_dc_conf}" 2>/dev/null | while IFS= read -r _line; do log_msg "  $${_line}"; done
+fi
+
 dc_app_dir="$${SPLUNK_HOME}/etc/apps/DC-seclogs/local"
 meta_app_dir="$${SPLUNK_HOME}/etc/apps/00-secops_meta_app/local"
-mkdir -p "$${dc_app_dir}" "$${meta_app_dir}"
+system_local_dir="$${SPLUNK_HOME}/etc/system/local"
+mkdir -p "$${dc_app_dir}" "$${meta_app_dir}" "$${system_local_dir}"
 
-cat >"$${dc_app_dir}/deploymentclient.conf" <<EOF
-[deployment-client]
+deploymentclient_conf_body="[deployment-client]
 disabled = false
 clientName = $${CLIENT_NAME}
 phoneHomeIntervalInSecs = 1800
@@ -69,12 +84,26 @@ sslVerifyServerCert = false
 
 [target-broker:deploymentServer]
 targetUri = $${DEPLOYMENT_SERVER}
-EOF
+"
 
-cat >"$${meta_app_dir}/inputs.conf" <<EOF
+# App-level config, kept for consistency with the documented Adobe wiki procedure.
+printf '%s' "$${deploymentclient_conf_body}" >"$${dc_app_dir}/deploymentclient.conf"
+
+# Authoritative override: etc/system/local always wins over any app's local/default config.
+printf '%s' "$${deploymentclient_conf_body}" >"$${system_local_dir}/deploymentclient.conf"
+
+# Image Factory EMR AMIs already populate 00-secops_meta_app with a richer, per-stanza meta
+# config ([journald://messages]/[journald://audit] with meta_application_uai, meta_location,
+# etc.). Only write our simpler [default] fallback if nothing is there yet, so we never clobber
+# Image Factory's better config (a real regression found during live SSAAU-212 diagnosis).
+if [ -s "$${meta_app_dir}/inputs.conf" ]; then
+  log_msg "00-secops_meta_app/local/inputs.conf already populated (Image Factory) — leaving as-is"
+else
+  cat >"$${meta_app_dir}/inputs.conf" <<EOF
 [default]
 _meta = meta_cloud_id::$${META_CLOUD_ID} meta_instance_id::$${instance_id}
 EOF
+fi
 
 if ! id splunk >/dev/null 2>&1 && id splunkfwd >/dev/null 2>&1; then
   splunk_user="splunkfwd"
@@ -82,7 +111,7 @@ else
   splunk_user="splunk"
 fi
 
-chown -R "$${splunk_user}:$${splunk_user}" "$${SPLUNK_HOME}/etc/apps/DC-seclogs" "$${SPLUNK_HOME}/etc/apps/00-secops_meta_app"
+chown -R "$${splunk_user}:$${splunk_user}" "$${SPLUNK_HOME}/etc/apps/DC-seclogs" "$${SPLUNK_HOME}/etc/apps/00-secops_meta_app" "$${system_local_dir}"
 
 if command -v setfacl >/dev/null 2>&1; then
   setfacl -Rm "u:$${splunk_user}:r-x,d:u:$${splunk_user}:r-x" /var/log 2>/dev/null || true
@@ -92,6 +121,6 @@ if ! "$${SPLUNK_BIN}" status 2>/dev/null | grep -qi running; then
   "$${SPLUNK_BIN}" enable boot-start -user "$${splunk_user}" --accept-license --answer-yes --no-prompt 2>/dev/null || true
 fi
 
-log_msg "Configured deploymentclient.conf clientName=$${CLIENT_NAME} target=$${DEPLOYMENT_SERVER} instance=$${instance_id}"
+log_msg "Configured deploymentclient.conf (app + authoritative system/local) clientName=$${CLIENT_NAME} target=$${DEPLOYMENT_SERVER} instance=$${instance_id}"
 "$${SPLUNK_BIN}" restart 2>/dev/null || systemctl restart splunk 2>/dev/null || service splunk restart 2>/dev/null || true
 log_msg "Splunk UF restart requested (allow up to 30 min for deployment-server handshake)"

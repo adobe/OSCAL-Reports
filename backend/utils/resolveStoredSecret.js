@@ -26,12 +26,21 @@ const BEDROCK_CROSS_ACCOUNT_PATHS = [
 export function applyRoleBasedConfigRedaction(config, user) {
   const canEditSettings = Boolean(user?.role && hasPermission(user.role, PERMISSIONS.EDIT_SETTINGS));
   if (canEditSettings) {
+    // Admins may view the real value — resolve any stored pointer envelope ({_sm}/{_cfgenc}/
+    // {_pass}) to plaintext so a raw pointer object never reaches the client as "[object Object]".
+    for (const keyPath of BEDROCK_CROSS_ACCOUNT_PATHS) {
+      const v = getByPath(config, keyPath);
+      setByPath(config, keyPath, resolveStoredSecretValue(v));
+    }
     return [...BEDROCK_CROSS_ACCOUNT_PATHS];
   }
   for (const keyPath of BEDROCK_CROSS_ACCOUNT_PATHS) {
     const v = getByPath(config, keyPath);
     if (typeof v === 'string' && v.trim() && v !== MASK) {
       setByPath(config, keyPath, MASK);
+    } else if (isStoredSecretEnvelope(v)) {
+      // A pointer envelope must not leak verbatim to non-admins: mask if it resolves, else clear.
+      setByPath(config, keyPath, resolveStoredSecretValue(v) ? MASK : '');
     }
   }
   return [];

@@ -1,5 +1,33 @@
 # Changelog
 
+Full release history. Deep operational reference material previously kept in standalone
+`RELEASE_1.7.*.md` files is consolidated here — see the Appendices at the end for the Splunk /
+Security SCC runbook (SSAAU-212) and the cross-account Bedrock SCP escalation.
+
+## [1.7.30] - 2026-09-08
+
+Restores fixes that were documented as shipped in `RELEASE_1.7.29`/`RELEASE_1.7.30` and the
+reopened SSAAU-212 work but, per a drift audit, were never actually committed — the original
+buggy code was still live in the tree. Also consolidates all standalone release notes into this
+file (the `RELEASE_1.7.*.md` files are retired; see Appendices A/B).
+
+### Fixed
+
+- **SSAAU-212 (Splunk → Security Splunk SCC):** confirmed live root cause was the VPC/subnets never being tagged for Adobe's Emissary network allowlist (causing `errno 104` mutual-TLS resets to the indexer tier `hf3.splunk.adobe.net`), **not** deployment-client config. Tagged `aws_vpc.main`/`aws_subnet.public` with `emissary = "trusted"` (`terraform/vpc.tf`); added a defensive `etc/system/local/deploymentclient.conf` override + `splunk btool`/errno-104 visibility in the periodic SSM check; fixed a bootstrap bug that would clobber Image Factory's `00-secops_meta_app` meta fields; added `scripts/debug/diagnose-splunk-uf-on-ec2.sh`. Full incident narrative and runbook: **Appendix A**.
+- **Bedrock auth-mode precedence (was RELEASE_1.7.30):** `applyBedrockEnvOverrides` (`backend/configManager.js`) no longer flips an explicit `access-keys` selection to `iam-role`. `BEDROCK_ASSUME_ROLE_ARN`/`BEDROCK_EXTERNAL_ID` now only *populate* ARN/ExternalId when `iam-role` is already the selected mode; they never change the mode. Added `test_cases/backend/unit/bedrockEnvOverrides.test.js`.
+- **Bedrock "Test Connection" `[object Object]` roleArn (was RELEASE_1.7.29):** `pick()` in `buildBedrockAiConfigFromRequest` used `return` instead of `continue` (dropping every field after the first empty one) and stored the raw un-trimmed value — both fixed; added an IAM-role ARN format check in `resolveBedrockCredentials` so a coerced/malformed value can't reach STS; `applyRoleBasedConfigRedaction` (`resolveStoredSecret.js`) now resolves `{_sm}`/`{_cfgenc}`/`{_pass}` pointer envelopes to plaintext for admins and masks them for non-admins (both paths previously leaked the raw pointer object); frontend `normalizeAiConfigFromApi` guards `bedrockAssumeRoleArn`/`bedrockExternalId` against pointer objects.
+- **Secrets Manager bundle write was a silent no-op (was RELEASE_1.7.29):** `canonicalBundleJson` (`backend/utils/bundleSchema.js`) used a top-level-only `JSON.stringify(obj, Object.keys(obj).sort())` replacer that dropped every nested bundle entry, so change-detection always reported "no change" and skipped `PutSecretValueCommand` — every Settings-UI secret save in `aws-sm` mode appeared to succeed but never persisted. Fixed with recursive key sorting.
+- **`/health` and `/health/ready`** now report a `version` field read from `backend/package.json` at startup, so operators can confirm which build a Blue/Green instance is running without the UI footer.
+
+### Known issue (infrastructure, not code)
+
+- Cross-account Bedrock `iam-role` mode remains blocked by a suspected AWS Organizations SCP on account `442277170733` — running config stays on `access-keys`. Escalation ticket template and evidence: **Appendix B**.
+
+### Operator actions (cannot be scripted / committed)
+
+- Set `bedrock_cross_account_enabled = false` in `terraform/envs/aws4403/terraform.tfvars` (gitignored, environment-specific).
+- Verify/re-apply the `emissary = "trusted"` VPC/subnet tag via `terraform plan`/`apply` in `terraform/envs/aws4403`.
+
 ## [1.7.29] - 2026-09-08
 
 ### Security
@@ -29,8 +57,20 @@
 
 ## [1.7.28] - 2026-08-09
 
+Operations, CI, and security-maintenance release (no new end-user report workflow).
+
 ### Changed
-- CI/CD workflow fixes (Main branch triggers, Node 24 runtime, AWS OIDC auth), dependency security updates, and secret-scanning remediation
+
+- **Repository:** `Main` is the only active long-lived branch and the default PR target.
+- **Node.js:** **24.9.0 or newer** required by root, backend, frontend, tests, and release builds.
+- **CI:** Validation, quality, shell, Codacy, and SBOM workflows target `Main`.
+- **AWS auth:** The scheduled AMI drift check assumes a role via GitHub OIDC; static AWS access-key secrets are no longer used. Enable by applying `terraform/envs/aws4403`, then add the `terraform output -raw github_actions_ami_drift_role_arn` value as GitHub Actions variable `AWS4403_AMI_DRIFT_ROLE_ARN` (OIDC trust restricted to the canonical repo's `Main` branch; role is read-only for `ec2:DescribeImages`).
+- **Snyk:** Placeholder workflows disabled until a real Snyk project/token is configured.
+- **Security:** Dependency remediation and encrypted-example fixture cleanup.
+
+### Deploy
+
+- **Docker Hub:** `keekar/oscal_reports:v1.7.28`; **GHCR:** `ghcr.io/adobe/oscal-report-generator:v1.7.28`.
 
 ## [1.7.27] - 2026-07-20
 
@@ -343,3 +383,127 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 - Fix AI telemetry logging (ESM require fix)
+
+---
+
+# Appendices — operational reference
+
+Durable runbook / escalation material consolidated from the retired `RELEASE_1.7.*.md` files.
+
+## Appendix A — Reusable runbook: Splunk UF logs not reaching Security Splunk SCC (SSAAU-212 pattern)
+
+Portable checklist for any Adobe AWS project on an Image Factory AMI with the Splunk Universal
+Forwarder (UF). Full OSCAL incident detail is in the **1.7.25** and **1.7.30** entries above.
+
+### Symptom
+
+Security Splunk SCC shows "No log found" / missing device logs for hosts that otherwise look
+correctly configured — `deploymentclient.conf` present, UF running, journald inputs configured.
+
+### Diagnosis order (cheapest / most-likely-wrong-assumption first)
+
+1. **Is UF actually running and healthy?**
+   ```bash
+   sudo /opt/splunkforwarder/bin/splunk status
+   ps aux | grep splunkd
+   ```
+   If not installed/running, that's a separate (simpler) problem — Image Factory AMI issue or base image drift.
+
+2. **Which deployment-client config is actually effective?** Don't trust file presence — Splunk merges `deploymentclient.conf` across apps by app-name precedence, and Image Factory AMIs ship their own pre-wired app (`xif-deployment_client_app`) that can silently win.
+   ```bash
+   sudo /opt/splunkforwarder/bin/splunk btool deploymentclient list --debug
+   ```
+   Prints the winning `targetUri`/`clientName` **and its source file**. If it's not what you expect, write your config to `$SPLUNK_HOME/etc/system/local/deploymentclient.conf` — `system/local` always wins over any app. (On OSCAL this was a red herring; the Image-Factory app already had the right target — but it's a 30-second check and a real cause elsewhere.)
+
+3. **Are the required journald input stanzas enabled?** (Per Adobe's "Missing Device Logs" wiki, §Logging Requirement.) For AL2023/journald:
+   ```bash
+   sudo /opt/splunkforwarder/bin/splunk btool inputs list --debug | grep -A5 'journald://messages\|journald://audit'
+   ```
+   Expect `journalctl-facility = 1,2,3,5,6,7,8,9` (messages/syslog) and `= 4,10` (audit), both `disabled = 0` — normally shipped by Image Factory's `TA-journald_input-syslogs`.
+
+4. **Are meta fields already populated by Image Factory?** Check before writing anything:
+   ```bash
+   cat /opt/splunkforwarder/etc/apps/00-secops_meta_app/local/inputs.conf
+   ```
+   The wiki: *"If you are using an imagefactory server, then you do not need to setup these fields as they have already been setup."* If it already has `meta_application_uai`/`meta_location`/etc., **do not overwrite it** — automation touching this file should `[ -s "$file" ]`-guard and skip if populated.
+
+5. **Is the actual data-plane connection failing?** The check most likely to reveal the real problem if 1–4 look fine:
+   ```bash
+   grep -c 'sock_error = 104' /opt/splunkforwarder/var/log/splunk/splunkd.log
+   grep -i -E 'AutoLoadBalancedConnectionStrategy|TcpOutputFd' /opt/splunkforwarder/var/log/splunk/splunkd.log | tail -20
+   ```
+   A nonzero, growing `errno 104` (reset) count on the **output** connection to `hf3.splunk.adobe.net` — while a bare `openssl s_client -connect hf3.splunk.adobe.net:443` *succeeds* — is the signature of a network-perimeter block on the mutual-TLS forwarding path. A present/valid client cert is not sufficient evidence the connection works.
+
+6. **Check the Adobe Emissary allowlist tag.** The actual OSCAL root cause. Emissary dynamically allowlists AWS resources for Vault/LDAP/Splunk based on a tag; dynamic EC2 public IPs (not just static EIPs) are supported for Splunk.
+   ```bash
+   aws ec2 describe-tags --filters "Name=resource-id,Values=<vpc-id>" "Name=key,Values=emissary"
+   ```
+   If empty, tag the VPC and/or subnet/ENI/EIP with key `emissary` (lowercase), value `trusted` (Adobe-managed internal; `dmz` for customer-facing) — see `wiki.corp.adobe.com/spaces/CES/pages/3174993327/2.+Emissary+for+Service+Consumers`. Allow ~20 min to propagate, then re-check the errno-104 count. **Verify the tag directly — don't trust a prior "Emissary already satisfied" claim.**
+
+### Why this keeps happening: an Image Factory / Emissary process gap, not a code bug
+
+The `emissary` tag is a property of AWS **networking** resources (VPC/Subnet/ENI/EIP), set at
+instance-launch via each project's own Terraform — it *cannot* be baked into an AMI (an AMI has no
+VPC association until launched). Image Factory bakes in Splunk UF + a working
+`xif-deployment_client_app` pointed at `ds2.splunk.adobe.net`, which makes logging *look* fully
+configured — and that false completeness is exactly what let this go unnoticed for months (a prior
+diagnosis assumed Emissary was "already satisfied" without checking). Worth raising with Image
+Factory / Logging Platform as a standing gap: (1) docs should call out the Emissary tag as a
+separate required step even on Image Factory AMIs; (2) a startup diagnostic could surface a
+distinct "Emissary not tagged" warning instead of a bare `errno 104`.
+
+### Fix pattern to replicate
+
+- Add `tags = { emissary = "trusted" }` to the `aws_vpc` and public `aws_subnet` resources.
+- If step 2 found a real precedence conflict, add a defensive `etc/system/local/deploymentclient.conf` write to the UF bootstrap script.
+- Guard any script-managed `00-secops_meta_app/local/inputs.conf` write with an "already populated, skip" check.
+- Add the `errno 104` count and `btool` output to the project's health/diagnostic script (see `scripts/debug/diagnose-splunk-uf-on-ec2.sh`).
+
+### Evidence to attach to a ticket
+
+Instance-side evidence (btool, errno-104 count before/after, handshake status) supports the
+diagnosis, but the evidence the Logging Platform team wants is a **Splunk search in Security Splunk
+SCC** for the affected host/instance IDs showing events after the fix — that comes from Splunk SCC
+access (`#splunk-users`), not the instance.
+
+## Appendix B — Cross-account Bedrock `iam-role` blocked by suspected AWS Organizations SCP
+
+After the 1.7.29/1.7.30 code fixes, `bedrockAuthMode: iam-role` with the cross-account ARN
+`arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount` still fails:
+
+```
+User: arn:aws:sts::442277170733:assumed-role/ams-oscal-reports-oscal-.../i-...
+is not authorized to perform: sts:AssumeRole on resource:
+arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount
+```
+
+Every IAM-level check confirms the call *should* be allowed (Account A identity policy grants it,
+Account B trust policy allows the caller with matching `sts:ExternalId`/`aws:SourceAccount`/
+`sts:RoleSessionName`, `aws iam simulate-principal-policy` returns `allowed`, no permissions
+boundary or explicit `Deny`). Since IAM says allow but the live call is denied, the most likely
+cause is an **AWS Organizations Service Control Policy (SCP)** restricting cross-account
+`sts:AssumeRole` — SCPs aren't evaluated by the policy simulator and weren't checkable from the
+diagnosis session (`AccessDeniedException` on `organizations:ListPoliciesForTarget`). The app owner
+reports this worked under 1.7.28 and broke with no app-side change, consistent with an SCP change.
+**Workaround in place:** running config reverted to `access-keys`; do not re-enable iam-role until
+the SCP is confirmed resolved.
+
+### Ticket template for the AWS Organizations administrator
+
+> **Summary:** Cross-account `sts:AssumeRole` from account `442277170733` to a role in account `928475551084` is denied, even though every IAM-level check (identity policy, trust policy, `simulate-principal-policy`) confirms it should be allowed. Suspect an SCP change on `442277170733` or its OU; this previously worked and is not an application-side change.
+>
+> **Caller (Account A):** `442277170733`, role `arn:aws:iam::442277170733:role/ams-oscal-reports-oscal-20260310224909155700000001`
+> **Target (Account B):** `928475551084`, role `arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount`
+>
+> **Exact error:**
+> ```
+> User: arn:aws:sts::442277170733:assumed-role/ams-oscal-reports-oscal-20260310224909155700000001/i-00b74ff5741fd43c6
+> is not authorized to perform: sts:AssumeRole on resource:
+> arn:aws:iam::928475551084:role/OSCAL-BedrockCrossAccount
+> ```
+>
+> **CloudTrail (event `AssumeRole`, `errorCode: AccessDenied`):** 2026-08-28 UTC `07:47:47`, `07:47:48`, `07:47:51` (repeated after an EC2 role restart, ruling out propagation); `sourceIPAddress: 44.220.171.141`.
+>
+> **Already ruled out (please don't re-check):** Account A identity policy grants `sts:AssumeRole` on the exact target ARN; Account B trust policy allows this exact caller with matching `sts:ExternalId`/`aws:SourceAccount: 442277170733`/`sts:RoleSessionName` (`oscal-bedrock-*`); `simulate-principal-policy` returns `allowed`; no permissions boundary; no explicit `Deny` in any caller-role policy.
+>
+> **Requested action:** Check the SCPs attached to account `442277170733` (or its parent OU) for any statement restricting `sts:AssumeRole` (e.g. keyed on `aws:ResourceAccount`, `aws:PrincipalAccount`, or a target-account allow-list). If found, add `928475551084` / the target role ARN to the allow-list, or carve out an exception. Note: `organizations:ListPoliciesForTarget` requires AWS Organizations management-account access.

@@ -43,6 +43,12 @@ locals {
       "  else",
       "    echo \"oscal-ssm: WARNING Splunk UF handshake not seen yet (wait up to 30 min after bootstrap; SSAAU-212)\" >&2",
       "  fi",
+      "  ERRNO104=$(grep -c 'sock_error = 104' /opt/splunkforwarder/var/log/splunk/splunkd.log 2>/dev/null || echo 0)",
+      "  if [ \"$ERRNO104\" -gt 0 ]; then echo \"oscal-ssm: WARNING $ERRNO104 Splunk output resets (errno 104) — check Adobe Emissary VPC tag (SSAAU-212)\" >&2; fi",
+      "fi",
+      "if [ -x /opt/splunkforwarder/bin/splunk ]; then",
+      "  echo \"oscal-ssm: effective deploymentclient.conf (btool):\"",
+      "  /opt/splunkforwarder/bin/splunk btool deploymentclient list --debug 2>/dev/null | grep -E 'targetUri|clientName|deploymentclient.conf' || true",
       "fi",
     ],
   ) : []

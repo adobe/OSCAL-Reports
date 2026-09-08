@@ -29,6 +29,7 @@ import {
 import { applyDefaultOidcGroupMappingsToConfig, mergeDefaultOidcGroupToRoleMapping } from './utils/defaultOidcGroupRoleMapping.js';
 import { resolveCfgEncPointers, isCfgEncPointer, decryptConfigSecret, encryptConfigSecret } from './utils/configFieldCrypto.js';
 import { resolveStoredSecretValue } from './utils/resolveStoredSecret.js';
+import { normalizeBedrockAuthMode, BEDROCK_AUTH_IAM_ROLE } from './utils/bedrockCredentials.js';
 import { ensureConfigSecretsProtected as runConfigSecretsProtection } from './utils/configSecretMigration.js';
 import { DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS } from './auth/genericOidc.js';
 
@@ -444,14 +445,19 @@ function warnBedrockIamMisconfiguration(config) {
 export function applyBedrockEnvOverrides(config) {
   if (!config?.aiConfig) return;
   const ai = config.aiConfig;
-  const roleArn = process.env.BEDROCK_ASSUME_ROLE_ARN && String(process.env.BEDROCK_ASSUME_ROLE_ARN).trim();
-  if (roleArn) {
-    ai.bedrockAuthMode = 'iam-role';
-    ai.bedrockAssumeRoleArn = roleArn;
-  }
-  const externalId = process.env.BEDROCK_EXTERNAL_ID && String(process.env.BEDROCK_EXTERNAL_ID).trim();
-  if (externalId) {
-    ai.bedrockExternalId = externalId;
+  // Env vars only *populate* the ARN/ExternalId when iam-role is already the explicitly-selected
+  // mode — they must never flip the mode itself. Otherwise BEDROCK_ASSUME_ROLE_ARN (written into
+  // systemd on every instance) silently overrides an admin's explicit access-keys selection on
+  // every getResolvedConfig() call, reproducing the SCP-blocked cross-account denial (CHANGELOG 1.7.30).
+  if (normalizeBedrockAuthMode(ai) === BEDROCK_AUTH_IAM_ROLE) {
+    const roleArn = process.env.BEDROCK_ASSUME_ROLE_ARN && String(process.env.BEDROCK_ASSUME_ROLE_ARN).trim();
+    if (roleArn) {
+      ai.bedrockAssumeRoleArn = roleArn;
+    }
+    const externalId = process.env.BEDROCK_EXTERNAL_ID && String(process.env.BEDROCK_EXTERNAL_ID).trim();
+    if (externalId) {
+      ai.bedrockExternalId = externalId;
+    }
   }
   warnBedrockIamMisconfiguration(config);
 }

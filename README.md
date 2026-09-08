@@ -95,57 +95,16 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DEPLOYMENT_AND_OPERAT
 
 ---
 
-## What's new in 1.7.27
+## Recent releases
 
-- **Security (VULN-37000):** Authentication and ownership on async job create/status/download; per-user job rate limits; status response redaction; regression + proactive API auth inventory tests.
-- **Deploy:** Passive-first Blue/Green rollout and 502 prevention during AMI/ASG refresh; installer manifest reconciles root, backend, and frontend `package.json` (footer version fix).
-- **Deploy:** `keekar/oscal_reports:v1.7.27` and `ghcr.io/adobe/oscal-report-generator:v1.7.27` when published.
+Summary of the five most recent versions. Full history — including every prior release and the
+operational runbooks — is in **[docs/CHANGELOG.md](docs/CHANGELOG.md)**.
 
-Full record and regression-prevention checklist: [docs/CHANGELOG.md](docs/CHANGELOG.md#1727---2026-07-20).
-
----
-
-## What's new in 1.7.25
-
-- **Security:** SSRF remediation (VULN-36986) — authenticated proxy/catalogue fetch, strict URL profiles, no redirects. Settings disclosure (VULN-36998) — admin-only `/api/settings`, runtime allowlist endpoint, SMTP/email retired, self-registration removed. Bedrock access control (VULN-37020) — settings redaction, Terraform ExternalId gate.
-- **AMS Non-Prod:** Image Factory EMR **3.0.2** (SSAAU-216); Splunk UF SCC bootstrap (SSAAU-212).
-- **Terraform / GHCR:** Docker mode on EC2 uses `ghcr.io/adobe/oscal-report-generator`; CI publishes to GHCR and Docker Hub.
-- **Dependencies:** Dependabot library updates merged on Development (AWS SDK 3.1086, fast-xml-parser 5.10.1, lucide-react 1.24, vite 8.1.4); backend SMTP/`nodemailer` removed.
-- **Deploy:** `keekar/oscal_reports:v1.7.25` and `ghcr.io/adobe/oscal-report-generator:v1.7.25` when published.
-
-Full record and regression-prevention checklist: [docs/CHANGELOG.md](docs/CHANGELOG.md#1725---2026-07-18).
-
----
-
-## What's new in 1.7.23
-
-- **Dependencies:** Dependabot updates merged into Quality — AWS SDK, `express-rate-limit` 8.x, `pdfkit` 0.19, `pg`, React 19.2.7, and related security/toolchain bumps (#45–#61).
-- **CI / tests:** Quality Gates action updates; OIDC and Docker bootstrap unit tests stable in CI; optional live OIDC probe via `OSCAL_RUN_OIDC_PROBE=1`.
-- **Deploy:** `keekar/oscal_reports:v1.7.23` when published to Docker Hub.
-
-Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1723---2026-06-29).
-
----
-
-## What's new in 1.7.22
-
-- **Pass bundle (laptop):** All OSCAL app secrets in one pass entry `PROD/OSCAL/AWS_SM` (same JSON as AWS SM).
-- **EC2 deploy safety:** `DEPLOY_CONFIG_S3_SKIP=1` for code-only deploys; golden **`config/default/`** on S3 for restore; no more accidental SSO/config wipe from force S3 sync.
-- **Generic OIDC / SSO:** Fixes orphan `_sm` pointers when SM empty; login providers API returns Generic SSO when secret is resolvable.
-- **Deploy:** `keekar/oscal_reports:v1.7.22` on Docker Hub; EC2 via safe flags above.
-
-Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1722---2026-06-26).
-
----
-
-## What's new in 1.7.21 (previous)
-
-- **Multi-Report Comparison:** Export uses the same `generate-ssp` path as the main app; fixes gateway timeouts, validation modal dismiss, and `_ComplianceReport` filenames.
-- **AI suggestions:** Per-control prompts (catalog description, statement parts) so Gemma/Mistral outputs vary by control.
-- **Generic OIDC (Docker/NAS):** `tlsRelaxed` when Authentik TLS chain fails Node verification; EC2 production remains Okta-first.
-- **Deploy:** `keekar/oscal_reports:v1.7.21` on Docker Hub; EC2 via `./scripts/deploy-to-ec2.sh --update-s3` then `--both`.
-
-Details: [docs/CHANGELOG.md](docs/CHANGELOG.md#1721---2026-06-25).
+- **1.7.30** — Restored fixes documented but never committed (drift correction): SSAAU-212 Splunk→SCC delivery (`emissary = "trusted"` VPC/subnet tag — the real root cause; errno-104 mutual-TLS resets), Bedrock auth-mode precedence, Bedrock `[object Object]` roleArn + Secrets Manager bundle-write no-op, and a `/health` `version` field. [Details](docs/CHANGELOG.md#1730---2026-09-08).
+- **1.7.29** — Pass vault removed as a runtime dependency; config secrets stored as `_cfgenc` (local) / `_sm` (EC2); docs consolidated. [Details](docs/CHANGELOG.md#1729---2026-09-08).
+- **1.7.28** — Ops/CI/security-maintenance: `Main`-only branching, Node.js 24.9.0+ floor, CI on `Main`, AMI-drift check via GitHub OIDC (no static keys). [Details](docs/CHANGELOG.md#1728---2026-08-09).
+- **1.7.27** — Async job authorization (VULN-37000), Blue/Green 502 prevention during AMI/ASG refresh, proactive API auth inventory tests. [Details](docs/CHANGELOG.md#1727---2026-07-20).
+- **1.7.25** — Pentest remediation (SSRF VULN-36986, settings disclosure VULN-36998, Bedrock access control VULN-37020) and AMS Non-Prod InfraSec (SSAAU-216 / SSAAU-212). [Details](docs/CHANGELOG.md#1725---2026-07-18).
 
 ---
 
@@ -155,4 +114,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.7.27 (see root `package.json`) · **Last updated:** July 2026
+**Version:** 1.7.30 (see root `package.json`) · **Last updated:** September 2026

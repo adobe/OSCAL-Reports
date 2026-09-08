@@ -10,6 +10,14 @@ resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
+
+  # Adobe Emissary network allowlist (SSAAU-212). Required for AWS resources to reach shared
+  # services (Splunk/Vault/LDAP) — without it, Splunk UF's mutual-TLS output to the indexer tier
+  # (hf3.splunk.adobe.net) is reset (errno 104) even when the deployment-client config is correct.
+  # Confirmed live root cause on the Green/Blue fleet; value "trusted" = Adobe-managed internal.
+  tags = {
+    emissary = "trusted"
+  }
 }
 
 resource "aws_internet_gateway" "main" {
@@ -23,6 +31,12 @@ resource "aws_subnet" "public" {
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
+
+  # Adobe Emissary network allowlist (SSAAU-212) — tagged at the subnet level too, since the
+  # OSCAL EC2 instances' ENIs live here. See aws_vpc.main above for the full rationale.
+  tags = {
+    emissary = "trusted"
+  }
 }
 
 resource "aws_route_table" "public" {
