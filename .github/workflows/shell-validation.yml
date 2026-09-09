@@ -20,6 +20,10 @@ on:
       - '.github/workflows/**.yml'
       - '.githooks/**'
 
+concurrency:
+  group: shell-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   shell-gates:
     name: ShellCheck, hooks, best practices, dry-run

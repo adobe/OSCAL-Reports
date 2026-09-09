@@ -17,6 +17,10 @@ on:
   push:
     branches: [ "Main" ]
 
+concurrency:
+  group: anchore-syft-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
