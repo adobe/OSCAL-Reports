@@ -26,7 +26,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     groups:
       backend-aws:
         patterns:
@@ -46,7 +46,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     groups:
       frontend-build:
         patterns:
@@ -66,3 +66,11 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    # Action bumps each touch every workflow, so an ungrouped batch multiplies
+    # across all of them. One PR for all action updates keeps that to a single
+    # CI cycle.
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
