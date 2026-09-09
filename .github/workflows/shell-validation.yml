@@ -24,6 +24,7 @@ jobs:
   shell-gates:
     name: ShellCheck, hooks, best practices, dry-run
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -89,6 +90,7 @@ jobs:
   ec2-automation-pass-sync-tests:
     name: ec2_automation Pass / Secrets Manager sync tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -103,6 +105,7 @@ jobs:
   shell-validation-summary:
     name: Shell Validation Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [shell-gates, ec2-automation-pass-sync-tests]
     if: always() && github.repository == 'adobe/OSCAL-Reports'
 

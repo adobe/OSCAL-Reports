@@ -13,6 +13,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: write

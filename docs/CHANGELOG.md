@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.8.02] - 2026-09-09
+
+### Changed
+- Added filters in Multireport Comparision and fixed the long running githb actions workflows
 Full release history. Deep operational reference material previously kept in standalone
 `RELEASE_1.7.*.md` files is consolidated here — see the Appendices at the end for the Splunk /
 Security SCC runbook (SSAAU-212) and the cross-account Bedrock SCP escalation.

@@ -83,6 +83,10 @@ function MultiReportComparison({ onBack, onShowSettings }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [comparisonResult, setComparisonResult] = useState(null);
+  const [controlIdFilter, setControlIdFilter] = useState('');
+  const [titleFilter, setTitleFilter] = useState('');
+  const [statusFilters, setStatusFilters] = useState({ baseline: 'all', csp1: 'all', csp2: 'all' });
+  const [differencesFilter, setDifferencesFilter] = useState('all');
   const [step, setStep] = useState(1); // 1: Upload, 2: Comparison View
   const [editingControl, setEditingControl] = useState(null);
   const [baselineControls, setBaselineControls] = useState(null); // Editable baseline controls
@@ -721,6 +725,32 @@ function MultiReportComparison({ onBack, onShowSettings }) {
 
   if (step === 2 && comparisonResult) {
     console.log('🔍 DEBUG: Rendering Results View with Header');
+
+    const allControls = comparisonResult.controls || [];
+    const statusValuesFor = (slot) =>
+      [...new Set(allControls.map((c) => c[slot]?.status).filter(Boolean))];
+    const baselineStatusValues = statusValuesFor('baseline');
+    const csp1StatusValues = statusValuesFor('csp1');
+    const csp2StatusValues = statusValuesFor('csp2');
+
+    const filteredControls = allControls.filter((control) => {
+      const matchesControlId = !controlIdFilter ||
+        control.id?.toLowerCase().includes(controlIdFilter.toLowerCase());
+      const matchesTitle = !titleFilter ||
+        control.title?.toLowerCase().includes(titleFilter.toLowerCase());
+      const matchesBaseline = statusFilters.baseline === 'all' ||
+        control.baseline?.status === statusFilters.baseline;
+      const matchesCsp1 = statusFilters.csp1 === 'all' ||
+        control.csp1?.status === statusFilters.csp1;
+      const matchesCsp2 = statusFilters.csp2 === 'all' ||
+        control.csp2?.status === statusFilters.csp2;
+      const matchesDifferences = differencesFilter === 'all' ||
+        (differencesFilter === 'differs' ? control.hasDifferences : !control.hasDifferences);
+
+      return matchesControlId && matchesTitle && matchesBaseline &&
+        matchesCsp1 && matchesCsp2 && matchesDifferences;
+    });
+
     return (
       <div className="multi-report-comparison">
         {/* Application Title */}
@@ -891,9 +921,88 @@ function MultiReportComparison({ onBack, onShowSettings }) {
                   {reports.csp2 && <th>{reportNames.csp2}</th>}
                   <th>Differences</th>
                 </tr>
+                <tr className="comparison-filter-row">
+                  <th>
+                    <input
+                      type="text"
+                      className="search-input comparison-filter-input"
+                      placeholder="Filter..."
+                      value={controlIdFilter}
+                      onChange={(e) => setControlIdFilter(e.target.value)}
+                    />
+                  </th>
+                  <th>
+                    <input
+                      type="text"
+                      className="search-input comparison-filter-input"
+                      placeholder="Filter..."
+                      value={titleFilter}
+                      onChange={(e) => setTitleFilter(e.target.value)}
+                    />
+                  </th>
+                  {reports.baseline && (
+                    <th>
+                      <select
+                        className="filter-select comparison-filter-select"
+                        value={statusFilters.baseline}
+                        onChange={(e) => setStatusFilters((prev) => ({ ...prev, baseline: e.target.value }))}
+                      >
+                        <option value="all">All</option>
+                        {baselineStatusValues.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    </th>
+                  )}
+                  {reports.csp1 && (
+                    <th>
+                      <select
+                        className="filter-select comparison-filter-select"
+                        value={statusFilters.csp1}
+                        onChange={(e) => setStatusFilters((prev) => ({ ...prev, csp1: e.target.value }))}
+                      >
+                        <option value="all">All</option>
+                        {csp1StatusValues.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    </th>
+                  )}
+                  {reports.csp2 && (
+                    <th>
+                      <select
+                        className="filter-select comparison-filter-select"
+                        value={statusFilters.csp2}
+                        onChange={(e) => setStatusFilters((prev) => ({ ...prev, csp2: e.target.value }))}
+                      >
+                        <option value="all">All</option>
+                        {csp2StatusValues.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    </th>
+                  )}
+                  <th>
+                    <select
+                      className="filter-select comparison-filter-select"
+                      value={differencesFilter}
+                      onChange={(e) => setDifferencesFilter(e.target.value)}
+                    >
+                      <option value="all">All</option>
+                      <option value="differs">⚠️ Differs</option>
+                      <option value="same">✓ Same</option>
+                    </select>
+                  </th>
+                </tr>
               </thead>
               <tbody>
-                {comparisonResult.controls && comparisonResult.controls.map((control, idx) => (
+                {filteredControls.length === 0 ? (
+                  <tr>
+                    <td colSpan={2 + [reports.baseline, reports.csp1, reports.csp2].filter(Boolean).length + 1} className="no-results">
+                      No controls match your filters
+                    </td>
+                  </tr>
+                ) : filteredControls.map((control, idx) => (
                   <tr key={idx} className={control.hasDifferences ? 'has-differences' : ''}>
                     <td>
                       <button 

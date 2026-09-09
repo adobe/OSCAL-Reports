@@ -1,3 +1,12 @@
+# DISABLED: every scheduled run since 2026-07-13 has failed at the "Configure
+# AWS credentials" step — the `AWS4403_AMI_DRIFT_ROLE_ARN` repo variable was
+# never set after `terraform apply`, so the OIDC role assumption has no role
+# to assume. Moved out of .github/workflows/ so GitHub Actions stops running
+# it. To re-enable: move this file back to .github/workflows/, run
+# `terraform apply` in terraform/envs/aws4403, and set
+# `AWS4403_AMI_DRIFT_ROLE_ARN` (Settings > Secrets and variables > Actions >
+# Variables) to the resulting role ARN.
+#
 # Weekly AMI drift check: deployed Image Factory EMR AMI vs newest candidate (≤7-day SLA).
 # Runs on adobe/OSCAL-Reports schedule; assumes an AWS role via GitHub OIDC (see
 # terraform/envs/aws4403/github_actions_oidc.tf) — set the `AWS4403_AMI_DRIFT_ROLE_ARN`
@@ -18,6 +27,7 @@ jobs:
   ami-drift:
     name: Check OSCAL EMR AMI age
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:

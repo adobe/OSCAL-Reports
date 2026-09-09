@@ -1,3 +1,10 @@
+# DISABLED: all 3 runs of this workflow have failed at the "Login to Docker
+# Hub" step — the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo secrets are
+# missing or invalid. This is a secrets fix, not a code fix. Moved out of
+# .github/workflows/ so GitHub Actions stops running it. To re-enable: move
+# this file back to .github/workflows/ and configure valid
+# `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` secrets (Settings > Secrets and
+# variables > Actions > Secrets).
 name: Docker Hub Publish
 
 on:
@@ -24,6 +31,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Only run on adobe/OSCAL-Reports
     if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
@@ -154,6 +162,7 @@ jobs:
   verify-image:
     name: Verify Published Image
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build-and-push
     # Only run on adobe/OSCAL-Reports
     if: github.repository == 'adobe/OSCAL-Reports'

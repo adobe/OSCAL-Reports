@@ -559,6 +559,29 @@
   background: #f7fafc;
 }
 
+.comparison-table thead tr.comparison-filter-row th {
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.comparison-table .comparison-filter-input,
+.comparison-table .comparison-filter-select {
+  width: 100%;
+  height: auto;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: var(--dark);
+  box-sizing: border-box;
+}
+
+.comparison-table td.no-results {
+  text-align: center;
+  padding: 2rem;
+  color: #718096;
+  border-right: none;
+}
+
 .status-effective {
   background: #c6f6d5;
   padding: 0.5rem;

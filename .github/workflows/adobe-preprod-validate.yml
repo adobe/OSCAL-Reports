@@ -13,6 +13,7 @@ jobs:
   version-check:
     name: Validate Version Increment
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: write
@@ -137,6 +138,7 @@ jobs:
   changelog-check:
     name: Validate Changelog Updated
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
     permissions:
       contents: read
@@ -194,6 +196,7 @@ jobs:
   package-consistency:
     name: Validate Package.json Consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -214,6 +217,7 @@ jobs:
   yaml-validation:
     name: Validate Workflow YAML
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -237,6 +241,7 @@ jobs:
   tar-syntax-check:
     name: Validate Tar Commands
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -279,6 +284,7 @@ jobs:
   eslint-config-check:
     name: Validate ESLint Configuration
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -294,6 +300,7 @@ jobs:
   documentation-check:
     name: Check Documentation Files
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -309,6 +316,7 @@ jobs:
   adobe-validation-summary:
     name: Adobe Validation Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs:
       - version-check
       - changelog-check
@@ -334,6 +342,7 @@ jobs:
   auto-tag:
     name: Auto-create Version Tag
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [version-check, changelog-check, package-consistency]
     if: github.repository == 'adobe/OSCAL-Reports' && github.event_name == 'push' && github.ref == 'refs/heads/Quality'
     permissions:

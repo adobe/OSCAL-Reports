@@ -21,6 +21,7 @@ jobs:
   backend-unit-tests:
     name: Backend unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -45,6 +46,7 @@ jobs:
   catalogue-fetch-release:
     name: OSCAL catalogue fetch (release gate)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -70,6 +72,7 @@ jobs:
   frontend-build:
     name: Frontend build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -94,6 +97,7 @@ jobs:
   npm-audit:
     name: npm audit (high+)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -120,6 +124,7 @@ jobs:
   package-version-consistency:
     name: Package version consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -140,6 +145,7 @@ jobs:
   docker-build-smoke-test:
     name: Docker build + startup smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.repository == 'adobe/OSCAL-Reports'
 
     steps:
@@ -171,6 +177,7 @@ jobs:
   quality-gates-summary:
     name: Quality Gates Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs:
       - backend-unit-tests
       - catalogue-fetch-release
