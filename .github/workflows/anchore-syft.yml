@@ -16,6 +16,16 @@ name: Anchore Syft SBOM scan
 on:
   push:
     branches: [ "Main" ]
+    # This workflow only builds ./Dockerfile and scans the resulting image, so
+    # it does not need to run for changes that cannot affect that image.
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "package.json"
+      - "package-lock.json"
+      - "backend/package*.json"
+      - "frontend/package*.json"
+      - ".github/workflows/anchore-syft.yml"
 
 permissions:
   contents: write
