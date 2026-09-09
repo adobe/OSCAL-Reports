@@ -10,8 +10,24 @@ name: SBOM Generation
 on:
   push:
     branches: [Main, main, master, Prod, production]
+    # The SBOM is generated from the npm manifests, so only manifest and
+    # lockfile changes can alter it.
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "backend/package*.json"
+      - "frontend/package*.json"
+      - ".github/workflows/sbom-generation.yml"
   pull_request:
     branches: [Main, main, master, Prod, production]
+    # The SBOM is generated from the npm manifests, so only manifest and
+    # lockfile changes can alter it.
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "backend/package*.json"
+      - "frontend/package*.json"
+      - ".github/workflows/sbom-generation.yml"
   workflow_dispatch:
 
 permissions:
