@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.04] - 2026-10-12
+
+### Changed
+- Adding the Guardian Agent Finding Apply function
+## [1.8.03] - 2026-10-12
+
+### Deployment
+
+- Replaced the automated Blue/Green deployer's SSH-key requirement with SSM Run Command and temporary S3 staging that also cleans up object versions.
+- Wake a stopped passive ASG before resolving its deployment target, and verify instance readiness through SSM before restoring traffic.
+- Include shared `config/constants/` frontend inputs in both installer upload and instance sync so production builds resolve their JSON imports.
+- Add CI regression tests for SSM transport, passive wake, maintenance readiness, and installer constant filtering; update deployment guidance.
+
 ## [1.8.02] - 2026-09-09
 
 ### Changed

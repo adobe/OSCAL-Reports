@@ -24,7 +24,7 @@
 # After a successful deploy and ALB target health check, weighted browser routing is restored. Optional SSM
 # (oscal_ssm_release_s3_prefix) can sync prebuilt artifacts from S3 on a schedule; it does not replace this script for full builds.
 #
-# Prerequisites: Terraform applied with run_oscal_via_docker = false; SSH key in Pass or file; Terraform outputs readable (run-with-aws-pass.sh).
+# Prerequisites: Terraform applied with run_oscal_via_docker = false; AWS credentials and SSM-managed EC2 instances; Terraform outputs readable (run-with-aws-pass.sh).
 # For --update-s3 only: AWS CLI + Pass (or env) with operator IAM s3:PutObject, s3:DeleteObject, s3:ListBucket on s3://<logs-bucket>/installer/*.
 # Instances use their IAM role to read installer/* (no laptop upload on a normal deploy).
 #
@@ -35,7 +35,7 @@
 #   ./scripts/deploy-to-ec2.sh --blue       # Deploy to blue only
 #   ./scripts/deploy-to-ec2.sh --green-only 1.2.3.4   # Deploy to green at given IP
 #   ./scripts/deploy-to-ec2.sh --blue-only 5.6.7.8    # Deploy to blue at given IP
-#   SSH_KEY_FILE=/path/to/key.pem ./scripts/deploy-to-ec2.sh
+#   AWS_PASS_ENTRY=AWS/AMS_4403-STG ./scripts/deploy-to-ec2.sh --both
 #
 # Green and Blue EC2 instances use the same app port (OSCAL_APP_PORT, default 3020). Config/users are shared via s3://<bucket>/config/active/ (newest among active/green/blue wins).
 # DEPLOYMENT_ROLE in ec2_automation.env distinguishes green vs blue for logs and deploy targeting only.
@@ -44,9 +44,9 @@
 #
 # Environment:
 #   AWS_PASS_ENTRY       Pass entry for AWS credentials (default: AWS/AMS_4403-STG for aws4403).
-#   AWS_PASS_SSH_ENTRY   Pass entry for SSH key (default: AWS/OSCAL-AWS4403-SSH).
-#   SSH_KEY_FILE         If set, use this key file instead of Pass
 #   SSH_USER             SSH user: ec2-user (RHEL). Default: ec2-user
+#   SSM_COMMAND_TIMEOUT_SEC  Maximum SSM Run Command execution time (default 3600)
+#   SSM_COMMAND_WAIT_TIMEOUT_SEC Maximum time to wait for SSM result (default 3600)
 #   TERRAFORM_DIR        Terraform env dir (default: terraform/envs/aws4403). Override if your state lives elsewhere.
 #   DEPLOY_BLUE_AUTO_UPDATE  Default 1: Blue gets the same ec2_automation cron as Green (S3 backup + Pass/SM sync + optional S3 installer sync). Set 0 for Blue manual-only (no cron).
 #   DEPLOY_ENABLE_S3_INSTALLER_UPDATE  Default 1: ec2_automation.env gets ENABLE_S3_INSTALLER_UPDATE=true so cron can sync app from s3://<bucket>/installer/ every S3_CODE_UPDATE_EVERY_N_CYCLES runs (default 100 ≈ 1000 min). Set 0 to disable scheduled code sync (S3 backup still runs).
@@ -56,7 +56,7 @@
 #   OS_PACKAGE_UPDATE_EVERY_N_CYCLES  Optional; default 144 written to ec2_automation.env (OS update at most once per N cron runs ≈ 24h at 10-min cron).
 #   DEPLOY_RDS_BOOTSTRAP_SKIP   Set to 1 to skip copying/running scripts/lib/rds-bootstrap-on-instance.sh (default: run when Terraform has RDS).
 #   DEPLOY_RDS_BOOTSTRAP_FORCE  Set to 1 to remove /opt/oscal/data/.rds-bootstrap-done on the instance and re-run SQL grants (use rarely).
-#   DEPLOY_RDS_BOOTSTRAP_TIMEOUT_SEC  Max seconds for remote RDS bootstrap SSH (default: 600). Set 0 to disable timeout wrapper.
+#   DEPLOY_RDS_BOOTSTRAP_TIMEOUT_SEC  Max seconds for remote RDS bootstrap SSM command (default: 600). Set 0 to disable timeout wrapper.
 #   DEPLOY_LOCAL_CONFIG_SEED    Set to 1 to allow copying config/app/*.json from the laptop when S3 config/<role>/ restore failed (default: off).
 #   DEPLOY_CONFIG_S3_SKIP       Set to 1 to skip pulling config/users from S3 during deploy (keeps local EBS files).
 #   DEPLOY_CONFIG_S3_FORCE      Set to 1 to force-pull newest S3 backup even when local is newer (default: 0; only pull if missing or S3 newer).
@@ -94,12 +94,14 @@ source "$REPO_ROOT/scripts/lib/deploy-maintenance.sh"
 source "$REPO_ROOT/scripts/lib/session-secret-systemd.sh"
 # shellcheck source=./lib/generic-oidc-tls-systemd.sh disable=SC1091
 source "$REPO_ROOT/scripts/lib/generic-oidc-tls-systemd.sh"
+# shellcheck source=./lib/ssm-transport.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib/ssm-transport.sh"
 
 # Default to aws4403.
 TERRAFORM_DIR="${TERRAFORM_DIR:-$REPO_ROOT/terraform/envs/aws4403}"
 export TERRAFORM_DIR
 SSH_USER="${SSH_USER:-ec2-user}"
-PASS_ENTRY="${AWS_PASS_SSH_ENTRY:-AWS/OSCAL-AWS4403-SSH}"
+SSH_KEY=""
 REMOTE_APP="/opt/oscal/app"
 # S3 prefix for deployable repo snapshot (Terraform: aws_s3_object folder_installer; IAM: installer/* read on instances).
 INSTALLER_PREFIX="installer"
@@ -133,9 +135,10 @@ DEPLOY_S3_SYNC_EXCLUDES=(
   'backend/public/**'
   '*.log'
 )
-# Re-include paths needed for frontend build (config/** is excluded above).
+# Re-include shared inputs needed by the frontend build (config/** is excluded above).
 DEPLOY_S3_SYNC_INCLUDES=(
   'config/catalogues/**'
+  'config/constants/**'
 )
 
 # Load AWS credentials from Pass (same entry shape as terraform/run-with-aws-pass.sh). For S3 upload from laptop.
@@ -255,23 +258,14 @@ write_bedrock_cross_account_manifest_to_s3() {
   print_success "Wrote Bedrock cross-account manifest to s3://${bucket}/${INSTALLER_PREFIX}/.oscal-bedrock-cross-account.json"
 }
 
-# Resolve SSH key into SSH_KEY (from file or from Pass). Call from main; do not use in subshell.
-# When the key is a temp file from Pass, SSH_KEY_IS_TEMP=1 so EXIT cleanup can remove it (trap set after DEPLOY_RESULTS_FILE).
-resolve_ssh_key() {
-  SSH_KEY_IS_TEMP=0
-  if [ -n "$SSH_KEY_FILE" ] && [ -f "$SSH_KEY_FILE" ]; then
-    SSH_KEY="$SSH_KEY_FILE"
-    return
-  fi
-  if command -v pass >/dev/null 2>&1 && pass show "$PASS_ENTRY" >/dev/null 2>&1; then
-    SSH_KEY=$(mktemp)
-    SSH_KEY_IS_TEMP=1
-    pass show "$PASS_ENTRY" > "$SSH_KEY"
-    chmod 600 "$SSH_KEY"
-    return
-  fi
-  print_error "Set SSH_KEY_FILE or have Pass entry $PASS_ENTRY"
-  exit 1
+resolve_ssm_transport() {
+  for tool in aws python3; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      print_error "$tool is required for keyless SSM deployment."
+      return 1
+    fi
+  done
+  load_deploy_aws_credentials
 }
 
 # Run Terraform via wrapper (loads AWS creds from Pass). Uses TERRAFORM_DIR so correct state is read.
@@ -611,6 +605,7 @@ aws s3 sync "s3://${BUCKET}/installer/" "${APP}/" --delete --region "$REGION" \
   --exclude '.github/**' \
   --exclude 'config/**' \
   --include 'config/catalogues/**' \
+  --include 'config/constants/**' \
   --exclude 'terraform/**' \
   --exclude 'test_cases/**' \
   --exclude 'docs/**' \
@@ -692,7 +687,7 @@ INSTALLERSYNC
   fi
   print_success "Application tree synced from S3 to ${REMOTE_APP}/ (manifest sha256 verified when installer/.installer-build.json exists on S3)"
 
-  # Keep config/catalogues/ for frontend build; app config.json lives on EBS (/opt/oscal/data), not in the installer tree.
+  # Keep config/catalogues/ and config/constants/ for frontend build; app config.json lives on EBS (/opt/oscal/data), not in the installer tree.
   # Install /opt/oscal/scripts from synced app tree (no SCP from laptop for these).
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
     APP='${REMOTE_APP}'
@@ -964,8 +959,7 @@ SVCEOF
       [ -n "$results_file" ] && [ -f "$results_file" ] && echo "$role $ip ok" >> "$results_file"
     fi
     if [ -x "$REPO_ROOT/scripts/ci/post-deploy-smoke.sh" ]; then
-      smoke_host="ssh:${ip}"
-      if SSH_USER="$SSH_USER" SSH_KEY="$key" "$REPO_ROOT/scripts/ci/post-deploy-smoke.sh" "$smoke_host" "$port"; then
+      if ssm_run_file "$ip" "$REPO_ROOT/scripts/ci/post-deploy-smoke.sh" 127.0.0.1 "$port"; then
         print_success "Post-deploy smoke checks passed on $role"
       else
         print_error "Post-deploy smoke checks failed on $role"
@@ -1053,6 +1047,17 @@ deploy_passive_first_both() {
   passive=$(get_oscal_passive_role)
   active=$(get_oscal_active_role)
   passive_ip=$(resolve_oscal_role_ip "$passive")
+  if [ -z "$passive_ip" ]; then
+    print_info "Passive $passive has no InService instance; waking it before resolving its SSM target..."
+    passive_ip=$(get_or_wake_passive_asg_oscal_ip "$passive" "$passive_ip") || {
+      print_error "Could not wake or resolve the passive $passive instance."
+      return 1
+    }
+    case "$passive" in
+      green) GREEN_IP="$passive_ip" ;;
+      blue) BLUE_IP="$passive_ip" ;;
+    esac
+  fi
   active_ip=$(resolve_oscal_role_ip "$active")
   [ -z "$passive_ip" ] || [ -z "$active_ip" ] && {
     print_error "Could not resolve IPs for passive ($passive) and active ($active) roles."
@@ -1200,7 +1205,8 @@ while [ $# -gt 0 ]; do
       echo "  IPs: DEPLOY_USE_ASG_IP=1 (default) uses live ASG InService instance; falls back to Terraform output."
       echo "  OS updates: DEPLOY_SKIP_OS_PACKAGE_UPDATE=1 (default) during deploy; set 0 to run dnf/yum upgrade first."
       echo "  Terraform: DEPLOY_TERRAFORM_APPLY=0 (default); set 1 to run terraform apply after deploy."
-      echo "  SSH key: Pass entry $PASS_ENTRY or SSH_KEY_FILE=/path/to/key.pem"
+      echo "  Transport: SSM Run Command with Pass-loaded AWS credentials; no SSH key required."
+      echo "  SSM: caller needs SendCommand/GetCommandInvocation, EC2 DescribeInstances, and S3 Get/Put/Delete/ListBucketVersions/DeleteObjectVersion on logs/.ssm-deploy/*; instance role needs SSM + logs-bucket access."
       echo "  --update-s3: operator IAM needs s3:PutObject/Delete/List on installer/*. Normal deploy: instances read installer/* via IAM only."
       echo "  Instance sync: chown ec2-user:oscal on app dir before s3 sync (so prior svc_ams-oscal files can be replaced). Verify bucket:"
       echo "    terraform output -raw s3_logs_bucket_name"
@@ -1291,8 +1297,6 @@ fi
 
 [ -z "$GREEN_IP" ] && [ -z "$BLUE_IP" ] && { print_error "No instance IPs"; exit 1; }
 
-resolve_ssh_key
-
 # S3 bucket for ec2_automation.env on instances (backup target; config/users live on EBS)
 S3_BUCKET=$(get_s3_bucket "$TERRAFORM_DIR" || true)
 
@@ -1318,6 +1322,11 @@ if [ -z "$AWS_DEPLOY_REGION" ] || [ "$AWS_DEPLOY_REGION" = "null" ]; then
   AWS_DEPLOY_REGION="us-east-1"
 fi
 export AWS_DEPLOY_REGION
+
+if ! resolve_ssm_transport; then
+  exit 1
+fi
+ssm_transport_init "$S3_BUCKET" "$AWS_DEPLOY_REGION" "$SSH_USER"
 
 # IPs and ALB for EC2-local deployment.log, cross-instance curls, and ALB checks (Terraform outputs)
 DEPLOY_LOG_REMOTE="/opt/oscal/app/logs/deployment.log"
@@ -1346,9 +1355,7 @@ DEPLOY_RESULTS_FILE=$(mktemp)
 cleanup_deploy_exit() {
   deploy_maintenance_trap_cleanup 2>/dev/null || true
   rm -f "$DEPLOY_RESULTS_FILE" 2>/dev/null || true
-  if [ "${SSH_KEY_IS_TEMP:-0}" = "1" ] && [ -n "${SSH_KEY:-}" ]; then
-    rm -f "$SSH_KEY" 2>/dev/null || true
-  fi
+  ssm_transport_cleanup
 }
 trap cleanup_deploy_exit EXIT
 

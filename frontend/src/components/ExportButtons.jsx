@@ -11,6 +11,7 @@ import ValidationStatus from './ValidationStatus';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLES } from '../constants/roles.js';
 import { formatExportApiBody } from '../utils/exportErrorMessage';
+import GuardianApply from './GuardianApply';
 
 function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportPDF, loading, exportingType = null, systemInfo, controls }) {
   const { user } = useAuth();
@@ -125,6 +126,8 @@ function ExportButtons({ onExportSSP, onExportSAR, onExportExcel, onExportPDF, l
         <p className="export-description">
           Download your Compliance Report in multiple formats
         </p>
+
+        <GuardianApply />
 
         {/* Validation Options & Button */}
         <div className="validation-section">

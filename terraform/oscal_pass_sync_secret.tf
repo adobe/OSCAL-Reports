@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Mukesh Kesharwani
 #
 # Licensed under the MIT License. See LICENSE file for details.
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
 
 # Single JSON bundle for Pass vault sync (OSCAL/*) used by ec2_automation on EC2.
 # Opt out per environment: oscal_pass_secrets_sync_enabled = false in tfvars.
@@ -19,7 +21,7 @@ resource "aws_secretsmanager_secret" "oscal_pass_sync" {
 }
 
 resource "aws_secretsmanager_secret_version" "oscal_pass_sync" {
-  count = var.oscal_pass_secrets_sync_enabled ? 1 : 0
+  count = var.oscal_pass_secrets_sync_enabled && var.manage_oscal_pass_sync_secret_version ? 1 : 0
 
   secret_id = aws_secretsmanager_secret.oscal_pass_sync[0].id
   secret_string = jsonencode({

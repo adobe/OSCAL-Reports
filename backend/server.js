@@ -114,6 +114,8 @@ import {
   stripTrailingSlashes as stripGenericTrailingSlashes,
 } from './auth/genericOidc.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
+import { guardianService } from './guardianService.js';
+import { guardianJsonMiddleware, registerGuardianRoutes } from './guardianRoutes.js';
 import { ROLES, PERMISSIONS } from './auth/roles.js';
 import { 
   createJob, 
@@ -264,6 +266,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 }));
 
+app.use('/api/guardian', guardianJsonMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -352,6 +355,8 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
 });
 
 // Serve static files from the public folder (warning page for backend)
+registerGuardianRoutes(app, authenticate);
+
 app.use(express.static('public'));
 
 // Health check endpoint for Docker (liveness — process listening)
@@ -1352,6 +1357,16 @@ app.post('/api/auth/okta/exchange-token', oktaExchangeTokenRateLimiter, async (r
         success: false,
         error: 'No application user found for this Okta account. Ask an admin to add your email to Users, enable JIT provisioning, or sign in with username/password.'
       });
+    }
+    // Guardian is optional: an unavailable/invalid API token must not break OSCAL login.
+    try {
+      await guardianService.retain(validateSession(user.sessionToken), tokenRes.data);
+    } catch {
+      console.warn(JSON.stringify({
+        'service.name': 'oscal-report-generator',
+        'event.action': 'guardian_token_retention', 'event.outcome': 'failure',
+        severity: 'WARN',
+      }));
     }
     res.json({
       success: true,

@@ -1,3 +1,4 @@
+<!-- Concept: Mukesh Kesharwani; Contact: mukesh.kesharwani@adobe.com -->
 # Database Integration
 
 Optional **PostgreSQL** (or AWS RDS) integration for storing custom and organisational context fields. When enabled, export data is synced to the database on every export; when the database is unreachable, export is blocked and the user is prompted to fix the connection or disable integration.
@@ -65,6 +66,155 @@ Sync runs at the start of each export (SSP, SAR, PDF, Excel, CCM), including asy
 **Why `systemScopeId::controlId`?** If `scope_id` were only the control id (e.g. `ism-0009`), two different systems with the same control would overwrite the same row. Using a composite key keeps System A’s and System B’s data separate.
 
 New keys in payload do not require schema changes; the table is designed to expand with usage.
+
+## Guardian SSP Apply schema
+
+### Existing concepts and ownership
+
+The existing PostgreSQL objects are `public.extended_data` (mutable export
+context, not full SSPs) and `public.adobe_teams` (team labels, not access
+grants), created on demand by [dbClient.js](../backend/database/dbClient.js).
+The export queue in [jobQueue.js](../backend/jobQueue.js) is memory/file-backed,
+not a database job table. Guardian currently authorizes configured groups and
+performs synchronous outbound calls in [guardianService.js](../backend/guardianService.js).
+None provides a persistent SSP Apply lifecycle or append-only database audit.
+
+[001_guardian_ssp_apply.sql](../backend/database/migrations/001_guardian_ssp_apply.sql)
+therefore introduces three tables in the approved **`oscal_guardian`** schema.
+The existing app tables, export paths, configured Guardian group checks, and
+deployment/bootstrap scripts are unchanged. This is schema preparation only:
+no API/worker persistence adapter is wired, and database mappings do not
+silently replace the current configured group policy.
+
+The dedicated schema is necessary because both the
+[RDS bootstrap template](../terraform/templates/oscal-rds-bootstrap.sh.tftpl)
+and [deployment bootstrap script](../scripts/lib/rds-bootstrap-on-instance.sh)
+grant the app role ALL privileges on all tables/sequences in `public`.
+Their repeat execution must not grant access to Guardian audit history.
+The earlier unexecuted public-schema draft has been replaced, not deployed.
+If any draft objects already exist in `public`, the migration stops for
+owner-approved reconciliation rather than duplicating/moving/dropping them.
+The requested Guardian-side `deploy/ssp-worker/migrations/001_init.sql` is
+absent from this checkout; proceeding from the feature brief without that
+comparison was explicitly approved.
+
+### Tables and data contract
+
+| Table | Purpose and constraints |
+| --- | --- |
+| `oscal_guardian.ssp_apply_jobs` | UUID retrieval key, target and requester, input/output SSP JSONB, opaque operation reference, non-sensitive failure code, lifecycle timestamps. States: `queued`, `processing`, `accepted`, `completed`, `failed`, `unknown`. Completed/failed rows require `finished_at`; completion also requires output SSP. Queue and requester/time indexes support polling and user history. |
+| `oscal_guardian.target_authorizations` | One unique `(target_id, principal_type, principal_id)` mapping, with `group`/`user` allowlist, enabled flag and creator/timestamps. A partial principal index covers enabled mappings. No target endpoint URLs are stored. |
+| `oscal_guardian.authorization_audit_events` | Serial-backed bigint key, actor/target/event metadata, optional principal pair and job FK. Target/time and job/time indexes support owner-operated audit queries. Referenced jobs cannot be deleted. No SSP content or credentials belong in `event_data`. |
+
+SSP documents are stored in PostgreSQL, as approved, not at invented external
+artifact locations. Retrieve by job UUID using parameterized SQL, then check
+the authenticated requester and current target authorization before returning
+any input/output JSON; UUID knowledge alone is not authorization. Subjects
+and user principal IDs must be stable, issuer-qualified identifiers, not
+display names. Group IDs must be exact approved identifiers. The schema does
+not seed any users/groups or grant any target access by default.
+
+`accepted` means only upstream acceptance, never completion; a timeout or
+ambiguous write belongs in `unknown`, not `failed`/`completed`. The approved
+state vocabulary extends the export queue's four states for these distinctions.
+The worker must update `updated_at` and lifecycle fields together, claim jobs
+atomically, and verify upstream results before completion. The database checks
+state/field consistency, not a complete worker transition/retry policy.
+It checks only SSP object shape, not OSCAL conformance.
+
+### Least privilege
+
+| Non-login role group | Privileges on Guardian objects |
+| --- | --- |
+| `oscal_guardian_ssp_apply_service` | SELECT/INSERT jobs, UPDATE only lifecycle/output fields; SELECT authorization mappings; no audit table or sequence access. Cannot alter a job's requester, target, ID, input, or creation timestamp. |
+| `oscal_guardian_ssp_apply_admin` | SELECT/INSERT/UPDATE/DELETE mappings; INSERT only audit event fields (not the generated ID/timestamp); USAGE only on `authorization_audit_events_id_seq`. No job access, audit SELECT/UPDATE/DELETE/TRUNCATE, or sequence reset. |
+
+Neither runtime group owns objects or receives schema CREATE. Append-only is
+enforced by runtime privileges; a trusted object owner/database superuser can
+still perform maintenance. The admin writer cannot use `INSERT ... RETURNING`
+on audit columns without SELECT; append without RETURNING. Mapping changes
+and their audit inserts should share one application transaction.
+
+The migration executor owns the new objects, and needs database CREATE plus
+CREATEROLE/appropriate administration of the two groups. Existing role names
+must already be restricted non-login groups without memberships in other roles,
+or migration fails without altering them. Global default privileges that leak
+new object access to unrelated roles cause a transactional failure rather than
+broad revocations. No `ALTER DEFAULT PRIVILEGES`, login assignment, IAM grant,
+connection configuration, or infrastructure change is made by this migration.
+
+Platform owners must assign distinct runtime logins to these groups, without
+cross-membership, broad built-in roles, or owner/admin inheritance. Do not reuse
+the existing `oscal_app` identity or the migration owner as either runtime.
+Retention of SSP JSON and audit records and any privileged audit reader remain
+owner decisions; the admin writer deliberately has no audit read access.
+
+### Migration workflow, rollback, and tests
+
+This is the first versioned SQL migration in this repository; there is no
+existing runner or deployment hook to extend. It follows existing lowercase
+names, UUID/JSONB/timestamptz types, constraints, indexes, and `IF NOT EXISTS`
+creation conventions, wrapped in one transaction and a transaction advisory
+lock. Reapply under the **same object owner**; reruns preserve rows, but are
+not a general schema-drift repair mechanism.
+
+Only disposable local PostgreSQL is used by the new test runner:
+
+```sh
+bash test_cases/database/run-guardian-ssp-apply.sh
+```
+
+[run-guardian-ssp-apply.sh](../test_cases/database/run-guardian-ssp-apply.sh)
+requires local Docker, uses PostgreSQL 16 (the configured RDS major), refuses
+remote/overridden Docker contexts, and starts a disposable container with no
+network or published ports and tmpfs storage. Trust authentication is confined
+to that isolated test container, requires no password, and is not deployment
+configuration. The container is removed on exit; no database URL is accepted.
+The runner tests restricted migration-owner execution, failure rollback,
+fresh/repeat application, hostile global default grants, both runtime roles,
+SSP JSON round-trips, constraints, public bootstrap reexecution, and legacy
+table access using [SQL assertions](../test_cases/database/guardian_ssp_apply_permissions.sql).
+The JSON fixtures are intentionally minimal and are **not valid representative
+SSPs**. These database tests are separate from backend Jest and OSCAL validation.
+
+There is deliberately no automatically destructive down migration. To back
+out after an owner-approved deployment, first stop users of these objects,
+revoke the separately assigned runtime memberships, and retain data pending
+retention/export approval. Drop audit, mappings, jobs/indexes, the owned
+sequence, and the empty schema only after that approval. Cluster-wide role
+groups may be dropped only after confirming they have no other dependencies
+or memberships. Never use a blanket `DROP SCHEMA ... CASCADE` as rollback.
+No live application of this migration is part of this task.
+
+## SSP document validation version
+
+The workspace does **not** currently have a consistent official OSCAL version.
+[oscal-schema.json](../backend/oscal-schema.json) has a `1.1.2`-derived `$id`,
+but its `oscal-version` definition has been modified to allow only `2.1.0`.
+[server.js](../backend/server.js) writes `2.1.0` and
+[oscalValidatorAJV.js](../backend/oscalValidatorAJV.js) reports it.
+The local schema is therefore not the unmodified official NIST `1.1.2` schema,
+despite its identifier. Application version labels do not establish conformance.
+
+Recommended official compatibility baseline, pinned to the schema's lineage:
+[NIST OSCAL v1.1.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.2),
+specifically the official
+[oscal_ssp_schema.json release asset](https://github.com/usnistgov/OSCAL/releases/download/v1.1.2/oscal_ssp_schema.json)
+(JSON Schema draft-07):
+
+```text
+SHA-256: 08d3faeb12f0fab7705dec15fb648c72400c7ab6ac0056222d49d21507e02a69
+$id: http://csrc.nist.gov/ns/oscal/1.1.2/oscal-ssp-schema.json
+```
+
+The asset and checksum were verified independently of the bundled schema.
+This recommendation does not silently change existing exports or validation.
+Owners must approve an official document version, reconcile the local `2.1.0`
+enum/generator, and validate a representative generated SSP against the pinned
+official SSP schema using an approved validator with strict required fields,
+formats, enums and additional-property checks. No representative SSP has
+passed that check as part of this work; no official schema certification is
+claimed. PostgreSQL migration/schema tests do not validate OSCAL documents.
 
 ---
 
@@ -147,7 +297,8 @@ Counts below are derived from `backend/oscal-schema.json` (OSCAL unified JSON Sc
 | **Total property occurrences** | 961 | Every `properties` key in the schema (nested included) |
 | **Direct property keys** | 566 | Property keys defined directly on definition objects |
 
-*Generated from the schema used by the application for validation (OSCAL v2.1.0 / JSON Schema).*
+*Derived from the workspace-modified JSON Schema, which reports `2.1.0`
+despite a NIST `1.1.2`-derived identifier; not an official schema certification.*
 
 ---
 

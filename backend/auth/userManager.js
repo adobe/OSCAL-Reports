@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { ROLES, isValidRole } from './roles.js';
 import { generateDefaultPasswordFromEnv } from './passwordGenerator.js';
 import { atomicWriteJSON } from '../utils/atomicWrite.js';
+import { revokeDelegatedToken } from './delegatedTokens.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -735,6 +736,7 @@ export function validateSession(token) {
   // Check if session is expired (24 hours)
   const sessionAge = Date.now() - session.createdAt;
   if (sessionAge > 24 * 60 * 60 * 1000) {
+    revokeDelegatedToken(session);
     sessions.delete(token);
     return null;
   }
@@ -747,6 +749,7 @@ export function validateSession(token) {
  * @param {string} token - Session token
  */
 export function logout(token) {
+  revokeDelegatedToken(sessions.get(token));
   sessions.delete(token);
 }
 

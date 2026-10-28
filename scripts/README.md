@@ -11,7 +11,9 @@ Secrets Manager** and config/users are backed to **S3**.
 
 Run everything from the **repository root**. Terraform-dependent scripts read
 AWS credentials from Pass via `terraform/run-with-aws-pass.sh` and derive
-instance IPs from Terraform output.
+instance IPs from the selected Terraform workspace. `deploy-to-ec2.sh` uses
+SSM Run Command and temporary S3 staging for automated deployment; no SSH key
+is needed for that path. `ssh-ec2.sh` remains a separate interactive SSH tool.
 
 ## Layout
 
@@ -24,8 +26,8 @@ instance IPs from Terraform output.
 
 | Script | Purpose |
 |--------|---------|
-| [`deploy-to-ec2.sh`](deploy-to-ec2.sh) | Full deploy to Green/Blue: sync repo to `/opt/oscal/app`, `npm install` + frontend build, config seed, `ec2_automation` cron, systemd, `/health/ready` + smoke checks. Use `--both`, `--green`, or `--blue`. |
-| [`ssh-ec2.sh`](ssh-ec2.sh) | SSH to Green/Blue using Terraform-derived IPs. |
+| [`deploy-to-ec2.sh`](deploy-to-ec2.sh) | Full deploy to Green/Blue: `--update-s3` publishes the repo (including `config/constants/` and `config/catalogues/`); the deploy then syncs the snapshot, builds/restarts through SSM Run Command, and checks readiness. `--both` is passive-first and wakes a stopped passive ASG. |
+| [`ssh-ec2.sh`](ssh-ec2.sh) | Interactive SSH to Green/Blue using Terraform-derived IPs and the separate SSH key entry. Not used by automated deployment. |
 | [`ec2_automation.sh`](ec2_automation.sh) | On-instance cron: backup config/users to S3; optional installer sync + build + restart. |
 | [`reactivate-admin.sh`](reactivate-admin.sh) | Reactivate an admin user in `users.json` (repo or `/opt/oscal/data/users.json`). |
 | [`oscal-staggered-ami-refresh.sh`](oscal-staggered-ami-refresh.sh) | Staggered ASG AMI refresh with health gating between roles. |
@@ -40,7 +42,7 @@ instance IPs from Terraform output.
 |--------|---------|
 | [`build-and-push-dockerhub.sh`](build-and-push-dockerhub.sh) | Build the image locally and push to Docker Hub (version-tagged, plus `latest`). Requires `docker login`; `DOCKERHUB_USERNAME` defaults to `keekar`. |
 | [`install_from_dockerhub.sh`](install_from_dockerhub.sh) | Pull-based deploy from Docker Hub with backup + auto-rollback (used for standalone/TrueNAS hosts, not the AWS ASG path). |
-| [`bump_version.sh`](bump_version.sh) | Bump the version in `package.json` and related files. |
+| [`bump_version.sh`](bump_version.sh) | Bump package manifests, lockfile root metadata, README version, and changelog. Set `BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1 BUMP_VERSION_SKIP_BEST_PRACTICES=1 BUMP_VERSION_SKIP_GIT_OPERATIONS=1` for a metadata-only bump without forced dependency upgrades or a commit. |
 | [`push-and-merge-main.sh`](push-and-merge-main.sh) | Repo git-flow helper for pushing/merging. |
 | [`setup-git-hooks.sh`](setup-git-hooks.sh) | Install the repo's `.githooks`. |
 | [`switch-github-account.sh`](switch-github-account.sh) | Switch the active GitHub account for pushes. |
@@ -56,14 +58,15 @@ See [CONFIG_AND_USER_MIGRATION.md](../docs/CONFIG_AND_USER_MIGRATION.md#user-con
 
 ## Debug & on-instance tools ([`scripts/debug/`](debug/))
 
-Diagnostics and operator tools. Five of these are copied onto instances by the
-deploy script (`update-pass-credential.sh`, `backup-config-to-s3.sh`,
-`sync-config-from-s3-newest.sh`, plus the S3 restore/publish helpers used on the
-host); the rest run from a laptop over SSH.
+Diagnostics and operator tools. The deploy script copies the on-instance
+helpers from the S3 installer snapshot and invokes remote deploy operations via
+SSM. Other diagnostics run locally through AWS APIs or use the separate SSH
+helper; check each script's usage before moving it.
 
 | Script | Purpose |
 |--------|---------|
 | `diagnose-okta-on-ec2.sh` | Diagnose SSO/Okta on EC2 (SM env, config, systemd, legacy pass); calls `probe-sso-secrets.mjs`. |
+| `diagnose-splunk-uf-on-ec2.sh` | Diagnose the Splunk Universal Forwarder on EC2. |
 | `probe-sso-secrets.mjs` | Resolve SSO client secrets under the production env (also invoked by the Terraform SSM document). |
 | `alb-target-health.sh` | Print ALB Green/Blue target health via AWS CLI. |
 | `terraform-find-sg-dependencies.sh` | List ENIs/SGs depending on a security group (when Terraform hits `DependencyViolation`). |
@@ -82,6 +85,15 @@ Run the deployment script test suite from the repo root:
 
 ```bash
 ./test_cases/scripts/test-deployment-script.sh
+```
+
+Run the keyless SSM transport, passive-ASG wake, and maintenance-readiness tests:
+
+```bash
+bash scripts/ci/test-deploy-ssm-transport.sh
+bash scripts/ci/test-deploy-passive-wake.sh
+bash scripts/ci/test-deploy-constants-sync.sh
+bash scripts/ci/test-deploy-maintenance-readiness.sh
 ```
 
 Shell scripts are lint-checked in CI via `.github/workflows/shell-validation.yml`.

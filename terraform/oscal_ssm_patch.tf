@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Mukesh Kesharwani
 #
 # Licensed under the MIT License. See LICENSE file for details.
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
 
 # SSM Patch Manager: baseline, patch groups, and staggered Blue/Green maintenance windows.
 # Instances receive Patch Group tags from launch templates (oscal_asg_ebs.tf).
@@ -64,14 +66,14 @@ resource "aws_ssm_patch_baseline" "oscal_al2023" {
 }
 
 resource "aws_ssm_patch_group" "oscal_blue" {
-  count = var.oscal_os_patch_enabled ? 1 : 0
+  count = var.oscal_os_patch_enabled && var.manage_oscal_ssm_patch_group_associations ? 1 : 0
 
   baseline_id = aws_ssm_patch_baseline.oscal_al2023[0].id
   patch_group = local.oscal_patch_group_blue
 }
 
 resource "aws_ssm_patch_group" "oscal_green" {
-  count = var.oscal_os_patch_enabled ? 1 : 0
+  count = var.oscal_os_patch_enabled && var.manage_oscal_ssm_patch_group_associations ? 1 : 0
 
   baseline_id = aws_ssm_patch_baseline.oscal_al2023[0].id
   patch_group = local.oscal_patch_group_green
@@ -226,7 +228,5 @@ resource "aws_ssm_association" "oscal_patch_weekly_scan" {
 
   depends_on = [
     aws_ssm_patch_baseline.oscal_al2023,
-    aws_ssm_patch_group.oscal_blue,
-    aws_ssm_patch_group.oscal_green,
   ]
 }

@@ -113,6 +113,27 @@ update_package_json() {
   print_success "Updated: $file"
 }
 
+update_package_lock() {
+  local file="$1"
+  local new_version="$2"
+
+  if [ ! -f "$file" ]; then
+    print_warning "File not found: $file (skipping)"
+    return
+  fi
+
+  node - "$file" "$new_version" <<'NODE'
+const fs = require('fs');
+const [file, version] = process.argv.slice(2);
+const lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+lock.version = version;
+if (lock.packages && lock.packages['']) lock.packages[''].version = version;
+fs.writeFileSync(file, `${JSON.stringify(lock, null, 2)}\n`);
+NODE
+
+  print_success "Updated: $file (root package metadata)"
+}
+
 update_readme_version() {
   local new_version="$1"
   local file="README.md"
@@ -222,6 +243,7 @@ if [ $# -lt 2 ]; then
   print_error "        ./scripts/bump_version.sh set VERSION \"changelog message\""
   print_info "Example: ./scripts/bump_version.sh minor \"Add new features\""
   print_info "Example: ./scripts/bump_version.sh set 1.7.12 \"Release 1.7.12\""
+  print_info "Safe metadata-only mode: BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1 BUMP_VERSION_SKIP_BEST_PRACTICES=1 BUMP_VERSION_SKIP_GIT_OPERATIONS=1"
   exit 1
 fi
 
@@ -279,10 +301,13 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
-print_header "Updating Dependencies (npm audit fix --force)"
-
-# Refresh dependencies to their latest fixed versions before bumping the app version.
-run_dependency_updates
+if [ "${BUMP_VERSION_SKIP_DEPENDENCY_UPDATES:-0}" = "1" ]; then
+  print_info "Skipping npm audit fix --force (BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1)."
+else
+  print_header "Updating Dependencies (npm audit fix --force)"
+  # Refresh dependencies to their latest fixed versions before bumping the app version.
+  run_dependency_updates
+fi
 
 echo ""
 print_header "Updating Version Numbers"
@@ -292,6 +317,12 @@ update_package_json "package.json" "$NEW_VERSION"
 update_package_json "backend/package.json" "$NEW_VERSION"
 update_package_json "frontend/package.json" "$NEW_VERSION"
 update_package_json "test_cases/backend/package.json" "$NEW_VERSION"
+
+# Keep lockfile root metadata aligned without resolving or upgrading dependencies.
+update_package_lock "package-lock.json" "$NEW_VERSION"
+update_package_lock "backend/package-lock.json" "$NEW_VERSION"
+update_package_lock "frontend/package-lock.json" "$NEW_VERSION"
+update_package_lock "test_cases/backend/package-lock.json" "$NEW_VERSION"
 
 # Keep the root README version footer in sync
 update_readme_version "$NEW_VERSION"
@@ -303,25 +334,29 @@ print_header "Updating Changelog"
 update_changelog "$NEW_VERSION" "$CHANGELOG_MESSAGE"
 
 echo ""
-print_header "Updating Best Practices & Security Rules"
-
-# Update validation rules from npm audit and recent commits
-if [ -f "test_cases/scripts/update_best_practices.sh" ]; then
-  print_info "Running best practices update..."
-  bash test_cases/scripts/update_best_practices.sh || print_warning "Failed to update best practices (non-critical)"
-  
-  # Stage any updated validation files
-  git add .validation/learnings.json 2>/dev/null || true
-  print_success "Best practices updated and staged"
+if [ "${BUMP_VERSION_SKIP_BEST_PRACTICES:-0}" = "1" ]; then
+  print_info "Skipping best-practices regeneration (BUMP_VERSION_SKIP_BEST_PRACTICES=1)."
 else
-  print_warning "update_best_practices.sh not found, skipping"
+  print_header "Updating Best Practices & Security Rules"
+  # Update validation rules from npm audit and recent commits
+  if [ -f "test_cases/scripts/update_best_practices.sh" ]; then
+    print_info "Running best practices update..."
+    bash test_cases/scripts/update_best_practices.sh || print_warning "Failed to update best practices (non-critical)"
+    git add .validation/learnings.json 2>/dev/null || true
+    print_success "Best practices updated and staged"
+  else
+    print_warning "update_best_practices.sh not found, skipping"
+  fi
 fi
 
 echo ""
-print_header "Git Operations"
+if [ "${BUMP_VERSION_SKIP_GIT_OPERATIONS:-0}" = "1" ]; then
+  print_info "Skipping Git staging, commit, and tag (BUMP_VERSION_SKIP_GIT_OPERATIONS=1)."
+else
+  print_header "Git Operations"
 
-# Check if git is available and we're in a git repository
-if command -v git &> /dev/null && [ -d .git ]; then
+  # Check if git is available and we're in a git repository
+  if command -v git &> /dev/null && [ -d .git ]; then
   # Stage changes (including lock files updated by npm audit fix --force)
   git add package.json backend/package.json frontend/package.json test_cases/backend/package.json \
     package-lock.json backend/package-lock.json frontend/package-lock.json test_cases/backend/package-lock.json \
@@ -353,9 +388,10 @@ Updated files:
     print_success "Created tag: v$NEW_VERSION"
     print_info "Push tags with: git push origin v$NEW_VERSION"
   fi
-else
-  print_warning "Git not available or not a git repository"
-  print_info "Files updated but not committed"
+  else
+    print_warning "Git not available or not a git repository"
+    print_info "Files updated but not committed"
+  fi
 fi
 
 echo ""

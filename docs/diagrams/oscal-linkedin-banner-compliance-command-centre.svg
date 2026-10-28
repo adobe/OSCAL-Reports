@@ -1,0 +1,81 @@
+<!--
+  Concept: Mukesh Kesharwani
+  Contact: mukesh.kesharwani@adobe.com
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">OSCAL Report Generator Compliance Command Centre launch banner</title>
+  <desc id="desc">A 1920 by 1080 LinkedIn product launch banner with a premium compliance command centre overlay, framework convergence, and automated report engine.</desc>
+  <defs>
+    <linearGradient id="accentOverlay" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#2dd4bf"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
+    <radialGradient id="engineHalo"><stop stop-color="#43e8e0" stop-opacity=".28"/><stop offset=".55" stop-color="#1689bb" stop-opacity=".1"/><stop offset="1" stop-color="#06172a" stop-opacity="0"/></radialGradient>
+    <pattern id="cyberGrid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#42dbe7" stroke-opacity=".15"/><circle cx="1" cy="1" r="1.2" fill="#7df9f0" fill-opacity=".3"/></pattern>
+    <filter id="neon" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="softNeon" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="glassShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#00111e" flood-opacity=".55"/></filter>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0f344b" stop-opacity=".78"/><stop offset="1" stop-color="#061725" stop-opacity=".88"/></linearGradient>
+  </defs>
+
+  <!-- Original launch banner remains the readable foundation. -->
+  <image href="oscal-linkedin-banner-1920x1080.svg" x="0" y="0" width="1920" height="1080" preserveAspectRatio="none"/>
+
+  <!-- Command-centre atmosphere -->
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#cyberGrid)" opacity=".22"/>
+  <ellipse cx="960" cy="532" rx="650" ry="390" fill="url(#engineHalo)" opacity=".5"/>
+  <path d="M0 315H1920M0 700H1920" stroke="url(#accentOverlay)" stroke-opacity=".18"/>
+  <path d="M320 340C560 310 700 270 960 510S1390 310 1600 340M320 608C570 635 720 665 960 520S1370 635 1600 608" fill="none" stroke="#58f3e8" stroke-opacity=".28" stroke-width="2" stroke-dasharray="3 14"/>
+
+  <!-- Framework data streams, placed behind the launch cards. -->
+  <g fill="none" stroke="#53e9e4" stroke-opacity=".66" stroke-width="2">
+    <path d="M138 672C320 640 370 560 530 522C680 486 734 492 850 510"/>
+    <path d="M1782 672C1600 640 1550 560 1390 522C1240 486 1186 492 1070 510"/>
+    <path d="M340 310C540 330 625 408 780 478"/>
+    <path d="M1580 310C1380 330 1295 408 1140 478"/>
+  </g>
+  <g fill="#72fff1" filter="url(#neon)">
+    <circle cx="530" cy="522" r="5"/><circle cx="850" cy="510" r="5"/><circle cx="1390" cy="522" r="5"/><circle cx="1070" cy="510" r="5"/><circle cx="780" cy="478" r="4"/><circle cx="1140" cy="478" r="4"/>
+  </g>
+
+  <!-- Glass command HUD, intentionally translucent so the source copy remains legible. -->
+  <g filter="url(#glassShadow)" opacity=".3">
+    <rect x="715" y="316" width="490" height="238" rx="20" fill="url(#glass)" stroke="#64f5ed" stroke-opacity=".65"/>
+    <rect x="731" y="332" width="458" height="206" rx="13" fill="#061621" fill-opacity=".52" stroke="#49c8d9" stroke-opacity=".35"/>
+    <path d="M731 374h458M731 494h458" stroke="#52e7e5" stroke-opacity=".25"/>
+    <text x="758" y="359" fill="#7cfff1" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="3">COMPLIANCE COMMAND CENTRE</text>
+    <text x="1050" y="359" fill="#83b4c6" font-family="Helvetica, Arial, sans-serif" font-size="10" letter-spacing="1">ENGINE STATUS  &#9679;  NOMINAL</text>
+
+    <g transform="translate(960 433)">
+      <circle r="83" fill="#087389" fill-opacity=".18" stroke="#48f4e6" stroke-width="2" filter="url(#neon)"/>
+      <circle r="62" fill="none" stroke="#2ed0f0" stroke-width="2" stroke-dasharray="8 8"/>
+      <circle r="42" fill="#0b4960" fill-opacity=".42" stroke="#8affef" stroke-width="2"/>
+      <path d="M0-42V42M-42 0H42M-29-29L29 29M29-29L-29 29" stroke="#7cfff1" stroke-opacity=".8"/>
+      <circle r="9" fill="#8affef" filter="url(#neon)"/>
+    </g>
+    <text x="878" y="526" fill="#8affef" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="2">CONTROLS  &#8594;  SSP  &#8594;  SAR  &#8594;  POA&amp;M</text>
+
+    <g font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#a4d8df">
+      <text x="758" y="402">AUTOMATED MAPPING</text><text x="758" y="420" fill="#63f6e5" font-size="20" font-weight="700">94%</text>
+      <text x="758" y="459">EVIDENCE PIPELINE</text><text x="758" y="477" fill="#63d3f6" font-size="20" font-weight="700">LIVE</text>
+      <text x="1080" y="402">AUDIT READINESS</text><text x="1080" y="420" fill="#63f6e5" font-size="20" font-weight="700">READY</text>
+      <text x="1080" y="459">CONTROL GRAPH</text><text x="1080" y="477" fill="#63d3f6" font-size="20" font-weight="700">1,000+</text>
+    </g>
+  </g>
+
+  <!-- Holographic framework chips around the central engine. -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700">
+    <g transform="translate(252 286)"><rect width="210" height="54" rx="12" fill="#07293b" fill-opacity=".84" stroke="#47e6df" stroke-opacity=".72"/><circle cx="22" cy="27" r="6" fill="#70fff1" filter="url(#neon)"/><text x="40" y="25" fill="#e4ffff">FedRAMP Rev 5</text><text x="40" y="41" fill="#71b9c5" font-size="9">AUTHORIZATION READY</text></g>
+    <g transform="translate(1458 286)"><rect width="210" height="54" rx="12" fill="#07293b" fill-opacity=".84" stroke="#47e6df" stroke-opacity=".72"/><circle cx="22" cy="27" r="6" fill="#70fff1" filter="url(#neon)"/><text x="40" y="25" fill="#e4ffff">NIST 800-53</text><text x="40" y="41" fill="#71b9c5" font-size="9">CONTROL MAPPING</text></g>
+    <g transform="translate(188 650)"><rect width="190" height="54" rx="12" fill="#07293b" fill-opacity=".84" stroke="#47e6df" stroke-opacity=".72"/><circle cx="22" cy="27" r="6" fill="#70fff1" filter="url(#neon)"/><text x="40" y="25" fill="#e4ffff">ACSC ISM</text><text x="40" y="41" fill="#71b9c5" font-size="9">CONTINUOUS COMPLIANCE</text></g>
+    <g transform="translate(1542 650)"><rect width="190" height="54" rx="12" fill="#07293b" fill-opacity=".84" stroke="#47e6df" stroke-opacity=".72"/><circle cx="22" cy="27" r="6" fill="#70fff1" filter="url(#neon)"/><text x="40" y="25" fill="#e4ffff">CCCS</text><text x="40" y="41" fill="#71b9c5" font-size="9">CLOUD CONTROLS</text></g>
+  </g>
+
+  <!-- Edge telemetry and report output signals. -->
+  <g fill="none" stroke="#5cefe7" stroke-opacity=".46" stroke-width="1.5">
+    <path d="M74 744h220l62-48h170"/><path d="M1846 744h-220l-62-48h-170"/>
+    <path d="M450 868h190l78-82h78"/><path d="M1470 868h-190l-78-82h-78"/>
+  </g>
+  <g fill="#74fff3" filter="url(#neon)"><circle cx="356" cy="696" r="4"/><circle cx="1564" cy="696" r="4"/><circle cx="796" cy="786" r="4"/><circle cx="1124" cy="786" r="4"/></g>
+
+  <!-- Final glass sheen and border for a premium composite finish. -->
+  <rect x="26" y="26" width="1868" height="1028" rx="24" fill="none" stroke="#7ffcf2" stroke-opacity=".18"/>
+  <path d="M42 48H420M1500 48H1878" stroke="#7ffcf2" stroke-opacity=".42" stroke-width="2"/>
+</svg>
