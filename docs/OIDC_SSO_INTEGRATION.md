@@ -620,4 +620,4 @@ See [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md#sensitive-settin
 
 ---
 
-**Version:** 1.7.27 · **Last updated:** July 2026
+**Version:** 1.9.0 · **Last updated:** July 2026

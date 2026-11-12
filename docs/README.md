@@ -52,6 +52,9 @@ From the repo root: `npm run install:all`, `npm run dev`, `npm run lint:all`. Ba
 | [AI_INTEGRATION.md](AI_INTEGRATION.md) | AI security/architecture, models (Mistral, Gemma), Bedrock/Mistral config, token limits, troubleshooting. |
 | [DATABASE_INTEGRATION.md](DATABASE_INTEGRATION.md) | Optional PostgreSQL/RDS, export sync, `extended_data` fields. |
 | [GUARDIAN_INTEGRATION.md](GUARDIAN_INTEGRATION.md) | Disabled-by-default delegated Okta token handling, SSP apply workflow, prerequisites and rollback. |
+| [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md) | Fetch real Guardian assessments for a selected report, review patches, preserve source data and save a new browser-local revision. |
+| [GUARDIAN_DEPLOY_INPUTS.md](GUARDIAN_DEPLOY_INPUTS.md) | Verified and unknown inputs Guardian needs to deploy: authorization table, network, auth contracts, consumer environment. |
+| [GUARDIAN_HANDOVERS.md](GUARDIAN_HANDOVERS.md) | Ledger of application changes handed over to the Guardian coding assistant, with classification and test receipts. |
 | [BSI_CATALOGUE_INTEGRATION.md](BSI_CATALOGUE_INTEGRATION.md) | German BSI security-standards integration. |
 
 ### Deployment & Docker

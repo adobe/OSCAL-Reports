@@ -62,7 +62,7 @@ function InitialChoice({ onLoadExisting, onStartFresh, loading }) {
       reader.onload = async (e) => {
         try {
           const sspData = JSON.parse(e.target.result);
-          await onLoadExisting(sspData);
+          await onLoadExisting(sspData, file.name);
         } catch (err) {
           setError('Invalid JSON file. Please upload a valid OSCAL SSP file.');
         }

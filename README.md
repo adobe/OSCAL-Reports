@@ -114,4 +114,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 1.8.04 (see root `package.json`) · **Last updated:** September 2026
+**Version:** 1.9.0 (see root `package.json`) · **Last updated:** September 2026

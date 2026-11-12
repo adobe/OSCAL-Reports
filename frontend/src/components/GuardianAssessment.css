@@ -1,0 +1,75 @@
+/**
+ * Concept: Mukesh Kesharwani
+ * Contact: mukesh.kesharwani@adobe.com
+ */
+.guardian-assessment {
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  color: #172033;
+  background: #fff;
+}
+.guardian-assessment label {
+  display: block;
+  margin: 1rem 0;
+}
+.guardian-assessment select {
+  display: block;
+  max-width: 100%;
+  padding: 0.5rem;
+}
+.guardian-assessment button { margin: 0.5rem; }
+.guardian-assessment-rows {
+  max-height: 32rem;
+  overflow: auto;
+}
+.guardian-assessment article {
+  border: 1px solid #cbd5e1;
+  padding: 1rem;
+  margin-block: 0.75rem;
+}
+.guardian-assessment pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.guardian-privileged-warning {
+  border: 2px solid #b45309;
+  background: #fffbeb;
+  color: #78350f;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 0.75rem 0;
+}
+
+.guardian-privileged-ack {
+  display: block;
+  margin: 0.75rem 0;
+  font-weight: 600;
+}
+
+.guardian-assessment-legend {
+  font-weight: 700;
+  font-size: calc(1em + 1.5pt);
+}
+
+.guardian-assessment-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.5rem;
+}
+
+.guardian-assessment-fields label {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.guardian-assessment-fields select {
+  width: 100%;
+}
+
+.guardian-assessment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}

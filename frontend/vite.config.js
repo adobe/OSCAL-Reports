@@ -17,6 +17,12 @@ export default defineConfig({
     port: 3021,
     allowedHosts: ['keekar.3utilities.com', 'oscal.keekar.au'],
     proxy: {
+      '/api/local-guardian': {
+        target: 'http://127.0.0.1:8767',
+        changeOrigin: true,
+        timeout: 12000,
+        proxyTimeout: 12000,
+      },
       '/api': {
         target: 'http://localhost:3020',
         // Keep changeOrigin so the upstream connection works; backend uses X-Forwarded-* to build Okta redirect_uri
@@ -36,4 +42,3 @@ export default defineConfig({
     },
   }
 })
-

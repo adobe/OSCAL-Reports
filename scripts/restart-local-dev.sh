@@ -50,7 +50,7 @@ kill_port() {
   # even when the port is free. Use project-specific process patterns instead.
   case "$port" in
     3020)
-      pkill -f 'nodemon server\.js' 2>/dev/null || true
+      pkill -f 'node --watch server\.js' 2>/dev/null || true
       pkill -f 'node server\.js' 2>/dev/null || true
       ;;
     3021)

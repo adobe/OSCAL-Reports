@@ -1,6 +1,6 @@
 {
   "name": "oscal-ssp-backend",
-  "version": "1.8.04",
+  "version": "1.9.0",
   "description": "Backend API for Keekar's OSCAL SOA/SSP/CCM Generator",
   "main": "server.js",
   "type": "module",
@@ -10,7 +10,7 @@
     "node": ">=24.9.0"
   },
   "scripts": {
-    "dev": "nodemon server.js",
+    "dev": "node --watch server.js",
     "start": "node server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ../test_cases/backend/jest.config.js --rootDir=../test_cases/backend --watch",
@@ -37,12 +37,12 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csrf": "^3.1.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.10",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
-    "fast-xml-parser": "5.11.1",
+    "fast-xml-parser": "^5.12.0",
     "ipaddr.js": "^2.5.0",
     "jose": "^6.2.12",
     "pdfkit": "^0.20.2",
@@ -53,17 +53,16 @@
   "devDependencies": {
     "@jest/globals": "^30.5.1",
     "jest": "^30.5.1",
-    "nodemon": "^1.14.10",
     "supertest": "^7.2.2"
   },
   "overrides": {
     "@babel/core": ">=7.29.6",
     "axios": ">=1.20.0",
     "lodash": ">=4.17.23",
-    "cookie": ">=0.7.0",
+    "cookie": "^0.7.2",
     "js-yaml": ">=5.2.3",
     "minimatch": ">=10.2.1",
-    "path-to-regexp": ">=8.4.0",
+    "path-to-regexp": "^8.4.0",
     "picomatch": ">=4.0.4",
     "brace-expansion": ">=5.0.9",
     "fast-uri": ">=4.1.2",
@@ -77,13 +76,16 @@
       "fast-xml-parser": "5.7.3"
     },
     "@jest/reporters": {
-      "glob": "13.0.6"
+      "glob": "14.0.5"
     },
     "jest-config": {
-      "glob": "13.0.6"
+      "glob": "14.0.5"
     },
     "jest-runtime": {
-      "glob": "13.0.6"
+      "glob": "14.0.5"
+    },
+    "test-exclude": {
+      "glob": "14.0.5"
     }
   }
 }

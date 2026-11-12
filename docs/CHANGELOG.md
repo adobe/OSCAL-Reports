@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.9.0] - 2026-11-12
+
+Release summary: fetch real Guardian Agent control assessments into an existing SSP during **Load Existing Report**, with privileged Generic SSO (Authentik) access, a full dependency and runtime refresh, and mandatory Okta, Authentik and Guardian integration testing. The Guardian features are **disabled by default**; existing sign-in, editing and export behavior is unchanged until the settings in [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md) are configured.
+
+### Added
+- **Guardian Agent assessment retrieval.** On **Update Existing Assessment** and **Analyse Changes/Improvements in Solution**, **Load Existing Report** asks whether to fetch assessment data from Guardian Agent. Choosing **No** continues the original catalog-selection sequence unchanged. Choosing **Yes** opens a review workflow: select an authorized Cloudflare or Okta target and run, fetch, preview the proposed per-control changes, tick explicit confirmation, and save a new revision. The page shows the file name, control count, UUID, System ID and System Name of the loaded report so the right report is selected.
+- **Large-report safe preview.** Only eligible assessed control IDs and their properties are sent for preview (not the whole report), the original is never modified, patches are verified against content hashes, and full-document integrity is regenerated locally. Tested against a 1,035-control, 5.2 MB report.
+- **Per-user revision persistence** in the browser (IndexedDB, keyed by the signed-in user), with downloads of the populated revision and the unchanged source. The populated download is named `<first 16 characters of the input file>_GAD-Input_<local date and time as digits>.json` so files are easy to tell apart. This is browser-local, not a shared database save.
+- **Privileged Generic SSO (Authentik) access.** A Generic SSO sign-in whose IdP groups include a group containing `Platform Admin` (configurable with `OSCAL_GUARDIAN_PRIVILEGED_GROUPS`) can use Guardian. A privileged-access warning and a per-fetch confirmation naming the report, target and run are required, and every Guardian request is audit-logged (no tokens or report content). IdP groups are held server-side only.
+- **Authentik access-token path and per-issuer endpoints.** New optional settings `OSCAL_GUARDIAN_GENERIC_SSO_ISSUER`, `_JWKS_URL`, `_CLIENT_ID`, `_SCOPE`, `OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL` and `OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS` (exact hostnames, no wildcards, no defaults). An Authentik-only first deployment is supported; the Okta endpoint is optional. Anything missing fails closed.
+- **Local end-to-end test mode:** `npm run dev:local-guardian-e2e` runs the whole flow against real cached assessments with test-only authentication (development only; refuses production).
+- **Documentation:** [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md) (usage, settings, rollout and rollback), [GUARDIAN_DEPLOY_INPUTS.md](GUARDIAN_DEPLOY_INPUTS.md) (verified and unknown deployment inputs) and [GUARDIAN_HANDOVERS.md](GUARDIAN_HANDOVERS.md) (ledger of changes handed to the Guardian assistant).
+- **Testing:** new Guardian adapter, authentication and Okta/Authentik sign-in flow tests; browser workflow tests; a real-cache harness with Okta-shaped and Authentik-shaped passes; and a workspace skill (`.github/skills/guardian-integration-handover/`) whose script requires all three parties on every change.
+
+### Fixed
+- **Guardian results were lost when a second provider was applied.** Each confirm was built on the report as originally loaded, so applying Okta after Cloudflare replaced the Cloudflare results. The page now keeps working on the revision (provider results accumulate) and lists what has been applied.
+- **A revision saved for a different report could be offered for the report just loaded.** **Continue with saved Guardian revision** and **Download populated SSP** could therefore use an old revision of another report. Revisions are now tied to the report they were built on and are shown only for that report.
+- After a confirm the page now moves to the saved revision and says what to do next.
+
+### Changed
+- `npm run dev` in `backend/` now uses `node --watch`; the old `nodemon` 1.x crashed on file changes with the pinned `minimatch` and has been removed.
+- The production Docker image no longer ships `npm`, `npx` or `corepack`: the server only runs `node`, and the base image's bundled npm carried 6 fixable HIGH findings (`brace-expansion`, `undici`). The image scans clean (0 fixable HIGH or CRITICAL, 0 secrets).
+- The Docker image (both stages), the direct-run Terraform `user_data` and `scripts/deploy-to-ec2.sh` now use **Node.js 24** (Node 20 is end-of-life; the application already required Node 24.9 or later). The image installs backend dependencies with `npm ci` from the lockfile.
+- The Guardian reliability rule matches Guardian's own: coverage must be explicitly complete (`truncated: false`) and never flagged unreliable.
+- Backend dependency overrides for `cookie` and `path-to-regexp` are pinned to the major version that Express and its router support (`^0.7.2` and `^8.4.0`). An open-ended `>=` override let a dependency refresh install `cookie` 2.x, which Express cannot call, and `path-to-regexp` 9.x, which its router does not declare support for; with `cookie` 2.x every request that sets a cookie, including sign-in, failed with HTTP 500. New tests and a server smoke check in the verification script cover this.
+- Removed two debug log statements that printed parts of report content (`integrityService.js`, `sspComparisonV3.js`).
+
+### Security
+- **Dependencies refreshed to the latest releases**, including `vite` 8.3.8, `react` 19.3.1, `express` 5.3.0, the AWS SDK (3.1167), `dotenv` 18, `fast-xml-parser` 5.12 and `glob` 14.0.5 for the Jest chain. Backend `npm audit` went from 41 findings (11 high) to **5 low**; root and frontend are at **0**; a Trivy lockfile scan reports 0 vulnerabilities. The 5 remaining low findings come from `deepmerge` inside the Jest test runner (dev only) and have no upstream fix yet.
+- Source secret scan: 0 findings.
+- Guardian access controls: groups and tokens stay server-side, the Authentik token is verified (issuer, signature, audience, expiry, custom scope, group) before use, requests go only to owner-approved exact hosts over HTTPS without redirects, and the feature fails closed.
+
+### Upgrade notes
+- **Docker preview image:** `keekar/oscal_reports:v1.9.0` (linux/amd64 and linux/arm64) is published for public preview and testing. The `latest` tag is **not** moved; it still points at `v1.8.02`. Promote it only after the owner prerequisites below are met and a real sign-in has been verified, with `docker buildx imagetools create -t keekar/oscal_reports:latest keekar/oscal_reports:v1.9.0`.
+- Guardian assessment retrieval is off by default in the image; no `OSCAL_GUARDIAN_*` setting is baked in. The Guardian assessment API is **not** at `guardian.amsgovcloud.com.au` (that is the SecMon dashboard); its API Gateway hostnames exist only after Guardian's approved deploy and must be set in `OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS` and the endpoint URLs.
+- Node.js 24.9 or later is required (unchanged requirement; now also the Docker and Terraform runtime). Rebuild the Docker image and re-run `npm ci` in `backend/` and `frontend/`.
+- No settings change is required for existing deployments. To enable Guardian, follow [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md); the owner prerequisites are listed in [GUARDIAN_DEPLOY_INPUTS.md](GUARDIAN_DEPLOY_INPUTS.md).
+- Rollback: unset `OSCAL_GUARDIAN_ASSESSMENTS_ENABLED` and restart; sign-in, editing and exports are unaffected.
+
+### Known limitations
+- Real Okta and Authentik sign-in and live Guardian endpoints are **not verified**: automated tests use locally signed test identities and mocked or cached data. Real authentication needs owner-approved Authentik settings (custom group-restricted scope, `groups` claim and RS256 in the access token, `sso.keekar.au` reachable from AWS), Guardian's deployment and a client ID.
+- The Terraform security scan reports 29 Checkov and 24 Trivy hardening findings (for example plain-HTTP ALB listener, RDS Multi-AZ and deletion protection, customer-managed keys). They are not remediated in this release.
+- `docs/sbom.json` was regenerated for 1.9.0 with the repository's CycloneDX command (spec 1.5, 642 components); local absolute paths were replaced with relative ones. The SBOM workflow regenerates it on merge. No `docs/cbom.json` exists for this repository.
+
 ## [1.8.04] - 2026-10-12
 
 ### Changed

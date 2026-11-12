@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.7.27**)  
+**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.9.0**)\
 **Last Updated**: July 2026
 
 ---
@@ -1262,6 +1262,12 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 1.9.0 (November 2026)
+- Guardian Agent assessment retrieval in the Load Existing Report workflow (provider-owned read and preview API; OSCAL owns confirmation and the new revision). See [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md).
+- Privileged Generic SSO (Authentik) access path with server-side group handling, audit logging and per-issuer Guardian endpoints
+- Dependency remediation (backend audit 41 findings to 5 low); Node.js 24 in the Docker image and Terraform user data; `nodemon` removed
+- Docker image `keekar/oscal_reports:v1.9.0` (multi-arch) when published
 
 ### Version 1.7.27 (July 2026)
 - VULN-37000: async job auth, IDOR prevention, rate limits (`jobAccess.js`)

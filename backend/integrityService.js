@@ -76,8 +76,6 @@ export function calculateIntegrityHash(oscalData) {
     
     // Log JSON characteristics for debugging
     console.log(`   Normalized JSON length: ${normalizedJson.length} chars`);
-    console.log(`   First 200 chars: ${normalizedJson.substring(0, 200)}...`);
-    console.log(`   Last 200 chars: ...${normalizedJson.substring(normalizedJson.length - 200)}`);
     
     // Calculate SHA-256 hash (FIPS 180-4 approved)
     const hash = crypto.createHash(INTEGRITY_ALGORITHM);
@@ -361,4 +359,3 @@ export function getIntegrityInfo(oscalData) {
     fipsStandard: 'FIPS 140-2 / FIPS 180-4'
   };
 }
-

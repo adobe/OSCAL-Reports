@@ -95,4 +95,4 @@ See [docs/QUALITY_ASSURANCE.md](../docs/QUALITY_ASSURANCE.md) — *Part 4: Valid
 ---
 
 Last Updated: April 2026  
-Version: 1.7.27
+Version: 1.9.0

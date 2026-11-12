@@ -54,7 +54,7 @@ locals {
 }
 
 # User data: either Docker/podman (run_oscal_via_docker = true) or direct run with local EBS data (default). RHEL only.
-# Direct run: Node 20, config/users on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
+# Direct run: Node 24, config/users on EBS at /opt/oscal/data; ec2_automation backs up to S3 every 10 min (no S3 mount).
 locals {
   # --- Docker/podman user_data (when run_oscal_via_docker = true) ---
   oscal_user_data_green_docker = <<-EOT
@@ -73,7 +73,7 @@ systemctl enable --now podman.socket
 podman pull ${var.oscal_container_image}
 podman run -d --name oscal --restart unless-stopped -p ${var.oscal_app_port}:3020 -e NODE_ENV=production ${var.oscal_container_image}
 EOT
-  # --- Direct-run user_data (when run_oscal_via_docker = false): Node 20, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
+  # --- Direct-run user_data (when run_oscal_via_docker = false): Node 24, local EBS data, systemd (RHEL), service account svc_ams-oscal ---
   oscal_direct_user_data_green = <<-EOT
 #!/bin/bash
 set -e
@@ -97,7 +97,7 @@ chmod 700 $SVC_HOME 2>/dev/null || true
 usermod -aG $SVC_GROUP ec2-user 2>/dev/null || true
 
 dnf install -y --allowerasing curl git cronie rsync
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+curl -fsSL https://rpm.nodesource.com/setup_24.x | bash -
 dnf install -y nodejs
 
 systemctl enable crond --now 2>/dev/null || true
@@ -171,7 +171,7 @@ chmod 700 $SVC_HOME 2>/dev/null || true
 usermod -aG $SVC_GROUP ec2-user 2>/dev/null || true
 
 dnf install -y --allowerasing curl git cronie rsync
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+curl -fsSL https://rpm.nodesource.com/setup_24.x | bash -
 dnf install -y nodejs
 dnf install -y epel-release || true
 

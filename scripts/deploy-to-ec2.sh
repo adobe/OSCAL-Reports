@@ -839,7 +839,7 @@ POSTCONFIGSYNC
   ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${ip}" "set -e
     export PATH=\"/usr/bin:/usr/local/bin:\$PATH\"
     command -v npm >/dev/null 2>&1 || {
-      curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+      curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash -
       sudo dnf install -y nodejs 2>/dev/null || sudo yum install -y nodejs 2>/dev/null
     }
     cd $REMOTE_APP

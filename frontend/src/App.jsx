@@ -1,6 +1,8 @@
 /**
  * Copyright 2025 Adobe. All rights reserved.
  * Copyright (c) 2025 Mukesh Kesharwani
+ * Concept: Mukesh Kesharwani
+ * Contact: mukesh.kesharwani@adobe.com
  *
  * Licensed under the MIT License. See LICENSE file for details.
  */
@@ -23,6 +25,7 @@ import ControlsList from './components/ControlsList';
 import ExportButtons from './components/ExportButtons';
 import SaveLoadBar from './components/SaveLoadBar';
 import MultiReportComparison from './components/MultiReportComparison';
+import GuardianAssessment from './components/GuardianAssessment';
 import IntegrityWarning from './components/IntegrityWarning';
 // import Footer from './components/Footer'; // REMOVED: Footer component completely removed from application
 import { saveSSPData, loadSSPData, hasSavedData, getLastSaveTime, clearSSPData } from './utils/storage';
@@ -67,6 +70,10 @@ function App() {
   const [showDatabaseUnavailableModal, setShowDatabaseUnavailableModal] = useState(false);
   const [databaseIntegrationEnabled, setDatabaseIntegrationEnabled] = useState(false);
   const [adobeTeamOptions, setAdobeTeamOptions] = useState([]);
+  const [showGuardian, setShowGuardian] = useState(false);
+  const [guardianPromptSSP, setGuardianPromptSSP] = useState(null);
+  const [guardianFileName, setGuardianFileName] = useState('');
+  const [guardianLoadFlow, setGuardianLoadFlow] = useState(false);
 
   // New states for revised workflow
   const [existingSSP, setExistingSSP] = useState(null);
@@ -684,6 +691,17 @@ function App() {
     }
   };
 
+  if (showGuardian && guardianLoadFlow) {
+    const resume = async (ssp) => {
+      setShowGuardian(false);
+      setGuardianLoadFlow(false);
+      await handleLoadExistingSSP(ssp);
+    };
+    return <GuardianAssessment initialReport={existingSSP} initialFileName={guardianFileName} onAdopt={resume}
+      onBack={() => resume(existingSSP)} adoptLabel="Continue with saved Guardian revision"
+      backLabel="Skip Guardian and continue loading report" />;
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -817,10 +835,33 @@ function App() {
           </div>
         )}
 
+        {guardianPromptSSP && (
+          <div className="modal-overlay">
+            <div className="modal-content" role="dialog" aria-modal="true"
+              aria-labelledby="guardian-prompt-title" style={{ maxWidth: 520, padding: 24 }}>
+              <h2 id="guardian-prompt-title">Fetch assessment data from Guardian Agent?</h2>
+              <p>Populate your report with the latest tested-control assessment results from Guardian Agent before continuing. You will review every change before it is applied.</p>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => {
+                  const ssp = guardianPromptSSP;
+                  setGuardianPromptSSP(null);
+                  handleLoadExistingSSP(ssp);
+                }}>No, continue</button>
+                <button type="button" className="btn btn-primary" autoFocus onClick={() => {
+                  setExistingSSP(guardianPromptSSP);
+                  setGuardianPromptSSP(null);
+                  setGuardianLoadFlow(true);
+                  setShowGuardian(true);
+                }}>Yes, fetch from Guardian</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Step 1: Initial Choice - Load existing or start fresh */}
         {step === 1 && (
           <InitialChoice
-            onLoadExisting={handleLoadExistingSSP}
+            onLoadExisting={(ssp, name) => { setGuardianFileName(name || ''); setGuardianPromptSSP(ssp); }}
             onStartFresh={handleStartFresh}
             loading={loading}
           />
@@ -1115,4 +1156,3 @@ function AppWithAuth() {
 }
 
 export default AppWithAuth;
-

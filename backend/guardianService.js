@@ -32,8 +32,7 @@ function httpsUrl(value) {
   return url;
 }
 
-export function readGuardianConfig(env = process.env) {
-  if (env.OSCAL_GUARDIAN_ENABLED !== 'true') { return null; }
+export function readGuardianIdentityConfig(env = process.env) {
   try {
     const issuer = httpsUrl(env.OSCAL_GUARDIAN_ISSUER);
     // Okta org-server tokens must not be repurposed for this custom API.
@@ -44,8 +43,19 @@ export function readGuardianConfig(env = process.env) {
     const clientId = env.OSCAL_GUARDIAN_CLIENT_ID?.trim();
     if (!audience || !clientId || audience === clientId || audience === '0oa280f78zjnb9zcO0h8') { throw unavailable(); }
     const scopes = (env.OSCAL_GUARDIAN_SCOPES || '').trim().split(/\s+/).filter(Boolean);
+    if (!scopes.length) { throw unavailable(); }
+    return { issuer: issuer.href, jwksUrl: jwks.href, audience, clientId, scopes };
+  } catch {
+    throw unavailable();
+  }
+}
+
+export function readGuardianConfig(env = process.env) {
+  if (env.OSCAL_GUARDIAN_ENABLED !== 'true') { return null; }
+  try {
+    const identity = readGuardianIdentityConfig(env);
     const targets = JSON.parse(env.OSCAL_GUARDIAN_TARGETS_JSON || '[]');
-    if (!scopes.length || !Array.isArray(targets) || !targets.length || targets.length > 100) { throw unavailable(); }
+    if (!Array.isArray(targets) || !targets.length || targets.length > 100) { throw unavailable(); }
     const ids = new Set();
     for (const target of targets) {
       const url = httpsUrl(target.url);
@@ -58,7 +68,7 @@ export function readGuardianConfig(env = process.env) {
         typeof group !== 'string' || !group.trim() || group !== group.trim() || group.toUpperCase() === 'GRP-TECHGRC-ALL')) { throw unavailable(); }
       ids.add(target.id);
     }
-    return { issuer: issuer.href, jwksUrl: jwks.href, audience, clientId, scopes, targets };
+    return { ...identity, targets };
   } catch {
     throw unavailable();
   }
@@ -76,8 +86,9 @@ export async function publicHttpsRequest(options) {
   } });
   try {
     return await axios.request({
-      ...options, httpsAgent: agent, proxy: false, maxRedirects: 0,
       timeout: 15000, maxContentLength: MAX_SSP_BYTES, maxBodyLength: MAX_SSP_BYTES,
+      ...options,
+      httpsAgent: agent, proxy: false, maxRedirects: 0,
     });
   } finally {
     agent.destroy();
@@ -85,7 +96,7 @@ export async function publicHttpsRequest(options) {
 }
 
 const keySets = new Map();
-async function resolveKeys(config) {
+export async function resolveKeys(config) {
   const cached = keySets.get(config.jwksUrl);
   if (cached && cached.expiresAt > Date.now()) { return cached.keys; }
   const response = await publicHttpsRequest({ method: 'GET', url: config.jwksUrl });
@@ -98,6 +109,8 @@ async function resolveKeys(config) {
 
 export function createGuardianService({
   readConfig = readGuardianConfig,
+  readAssessmentIdentity = () => process.env.OSCAL_GUARDIAN_ASSESSMENTS_ENABLED === 'true'
+    ? readGuardianIdentityConfig() : null,
   keys = resolveKeys,
   request = publicHttpsRequest,
   validateSsp = validateWithSchema,
@@ -140,7 +153,7 @@ export function createGuardianService({
   }
 
   async function retain(session, tokenResponse) {
-    const config = readConfig();
+    const config = readConfig() || readAssessmentIdentity();
     if (!config || !session) { return; }
     if (tokenResponse?.token_type?.toLowerCase() !== 'bearer') { throw reauthenticate(); }
     const lifetime = Number(tokenResponse.expires_in);
@@ -217,7 +230,14 @@ export function createGuardianService({
     }
   }
 
-  return { retain, status, apply };
+  async function authorize(session, config) {
+    const token = getDelegatedToken(session);
+    if (!token) { throw reauthenticate(); }
+    const payload = await verify(token, config);
+    return { token, payload };
+  }
+
+  return { retain, status, apply, authorize };
 }
 
 export const guardianService = createGuardianService();

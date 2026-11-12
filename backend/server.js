@@ -115,6 +115,7 @@ import {
 } from './auth/genericOidc.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
 import { guardianService } from './guardianService.js';
+import { guardianAssessmentService } from './guardianAssessments.js';
 import { guardianJsonMiddleware, registerGuardianRoutes } from './guardianRoutes.js';
 import { ROLES, PERMISSIONS } from './auth/roles.js';
 import { 
@@ -1604,6 +1605,7 @@ app.post('/api/auth/oidc/generic-oidc/exchange-token', oidcExchangeTokenRateLimi
       jitDefaultRole,
       groupToRoleMapping,
       syncRoleFromGroups,
+      idpProvider: GENERIC_OIDC_PROVIDER_ID,
     });
     if (!user) {
       return res.status(403).json({
@@ -1611,6 +1613,16 @@ app.post('/api/auth/oidc/generic-oidc/exchange-token', oidcExchangeTokenRateLimi
         error:
           'No application user found for this account. Ask an admin to add your email, enable JIT provisioning, or sign in with username/password.',
       });
+    }
+    // Guardian is optional: a missing/invalid Generic SSO access token must not break OSCAL login.
+    try {
+      await guardianAssessmentService.retainGenericSso(validateSession(user.sessionToken), tokenRes.data);
+    } catch {
+      console.warn(JSON.stringify({
+        'service.name': 'oscal-report-generator',
+        'event.action': 'guardian_generic_sso_token_retention', 'event.outcome': 'failure',
+        severity: 'WARN',
+      }));
     }
     res.json({
       success: true,
