@@ -277,8 +277,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.9.0 (example — use values printed by the script)
-# ✓ GitHub version: 1.9.0
+# ✓ Current version: 2.1.1 (example — use values printed by the script)
+# ✓ GitHub version: 2.1.1
 # ✓ Versions match - no build needed
 ```
 

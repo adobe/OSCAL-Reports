@@ -62,6 +62,7 @@ From the repo root: `npm run install:all`, `npm run dev`, `npm run lint:all`. Ba
 |----------|---------------|
 | [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) | Complete deployment guide (Docker, local, cloud overview). **Start here for deploy.** |
 | [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md) | Docker Hub image: pull, run, CI/CD publishing, troubleshooting. |
+| [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md) | Run Generic SSO (Authentik) and the Guardian assessment feature in Docker or TrueNAS Apps: settings, DNS, `.env.docker.example`, `scripts/truenas_apply_app_env.py`. |
 | [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md) | Cloud platforms (Azure, AWS, GCP) overview. |
 | [CONFIG_AND_USER_MIGRATION.md](CONFIG_AND_USER_MIGRATION.md) | Local dev config paths, config migration, Blue/Green user consolidation, S3-default recovery. |
 

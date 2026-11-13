@@ -2,7 +2,7 @@
 
 **Author**: Mukesh Kesharwani (mukesh.kesharwani@adobe.com)  
 **Organization**: Adobe  
-**Version**: 2.1.0 (document revision; application release is root **`package.json`**, currently **1.9.0**)\
+**Version**: 2.1.1 (document revision; application release is root **`package.json`**, currently **2.1.1**)\
 **Last Updated**: July 2026
 
 ---
@@ -1262,6 +1262,14 @@ Added ability to fetch real-time compliance data from APIs and maintain historic
 ---
 
 ## Version History
+
+### Version 2.1.1 (November 2026)
+- Guardian two-provider merge rules: worst assessed Implementation Status wins; Evidence Location and Testing Method amended per provider; Not Assessed never overrides an assessed status; Not Applicable never written. See [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md).
+- Executable bits restored on 42 scripts; test helper updated for Jest 30; real-data check asserts the merge rules.
+- Docker image `keekar/oscal_reports:v2.1.1` (multi-arch) when published
+
+### Version 2.1.0 (November 2026)
+- Docker and TrueNAS deployment of Generic SSO and the Guardian assessment feature (`.env.docker.example`, `scripts/truenas_apply_app_env.py`, [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md)); Guardian page uses the standard layout; CodeQL cleanups; `npm ci` fix.
 
 ### Version 1.9.0 (November 2026)
 - Guardian Agent assessment retrieval in the Load Existing Report workflow (provider-owned read and preview API; OSCAL owns confirmation and the new revision). See [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md).

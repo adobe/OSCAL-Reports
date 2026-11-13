@@ -1,6 +1,6 @@
 {
   "name": "oscal-backend-tests",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "type": "module",
   "description": "Test suite for OSCAL Report Generator Backend - v1.6.5 Security Updates",
   "scripts": {
@@ -8,11 +8,11 @@
     "test:unit": "jest --config jest.config.js unit",
     "test:integration": "jest --config jest.config.js integration",
     "test:e2e": "jest --config jest.config.js e2e",
-    "test:security": "jest --config jest.config.js --testPathPattern=\"(csrf-api|securityConfig|urlValidator-options|security-flow)\"",
+    "test:security": "jest --config jest.config.js --testPathPatterns=\"(csrf-api|securityConfig|urlValidator-options|security-flow)\"",
     "test:catalogues": "jest --config jest.config.js --testPathPatterns='sampleCatalogues|catalogue-fetch-release'",
     "test:watch": "jest --config jest.config.js --watch",
     "test:coverage": "jest --config jest.config.js --coverage",
-    "test:v165": "jest --config jest.config.js --testPathPattern=\"(csrf-api|securityConfig|urlValidator-options|security-flow)\" --verbose"
+    "test:v165": "jest --config jest.config.js --testPathPatterns=\"(csrf-api|securityConfig|urlValidator-options|security-flow)\" --verbose"
   },
   "keywords": [
     "oscal",

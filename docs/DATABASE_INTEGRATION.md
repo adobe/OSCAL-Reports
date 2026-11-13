@@ -309,4 +309,4 @@ despite a NIST `1.1.2`-derived identifier; not an official schema certification.
 
 ---
 
-**Version:** 1.9.0 · **Last updated:** July 2026
+**Version:** 2.1.1 · **Last updated:** November 2026

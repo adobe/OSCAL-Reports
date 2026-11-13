@@ -217,27 +217,27 @@ run_unit_tests() {
     
     # Authentication tests
     run_check "Authentication Tests" \
-        npm test -- --testPathPattern='auth.test.js' --silent
+        npm test -- --testPathPatterns='auth.test.js' --silent
     
     # RBAC tests
     run_check "Role-Based Access Control Tests" \
-        npm test -- --testPathPattern='roles.test.js' --silent
+        npm test -- --testPathPatterns='roles.test.js' --silent
     
     # Async handlers
     run_check "Async Handler Tests" \
-        npm test -- --testPathPattern='async-handlers.test.js' --silent
+        npm test -- --testPathPatterns='async-handlers.test.js' --silent
     
     # URL Validator (base)
     run_check "URL Validator (Base)" \
-        npm test -- --testPathPattern='urlValidator.test.js' --silent
+        npm test -- --testPathPatterns='urlValidator.test.js' --silent
     
     # URL Validator (v1.6.5 options)
     run_check "URL Validator (AI Integration Options)" \
-        npm test -- --testPathPattern='urlValidator-options.test.js' --silent
+        npm test -- --testPathPatterns='urlValidator-options.test.js' --silent
     
     # Security Configuration
     run_check "Security Configuration Tests" \
-        npm test -- --testPathPattern='securityConfig.test.js' --silent
+        npm test -- --testPathPatterns='securityConfig.test.js' --silent
     
     cd .. || exit
 }
@@ -253,15 +253,15 @@ run_integration_tests() {
     
     # General API tests
     run_check "General API Integration Tests" \
-        npm test -- --testPathPattern='integration/api.test.js' --silent
+        npm test -- --testPathPatterns='integration/api.test.js' --silent
     
     # Settings API tests
     run_check "Settings API Tests" \
-        npm test -- --testPathPattern='settings-api.test.js' --silent
+        npm test -- --testPathPatterns='settings-api.test.js' --silent
     
     # CSRF & API security (v1.6.5)
     run_check "CSRF & API Security Tests (v1.6.5)" \
-        npm test -- --testPathPattern='csrf-api.test.js' --silent
+        npm test -- --testPathPatterns='csrf-api.test.js' --silent
     
     cd .. || exit
 }
@@ -302,7 +302,7 @@ run_e2e_tests() {
     
     # Complete security workflows
     run_check "Complete Security Workflow Tests" \
-        npm test -- --testPathPattern='security-flow.test.js' --silent
+        npm test -- --testPathPatterns='security-flow.test.js' --silent
     
     cd .. || exit
 }
@@ -508,8 +508,8 @@ validate_v165_features() {
         test -f docs/SECURITY.md
     
     # CHANGELOG update
-    run_check "CHANGELOG Updated for v1.6.5" \
-        grep -q '1.6.5' docs/CHANGELOG.md
+    run_check "CHANGELOG has an entry for the current version" \
+        grep -q "^## \[$(node -p "require('./package.json').version")\]" docs/CHANGELOG.md
 }
 
 ###############################################################################

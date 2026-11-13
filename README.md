@@ -92,14 +92,19 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DEPLOYMENT_AND_OPERAT
 | **Branching / Git / release** | [docs/GIT_AND_RELEASE.md](docs/GIT_AND_RELEASE.md) |
 | **AI (Bedrock/Mistral)** | [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md), [docs/DEPLOYMENT_AND_OPERATIONS.md](docs/DEPLOYMENT_AND_OPERATIONS.md#amazon-bedrock-integration-step-by-step-aws-setup) |
 | **Database (optional)** | [docs/DATABASE_INTEGRATION.md](docs/DATABASE_INTEGRATION.md) – PostgreSQL/RDS, export sync, extended_data |
+| **Guardian Agent assessments** | [docs/GUARDIAN_ASSESSMENTS.md](docs/GUARDIAN_ASSESSMENTS.md) – fetch, review and apply real assessments (including two-provider rules); [docs/GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](docs/GUARDIAN_SSO_DOCKER_DEPLOYMENT.md) – Docker / TrueNAS setup |
+| **Changes** | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 
 ---
 
 ## Recent releases
 
-Summary of the five most recent versions. Full history — including every prior release and the
+Summary of recent versions. Full history — including every prior release and the
 operational runbooks — is in **[docs/CHANGELOG.md](docs/CHANGELOG.md)**.
 
+- **2.1.1** — Guardian two-provider merge rules (worst assessed status wins; Evidence and Testing Method amended per provider; Not Assessed never overrides; Not Applicable never written), scripts executable again, Jest 30 test helper fixes. [Details](docs/CHANGELOG.md#211---2026-11-13).
+- **2.1.0** — Docker and TrueNAS deployment of Generic SSO and Guardian assessments, Guardian page layout, CodeQL cleanups, `npm ci` fix. [Details](docs/CHANGELOG.md#210---2026-11-13).
+- **1.9.0** — Fetch real Guardian Agent assessments into an existing report during Load Existing Report (privileged Generic SSO access, review before save, per-user revisions). [Details](docs/CHANGELOG.md#190---2026-11-12).
 - **1.8.00** — Catalogue library expansion (+8: FedRAMP Rev 5 ×4, CMS ARS 5.0 ×4; 25 across 7 publishers), BSI/ISM URL fixes, New/Updated badges + non-English flag, and an app-wide single-source-of-truth refactor (`config/constants/`) for control-status/roles/classification/system-status/service-model — fixing the ControlsList 4/7-status and SAR `alternate-control` bugs. [Details](docs/CHANGELOG.md#1800---2026-09-08).
 - **1.7.31** — Responsive full-width UI: shared layout + surface tokens (`styles/layout.css`), single shared Feature Comparison table, background bleed fixes. [Details](docs/CHANGELOG.md#1731---2026-09-08).
 - **1.7.30** — Restored fixes documented but never committed (drift correction): SSAAU-212 Splunk→SCC delivery (`emissary = "trusted"` VPC/subnet tag — the real root cause; errno-104 mutual-TLS resets), Bedrock auth-mode precedence, Bedrock `[object Object]` roleArn + Secrets Manager bundle-write no-op, and a `/health` `version` field. [Details](docs/CHANGELOG.md#1730---2026-09-08).
@@ -114,4 +119,4 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Version:** 2.1.0 (see root `package.json`) · **Last updated:** September 2026
+**Version:** 2.1.1 (see root `package.json`) · **Last updated:** November 2026

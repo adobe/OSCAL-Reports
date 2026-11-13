@@ -15,9 +15,11 @@ Related: [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md) (how the feature wor
 [OIDC_SSO_INTEGRATION.md](OIDC_SSO_INTEGRATION.md) (sign-in), [DOCKER_HUB_GUIDE.md](DOCKER_HUB_GUIDE.md),
 [DEPLOYMENT_AND_OPERATIONS.md](DEPLOYMENT_AND_OPERATIONS.md).
 
-> **Image version.** The published `keekar/oscal_reports:v1.9.0` image predates the settings described here (shared
-> issuer variables, token-lifetime limit, targets-JSON quoting, clearer error messages). Build and publish a new image
-> from this repository before using this guide against a published tag.
+> **Image version.** Use an image built from this repository at version 2.1.1 or later (`keekar/oscal_reports:v2.1.1`
+> once published). The published `v1.9.0` image predates the settings described here (shared issuer variables,
+> token-lifetime limit, targets-JSON quoting, clearer error messages) and `v2.0.0` predates the two-provider merge
+> documentation and the test and script fixes. Build and publish with `./scripts/build-and-push-dockerhub.sh` before
+> using this guide against a published tag.
 
 ## 1. Files to use
 

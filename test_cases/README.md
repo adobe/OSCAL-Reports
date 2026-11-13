@@ -115,10 +115,10 @@ cd backend && npm run test:catalogues
 ```bash
 # Run specific test file
 cd backend
-npm test -- --testPathPattern='securityConfig.test.js'
+npm test -- --testPathPatterns='securityConfig.test.js'
 
 # Run with verbose output
-npm test -- --testPathPattern='csrf-api.test.js' --verbose
+npm test -- --testPathPatterns='csrf-api.test.js' --verbose
 ```
 
 ---
@@ -158,7 +158,7 @@ Tests the security configuration including:
 - Rate limiting configuration
 
 ```bash
-npm test -- --testPathPattern='securityConfig.test.js'
+npm test -- --testPathPatterns='securityConfig.test.js'
 ```
 
 #### `unit/urlValidator-options.test.js`
@@ -171,7 +171,7 @@ Tests URL validator options for AI integration:
 - Cloud metadata still blocked
 
 ```bash
-npm test -- --testPathPattern='urlValidator-options.test.js'
+npm test -- --testPathPatterns='urlValidator-options.test.js'
 ```
 
 #### `integration/csrf-api.test.js`
@@ -183,7 +183,7 @@ Tests CSRF exemption behavior:
 - Bearer token authentication pattern
 
 ```bash
-npm test -- --testPathPattern='csrf-api.test.js'
+npm test -- --testPathPatterns='csrf-api.test.js'
 ```
 
 #### `e2e/security-flow.test.js`
@@ -196,7 +196,7 @@ Complete security workflow tests:
 - Complete report generation flow
 
 ```bash
-npm test -- --testPathPattern='security-flow.test.js'
+npm test -- --testPathPatterns='security-flow.test.js'
 ```
 
 ### Running v1.6.5 Validation Script

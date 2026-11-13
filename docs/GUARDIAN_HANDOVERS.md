@@ -16,6 +16,30 @@ Related: [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md) (consumer guide), [G
 
 <!-- Add new entries directly below this line, above older ones. -->
 
+## 2026-11-13: Release 2.1.1 (versions, documentation, restored script modes, test helper fixes)
+
+**Classification:** none
+**From:** OSCAL Reports assistant, repository state `uncommitted`
+**To:** Guardian coding assistant (`/Users/mkesharw/Documents/GuardianAgent`)
+
+### What changed
+Version 2.1.0 to 2.1.1 in the four `package.json` files, the lockfile roots and the README footer; changelog, README, docs index and the stale 1.9.0 markers refreshed; the two-provider rules are described as released. The executable bit was restored on 42 scripts (lost in a GitHub merge on `Main`), and the repo test helper now uses Jest 30's `--testPathPatterns` and checks for the current version's changelog entry. No application code, request, payload, token or setting changed.
+
+### Effect on the Guardian contract
+None.
+
+### Action requested from Guardian
+None.
+
+### Test receipt
+| Check | Result | Evidence type |
+| --- | --- | --- |
+| `test_cases/scripts/run-all-tests.sh` | the four Jest checks that failed on the old flag now pass; the changelog check is updated | real |
+| Full gate | see the gate run for this change | mocked, real cached data, TEST-ONLY authentication |
+
+### Rollback
+Revert the release commit.
+
 ## 2026-11-13: CodeQL useless-assignment cleanups (no behaviour change)
 
 **Classification:** none

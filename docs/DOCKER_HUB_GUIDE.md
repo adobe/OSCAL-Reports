@@ -127,7 +127,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 2. To use an explicit tag (e.g. a specific version or `latest` only):
 
    ```bash
-   ./scripts/build-and-push-dockerhub.sh v1.9.0
+   ./scripts/build-and-push-dockerhub.sh v2.1.1
    ```
 
 3. If your Docker Hub username is not `keekar`, set it in the environment:
@@ -1095,6 +1095,6 @@ This project is licensed under the **MIT License**. See [LICENSE](https://github
 
 ---
 
-**Last Updated**: April 2026  
-**Maintained By**: Mukesh Kesharwani  
-**Version**: 1.9.0
+**Last Updated**: November 2026
+**Maintained By**: Mukesh Kesharwani
+**Version**: 2.1.1

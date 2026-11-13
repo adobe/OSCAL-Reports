@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.1.1] - 2026-11-13
+
+Release summary: Guardian Agent integration completed, with defined rules for which data wins when Okta and Cloudflare both assessed the same control, plus test, CodeQL and script fixes.
+
+### Added
+- **Two-provider merge rules (Guardian side, deployed).** When Okta and Cloudflare both assessed a control, applying the assessment now follows fixed rules (see [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md), "Two providers"):
+  - **Implementation Status:** the worst *assessed* result wins (not implemented, then ineffective, then partially effective, then effective). Not Assessed never beats an assessed status. Not Applicable from Guardian is never written; the report's own value wins.
+  - **Evidence Location and Testing Method:** amended with both providers (labelled sections or lines, Okta first); applying a provider again replaces only its own part.
+  - **Testing Frequency, Last Test Date:** last applied wins. The assessment history is appended.
+  - Additional Notes, consumer guidance and control type are never changed.
+- **Testing Method wording** now names the target, cell and run (no storage path).
+- **Real-data check** (`test_cases/e2e/guardian-real-cache.mjs`) asserts the rules above for controls assessed by both providers, in both token shapes.
+
+### Changed
+- `scripts/bump_version.sh` is executable again; the 42 shell and Python scripts that lost the executable bit in a merge on `Main` were restored.
+- Test helper `test_cases/scripts/run-all-tests.sh` and `test_cases/backend/package.json` use Jest 30's `--testPathPatterns` (the old `--testPathPattern` made four checks fail), and its changelog check now requires an entry for the current version instead of the long-gone `1.6.5`.
+- Documentation refreshed to 2.1.1: version markers, release process (safe bump options) and the documentation index.
+
+### Fixed
+- Guardian status and data conflicts: a control assessed by two providers no longer ends with whichever provider was applied last.
+
 ## [2.1.0] - 2026-11-13
 
 Release summary: Guardian Agent integration completed and fixes for the Docker image releases: container and TrueNAS deployment of Generic SSO and the Guardian assessment feature, automatic Guardian scope, clearer failure messages, and a repaired test toolchain. Production dependencies are unchanged from 2.0.0. (2.0.1 was prepared but never released; its changes are included here.)
