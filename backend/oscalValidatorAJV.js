@@ -216,14 +216,13 @@ function getValidator(type, permissive = true, validationOptions = {}) {
       // Get base schema
       let baseSchema = oscalSchema.definitions[type];
       
-      // Prepare definitions
-      let definitions = oscalSchema.definitions;
+      // Prepare definitions (converted copies of every schema definition)
+      let definitions = {};
       
       // ALWAYS convert oneOf to anyOf to avoid strict validation errors
       // This happens regardless of permissive mode setting
       console.log(`🔄 Converting oneOf to anyOf for ${type} (prevents "must match exactly one" errors)`);
       baseSchema = convertOneOfToAnyOf(baseSchema);
-      definitions = {};
       for (const [defName, defSchema] of Object.entries(oscalSchema.definitions)) {
         definitions[defName] = convertOneOfToAnyOf(defSchema);
       }

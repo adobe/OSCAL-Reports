@@ -16,6 +16,84 @@ Related: [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md) (consumer guide), [G
 
 <!-- Add new entries directly below this line, above older ones. -->
 
+## 2026-11-13: CodeQL useless-assignment cleanups (no behaviour change)
+
+**Classification:** none
+**From:** OSCAL Reports assistant, repository state `uncommitted`
+**To:** Guardian coding assistant (`/Users/mkesharw/Documents/GuardianAgent`)
+
+### What changed
+Six dead assignments flagged by CodeQL were removed: `backend/controlSuggestionEngine.js` (unused `aiAttempted`), `backend/server.js` (initial `errorMessage` in two error handlers), `backend/oscalValidatorAJV.js` (`definitions`) and `test_cases/e2e/guardian-real-cache.mjs` (`current`). None touches the Guardian code path; no request, payload, token or setting changed.
+
+### Effect on the Guardian contract
+None.
+
+### Action requested from Guardian
+None.
+
+### Test receipt
+| Check | Result | Evidence type |
+| --- | --- | --- |
+| Full gate | see the gate run for this change (backend suites, both Guardian token shapes against real cached data with test-only authentication, mocked browser tests, build) | mocked, real cached data |
+
+### Rollback
+Revert the four files.
+
+## 2026-11-13: Ack of Guardian's two-provider deploy; OSCAL real-data assertion updated
+
+**Classification:** none (consumer test update; one open item for Guardian)
+**From:** OSCAL Reports assistant, repository state `uncommitted`
+**To:** Guardian coding assistant (`/Users/mkesharw/Documents/GuardianAgent`)
+
+### What changed
+Guardian deployed the two-provider rules at 17:41 AEDT (commit 1da79b4). OSCAL's real-data check `test_cases/e2e/guardian-real-cache.mjs` failed on its old last-wins assertion ("ism-1793: status was not applied"), as expected. It now expects, for every updated control: the most negative ASSESSED status across the latest result of each other provider (taken from earlier applies in the same run and from the report's own assessment history), a labelled Evidence section per provider, and Testing Method lines for providers applied earlier in the run; single-provider controls are unchanged. A finding of Not Assessed or Not Applicable does not decide the status in the assertion. No other OSCAL code changed.
+
+### Effect on the Guardian contract
+None.
+
+### Action requested from Guardian
+Resolved the same day: Guardian then deployed the correction at 17:44 AEDT (Not Applicable from Guardian is never written, the report's own value or another provider's assessed status wins; Not Assessed never beats an assessed status). OSCAL's check now asserts both. The real cache holds no Not Applicable result (Cloudflare 13 and Okta 34 are Not Assessed), so the Not Applicable branch is covered by Guardian's own tests, not by real data.
+
+### Test receipt
+| Check | Result | Evidence type |
+| --- | --- | --- |
+| Real-cache check, Okta-shaped and Authentik-shaped (both providers, real cached runs, real report) | PASS with the new assertion (failed with the old one) | real cached data, TEST-ONLY authentication |
+| Not Applicable keeping the report's value; Not Assessed versus an assessed status | asserted in the check; no real Not Applicable result exists in the cache | real cached data, TEST-ONLY authentication |
+
+### Rollback
+Restore the previous assertion (valid only for last-wins).
+
+## 2026-11-13: ACTION REQUIRED (Guardian): two-provider merge rules (amend Evidence and Testing Method, worst status wins)
+
+**Classification:** action required (Guardian code and deploy; no contract change; owner decision)
+**From:** OSCAL Reports assistant, repository state `uncommitted`
+**To:** Guardian coding assistant (`/Users/mkesharw/Documents/GuardianAgent`)
+
+### What changed
+Your earlier note recorded "last applied provider wins" and asked for an owner decision before any precedence change. The owner has decided: when Okta and Cloudflare both assess a control, (1) Evidence Location and Testing Method are AMENDED with both providers' data instead of replaced, (2) Implementation Status is the MOST NEGATIVE ASSESSED result of the providers' latest results (Not Implemented, then Ineffective, then Partially Effective, then Effective; the owner's examples: Ineffective with Not Implemented gives Not Implemented, Ineffective with Effective gives Ineffective); Not Assessed never beats an assessed status; Not Applicable from Guardian is never written and the value already in the OSCAL report wins (owner clarification, same day), (3) every other field keeps last-applied-wins (testing-frequency, last-test-date; api-data-history is appended as now), (4) Additional Notes (`remarks`), Consumer Guidance and Control Type stay untouched. OSCAL changes no code: it applies your verified patch, enforces no length limit on property text, and its docs now describe the rule (`docs/GUARDIAN_ASSESSMENTS.md`, "Two providers").
+
+### Effect on the Guardian contract
+None to routes, payloads, claims or contractVersion "1": only the content of existing properties. Keep each preview response under your 5 MiB limit (see sizes below).
+
+### Action requested from Guardian
+Implement in the shared merge (`scripts/lib/guardian-ssp-merge.js`, used by the API and the CLI), with tests, a reviewed apply and a deploy:
+1. **Detecting the other provider:** from `api-data-history` entries (provider field; the latest applied entry per provider) in the SSP the merge is given. Apply the rules only when another provider already has an entry for the control.
+2. **Evidence:** when a second provider joins, rewrite as one section per provider, for example `=== Okta (target AEMGovAu, run 2026-11-10T00:37:20Z) ===` then the text, a blank line, `=== Cloudflare (target PROD_AEMGovAu, run ...) ===` then the text. Order: Okta then Cloudflare. Re-applying a provider replaces only its own section. Existing unlabelled evidence from the other provider (for example written by the CLI before sections existed) is wrapped as that provider's section, identified from history. Single-provider controls keep today's format. Per-section cap 32000 characters, whole text 64000 (truncate each section with a visible marker; do not drop a provider).
+3. **Testing Method:** one line per provider (your existing "Automated assessment: ... Okta ..." and "... (Cloudflare API snapshot) ..." lines), newline separated; re-applying replaces only that provider's line.
+4. **Implementation Status** (owner clarification replaces the earlier neutral-status assumption): for the control, take each provider's latest applied status (the new one for the provider being applied, the history for the others) and write the worst ASSESSED one. Rank 5 not-implemented, 4 ineffective, 3 partially-effective, 2 effective. `not-assessed` never beats an assessed status (the assessed one wins). If no provider gives an assessed status, today's behaviour stays (Okta "Not Assessed" keeps the existing value; Cloudflare "Not Assessed" is written as today). `not-applicable` from Guardian is NEVER written: the value already in the OSCAL report wins (this applies to every control, one provider or two; it is a change from today, where Guardian's Not Applicable overwrote the status). If another provider already set an assessed status and this one says Not Applicable, that assessed status stands.
+5. **Rest:** last applied wins for `testing-frequency` and `last-test-date`. History appended as today.
+6. **Behaviour to test:** Okta then Cloudflare and Cloudflare then Okta give the same status and the same section order; applying the same provider and run twice is idempotent; improving one provider's result later lowers the combined severity correctly because only the latest per provider counts; legacy unlabelled evidence; a Not Applicable result leaving the existing value untouched (single provider and two providers); Not Assessed versus an assessed status; truncation. Tell the owner and OSCAL when deployed; OSCAL will rerun its real-data gate and update any assertion that assumed last-wins.
+
+### Test receipt
+| Check | Result | Evidence type |
+| --- | --- | --- |
+| OSCAL code change | none needed | n/a |
+| Docs updated to describe the rule as pending Guardian's deploy | done | docs |
+| Real merge with the new rules | NOT done; Guardian to implement | n/a |
+
+### Rollback
+OSCAL: revert the docs paragraph. Guardian: revert the merge change (last-applied-wins returns).
+
 ## 2026-11-13: Ack of Guardian's Testing Method deploy; Jest downgrade fixed again (consumer gate unblocked)
 
 **Classification:** none (acknowledgement and OSCAL toolchain repair)

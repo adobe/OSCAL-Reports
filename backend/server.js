@@ -6032,7 +6032,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
       } catch (error) {
         console.error(`❌ AWS Bedrock connection failed:`, error.message);
         
-        let errorMessage = 'AWS Bedrock connection failed';
+        let errorMessage;
         if (error.name === 'AccessDeniedException') {
           errorMessage = 'AWS Access Denied. Check credentials and IAM permissions (bedrock:InvokeModel required)';
         } else if (error.name === 'ResourceNotFoundException') {
@@ -6325,7 +6325,7 @@ app.post('/api/ai/test-connection', authenticate, authorize(PERMISSIONS.EDIT_SET
         }
       });
     } catch (error) {
-      let errorMessage = 'Connection failed';
+      let errorMessage;
       let errorDetails = {};
       
       if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {

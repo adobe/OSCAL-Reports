@@ -355,11 +355,9 @@ export async function suggestControlImplementation(control, existingControls = [
     
     let aiUsed = false;
     let aiError = null;
-    let aiAttempted = false;
     
     try {
       console.log(`🤖 Attempting to generate implementation with AI for control: ${control.id}`);
-      aiAttempted = true;
       // Try AI generation (automatically routed to appropriate service)
       // Pass existing controls to learn writing style
       const aiResult = await generateImplementationWithAI(
@@ -421,7 +419,6 @@ export async function suggestControlImplementation(control, existingControls = [
       }
     } catch (error) {
       aiError = error.message;
-      aiAttempted = true;
       console.warn(`⚠️ AI generation failed for control ${control.id}, using fallback:`, error.message);
       // Fallback to template or generic implementation (truncate fallbacks since they're static)
       suggestions.implementation = templateImplementation ? truncateImplementationText(templateImplementation) : generateGenericImplementation(control);
@@ -453,7 +450,7 @@ export async function suggestControlImplementation(control, existingControls = [
       // Only add this message if AI actually generated the text (not template/fallback)
       cleanedReasoning.push(`Implementation text generated using AI Engine maintained by ${organizationName}`);
     } else {
-      // Only reachable when AI was attempted but did not produce text (aiAttempted is true on this path)
+      // Only reachable when AI was attempted but did not produce text
       // Include actual error so user can fix (e.g. "AWS credentials not configured", "Model not found")
       const shortError = typeof aiError === 'string' && aiError.length > 100 ? aiError.substring(0, 97) + '...' : (aiError || 'unknown');
       if (templateImplementation) {
@@ -462,7 +459,7 @@ export async function suggestControlImplementation(control, existingControls = [
         cleanedReasoning.push(`Using generic implementation (AI ${aiError.includes('unavailable') || aiError.includes('disabled') ? 'unavailable' : 'error'}: ${shortError})`);
       }
     }
-    // If aiAttempted is false, AI was disabled - don't mention AI at all
+    // When AI is disabled, AI is not mentioned at all
     
     // Update reasoning with cleaned version (only include what actually happened)
     // If no reasoning was added, add a default one
@@ -477,7 +474,7 @@ export async function suggestControlImplementation(control, existingControls = [
       suggestions.source = 'ai'; // AI Engine generated the implementation text
       suggestions.sourceLabel = 'AI Generated';
     } else {
-      // Only reachable when AI was attempted but did not produce text (aiAttempted is true on this path)
+      // Only reachable when AI was attempted but did not produce text
       suggestions.source = 'fallback'; // AI was attempted but failed, using fallback
       suggestions.sourceLabel = 'Template/Pattern (AI Unavailable)';
     }

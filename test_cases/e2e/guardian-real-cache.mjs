@@ -22,11 +22,32 @@ import { sha256Json } from '../../frontend/src/services/guardianLocalContract.js
 
 const check = (condition, message) => { if (!condition) { throw new Error(message); } };
 
+// Two-provider rules (owner decision 2026-11-13, implemented by Guardian's shared merge): for a control assessed by more
+// than one provider, the most negative ASSESSED status wins, and Evidence and Testing Method keep every provider.
+const STATUS_RANK = { 'not-implemented': 4, ineffective: 3, 'partially-effective': 2, effective: 1 };
+const PROVIDER_LABEL = { okta: 'Okta', cloudflare: 'Cloudflare' };
+const kebab = value => String(value).toLowerCase().trim().replace(/\s+/g, '-');
+// Latest assessment-history entry per provider other than `provider`, as the report held it before this apply.
+const historyOthers = (row, provider) => {
+  let history = [];
+  try { history = JSON.parse((row?.props || []).find(prop => prop.name === 'api-data-history')?.value || '[]'); } catch { history = []; }
+  const latest = new Map();
+  for (const entry of Array.isArray(history) ? history : []) {
+    const name = String(entry?.provider || '').toLowerCase();
+    if (name && name !== provider) { latest.set(name, entry); }
+  }
+  return [...latest].map(([name, entry]) => ({ provider: name, targetId: entry.targetId, status: entry.status ? kebab(entry.status) : null }));
+};
+const worstAssessed = statuses => statuses.filter(status => STATUS_RANK[status])
+  .sort((left, right) => STATUS_RANK[right] - STATUS_RANK[left])[0];
+
 // Fetches, previews, validates and applies each target in turn to a copy of the source report.
 // Returns the receipts and the final candidate; the source is never modified.
 async function runTargets(service, session, targets, source) {
   let current = globalThis.structuredClone(source);
   const receipts = [];
+  // Controls already applied by an earlier provider: controlId -> [{ provider, targetId, runId, status }]
+  const earlier = new Map();
   for (const target of targets) {
     const runs = [];
     let nextToken;
@@ -56,6 +77,7 @@ async function runTargets(service, session, targets, source) {
     const sourceRows = current['system-security-plan']['control-implementation']['implemented-requirements'];
     const candidateRows = candidate['system-security-plan']['control-implementation']['implemented-requirements'];
     const changed = new Set(preview.changes.map(change => change.controlId.toLowerCase()));
+    const rowsBefore = new Map(sourceRows.map(row => [row['control-id'].toLowerCase(), row]));
     for (let index = 0; index < sourceRows.length; index++) {
       check(sourceRows[index].description === candidateRows[index].description, 'A real-data preview changed a narrative.');
       if (!changed.has(sourceRows[index]['control-id'].toLowerCase())) {
@@ -76,13 +98,45 @@ async function runTargets(service, session, targets, source) {
       check(control.evidence.includes(change.controlId), `${change.controlId}: evidence was not populated.`);
       check(control.testingProcedure.includes(selection.runId) && control.testingProcedure.includes(selection.targetId),
         `${change.controlId}: testing procedure does not name the run and target.`);
+      const applied = (earlier.get(key) || []).filter(entry => entry.provider !== target.provider);
+      // Other providers' latest results: those applied earlier in this run, and those the report already held in its history.
+      const fromHistory = historyOthers(rowsBefore.get(key), target.provider).filter(entry => !applied.some(a => a.provider === entry.provider));
+      const others = [...applied, ...fromHistory];
+      for (const other of fromHistory) {
+        check(control.evidence.includes(`=== ${PROVIDER_LABEL[other.provider] || other.provider} (`),
+          `${change.controlId}: evidence has no labelled section for the provider already in the report history.`);
+      }
+      for (const other of applied) {
+        // Amended, not replaced: the other provider's data must still be there next to this provider's.
+        check(control.evidence.includes(`=== ${PROVIDER_LABEL[other.provider]} (target ${other.targetId}, run `) &&
+          control.evidence.includes(`=== ${PROVIDER_LABEL[target.provider]} (target ${target.targetId}, run `),
+        `${change.controlId}: evidence does not hold a labelled section for each provider.`);
+        check(control.testingProcedure.includes(other.targetId) && control.testingProcedure.includes(target.targetId),
+          `${change.controlId}: testing method does not keep both providers.`);
+      }
       check(control.testingFrequency.trim() !== '' && control.lastTestDate.trim() !== '', `${change.controlId}: test frequency or date is empty.`);
       check(String(control.apiDataHistory.at(-1)?.source || '').includes(selection.runId),
         `${change.controlId}: the newest API data history entry is not from this run.`);
-      // A Not Assessed finding deliberately keeps the existing status; any other status must be applied.
-      if (String(finding.status).toLowerCase() !== 'not assessed') {
-        check(control.status === String(finding.status).toLowerCase().replace(/\s+/g, '-'), `${change.controlId}: status was not applied.`);
+      // An assessed status is the most negative of the providers' latest assessed results (for one provider, its own).
+      // Not Assessed never beats an assessed status. Not Applicable is never written: the report's own value, or another
+      // provider's assessed status, stands (the cached data currently holds no Not Applicable result).
+      const own = kebab(finding.status);
+      const existing = (rowsBefore.get(key)?.props || []).find(prop => prop.name === 'implementation-status')?.value;
+      const otherAssessed = worstAssessed(others.map(entry => entry.status));
+      if (STATUS_RANK[own]) {
+        const expected = worstAssessed([own, ...others.map(entry => entry.status)]);
+        check(control.status === expected, `${change.controlId}: status ${control.status} is not the most negative assessed status (${expected}).`);
+      } else if (own === 'not-applicable') {
+        const expected = otherAssessed || (existing ? kebab(existing) : 'not-assessed');
+        check(control.status === expected, `${change.controlId}: Not Applicable changed the status (${control.status}; the report's value ${expected} must win).`);
+      } else if (own === 'not-assessed' && otherAssessed) {
+        check(control.status === otherAssessed, `${change.controlId}: Not Assessed overrode an assessed status.`);
       }
+    }
+    for (const change of preview.changes) {
+      const key = change.controlId.toLowerCase();
+      earlier.set(key, [...(earlier.get(key) || []).filter(entry => entry.provider !== target.provider),
+        { provider: target.provider, targetId: target.targetId, runId: selection.runId, status: kebab(findingFor.get(key).status) }]);
     }
     receipts.push({ provider: target.provider, runId: selection.runId, findings: result.assessment.findings.length,
       eligibleControls: projection['system-security-plan']['control-implementation']['implemented-requirements'].length,
@@ -169,7 +223,6 @@ async function main() {
   ]);
   const originalBytes = await fs.readFile(sourcePath);
   const source = JSON.parse(originalBytes);
-  let current = globalThis.structuredClone(source);
   const originalHash = await sha256Json(source);
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = { ...pair.publicKey.export({ format: 'jwk' }), kid: 'oscal-local-test', alg: 'RS256', use: 'sig' };
@@ -222,7 +275,7 @@ async function main() {
     check((await service.status(session)).ready, 'Real-cache gateway capabilities were not ready.');
     const okta = await runTargets(service, session, targets, source);
     const { receipts } = okta;
-    current = okta.current;
+    const current = okta.current;
     const authentik = await authentikPass(checkout, source, okta.current);
     check(await sha256Json(source) === originalHash && (await fs.readFile(sourcePath)).equals(originalBytes),
       'The original user-supplied report was changed.');
