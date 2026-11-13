@@ -69,15 +69,15 @@
         "Generic_OIDC": {
           "enabled": true,
           "displayName": "Generic SSO",
-          "issuerUrl": "https://sso.keekar.au/application/o/oscal-report-generator/",
-          "discoveryUrl": "https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration",
+          "issuerUrl": "https://sso.example.com/application/o/oscal-report-generator/",
+          "discoveryUrl": "https://sso.example.com/application/o/oscal-report-generator/.well-known/openid-configuration",
           "clientId": "oscal-report-generator",
           "clientSecret": {
             "_cfgenc": "v1$095g0fKeTFi-_TuymiAdfQ$jABBWg8eIcok1p0U$MpvcOd9MNCfad6Za0oq1Kw$-9927d1Q6Y-2zlmY6Bea-gRVSaTL6JpbTFkIkoXY4g"
           },
           "callbackPath": "/auth/callback",
           "scope": "openid profile email groups",
-          "endSessionUrl": "https://sso.keekar.au/application/o/oscal-report-generator/end-session/",
+          "endSessionUrl": "https://sso.example.com/application/o/oscal-report-generator/end-session/",
           "redirectUriPatterns": [
             { "matchingMode": "strict", "url": "http://localhost:3021/auth/callback" },
             { "matchingMode": "strict", "url": "http://127.0.0.1:3020/auth/callback" },

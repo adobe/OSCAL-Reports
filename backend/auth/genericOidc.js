@@ -85,6 +85,49 @@ export function verifySignedOidcState(state, clientSecret) {
 }
 
 /** Strip trailing slashes in linear time. */
+/**
+ * Single source for the Generic SSO (Authentik) URLs: everything derives from the one issuer, which must be https,
+ * end with "/" and carry no credentials, query or fragment. Returns null when the issuer is unusable.
+ */
+export function genericSsoUrlsFromIssuer(issuer) {
+  try {
+    const url = new URL(typeof issuer === 'string' ? issuer.trim() : '');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/')) {
+      return null;
+    }
+    const base = url.href;
+    return {
+      issuerUrl: base,
+      discoveryUrl: `${base}.well-known/openid-configuration`,
+      endSessionUrl: `${base}end-session/`,
+      jwksUrl: `${base}jwks/`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Scope sent to the IdP at sign-in: the saved scope, plus the Guardian scope when the Guardian assessment feature is
+ * enabled and OSCAL_GUARDIAN_GENERIC_SSO_SCOPE is a single plain scope name. Saves a manual step and keeps the two in step.
+ */
+export function genericAuthorizeScope(configured, env = process.env) {
+  const base = (configured || 'openid profile email').trim();
+  const extra = (env.OSCAL_GUARDIAN_GENERIC_SSO_SCOPE || '').trim();
+  if (env.OSCAL_GUARDIAN_ASSESSMENTS_ENABLED !== 'true' || !/^[A-Za-z0-9:._-]+$/.test(extra)) { return base; }
+  const tokens = base.split(/\s+/).filter(Boolean);
+  return tokens.includes(extra) ? base : [...tokens, extra].join(' ');
+}
+
+/** Sanitised OIDC scope list for the Generic provider: must include openid; otherwise the existing value is kept. */
+export function normalizeGenericOidcScope(value, fallback) {
+  if (typeof value !== 'string') { return fallback; }
+  const tokens = value.split(/ +/).filter(Boolean);
+  const valid = tokens.length > 0 && tokens.includes('openid') && value.length <= 256 &&
+    tokens.every(token => /^[A-Za-z0-9:._-]+$/.test(token));
+  return valid ? tokens.join(' ') : fallback;
+}
+
 export function stripTrailingSlashes(str) {
   if (str == null || typeof str !== 'string') return '';
   let end = str.length;
@@ -174,20 +217,104 @@ export function resolveGenericOidcRedirectUri(req, provider) {
   return stripTrailingSlashes(`${proto}://${hostForCallback}${pathPart}`);
 }
 
+const TLS_ERROR_CODES = new Set([
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN', 'ERR_TLS_CERT_ALTNAME_INVALID', 'CERT_UNTRUSTED',
+]);
+
+// The real system error can sit on the error, on its cause, or on the first error of an AggregateError
+// (Node tries each address of a host in turn).
+function systemErrorCode(err) {
+  for (const candidate of [err, err?.cause, ...(Array.isArray(err?.errors) ? err.errors : [])]) {
+    if (typeof candidate?.code === 'string' && candidate.code) return candidate.code;
+  }
+  return '';
+}
+
+/**
+ * Classify a failed discovery request by what actually went wrong. Nothing here is ever reported as a configuration
+ * problem: a request that could not complete is a reachability problem, and a certificate problem is reported as such.
+ * @param {unknown} err
+ * @param {string} host
+ * @returns {{ kind: 'unreachable'|'tls', code: string, host: string }}
+ */
+export function classifyDiscoveryError(err, host = '') {
+  const code = systemErrorCode(err) || 'UNKNOWN';
+  return { kind: TLS_ERROR_CODES.has(code) ? 'tls' : 'unreachable', code, host };
+}
+
+/**
+ * Name the first Generic SSO setting that is missing, or null when sign-in can be attempted.
+ * @returns {'oauth-disabled'|'provider-missing'|'provider-disabled'|'client-id'|'discovery-url'|'client-secret'|null}
+ */
+export function diagnoseGenericOidcConfig(oauth, provider, clientSecret) {
+  if (!oauth?.enabled) return 'oauth-disabled';
+  if (!provider) return 'provider-missing';
+  if (!provider.enabled) return 'provider-disabled';
+  if (!provider.clientId?.trim()) return 'client-id';
+  if (!provider.discoveryUrl?.trim()) return 'discovery-url';
+  if (!clientSecret) return 'client-secret';
+  return null;
+}
+
+const LOGIN_ERROR_CODES = new Set([
+  'generic_oidc_not_configured', 'generic_oidc_redirect_not_allowed', 'generic_oidc_unreachable',
+  'generic_oidc_tls', 'generic_oidc_discovery_failed', 'generic_oidc_discovery_invalid',
+]);
+const SAFE_FIELD = {
+  host: /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/,
+  detail: /^[A-Z][A-Z0-9_]{1,59}$/,
+  status: /^[1-5][0-9]{2}$/,
+  missing: /^[a-z][a-z-]{1,30}$/,
+  redirect: /^https?:\/\/[A-Za-z0-9.:[\]-]{1,200}(\/[A-Za-z0-9._~/-]{0,100})?$/,
+};
+
+/**
+ * Map a discovery failure from probeOidcDiscovery to the error the login page reports.
+ * @param {{ kind?: string, code?: string, httpStatus?: number, host?: string }|undefined} failure
+ */
+export function discoveryFailureToLoginError(failure) {
+  const host = failure?.host || '';
+  switch (failure?.kind) {
+    case 'tls': return { code: 'generic_oidc_tls', host, detail: failure.code };
+    case 'http': return { code: 'generic_oidc_discovery_failed', host, status: failure.httpStatus };
+    case 'no-authorization-endpoint': return { code: 'generic_oidc_discovery_invalid', host };
+    case 'invalid-url': return { code: 'generic_oidc_not_configured', missing: 'discovery-url' };
+    default: return { code: 'generic_oidc_unreachable', host, detail: failure?.code || 'UNKNOWN' };
+  }
+}
+
+/**
+ * Query string for the redirect back to the login page. Only values that match a strict pattern are included, so the
+ * page can show the real reason without echoing anything an attacker could shape.
+ * @param {{ code: string, host?: string, detail?: string, status?: number|string, missing?: string, redirect?: string }} failure
+ */
+export function genericOidcLoginErrorQuery(failure) {
+  const params = new URLSearchParams();
+  params.set('error', LOGIN_ERROR_CODES.has(failure?.code) ? failure.code : 'generic_oidc_not_configured');
+  for (const [field, pattern] of Object.entries(SAFE_FIELD)) {
+    const value = failure?.[field];
+    if (value != null && pattern.test(String(value))) params.set(field, String(value));
+  }
+  return params.toString();
+}
+
 /**
  * @param {string} discoveryUrl
  * @param {boolean} [tlsRelaxed]
- * @returns {Promise<{ discovery: Object|null, error?: string }>}
+ * @returns {Promise<{ discovery: Object|null, error?: string, failure?: { kind: string, code?: string, httpStatus?: number, host: string } }>}
  */
 export async function probeOidcDiscovery(discoveryUrl, tlsRelaxed = false) {
   const url = (discoveryUrl || '').trim();
   if (!url) {
-    return { discovery: null, error: 'Discovery URL is empty' };
+    return { discovery: null, error: 'Discovery URL is empty', failure: { kind: 'invalid-url', host: '' } };
   }
   const validation = await validateUrl(url, { allowPrivateIPs: true, allowLocalhost: true });
   if (!validation.valid) {
-    return { discovery: null, error: validation.error || 'Discovery URL failed validation' };
+    return { discovery: null, error: validation.error || 'Discovery URL failed validation', failure: { kind: 'invalid-url', host: '' } };
   }
+  let host = '';
+  try { host = new URL(validation.url).hostname; } catch (_) { host = ''; }
   try {
     const res = await axios.get(
       validation.url,
@@ -209,6 +336,9 @@ export async function probeOidcDiscovery(discoveryUrl, tlsRelaxed = false) {
     return {
       discovery: null,
       error: `Discovery URL returned HTTP ${res.status} or missing authorization_endpoint`,
+      failure: res.status === 200
+        ? { kind: 'no-authorization-endpoint', host }
+        : { kind: 'http', httpStatus: res.status, host },
     };
   } catch (err) {
     const code = err?.code || '';
@@ -221,7 +351,7 @@ export async function probeOidcDiscovery(discoveryUrl, tlsRelaxed = false) {
     ) {
       detail = `${msg}. The IdP may be serving an incomplete TLS chain. Enable Generic_OIDC.tlsRelaxed in config or set OSCAL_GENERIC_OIDC_TLS_RELAXED=1, or fix the full certificate chain on the IdP.`;
     }
-    return { discovery: null, error: detail };
+    return { discovery: null, error: detail, failure: classifyDiscoveryError(err, host) };
   }
 }
 

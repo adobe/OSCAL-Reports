@@ -179,7 +179,7 @@ The application is an **OAuth 2.0 / OIDC client only**. It does **not** call IdP
 
 **Button behaviour:** The Generic SSO label is **hardcoded** as `"Sign in with Generic SSO"` in `Login.jsx`. The `displayName` field from config (default `"Generic SSO"`) is shown in **Settings → SSO Integration** but **not** on the login button. Okta uses dynamic `displayName` on its button — porters may wire `genericProvider.displayName` the same way if desired.
 
-**Error handling on login page:** Query param `?error=generic_oidc_not_configured` shows: *"Generic SSO is not configured or the redirect URI is not allowed for this host."*
+**Error handling on login page:** when sign-in cannot start, the authorize route redirects back to the login page with the **actual reason** in the query string, and `frontend/src/utils/loginErrors.js` builds the message from those facts. Only values that match a strict pattern are used (host name, system error code, HTTP status, setting name, callback address), so nothing an attacker could shape is printed. The error codes are listed under [Troubleshooting](#generic-sso-generic_oidc).
 
 ### Backend implementation
 
@@ -233,12 +233,14 @@ The application is an **OAuth 2.0 / OIDC client only**. It does **not** call IdP
 
 Provider block: `ssoConfig.oauth.providers.Generic_OIDC` in `config/app/config.json`. See **`config/app/config.json.example`** for the full default.
 
+**Where the identity host is defined (single source).** Set `OSCAL_GENERIC_SSO_ISSUER` (exact issuer, ends with `/`) and `OSCAL_GENERIC_SSO_CLIENT_ID` in the backend environment (`.env` locally, `environment:` in Docker). They override the saved provider's issuer, discovery and end-session URLs and client ID at runtime, and Guardian's token verification reads the same two variables (JWKS is `<issuer>jwks/`). Nothing deployment-specific is shipped as a default any more; if the variables are unset the values saved in `config.json` are used, so existing deployments keep working. The Authentik URL layout (`.well-known/openid-configuration`, `end-session/`, `jwks/`) is assumed; override Guardian's JWKS with `OSCAL_GUARDIAN_GENERIC_SSO_JWKS_URL` if an IdP differs.
+
 **Placeholder table (for other projects):**
 
 | Placeholder | OSCAL example |
 |-------------|---------------|
 | `PROVIDER_ID` | `Generic_OIDC` |
-| `DISCOVERY_URL` | `https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration` |
+| `DISCOVERY_URL` | `<issuer>.well-known/openid-configuration` (derived from `OSCAL_GENERIC_SSO_ISSUER`, e.g. `https://sso.example.com/application/o/oscal-report-generator/`) |
 | `CLIENT_ID` | `oscal-report-generator` |
 | `CALLBACK_PATH` | `/auth/callback` |
 | `SCOPE` | `openid profile email groups` |
@@ -544,7 +546,12 @@ The app reads groups from the **userinfo** response and from the **access token*
 
 | Issue | What to check |
 |-------|----------------|
-| **"Generic SSO is not configured or the redirect URI is not allowed"** (`?error=generic_oidc_not_configured`) | Enable `ssoConfig.oauth.enabled` and `providers.Generic_OIDC.enabled`; set `clientId`, `discoveryUrl`, and resolvable `clientSecret`. Ensure current host's callback URL matches an entry in `redirectUriPatterns`. |
+| **"Could not reach the SSO server `<host>`: … (`<system error>`)"** (`?error=generic_oidc_unreachable&host=…&detail=…`) | A **reachability** problem, not configuration: the OSCAL server could not connect to the identity provider. `detail` is the real system error: `EHOSTUNREACH` (no route to the host), `ECONNREFUSED` (refused), `ENOTFOUND` (name not resolved), `ETIMEDOUT` (timed out), `ENETUNREACH`. Check the OSCAL server's network, VPN, DNS (including split-horizon DNS that returns a LAN address) and any firewall or endpoint-security rule for the **server process**; test with `node` from the same machine, not only `curl` or a browser. |
+| **"The certificate of the SSO server … could not be verified"** (`?error=generic_oidc_tls`) | The IdP's certificate chain is incomplete, expired or for another name. See `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` below. |
+| **"The SSO server … answered with HTTP `<status>`"** (`?error=generic_oidc_discovery_failed`) | The server was reached but did not return its sign-in configuration. Check the discovery URL path and that the application exists at the IdP. |
+| **"… responded, but its configuration has no authorization endpoint"** (`?error=generic_oidc_discovery_invalid`) | The discovery URL returns something that is not OpenID Connect metadata. |
+| **"Generic SSO is not configured: `<what is missing>`"** (`?error=generic_oidc_not_configured&missing=…`) | `missing` names the one setting at fault: `oauth-disabled` (`ssoConfig.oauth.enabled`), `provider-missing`, `provider-disabled` (`providers.Generic_OIDC.enabled`), `client-id`, `discovery-url` or `client-secret` (not set or could not be decrypted or read). |
+| **"The sign-in callback address `<uri>` is not in the allowed redirect list"** (`?error=generic_oidc_redirect_not_allowed&redirect=…`) | The callback address derived from the browser's host is not in `redirectUriPatterns`. Add it, or sign in from an allowed address. |
 | Button not shown on login page | `GET /api/auth/sso/login-providers` must return `Generic_OIDC`. Check enabled flags and non-empty client ID, discovery URL, secret. |
 | **Redirect URI not allowed** | Add strict or regex pattern for `{scheme}://{host}{port}/auth/callback` in `redirectUriPatterns`. Authorize and exchange both validate the URI. |
 | **`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`** (discovery/token) | IdP TLS chain incomplete for Node/OpenSSL. Fix chain on reverse proxy, or set `tlsRelaxed: true` / `OSCAL_GENERIC_OIDC_TLS_RELAXED=1` (homelab only). See [TLS and tlsRelaxed](#tls-and-tlsrelaxed-1721). |

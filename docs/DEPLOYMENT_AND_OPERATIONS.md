@@ -182,6 +182,12 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### Generic SSO and Guardian settings
+
+Issuer, client ID and the Guardian assessment settings are passed as environment variables from a filled-in copy of
+[`.env.docker.example`](../.env.docker.example). See [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md)
+for the templates, variable reference, Compose / TrueNAS / `docker run` usage and verification steps.
+
 ### Configuration Persistence
 
 **IMPORTANT**: Always mount the config directory to persist user data:

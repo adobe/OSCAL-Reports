@@ -35,6 +35,7 @@ export function registerGuardianRoutes(app, authenticate, service = guardianServ
           'service.name': 'oscal-report-generator', severity: 'WARN',
           'event.action': 'guardian_assessment', 'event.outcome': 'failure',
           reason: known ? error.code : 'guardian_unavailable',
+          ...(known && error.upstreamStatus ? { 'http.response.status_code': error.upstreamStatus } : {}),
         }));
         res.status(known ? error.status : 503).json({
           code: known ? error.code : 'guardian_unavailable',

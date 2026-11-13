@@ -78,7 +78,9 @@ export function readGuardianConfig(env = process.env) {
 export async function publicHttpsRequest(options) {
   const url = httpsUrl(options.url);
   const addresses = await lookup(url.hostname, { all: true });
-  if (!addresses.length || addresses.some(({ address }) => ipaddr.process(address).range() !== 'unicast')) { throw unavailable(); }
+  if (!addresses.length || addresses.some(({ address }) => ipaddr.process(address).range() !== 'unicast')) {
+    throw Object.assign(unavailable(), { reason: 'host_not_public' });
+  }
   const address = addresses[0];
   const agent = new https.Agent({ lookup: (_host, _options, callback) => {
     if (_options?.all) { callback(null, [address]); }

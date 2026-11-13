@@ -212,18 +212,22 @@ EOF
 # DEPENDENCY UPDATES
 # ============================================================================
 
-# Pull the latest dependency versions across all workspaces before bumping the
-# app version. '--force' can apply breaking (major) upgrades, so this runs first
-# and the release is expected to be re-tested afterwards.
+# Apply npm's non-breaking security fixes across all workspaces before bumping the app version. The default is the
+# plain 'npm audit fix'. 'npm audit fix --force' applies breaking (major) upgrades and twice downgraded the backend
+# dev dependency Jest from 30 to 25 (breaking the test suite), so it is opt-in: BUMP_VERSION_AUDIT_FORCE=1.
 run_dependency_updates() {
-  print_warning "'npm audit fix --force' may apply breaking (major) upgrades — re-run the test suites after this release."
+  local audit_cmd="npm audit fix"
+  if [ "${BUMP_VERSION_AUDIT_FORCE:-0}" = "1" ]; then
+    audit_cmd="npm audit fix --force"
+    print_warning "'npm audit fix --force' may apply breaking (major) upgrades (and has downgraded Jest) - re-run the test suites after this release."
+  fi
 
   local dirs=("." "backend" "frontend" "test_cases/backend")
   local dir
   for dir in "${dirs[@]}"; do
     if [ -f "$dir/package.json" ]; then
-      print_info "npm audit fix --force in: $dir"
-      ( cd "$dir" && npm audit fix --force ) || print_warning "npm audit fix --force reported issues in $dir (continuing)"
+      print_info "$audit_cmd in: $dir"
+      ( cd "$dir" && $audit_cmd ) || print_warning "$audit_cmd reported issues in $dir (continuing)"
       print_success "Dependencies processed: $dir"
     else
       print_warning "No package.json in $dir (skipping)"
@@ -302,9 +306,9 @@ fi
 
 echo ""
 if [ "${BUMP_VERSION_SKIP_DEPENDENCY_UPDATES:-0}" = "1" ]; then
-  print_info "Skipping npm audit fix --force (BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1)."
+  print_info "Skipping npm audit fix (BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1)."
 else
-  print_header "Updating Dependencies (npm audit fix --force)"
+  print_header "Updating Dependencies (npm audit fix)"
   # Refresh dependencies to their latest fixed versions before bumping the app version.
   run_dependency_updates
 fi
@@ -357,7 +361,7 @@ else
 
   # Check if git is available and we're in a git repository
   if command -v git &> /dev/null && [ -d .git ]; then
-  # Stage changes (including lock files updated by npm audit fix --force)
+  # Stage changes (including lock files)
   git add package.json backend/package.json frontend/package.json test_cases/backend/package.json \
     package-lock.json backend/package-lock.json frontend/package-lock.json test_cases/backend/package-lock.json \
     docs/CHANGELOG.md .validation/learnings.json 2>/dev/null || true
@@ -373,7 +377,7 @@ Updated files:
 - backend/package.json
 - frontend/package.json
 - test_cases/backend/package.json
-- package-lock.json (+ backend/frontend/test_cases lock files via npm audit fix --force)
+- package-lock.json (+ backend/frontend/test_cases lock files, versions only)
 - docs/CHANGELOG.md"
   
   git commit -m "$COMMIT_MESSAGE" 2>/dev/null || print_warning "No changes to commit (files may be unchanged)"

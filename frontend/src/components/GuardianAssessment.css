@@ -48,6 +48,25 @@
   font-weight: 600;
 }
 
+.guardian-page-nav {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 auto 0.5rem;
+  max-width: 1100px;
+}
+
+/* One blank line after the "selectors stay disabled" note. */
+.guardian-assessment-disabled-note {
+  margin-bottom: 2.5em;
+  margin-bottom: 2lh;
+}
+
+/* Two blank lines between the report summary and the source group. */
+.guardian-assessment-source {
+  margin-top: 3em;
+  margin-top: 2lh;
+}
+
 .guardian-assessment-legend {
   font-weight: 700;
   font-size: calc(1em + 1.5pt);

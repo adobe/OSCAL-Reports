@@ -7,9 +7,10 @@ import fs from 'node:fs';
 import express from '../../../backend/node_modules/express/index.js';
 import request from '../../../backend/node_modules/supertest/index.js';
 import { createGuardianAssessmentService, readGuardianAssessmentConfig,
-  registerLocalDevAuthorization, privilegedIdentity, readGenericSsoConfig } from '../../../backend/guardianAssessments.js';
+  registerLocalDevAuthorization, privilegedIdentity, readGenericSsoConfig, genericTokenExpiry } from '../../../backend/guardianAssessments.js';
 import { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } from '../../../backend/node_modules/jose/dist/webapi/index.js';
-import { retainDelegatedToken as retainToken } from '../../../backend/auth/delegatedTokens.js';
+import { publicHttpsRequest } from '../../../backend/guardianService.js';
+import { retainDelegatedToken as retainToken, getDelegatedToken } from '../../../backend/auth/delegatedTokens.js';
 import { recordIdpIdentity } from '../../../backend/auth/idpIdentity.js';
 import { guardianDownloadName } from '../../../frontend/src/utils/guardianRevisions.js';
 import { guardianJsonMiddleware, registerGuardianRoutes } from '../../../backend/guardianRoutes.js';
@@ -199,7 +200,8 @@ describe('consumer assessment and stateless preview validation', () => {
     expect(await validateGuardianPreview(body, source, body.assessmentHash)).toBe(body);
     expect(JSON.stringify(source)).toBe(original);
     if (process.env.GUARDIAN_ACCEPTANCE_REPORT) {
-      expect(rows).toHaveLength(1035);
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows).toHaveLength(source['system-security-plan']['control-implementation']['implemented-requirements'].length);
       expect(Buffer.byteLength(original)).toBeGreaterThan(5 * 1024 * 1024 - 100000);
     }
     rows[0].description = 'Unauthorized narrative replacement';
@@ -306,6 +308,185 @@ describe('Generic SSO (Authentik) access-token path', () => {
     expect(upstreamCall).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['scope_missing', { scope: 'openid' }, {}],
+    ['groups_claim_missing', { groups: undefined }, {}],
+    ['no_privileged_group', { groups: ['Other'] }, {}],
+    ['jwt_ERR_JWT_CLAIM_VALIDATION_FAILED_aud', {}, { aud: 'another-client' }],
+    ['jwt_ERR_JWT_CLAIM_VALIDATION_FAILED_iss', {}, { iss: 'https://evil.example.test/' }],
+  ])('names a safe reason (%s) when retaining a rejected token, never the token', async (reason, claims, options) => {
+    const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys });
+    const session = genericSession(['OSCAL_Platform Admin']);
+    session.createdAt = Date.now();
+    const token = await sign(claims, options);
+    const error = await service.retainGenericSso(session, { access_token: token, token_type: 'Bearer', expires_in: 600 })
+      .then(() => null, caught => caught);
+    expect(error.reason).toBe(reason);
+    expect(JSON.stringify([error.reason, error.message])).not.toContain(token.slice(0, 20));
+  });
+
+  it.each([
+    ['500 with a Guardian error body', { status: 500, data: { status: 'error', message: 'Authorizer could not fetch signing keys' } },
+      'Guardian assessment service reported an internal error (HTTP 500: Authorizer could not fetch signing keys).'],
+    ['502 with no body', { status: 502, data: '' }, 'Guardian assessment service returned a bad gateway response (HTTP 502).'],
+    ['504 with no usable body', { status: 504, data: '<html>Gateway timeout</html>' }, 'Guardian assessment service timed out (HTTP 504).'],
+    ['500 with a hostile message', { status: 500, data: { status: 'error', message: '<script>alert(1)</script>' } },
+      'Guardian assessment service reported an internal error (HTTP 500).'],
+    ['415 with an over-long message', { status: 415, data: { status: 'error', message: 'x'.repeat(500) } },
+      'Guardian assessment request failed (HTTP 415).'],
+  ])('shows the HTTP status Guardian answered for an untranslated failure: %s', async (_name, response, expected) => {
+    const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys,
+      request: async () => response });
+    const session = genericSession(['OSCAL_Platform Admin']);
+    session.createdAt = Date.now();
+    retainToken(session, await sign(), Date.now() + 60000);
+    expect(await service.status(session)).toMatchObject({ ready: false, code: 'guardian_assessment_request_failed', message: expected });
+  });
+
+  it('keeps a Generic SSO token only for the 10 minutes Guardian accepts, never past its own expiry or the session', () => {
+    const now = 1_000_000_000_000;
+    const base = { payload: { iat: now / 1000 - 120, exp: now / 1000 + 3600 }, lifetimeSeconds: 3600, sessionCreatedAt: now - 1000, now };
+    expect(genericTokenExpiry(base)).toBe(now - 120_000 + 600_000 - 5000);
+    expect(genericTokenExpiry({ ...base, payload: { iat: now / 1000 - 10, exp: now / 1000 + 60 } })).toBe(now + 60_000);
+    expect(genericTokenExpiry({ ...base, lifetimeSeconds: 30 })).toBe(now + 30_000);
+    expect(genericTokenExpiry({ ...base, sessionCreatedAt: now - 86_400_000 + 5000 })).toBe(now + 5000);
+  });
+
+  it('tells a Generic SSO user to sign in again within 10 minutes when Guardian rejects the token, not to use Okta', async () => {
+    const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys,
+      request: async () => ({ status: 401, data: { status: 'error', message: 'invalid token' } }) });
+    const session = genericSession(['OSCAL_Platform Admin']);
+    session.createdAt = Date.now();
+    retainToken(session, await sign(), Date.now() + 60000);
+    const result = await service.status(session);
+    expect(result).toMatchObject({ ready: false, code: 'guardian_assessment_request_failed' });
+    expect(result.message).toContain('Generic SSO');
+    expect(result.message).toContain('10 minutes');
+    expect(result.message).not.toContain('Okta');
+  });
+
+  it('asks for a fresh Generic SSO sign-in within 10 minutes when no token is retained', async () => {
+    const { result } = await run(null);
+    expect(result.message).toContain('10 minutes');
+  });
+
+  describe('signing-key fetch problems are named, not hidden as a generic rejection', () => {
+    const retainWith = async (keysFailure) => {
+      const failing = async () => { throw keysFailure; };
+      const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys: failing });
+      const session = genericSession(['OSCAL_Platform Admin']);
+      session.createdAt = Date.now();
+      const error = await service.retainGenericSso(session, { access_token: await sign(), token_type: 'Bearer', expires_in: 600 })
+        .then(() => null, caught => caught);
+      return { error, status: await service.status(session) };
+    };
+
+    it('refuses a non-public address for the key host with a distinct reason', async () => {
+      await expect(publicHttpsRequest({ url: 'https://localhost/jwks' })).rejects.toMatchObject({ reason: 'host_not_public' });
+    });
+
+    it('explains a non-public key host to the user and logs jwks_host_not_public', async () => {
+      const blocked = await publicHttpsRequest({ url: 'https://localhost/jwks' }).catch(error => error);
+      const { error, status } = await retainWith(blocked);
+      expect(error.reason).toBe('jwks_host_not_public');
+      expect(status.message).toContain('non-public address');
+      expect(status.message).toContain('DNS');
+    });
+
+    it('explains an unreachable key host and logs jwks_unreachable', async () => {
+      const { error, status } = await retainWith(Object.assign(new Error('connect failed'), { code: 'ECONNREFUSED' }));
+      expect(error.reason).toBe('jwks_unreachable');
+      expect(status.message).toContain('could not reach');
+    });
+
+    it('keeps the generic reason for other failures', async () => {
+      expect((await retainWith(new Error('boom'))).error.reason).toBe('token_rejected');
+    });
+  });
+
+  describe('Authentik access-token lifetime versus Guardian\'s limit', () => {
+    const signLifetime = (lifetime) => new SignJWT({ scope: 'openid guardian-assessment:read', groups: ['OSCAL_Platform Admin'] })
+      .setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(genericConfig.issuer).setAudience(genericConfig.audience)
+      .setSubject('sso-user').setIssuedAt().setExpirationTime(`${lifetime}s`).sign(pair.privateKey);
+    const retain = async (lifetime, env = {}) => {
+      const previous = { ...process.env };
+      Object.assign(process.env, env);
+      try {
+        const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys });
+        const session = genericSession(['OSCAL_Platform Admin']);
+        session.createdAt = Date.now();
+        const token = await signLifetime(lifetime);
+        const error = await service.retainGenericSso(session, { access_token: token, token_type: 'Bearer', expires_in: lifetime })
+          .then(() => null, caught => caught);
+        return { service, session, error, retained: getDelegatedToken(session) === token };
+      } finally { process.env = previous; }
+    };
+
+    it('does not keep a token whose lifetime exceeds the limit, and tells the user the numbers', async () => {
+      const { service, session, error, retained } = await retain(3600);
+      expect(error.reason).toBe('lifetime_too_long');
+      expect(retained).toBe(false);
+      const status = await service.status(session);
+      expect(status.message).toContain('3600 seconds');
+      expect(status.message).toContain('600 seconds');
+      expect(status.message).toContain('Access token validity');
+    });
+
+    it('keeps a token at the limit, and one longer when the owner raises the limit', async () => {
+      expect((await retain(600)).retained).toBe(true);
+      expect((await retain(3600, { OSCAL_GUARDIAN_GENERIC_SSO_MAX_TOKEN_AGE_SECONDS: '3600' })).retained).toBe(true);
+    });
+
+    it('logs which access-token groups match the privileged phrase and the configured targets (names only, never the token)', async () => {
+      const info = jest.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const granted = { ...config, targets: [{ ...config.targets[0], groups: ['OSCAL_Platform Admin'] }] };
+        const service = createGuardianAssessmentService({ readConfig: () => granted, readGenericSso: () => genericConfig, keys });
+        const session = genericSession(['OSCAL_Platform Admin']);
+        session.createdAt = Date.now();
+        const token = await sign({ groups: ['OSCAL_Platform Admin', 'Unrelated', 'Platform Admins'] });
+        await service.retainGenericSso(session, { access_token: token, token_type: 'Bearer', expires_in: 600 });
+        const line = info.mock.calls.map(call => String(call[0])).find(text => text.includes('guardian_generic_sso_token_retention'));
+        const event = JSON.parse(line);
+        expect(event['token.privileged_groups']).toEqual(['OSCAL_Platform Admin', 'Platform Admins']);
+        expect(event['token.group_count']).toBe(3);
+        expect(event['token.matches_target_group']).toBe(true);
+        expect(line).not.toContain(token.slice(0, 20));
+        // Every group name in the access token is listed (names only) so the owner can compare them with Guardian's grants.
+        expect(event['token.groups']).toEqual(['OSCAL_Platform Admin', 'Unrelated', 'Platform Admins']);
+        expect(event['token.groups_truncated']).toBe(false);
+      } finally { info.mockRestore(); }
+    });
+
+    it('caps the listed group names and flags the truncation', async () => {
+      const info = jest.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys });
+        const session = genericSession(['OSCAL_Platform Admin']);
+        session.createdAt = Date.now();
+        const many = ['OSCAL_Platform Admin', ...Array.from({ length: 80 }, (_, index) => `g${index}`), 'x'.repeat(300)];
+        await service.retainGenericSso(session, { access_token: await sign({ groups: many }), token_type: 'Bearer', expires_in: 600 });
+        const event = JSON.parse(info.mock.calls.map(call => String(call[0])).find(text => text.includes('token_retention')));
+        expect(event['token.groups']).toHaveLength(50);
+        expect(event['token.groups_truncated']).toBe(true);
+        expect(event['token.group_count']).toBe(82);
+      } finally { info.mockRestore(); }
+    });
+
+    it('ignores an out-of-range limit', async () => {
+      expect((await retain(1800, { OSCAL_GUARDIAN_GENERIC_SSO_MAX_TOKEN_AGE_SECONDS: '99999' })).error.reason).toBe('lifetime_too_long');
+    });
+  });
+
+  it('keeps the translated messages for known statuses', async () => {
+    const service = createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => genericConfig, keys,
+      request: async () => ({ status: 403, data: { status: 'error', message: 'nope' } }) });
+    const session = genericSession(['OSCAL_Platform Admin']);
+    session.createdAt = Date.now();
+    retainToken(session, await sign(), Date.now() + 60000);
+    expect((await service.status(session)).message).toBe('Guardian denied access to this assessment.');
+  });
+
   it('requires a retained token, and is disabled when no approved configuration exists', async () => {
     expect((await run(null)).result.code).toBe('guardian_reauthentication_required');
     const result = await createGuardianAssessmentService({ readConfig: () => config, readGenericSso: () => null })
@@ -379,6 +560,42 @@ describe('Generic SSO (Authentik) access-token path', () => {
     expect(result.message).toContain('Authentik custom scope');
   });
 
+  describe('names the setting at fault in the "not configured" message (never a value)', () => {
+    const host = 'abc123.execute-api.ap-southeast-2.amazonaws.com';
+    const good = { OSCAL_GUARDIAN_ASSESSMENTS_ENABLED: 'true', OSCAL_GUARDIAN_GENERIC_SSO_ISSUER: genericConfig.issuer,
+      OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL: `https://${host}/v1/guardian`, OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS: host,
+      OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON: JSON.stringify(config.targets) };
+    const problem = env => { try { readGuardianAssessmentConfig(env); } catch (error) { return error; } return null; };
+
+    it.each([
+      ['targets JSON with its quotes stripped by a shell', { OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON: '[{provider:okta,targetId:A}]' },
+        'OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON'],
+      ['no targets', { OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON: '[]' }, 'OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON'],
+      ['endpoint host not allowed', { OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS: 'other.example.test' },
+        'OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS'],
+      ['endpoint path wrong', { OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL: `https://${host}/v2/other` },
+        'OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL'],
+      ['no endpoint at all', { OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL: '' }, 'OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL'],
+    ])('%s', (_name, change, setting) => {
+      const error = problem({ ...good, ...change });
+      expect(error.code).toBe('guardian_assessments_unavailable');
+      expect(error.message).toContain('Problem: ');
+      expect(error.message).toContain(setting);
+      expect(error.message).not.toContain('{provider');
+    });
+
+    it("accepts the targets JSON wrapped in single quotes, as 'docker run --env-file' passes it literally", () => {
+      const wrapped = { ...good, OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON: `'${good.OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON}'` };
+      expect(readGuardianAssessmentConfig(wrapped).targets).toEqual(config.targets);
+    });
+
+    it('says the feature is switched off when ENABLED is not true', async () => {
+      const result = await createGuardianAssessmentService({ readConfig: () => readGuardianAssessmentConfig({}), readGenericSso: () => null })
+        .status({ userId: 'x' });
+      expect(result.message).toContain('Problem: OSCAL_GUARDIAN_ASSESSMENTS_ENABLED is not set to true');
+    });
+  });
+
   it('refuses to mix a loopback endpoint with a real one', () => {
     const real = 'abc123.execute-api.ap-southeast-2.amazonaws.com';
     const env = { OSCAL_GUARDIAN_ASSESSMENTS_ENABLED: 'true', NODE_ENV: 'development', OSCAL_GUARDIAN_LOCAL_GATEWAY: 'true',
@@ -397,6 +614,17 @@ describe('Generic SSO (Authentik) access-token path', () => {
     expect(readGenericSsoConfig({})).toBeNull();
     expect(() => readGenericSsoConfig({ ...base, OSCAL_GUARDIAN_GENERIC_SSO_SCOPE: '' })).toThrow();
     expect(() => readGenericSsoConfig({ ...base, OSCAL_GUARDIAN_GENERIC_SSO_ISSUER: 'http://sso.example.test/' })).toThrow();
+  });
+
+  it('derives issuer, JWKS and client ID from the shared OSCAL_GENERIC_SSO_* settings, with the Guardian ones as overrides', () => {
+    const shared = { OSCAL_GENERIC_SSO_ISSUER: 'https://sso.example.test/application/o/app/',
+      OSCAL_GENERIC_SSO_CLIENT_ID: 'shared-client', OSCAL_GUARDIAN_GENERIC_SSO_SCOPE: 'guardian-assessments' };
+    expect(readGenericSsoConfig(shared)).toEqual({ issuer: 'https://sso.example.test/application/o/app/',
+      jwksUrl: 'https://sso.example.test/application/o/app/jwks/', audience: 'shared-client', scope: 'guardian-assessments' });
+    expect(readGenericSsoConfig({ ...shared, OSCAL_GUARDIAN_GENERIC_SSO_CLIENT_ID: 'override' })).toMatchObject({ audience: 'override' });
+    expect(readGenericSsoConfig({ ...shared, OSCAL_GUARDIAN_GENERIC_SSO_JWKS_URL: 'https://sso.example.test/custom/keys' }))
+      .toMatchObject({ jwksUrl: 'https://sso.example.test/custom/keys' });
+    expect(() => readGenericSsoConfig({ ...shared, OSCAL_GENERIC_SSO_ISSUER: 'https://sso.example.test/no-trailing-slash' })).toThrow();
   });
 });
 

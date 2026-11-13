@@ -26,6 +26,27 @@ services:
       # - OSCAL_CONFIG_FIELD_SECRET=
       # - SESSION_SECRET=
       - OSCAL_PASS_DISABLED=1
+      # Generic SSO (Authentik) and Guardian Agent assessments. Values come from a ".env" next to this file
+      # (copy .env.docker.example) or from "docker compose --env-file". Anything left empty is simply off / unset.
+      # Guide: docs/GUARDIAN_SSO_DOCKER_DEPLOYMENT.md
+      - OSCAL_GENERIC_SSO_ISSUER=${OSCAL_GENERIC_SSO_ISSUER:-}
+      - OSCAL_GENERIC_SSO_CLIENT_ID=${OSCAL_GENERIC_SSO_CLIENT_ID:-}
+      - OSCAL_GENERIC_OIDC_TLS_RELAXED=${OSCAL_GENERIC_OIDC_TLS_RELAXED:-}
+      - OSCAL_GUARDIAN_ASSESSMENTS_ENABLED=${OSCAL_GUARDIAN_ASSESSMENTS_ENABLED:-false}
+      - OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL=${OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL:-}
+      - OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS=${OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS:-}
+      - OSCAL_GUARDIAN_GENERIC_SSO_SCOPE=${OSCAL_GUARDIAN_GENERIC_SSO_SCOPE:-}
+      - OSCAL_GUARDIAN_GENERIC_SSO_MAX_TOKEN_AGE_SECONDS=${OSCAL_GUARDIAN_GENERIC_SSO_MAX_TOKEN_AGE_SECONDS:-600}
+      - OSCAL_GUARDIAN_PRIVILEGED_GROUPS=${OSCAL_GUARDIAN_PRIVILEGED_GROUPS:-Platform Admin}
+      - OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON=${OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON:-}
+      # Optional Guardian-only overrides (normally unset):
+      # - OSCAL_GUARDIAN_GENERIC_SSO_ISSUER=${OSCAL_GUARDIAN_GENERIC_SSO_ISSUER:-}
+      # - OSCAL_GUARDIAN_GENERIC_SSO_JWKS_URL=${OSCAL_GUARDIAN_GENERIC_SSO_JWKS_URL:-}
+      # - OSCAL_GUARDIAN_GENERIC_SSO_CLIENT_ID=${OSCAL_GUARDIAN_GENERIC_SSO_CLIENT_ID:-}
+    # DNS: if this host's own resolvers rewrite the SSO host to a private address, Guardian's signing-key fetch refuses it
+    # (log reason jwks_host_not_public). Point the container at a resolver that returns the public address:
+    # dns:
+    #   - 192.168.1.200
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3020/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s

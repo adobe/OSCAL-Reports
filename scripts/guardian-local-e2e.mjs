@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { localGuardianEnv } from './lib/localGuardianEnv.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 if (process.env.NODE_ENV === 'production') { throw new Error('Local Guardian E2E mode cannot run in production.'); }
@@ -29,22 +30,7 @@ const grants = (process.env.GUARDIAN_LOCAL_TARGETS || 'cloudflare#PROD_AEMGovAu,
 const { startDevAssessmentGateway } = await import(pathToFileURL(gatewayModule).href);
 const dev = await startDevAssessmentGateway({ runsDir, targets: grants, acknowledgeNonProduction: true, port: 0, authentikGroup: group });
 
-Object.assign(process.env, {
-  NODE_ENV: 'development',
-  OSCAL_GUARDIAN_ASSESSMENTS_ENABLED: 'true',
-  OSCAL_GUARDIAN_LOCAL_GATEWAY: 'true',
-  OSCAL_GUARDIAN_ASSESSMENTS_URL: `${dev.baseUrl}/v1/guardian`,
-  OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON: JSON.stringify(grants.map(grant => {
-    const [provider, targetId] = grant.split('#');
-    return { provider, targetId, label: `${provider === 'okta' ? 'Okta' : 'Cloudflare'} ${targetId} (local cache)`, groups: [group] };
-  })),
-  // Placeholders only satisfy configuration validation; the local gateway trusts its own test issuer.
-  OSCAL_GUARDIAN_ISSUER: 'https://dev-assessment.example.test/oauth2/dev',
-  OSCAL_GUARDIAN_JWKS_URL: 'https://dev-assessment.example.test/oauth2/dev/v1/keys',
-  OSCAL_GUARDIAN_AUDIENCE: 'dev-assessment',
-  OSCAL_GUARDIAN_CLIENT_ID: 'dev-oscal',
-  OSCAL_GUARDIAN_SCOPES: 'dev:assessment',
-});
+Object.assign(process.env, localGuardianEnv({ baseUrl: dev.baseUrl, grants, group }));
 
 process.chdir(path.join(root, 'backend'));
 const { registerLocalDevAuthorization } = await import(pathToFileURL(path.join(root, 'backend', 'guardianAssessments.js')).href);

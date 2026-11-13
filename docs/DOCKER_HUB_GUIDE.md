@@ -172,6 +172,12 @@ docker run -d \
 
 **What gets persisted:** User credentials and authentication data, application settings, user preferences, and session data.
 
+### Generic SSO and Guardian settings
+
+To enable Generic SSO (Authentik) and the Guardian Agent assessment feature, copy `.env.docker.example` to `.env.docker`,
+fill in the values and start with `docker compose --env-file .env.docker up -d` (or let `scripts/install_from_dockerhub.sh`
+pick the file up). Full guide: [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md).
+
 ### Using Docker Compose
 
 Create `docker-compose.yml`:

@@ -105,7 +105,10 @@ smoke_server() {
   port="$(node -e "const s=require('net').createServer().listen(0,()=>{console.log(s.address().port);s.close()})")"
   data="$(mktemp -d)"
   echo '[]' > "$data/users.json"
-  ( cd backend && exec env PORT="$port" OSCAL_DATA_DIR="$data" node server.js >"$LOG/server.out" 2>&1 ) &
+  # USERS_PATH and CONFIG_PATH must be set explicitly: the backend gives USERS_PATH (which the developer's .env sets)
+  # priority over OSCAL_DATA_DIR, so OSCAL_DATA_DIR alone would boot against the real users file.
+  ( cd backend && exec env PORT="$port" OSCAL_DATA_DIR="$data" USERS_PATH="$data/users.json" CONFIG_PATH="$data/config.json" \
+    node server.js >"$LOG/server.out" 2>&1 ) &
   pid=$!
   for _ in $(seq 1 60); do
     [[ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/csrf-token")" != "000" ]] && break
@@ -117,8 +120,14 @@ smoke_server() {
   providers="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/auth/sso/login-providers")"
   kill "$pid" 2>/dev/null
   wait "$pid" 2>/dev/null
+  local isolated=true
+  # The boot log names the users file it used; anything outside the temp folder means the check touched real data.
+  grep -qF "Users file: $data/users.json" "$LOG/server.out" || isolated=false
   rm -rf "$data"
-  if [[ "$csrf" == "200" && "$login" == "401" && "$providers" == "200" ]]; then
+  if [[ "$isolated" != true ]]; then
+    failed=1
+    record "Server smoke (login page calls)" "FAIL" "not isolated: the backend did not report the temporary users file; no result can be trusted"
+  elif [[ "$csrf" == "200" && "$login" == "401" && "$providers" == "200" ]]; then
     record "Server smoke (login page calls)" "PASS" "csrf-token $csrf, fake login $login, login-providers $providers"
   else
     failed=1

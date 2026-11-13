@@ -233,18 +233,18 @@ export default function GuardianAssessment({ initialReport = null, initialFileNa
           Local testing: stop the running dev servers and start <code>npm run dev:local-guardian-e2e</code>, then sign in with
           Generic SSO as a member of the privileged group.
         </p>}
-        <p>The target and run selectors below stay disabled until Guardian assessment access is configured on the backend and you are signed in through an approved path (Generic SSO as a privileged group member, or the approved Okta delegation).</p>
+        <p className="guardian-assessment-disabled-note">The target and run selectors below stay disabled until Guardian assessment access is configured on the backend and you are signed in through an approved path (Generic SSO as a privileged group member, or the approved Okta delegation).</p>
       </>}
       {!initialReport && <label>Selected OSCAL report (maximum 16 MiB)
         <input type="file" accept=".json,application/json" disabled={busy} onChange={selectFile} />
       </label>}
-      {report && <p>{initialReport ? 'Using the report you just loaded: ' : 'Report: '}{report['system-security-plan'].metadata?.title || 'Selected SSP'}.<br />
-        File Name: {fileName || 'not available'}, Controls: {report['system-security-plan']['control-implementation']['implemented-requirements'].length}.<br />
-        UUID: {report['system-security-plan'].uuid}, System ID: {systemId(report) || 'not set'}, System Name: {systemName(report) || 'not set'}</p>}
-      <fieldset disabled={busy || !status?.ready || !report}>
+      {report && <p><strong>{initialReport ? 'Using the report you just loaded:' : 'Report:'}</strong>{' '}{report['system-security-plan'].metadata?.title || 'Selected SSP'}.<br />
+        <strong>File Name:</strong> {fileName || 'not available'}, <strong>Controls:</strong> {report['system-security-plan']['control-implementation']['implemented-requirements'].length}.<br />
+        <strong>UUID:</strong> {report['system-security-plan'].uuid}, <strong>System ID:</strong> {systemId(report) || 'not set'}, <strong>System Name:</strong> {systemName(report) || 'not set'}</p>}
+      <fieldset className="guardian-assessment-source" disabled={busy || !status?.ready || !report}>
         <legend className="guardian-assessment-legend">Guardian assessment source</legend>
         <div className="guardian-assessment-fields">
-          <label>Authorized target
+          <label><strong>Authorized target</strong>
             <select value={targetKey} onChange={event => {
               invalidate(); setTargetKey(event.target.value); setRuns([]); setRunId(''); setNextToken(null);
             }}>
@@ -253,7 +253,7 @@ export default function GuardianAssessment({ initialReport = null, initialFileNa
                 value={`${item.provider}/${item.targetId}`}>{item.label} ({item.provider} / {item.targetId})</option>)}
             </select>
           </label>
-          <label>Assessment run
+          <label><strong>Assessment run</strong>
             <select value={runId} onChange={event => { invalidate(); setRunId(event.target.value); }}>
               <option value="">Select an existing run</option>
               {runs.map(run => <option key={run.runId} value={run.runId}>{run.runId} - {run.generatedAt}</option>)}
@@ -333,7 +333,7 @@ export default function GuardianAssessment({ initialReport = null, initialFileNa
         <h3>Guardian revision for this report</h3>
         <p>Saved {saved.savedAt}. Stored locally in this browser for your account, not in Guardian or the shared database.</p>
         {(saved.applied || []).length > 0 && <>
-          <p>Provider results applied so far:</p>
+          <p><strong>Provider results applied so far:</strong></p>
           <ul>{saved.applied.map(item => <li key={`${item.provider}/${item.targetId}/${item.runId}/${item.savedAt}`}>
             {item.provider} / {item.targetId}, run {item.runId}</li>)}</ul></>}
         <button type="button" className="btn btn-primary" disabled={busy}

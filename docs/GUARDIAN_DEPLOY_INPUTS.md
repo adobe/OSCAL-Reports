@@ -30,7 +30,7 @@ document has been applied to AWS.
 ## Summary of blockers
 
 With Guardian's decisions applied, the OSCAL side is code-complete for an Authentik-only first deployment. What remains is owner-controlled and listed in section 6:
-the Guardian deploy, the Authentik scope, groups claim and signing configuration, reachability of `sso.keekar.au` from AWS, the client ID, and the assessment plan reference.
+the Guardian deploy, the Authentik scope, groups claim and signing configuration, `sso.keekar.au` resolving to a public address from public DNS and being reachable from AWS (to confirm from AWS; plain DNS on the owner's network is rewritten, see the Authentik issuer section), the client ID, and the assessment plan reference.
 The earlier database and network blockers no longer apply to the assessment routes.
 
 ## 1. Target-authorization database (OUT OF SCOPE per Guardian decision 1)
@@ -131,7 +131,7 @@ and token discriminator. OSCAL's code requires: RS256, an `/oauth2/<id>` custom 
 | Custom scope name | None exists. The provider advertises only `openid`, `email`, `profile`. | VERIFIED-live-read (absence) / name UNKNOWN |
 | `groups` claim in the **access** token | UNKNOWN. The discovery document lists `groups` among supported claims, which does not show it is in the access token. An earlier OSCAL sign-in resolved 2 groups while Authentik showed 9 for the same user; this was never explained. | UNKNOWN - owner must confirm with a decoded access token |
 | RS256 key assigned | The discovery document lists only RS256 for ID tokens. Access-token signing for this provider is not confirmed. | UNKNOWN - owner must confirm |
-| `sso.keekar.au` publicly resolvable | It resolves to a public address (not RFC1918) **from this laptop**. This does not prove reachability from AWS Lambda egress. | VERIFIED-live-read (laptop only); Lambda reachability UNKNOWN |
+| `sso.keekar.au` publicly resolvable | **Probably YES; the earlier "NO" was a network artefact.** Plain (unencrypted) DNS from the owner's network returns `10.100.3.74` even from the authoritative servers, with TTL 0, and that address equals the owner's pfSense WAN IP, which points to DNS response rewriting on that network path. Encrypted DNS (DoH to Google and Cloudflare, also reproduced by OSCAL via `https://1.1.1.1/dns-query`) returns `103.160.130.243`, TTL 300. The true public record is therefore `103.160.130.243` (owner finding). The owner's LAN resolver also returns it. Guardian independently confirmed (2026-11-13): TLS to `103.160.130.243` with SNI `sso.keekar.au` serves the discovery document and JWKS with HTTP 200 and a valid certificate. Not yet confirmed from AWS itself; the first real authenticated request will show it. | VERIFIED by owner, OSCAL and Guardian via DoH and direct TLS from a non-AWS network; AWS-side resolution and reachability UNKNOWN |
 
 **Scope caveat for the discriminator.** OSCAL reads the login scopes from the runtime key
 `ssoConfig.oauth.providers.Generic_OIDC.scope` (currently `openid profile email`) and sends them in the
@@ -145,6 +145,8 @@ group (a scope mapping or policy), and OSCAL then keeps the access token only fo
 
 ## 5. Consumer deployment (OSCAL backend)
 
+For Docker, Compose and TrueNAS use the template `.env.docker.example` and follow [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md); the table below lists the same variables.
+
 Values shape only; none are invented. All are read at runtime from the backend environment.
 
 | Variable | Value shape | Required when |
@@ -154,12 +156,29 @@ Values shape only; none are invented. All are read at runtime from the backend e
 | `OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL` | `https://<host>/v1/guardian` from the `authentik` key of `assessment_api_endpoints`, port 443 | Authentik path (first deploy) |
 | `OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS` | comma-separated exact lowercase hostnames, no wildcards: every host used above (first deploy: only the `authentik` host) | always |
 | `OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON` | `[{"provider":"cloudflare\|okta","targetId":"...","label":"...","groups":["<exact group name from the Authentik access token>"]}]`, at most 100. Guardian applies its own namespaced grant (`authentik:<group>`) independently. | always |
-| `OSCAL_GUARDIAN_GENERIC_SSO_ISSUER` | exact issuer string | Authentik path |
-| `OSCAL_GUARDIAN_GENERIC_SSO_JWKS_URL` | https URL on the issuer origin | Authentik path |
-| `OSCAL_GUARDIAN_GENERIC_SSO_CLIENT_ID` | the OSCAL OAuth client ID (the audience) | Authentik path |
+| `OSCAL_GENERIC_SSO_ISSUER` | exact issuer string ending in `/`; the single place the identity host is defined (sign-in URLs and Guardian's `<issuer>jwks/` derive from it) | Authentik path |
+| `OSCAL_GENERIC_SSO_CLIENT_ID` | the OSCAL OAuth client ID (the audience) | Authentik path |
+| `OSCAL_GUARDIAN_GENERIC_SSO_ISSUER`, `_JWKS_URL`, `_CLIENT_ID` | optional Guardian-only overrides of the two shared values above | normally unset |
 | `OSCAL_GUARDIAN_GENERIC_SSO_SCOPE` | the single custom scope name | Authentik path |
 | `OSCAL_GUARDIAN_PRIVILEGED_GROUPS` | optional comma-separated phrases; group names are matched by case-insensitive "contains"; default `Platform Admin` | optional |
 | `OSCAL_GUARDIAN_ISSUER`, `_JWKS_URL`, `_AUDIENCE`, `_CLIENT_ID`, `_SCOPES` | Okta contract values | Okta path only; may be omitted for an Authentik-only deployment |
+
+**Authentik deploy values supplied by Guardian on 2026-11-13** (Guardian-reported, from its `deploy-assessment-api.sh verify`; account `387219500231`, `ap-southeast-2`; not independently verified by OSCAL beyond an unauthenticated HTTP 401 from the endpoint):
+
+```
+OSCAL_GUARDIAN_ASSESSMENTS_ENABLED=true
+OSCAL_GUARDIAN_GENERIC_SSO_ASSESSMENTS_URL=https://dl0qfds4jk.execute-api.ap-southeast-2.amazonaws.com/v1/guardian
+OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS=dl0qfds4jk.execute-api.ap-southeast-2.amazonaws.com
+OSCAL_GENERIC_SSO_ISSUER=https://sso.keekar.au/application/o/oscal-report-generator/
+OSCAL_GENERIC_SSO_CLIENT_ID=oscal-report-generator
+OSCAL_GUARDIAN_GENERIC_SSO_SCOPE=guardian-assessments
+OSCAL_GUARDIAN_GENERIC_SSO_MAX_TOKEN_AGE_SECONDS=3600
+OSCAL_GUARDIAN_ASSESSMENT_TARGETS_JSON='[{"provider":"cloudflare","targetId":"PROD_AEMGovAu","label":"AEMGovAu Cloudflare (PROD)","groups":["OSCAL_Platform Admin","Platform Admin"]},{"provider":"okta","targetId":"AEMGovAu","label":"AEMGovAu Okta","groups":["OSCAL_Platform Admin","Platform Admin"]}]'
+```
+
+**Token lifetime (owner decision 2026-11-13, Option B).** Authentik issues access tokens that live 3600 seconds; Guardian's default limit is 600. The owner chose to raise Guardian's `maxTokenAgeSeconds` to 3600 (its maximum) and set `OSCAL_GUARDIAN_GENERIC_SSO_MAX_TOKEN_AGE_SECONDS=3600` here to match. Guardian must be redeployed with 3600 before a fetch can succeed; the two values must stay equal. The alternative (Authentik Access token validity of 10 minutes or less) was not chosen.
+
+**In `.env`, wrap the targets JSON in single quotes (as above).** A shell that loads `.env` (`source`, `export $(...)`) strips unquoted double quotes, which makes the JSON invalid, and the backend's own `.env` loader never overrides variables already set in the shell. `OSCAL_GUARDIAN_ASSESSMENTS_URL` (Okta) stays unset. The local `.env` (gitignored) has these set; a Docker deployment must pass the same variables to the container (for example `environment:` in the compose file). Guardian enforces: scope claim `scope` (space-delimited) contains `guardian-assessments`, `groups` in the **access** token, RS256, token age at most 600 s. The scope name `guardian-assessments` was proposed by Guardian, not yet created in Authentik. **The scope must also be added to the Generic SSO provider's Scope setting (Settings, SSO Integration), which today is `openid profile email`, otherwise the access token never carries it**, and users must sign out and in afterwards. Guardian's `import-ap` is a Guardian-minted `urn:uuid:`, not a resolvable plan.
 
 The execute-api hostnames are known only after the Guardian deploy (Terraform output `assessment_api_endpoints`). Until
 `OSCAL_GUARDIAN_ASSESSMENTS_ALLOWED_HOSTS` and the URLs are set, the application fails closed with its "not configured" message.
@@ -197,11 +216,11 @@ The last command uses test-only authentication and does not prove real authentic
 
 These are what the application's "not configured" message now names. All are owner-controlled and none can be completed from this repository:
 
-1. Guardian assessment API deployed (Guardian-side reviewed `plan` and `apply`), and its `authentik` host supplied.
+1. ~~Guardian assessment API deployed~~ DONE 2026-11-13 (Authentik endpoint only; Okta endpoint later).
 2. Authentik custom scope with a **group-restricted** scope mapping or policy, so only approved-group members receive it. Guardian returns 401 for tokens without it.
 3. The `groups` claim present in the **access** token (an earlier OSCAL sign-in resolved 2 groups while Authentik showed 9 for the same user; unexplained).
 4. RS256 signing for access tokens.
-5. `sso.keekar.au` reachable from AWS: both the Lambda and the API Gateway authorizer fetch signing keys from it. It resolves publicly from the developer laptop only.
+5. `sso.keekar.au` must resolve to a public address from AWS and be reachable on 443 with a valid certificate for that name. The true public record is `103.160.130.243` (DoH); plain DNS on the owner's network is rewritten to the pfSense WAN IP `10.100.3.74`. Confirm from AWS (or a resolver outside the owner's network) and confirm port 443 is forwarded to Authentik before treating this as met.
 6. The real OSCAL `client_id` (the token audience) and the exact group name for the targets list.
 7. The assessment plan reference (`GUARDIAN_ASSESSMENT_PLAN_HREF`).
 8. Okta path (later): owner-approved authorization server values, then set `OSCAL_GUARDIAN_ASSESSMENTS_URL` and the Okta variables.

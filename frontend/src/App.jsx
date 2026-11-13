@@ -691,34 +691,68 @@ function App() {
     }
   };
 
+  // Header shared by the main layout and the Guardian page so both carry the same title and Settings button.
+  const appHeader = (
+    <header className="app-header">
+      {canEditSettings() && (
+        <button
+          className="settings-btn"
+          onClick={() => setShowSettings(true)}
+          title="API Credentials & Settings"
+        >
+          ⚙️ Settings
+        </button>
+      )}
+      <div className="header-content">
+        <h1>Keekar's OSCAL SOA/SSP/CCM Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
+        <p>Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix from OSCAL Catalogues</p>
+      </div>
+    </header>
+  );
+
   if (showGuardian && guardianLoadFlow) {
     const resume = async (ssp) => {
       setShowGuardian(false);
       setGuardianLoadFlow(false);
       await handleLoadExistingSSP(ssp);
     };
-    return <GuardianAssessment initialReport={existingSSP} initialFileName={guardianFileName} onAdopt={resume}
-      onBack={() => resume(existingSSP)} adoptLabel="Continue with saved Guardian revision"
-      backLabel="Skip Guardian and continue loading report" />;
+    // Leaving without finishing: nothing has been applied to the report; saved revisions stay in this browser.
+    const startOver = () => {
+      if (!window.confirm('Leave the Guardian assessment and return to the start? Unsaved review changes will be discarded. Saved revisions stay in this browser.')) { return; }
+      setShowGuardian(false);
+      setGuardianLoadFlow(false);
+      setExistingSSP(null);
+      setGuardianFileName('');
+      setStep(1);
+    };
+    return (
+      <div className="app">
+        {appHeader}
+        {showSettings && (
+          <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+            <div className="modal-content settings-modal" onClick={(e) => e.stopPropagation()}>
+              <SettingsWithTabs onClose={() => setShowSettings(false)} />
+            </div>
+          </div>
+        )}
+        <main className="app-main">
+          <nav className="guardian-page-nav" aria-label="Guardian page navigation">
+            <button type="button" className="btn btn-secondary" onClick={startOver}>Start Over</button>
+          </nav>
+          <GuardianAssessment initialReport={existingSSP} initialFileName={guardianFileName} onAdopt={resume}
+            onBack={() => resume(existingSSP)} adoptLabel="Continue with saved Guardian revision"
+            backLabel="Skip Guardian and continue loading report" />
+        </main>
+        <footer className="app-footer">
+          <AuthorCreditsFooter showTechStack />
+        </footer>
+      </div>
+    );
   }
 
   return (
     <div className="app">
-      <header className="app-header">
-        {canEditSettings() && (
-          <button
-            className="settings-btn"
-            onClick={() => setShowSettings(true)}
-            title="API Credentials & Settings"
-          >
-            ⚙️ Settings
-          </button>
-        )}
-        <div className="header-content">
-          <h1>Keekar's OSCAL SOA/SSP/CCM Generator <span className="beta-badge" title="Beta Release">Beta</span></h1>
-          <p>Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix from OSCAL Catalogues</p>
-        </div>
-      </header>
+      {appHeader}
 
       {/* Settings Modal */}
       {showSettings && (

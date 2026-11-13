@@ -29,11 +29,12 @@ describe('defaultGenericOidcConfig', () => {
     }
   });
 
-  it('DEFAULT_CONFIG enables Generic_OIDC with discovery and callback path', () => {
+  it('DEFAULT_CONFIG enables Generic_OIDC with the callback path and ships no deployment-specific identity values', () => {
     const generic = DEFAULT_CONFIG.ssoConfig.oauth.providers.Generic_OIDC;
     expect(generic.enabled).toBe(true);
     expect(generic.callbackPath).toBe('/auth/callback');
-    expect(generic.discoveryUrl).toContain('.well-known/openid-configuration');
+    // OSCAL_GENERIC_SSO_ISSUER and OSCAL_GENERIC_SSO_CLIENT_ID supply these at runtime.
+    expect([generic.issuerUrl, generic.discoveryUrl, generic.endSessionUrl, generic.clientId]).toEqual(['', '', '', '']);
     expect(Array.isArray(generic.redirectUriPatterns)).toBe(true);
     expect(generic.redirectUriPatterns.length).toBeGreaterThan(0);
     expect(generic.tlsRelaxed).toBe(true);
