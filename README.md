@@ -106,10 +106,6 @@ operational runbooks — is in **[docs/CHANGELOG.md](docs/CHANGELOG.md)**.
 - **2.1.0** — Docker and TrueNAS deployment of Generic SSO and Guardian assessments, Guardian page layout, CodeQL cleanups, `npm ci` fix. [Details](docs/CHANGELOG.md#210---2026-11-13).
 - **1.9.0** — Fetch real Guardian Agent assessments into an existing report during Load Existing Report (privileged Generic SSO access, review before save, per-user revisions). [Details](docs/CHANGELOG.md#190---2026-11-12).
 - **1.8.00** — Catalogue library expansion (+8: FedRAMP Rev 5 ×4, CMS ARS 5.0 ×4; 25 across 7 publishers), BSI/ISM URL fixes, New/Updated badges + non-English flag, and an app-wide single-source-of-truth refactor (`config/constants/`) for control-status/roles/classification/system-status/service-model — fixing the ControlsList 4/7-status and SAR `alternate-control` bugs. [Details](docs/CHANGELOG.md#1800---2026-09-08).
-- **1.7.31** — Responsive full-width UI: shared layout + surface tokens (`styles/layout.css`), single shared Feature Comparison table, background bleed fixes. [Details](docs/CHANGELOG.md#1731---2026-09-08).
-- **1.7.30** — Restored fixes documented but never committed (drift correction): SSAAU-212 Splunk→SCC delivery (`emissary = "trusted"` VPC/subnet tag — the real root cause; errno-104 mutual-TLS resets), Bedrock auth-mode precedence, Bedrock `[object Object]` roleArn + Secrets Manager bundle-write no-op, and a `/health` `version` field. [Details](docs/CHANGELOG.md#1730---2026-09-08).
-- **1.7.29** — Pass vault removed as a runtime dependency; config secrets stored as `_cfgenc` (local) / `_sm` (EC2); docs consolidated. [Details](docs/CHANGELOG.md#1729---2026-09-08).
-- **1.7.28** — Ops/CI/security-maintenance: `Main`-only branching, Node.js 24.9.0+ floor, CI on `Main`, AMI-drift check via GitHub OIDC (no static keys). [Details](docs/CHANGELOG.md#1728---2026-08-09).
 
 ---
 
