@@ -6,6 +6,14 @@ on:
     tags:
       - 'v*.*.*'
 
+# Releases must never overlap: v1.8.00 was scheduled while v1.7.31 was still
+# running. Serialize on a single global group and do NOT cancel in progress --
+# a half-finished release that gets cancelled can leave a tag published with no
+# artifacts attached.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   ###############################################################################
   # Create GitHub Release
