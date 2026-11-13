@@ -2,7 +2,7 @@
 # Author: Mukesh Kesharwani <mukesh.kesharwani@adobe.com>
 # Copyright (c) 2025 Mukesh Kesharwani
 
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -25,13 +25,17 @@ COPY config/constants/ ../config/constants/
 RUN npm run build
 
 # Backend stage
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 WORKDIR /app
 
 # Install dependencies for production
 COPY backend/package*.json ./
-RUN npm install --omit=dev --no-audit --no-fund
+RUN npm ci --omit=dev --no-audit --no-fund \
+  && rm -rf /root/.npm /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+# The runtime only runs node. npm and corepack are removed after the install so the image does not ship their bundled
+# packages (they carried fixable HIGH vulnerabilities) and has a smaller attack surface.
 
 # Copy backend source
 COPY backend/ ./

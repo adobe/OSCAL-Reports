@@ -87,6 +87,13 @@
 - **Issue**: CSRF middleware caused 403 on many API endpoints.
 - **Fix**: API routes under `/api/` exempted; Bearer token used for API (CSRF not applicable). State-changing browser flows still use CSRF tokens.
 
+### v1.9.0 – Dependency and runtime remediation; Guardian access controls (November 2026)
+- **Issue:** `npm audit` reported 41 backend findings (11 high), including a legacy `nodemon` 1.x dependency chain, and 2 high in the frontend and 1 high plus 1 moderate at the root (`vite`, `follow-redirects`, `body-parser`, `qs`). The Docker image and direct-run EC2 bootstrap used Node.js 20, which is end-of-life.
+- **Fix:** Dependencies updated to the latest releases; `nodemon` removed (development now uses `node --watch`); Node.js 24 in the Docker image, Terraform user data and deploy script. Result: backend 5 low (the `deepmerge` dependency of the Jest test runner, no upstream fix), frontend 0, root 0; Trivy lockfile scan 0; source secret scan 0.
+- **Guardian access controls:** Guardian assessment retrieval is off by default. When enabled, IdP groups and tokens stay server-side; the Generic SSO access token is verified (issuer, signature, audience, expiry, custom scope, group) before use; requests go only to owner-approved exact hostnames over HTTPS with no redirects; privileged use needs an explicit confirmation and is audit-logged; any missing setting fails closed. See [GUARDIAN_ASSESSMENTS.md](GUARDIAN_ASSESSMENTS.md).
+- **Not verified:** real Okta/Authentik authentication and live Guardian endpoints. The Terraform scan's 29 Checkov and 24 Trivy hardening findings are not remediated in this release.
+- **Post-deploy:** rebuild the image, run `npm ci`, and sign in again; configure Guardian only after the owner prerequisites in [GUARDIAN_DEPLOY_INPUTS.md](GUARDIAN_DEPLOY_INPUTS.md) are met.
+
 ### v1.7.27 – Async job auth / IDOR / DoS (VULN-37000) (July 2026)
 - **Issue:** Unauthenticated async job creation (`optionalAuth`); job status/download accessible by UUID without ownership check; requester IP in status JSON; job flooding DoS.
 - **Fix:** `authenticate` on all job routes; `canAccessJob` owner-or-Platform-Admin checks; `sanitizeJobForClient`; per-user rate limit and concurrent job cap. See [CHANGELOG.md](CHANGELOG.md#1727---2026-07-20).
@@ -121,4 +128,4 @@
 
 ---
 
-**Version:** 1.7.27 · **Last updated:** July 2026
+**Version:** 1.9.0 · **Last updated:** July 2026

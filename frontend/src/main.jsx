@@ -10,9 +10,14 @@ import App from './App'
 import './styles/layout.css'
 import './index.css'
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+const root = ReactDOM.createRoot(document.getElementById('root'));
+const isLocalGuardianDemo = import.meta.env.DEV &&
+  window.location.pathname === '/guardian-local-demo';
 
+if (isLocalGuardianDemo) {
+  import('./components/GuardianLocalIntegrationDemo.jsx').then(({ default: Demo }) => {
+    root.render(<React.StrictMode><Demo /></React.StrictMode>);
+  });
+} else {
+  root.render(<React.StrictMode><App /></React.StrictMode>);
+}

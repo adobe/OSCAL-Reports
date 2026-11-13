@@ -91,6 +91,13 @@ jobs:
             (bash "$script" --help 2>&1 || true) | grep -qi "usage\|help\|options" || true
           done
 
+      - name: 🧪 Deployment passive-wake and SSM transport tests
+        run: |
+          bash scripts/ci/test-deploy-passive-wake.sh
+          bash scripts/ci/test-deploy-ssm-transport.sh
+          bash scripts/ci/test-deploy-constants-sync.sh
+          bash scripts/ci/test-deploy-maintenance-readiness.sh
+
   ec2-automation-pass-sync-tests:
     name: ec2_automation Pass / Secrets Manager sync tests
     runs-on: ubuntu-latest

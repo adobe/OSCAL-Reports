@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Mukesh Kesharwani
 #
 # Licensed under the MIT License. See LICENSE file for details.
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
 
 # Terraform variables for OSCAL on AWS (AI via AWS Bedrock)
 # No credentials or secrets; use environment or terraform.tfvars (gitignored)
@@ -278,6 +280,18 @@ variable "oscal_os_patch_enabled" {
   default     = true
 }
 
+variable "manage_oscal_ssm_patch_group_associations" {
+  description = "When true, Terraform registers Patch Group associations. Set false when managing existing SSM associations that the AWS provider cannot import."
+  type        = bool
+  default     = true
+}
+
+variable "manage_oscal_pass_sync_secret_version" {
+  description = "When true, Terraform writes the Pass-sync secret version. Set false to preserve an existing secret value managed outside this Terraform state."
+  type        = bool
+  default     = true
+}
+
 variable "oscal_os_patch_hour" {
   description = "UTC hour (0-23) for Monday OS patch maintenance windows."
   type        = number
@@ -536,7 +550,7 @@ variable "bedrock_cross_account_enabled" {
   default     = false
 
   validation {
-    condition = !var.bedrock_cross_account_enabled || trimspace(var.bedrock_external_id) != ""
+    condition     = !var.bedrock_cross_account_enabled || trimspace(var.bedrock_external_id) != ""
     error_message = "bedrock_external_id must be set when bedrock_cross_account_enabled is true (must match Account B trust policy sts:ExternalId)."
   }
 }

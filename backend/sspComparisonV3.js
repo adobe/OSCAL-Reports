@@ -636,7 +636,6 @@ function extractSystemInfoFromSSP(sspData) {
       return { ...systemInfo, ...sspData.systemInfo };
     }
     
-    console.log('Extracted system info:', systemInfo);
   } catch (error) {
     console.error('Error extracting system info from SSP:', error);
   }
@@ -875,4 +874,3 @@ export function prepareSspExportPayload(sspData, controlEdits = {}) {
 
   return { controls, systemInfo, metadata };
 }
-

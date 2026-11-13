@@ -118,7 +118,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 
 **Steps**
 
-1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.7.27`), then pushes that tag and also `latest`:
+1. From the repository root, run the build-and-push script. It reads the version from `package.json` and tags the image as `v<VERSION>` (e.g. `v1.9.0`), then pushes that tag and also `latest`:
 
    ```bash
    DOCKERHUB_USERNAME=keekar ./scripts/build-and-push-dockerhub.sh
@@ -127,7 +127,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
 2. To use an explicit tag (e.g. a specific version or `latest` only):
 
    ```bash
-   ./scripts/build-and-push-dockerhub.sh v1.7.27
+   ./scripts/build-and-push-dockerhub.sh v1.9.0
    ```
 
 3. If your Docker Hub username is not `keekar`, set it in the environment:
@@ -137,7 +137,7 @@ You can build the image on your laptop (Docker Desktop) and push it to Docker Hu
    ./scripts/build-and-push-dockerhub.sh
    ```
 
-The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.7.27`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
+The image name and tag format match the GitHub workflow (e.g. `keekar/oscal_reports:v1.9.0`), so pull commands for users stay the same. The CI workflow (on tag push or manual trigger) can still be used when you want to publish from GitHub.
 
 ---
 
@@ -171,6 +171,12 @@ docker run -d \
 ```
 
 **What gets persisted:** User credentials and authentication data, application settings, user preferences, and session data.
+
+### Generic SSO and Guardian settings
+
+To enable Generic SSO (Authentik) and the Guardian Agent assessment feature, copy `.env.docker.example` to `.env.docker`,
+fill in the values and start with `docker compose --env-file .env.docker up -d` (or let `scripts/install_from_dockerhub.sh`
+pick the file up). Full guide: [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md).
 
 ### Using Docker Compose
 
@@ -1081,7 +1087,7 @@ This project is licensed under the **MIT License**. See [LICENSE](https://github
 
 ## Image build information
 
-- **Base image**: node:20-alpine
+- **Base image**: node:24-alpine
 - **Build process**: Multi-stage build for optimized size
 - **Platforms**: linux/amd64, linux/arm64
 - **CI/CD**: Automated builds via GitHub Actions
@@ -1091,4 +1097,4 @@ This project is licensed under the **MIT License**. See [LICENSE](https://github
 
 **Last Updated**: April 2026  
 **Maintained By**: Mukesh Kesharwani  
-**Version**: 1.7.27
+**Version**: 1.9.0

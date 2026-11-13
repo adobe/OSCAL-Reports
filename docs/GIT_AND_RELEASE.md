@@ -65,7 +65,7 @@ Development (default branch)
 
 ### Components
 
-- **scripts/bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`.
+- **scripts/bump_version.sh** – Updates `package.json` (root, backend, frontend), `docs/CHANGELOG.md`, `.validation/learnings.json`. **Caution:** unless `BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1` is set, it also runs `npm audit fix --force` in each package, which can apply breaking changes. During the 1.9.0 release it downgraded the backend's `jest` from 30 to 25 and raised the backend audit from 5 low findings to 29 (2 critical). Prefer `BUMP_VERSION_SKIP_DEPENDENCY_UPDATES=1 ./scripts/bump_version.sh ...`, and always review `git diff -- '*package.json'` and run `npm audit` afterwards.
 - **.githooks/pre-push** – Validates version increment and package consistency before push to Quality/main/Prod.
 - **.github/workflows/adobe-preprod-validate.yml** – Release validation on Quality/main/Prod (version vs tags, changelog, package consistency, auto-tag on Quality push).
 

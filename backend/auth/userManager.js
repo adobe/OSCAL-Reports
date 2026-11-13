@@ -11,6 +11,8 @@ import crypto from 'crypto';
 import { ROLES, isValidRole } from './roles.js';
 import { generateDefaultPasswordFromEnv } from './passwordGenerator.js';
 import { atomicWriteJSON } from '../utils/atomicWrite.js';
+import { revokeDelegatedToken } from './delegatedTokens.js';
+import { recordIdpIdentity } from './idpIdentity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -589,7 +591,7 @@ function resolveRoleFromGroups(groups, groupToRoleMapping, defaultRole = ROLES.U
 /**
  * Create session for a user record (shared by createSessionForOidcUser and findOrCreateOidcUser).
  */
-function createSessionForUserRecord(userRecord, profile = {}) {
+function createSessionForUserRecord(userRecord, profile = {}, idpProvider = null) {
   const sessionToken = generateSessionToken();
   const sessionData = {
     userId: userRecord.id,
@@ -600,6 +602,7 @@ function createSessionForUserRecord(userRecord, profile = {}) {
     createdAt: Date.now()
   };
   sessions.set(sessionToken, sessionData);
+  if (idpProvider) { recordIdpIdentity(sessionData, { provider: idpProvider, groups: profile.groups }); }
   const { password: _, ...userWithoutPassword } = userRecord;
   return {
     ...userWithoutPassword,
@@ -654,7 +657,8 @@ export async function findOrCreateOidcUser(email, profile = {}, options = {}) {
     jitProvisioning = false,
     jitDefaultRole = ROLES.USER,
     groupToRoleMapping = {},
-    syncRoleFromGroups = true
+    syncRoleFromGroups = true,
+    idpProvider = null
   } = options;
   const resolvedRole = resolveRoleFromGroups(profile.groups, groupToRoleMapping, jitDefaultRole);
   const groupList = Array.isArray(profile.groups) ? profile.groups : [];
@@ -717,7 +721,7 @@ export async function findOrCreateOidcUser(email, profile = {}, options = {}) {
     }
   }
 
-  return createSessionForUserRecord(userByEmail, profile);
+  return createSessionForUserRecord(userByEmail, profile, idpProvider);
 }
 
 /**
@@ -735,6 +739,7 @@ export function validateSession(token) {
   // Check if session is expired (24 hours)
   const sessionAge = Date.now() - session.createdAt;
   if (sessionAge > 24 * 60 * 60 * 1000) {
+    revokeDelegatedToken(session);
     sessions.delete(token);
     return null;
   }
@@ -747,6 +752,7 @@ export function validateSession(token) {
  * @param {string} token - Session token
  */
 export function logout(token) {
+  revokeDelegatedToken(sessions.get(token));
   sessions.delete(token);
 }
 

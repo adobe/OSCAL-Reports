@@ -31,7 +31,11 @@ import { resolveCfgEncPointers, isCfgEncPointer, decryptConfigSecret, encryptCon
 import { resolveStoredSecretValue } from './utils/resolveStoredSecret.js';
 import { normalizeBedrockAuthMode, BEDROCK_AUTH_IAM_ROLE } from './utils/bedrockCredentials.js';
 import { ensureConfigSecretsProtected as runConfigSecretsProtection } from './utils/configSecretMigration.js';
-import { DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS } from './auth/genericOidc.js';
+import {
+  DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS,
+  GENERIC_OIDC_PROVIDER_ID,
+  genericSsoUrlsFromIssuer,
+} from './auth/genericOidc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -173,14 +177,14 @@ const DEFAULT_CONFIG = {
         Generic_OIDC: {
           enabled: true,
           displayName: 'Generic SSO',
-          issuerUrl: 'https://sso.keekar.au/application/o/oscal-report-generator/',
-          discoveryUrl:
-            'https://sso.keekar.au/application/o/oscal-report-generator/.well-known/openid-configuration',
-          clientId: 'oscal-report-generator',
+          // Set OSCAL_GENERIC_SSO_ISSUER and OSCAL_GENERIC_SSO_CLIENT_ID; no deployment-specific default is shipped.
+          issuerUrl: '',
+          discoveryUrl: '',
+          clientId: '',
           clientSecret: '',
           callbackPath: '/auth/callback',
           scope: 'openid profile email',
-          endSessionUrl: 'https://sso.keekar.au/application/o/oscal-report-generator/end-session/',
+          endSessionUrl: '',
           redirectUriPatterns: DEFAULT_GENERIC_OIDC_REDIRECT_PATTERNS,
           tlsRelaxed: true,
         },
@@ -269,6 +273,30 @@ function loadConfig() {
     console.log('🔄 Returning default configuration');
     return DEFAULT_CONFIG;
   }
+}
+
+/**
+ * Merge OSCAL_GENERIC_SSO_ISSUER / OSCAL_GENERIC_SSO_CLIENT_ID over the Generic SSO provider: one issuer drives the
+ * issuer, discovery and end-session URLs (Guardian reads the same variables). Other fields are untouched.
+ * @param {Object} config - Mutable config object
+ * @param {Object} [env]
+ */
+export function applyGenericSsoEnvOverrides(config, env = process.env) {
+  const provider = config?.ssoConfig?.oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
+  if (!provider) return;
+  const issuer = env.OSCAL_GENERIC_SSO_ISSUER?.trim();
+  if (issuer) {
+    const urls = genericSsoUrlsFromIssuer(issuer);
+    if (urls) {
+      provider.issuerUrl = urls.issuerUrl;
+      provider.discoveryUrl = urls.discoveryUrl;
+      provider.endSessionUrl = urls.endSessionUrl;
+    } else {
+      console.warn('OSCAL_GENERIC_SSO_ISSUER ignored: it must be an https URL ending in "/" without credentials, query or fragment.');
+    }
+  }
+  const clientId = env.OSCAL_GENERIC_SSO_CLIENT_ID?.trim();
+  if (clientId) provider.clientId = clientId;
 }
 
 /**
@@ -484,6 +512,7 @@ async function getResolvedConfigAsync() {
   resolveSecretsInConfig(clone);
   normalizeSensitiveSecretsInConfig(clone, raw);
   applyDatabaseEnvOverrides(clone);
+  applyGenericSsoEnvOverrides(clone);
   applyBedrockEnvOverrides(clone);
   return clone;
 }
@@ -511,6 +540,7 @@ function getResolvedConfig() {
   resolveSecretsInConfig(clone);
   normalizeSensitiveSecretsInConfig(clone, raw);
   applyDatabaseEnvOverrides(clone);
+  applyGenericSsoEnvOverrides(clone);
   applyBedrockEnvOverrides(clone);
   return clone;
 }

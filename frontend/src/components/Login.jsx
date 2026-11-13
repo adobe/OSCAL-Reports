@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/safeAxios.js';
+import { loginErrorMessageFromSearch } from '../utils/loginErrors.js';
 import './Login.css';
 
 const Login = () => {
@@ -19,13 +20,8 @@ const Login = () => {
   const [showExpeditedAccessPolicy, setShowExpeditedAccessPolicy] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlError = params.get('error');
-    if (urlError === 'okta_not_configured') {
-      setError('Okta sign-in is not configured. Enable OAuth and Okta in Settings → SSO Integration.');
-    } else if (urlError === 'generic_oidc_not_configured') {
-      setError('Generic SSO is not configured or the redirect URI is not allowed for this host.');
-    }
+    const message = loginErrorMessageFromSearch(window.location.search);
+    if (message) { setError(message); }
   }, []);
 
   useEffect(() => {

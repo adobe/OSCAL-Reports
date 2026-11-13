@@ -15,6 +15,7 @@ build/
 .env.local
 .env.production
 .env.development
+.env.docker
 
 # Sensitive configuration files (CRITICAL - DO NOT COMMIT)
 # config/app — runtime only; *.example templates stay tracked

@@ -859,7 +859,7 @@ function SSOIntegration({ onClose, embedded = false }) {
                   </label>
                 </div>
                 <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>
-                  Built-in Authentik OIDC provider. Issuer, client ID, and secret are managed in deployment config (not editable here).
+                  Built-in Authentik OIDC provider. Issuer, client ID, and secret are managed in deployment config (not editable here); the scope is editable.
                 </p>
                 <div className="form-row-2">
                   <div className="form-group">
@@ -880,6 +880,27 @@ function SSOIntegration({ onClose, embedded = false }) {
                     <label>Client ID</label>
                     <input type="text" className="form-control" value={genericOidcProvider.clientId || ''} readOnly disabled />
                   </div>
+                </div>
+                <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                  <label>OIDC scope (space-separated)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="openid profile email"
+                    value={typeof genericOidcProvider.scope === 'string' ? genericOidcProvider.scope : 'openid profile email'}
+                    onChange={(e) => canEdit && setOauthConfig({
+                      ...oauthConfig,
+                      providers: {
+                        ...oauthConfig.providers,
+                        Generic_OIDC: { ...genericOidcProvider, scope: e.target.value }
+                      }
+                    })}
+                    disabled={!canEdit}
+                  />
+                  <small className="form-hint">
+                    Sent to the identity provider on sign-in. Must include <code>openid</code>. To fetch Guardian assessments add the
+                    Guardian scope (for example <code>openid profile email guardian-assessments</code>), then sign out and in.
+                  </small>
                 </div>
                 <div className="form-actions" style={{ marginTop: '0.75rem' }}>
                   <button

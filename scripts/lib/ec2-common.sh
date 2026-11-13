@@ -3,6 +3,8 @@
 # Copyright (c) 2025 Mukesh Kesharwani
 #
 # Licensed under the MIT License. See LICENSE file for details.
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
 
 # Shared EC2 utilities: SSH key resolution, Terraform IP lookup, AWS credentials from Pass.
 # Source from scripts under scripts/ or scripts/debug/:
@@ -92,6 +94,24 @@ get_asg_oscal_ip() {
     --output text 2>/dev/null | tr -d '\r\n')
   [ -z "$pub_ip" ] || [ "$pub_ip" = "None" ] && return 1
   printf '%s' "$pub_ip"
+}
+
+# Reuse a running passive instance, otherwise wake it using the standby
+# controller before resolving its new public IP.
+get_or_wake_passive_asg_oscal_ip() {
+  local role="$1"
+  local current_ip="${2:-}"
+
+  if [ -n "$current_ip" ]; then
+    printf '%s' "$current_ip"
+    return 0
+  fi
+  if ! declare -F oscal_standby_wake_passive >/dev/null 2>&1; then
+    echo "deploy: passive ASG is stopped and standby wake helper is unavailable" >&2
+    return 1
+  fi
+  oscal_standby_wake_passive >&2 || return 1
+  get_asg_oscal_ip "$role"
 }
 
 # Load AWS credentials from Pass (AWS_PASS_ENTRY). Exports AWS_ACCESS_KEY_ID, etc.

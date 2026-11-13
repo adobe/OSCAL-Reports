@@ -182,6 +182,12 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### Generic SSO and Guardian settings
+
+Issuer, client ID and the Guardian assessment settings are passed as environment variables from a filled-in copy of
+[`.env.docker.example`](../.env.docker.example). See [GUARDIAN_SSO_DOCKER_DEPLOYMENT.md](GUARDIAN_SSO_DOCKER_DEPLOYMENT.md)
+for the templates, variable reference, Compose / TrueNAS / `docker run` usage and verification steps.
+
 ### Configuration Persistence
 
 **IMPORTANT**: Always mount the config directory to persist user data:
@@ -271,8 +277,8 @@ cd /mnt/pool1/Documents/KACI-Apps/OSCAL-Report-Generator-Green
 
 # What happens:
 # ✓ Config persistence verified
-# ✓ Current version: 1.7.27 (example — use values printed by the script)
-# ✓ GitHub version: 1.7.27
+# ✓ Current version: 1.9.0 (example — use values printed by the script)
+# ✓ GitHub version: 1.9.0
 # ✓ Versions match - no build needed
 ```
 
@@ -783,15 +789,19 @@ By default (`run_oscal_via_docker = false`), EC2 instances:
 - Store **config and users on EBS** at **/opt/oscal/data** (no S3 mount). **ec2_automation** (cron every 10 min) backs up config, users, and logs to S3 (`config/green/`, `config/blue/`, `logs/green/`, `logs/blue/`) so data is retained if instances are replaced (max 10 min loss).
 - Run the app via **systemd** (`oscal-reporter.service`) after code is deployed.
 
-To **deploy or update application code** after Terraform apply, keep using **`./scripts/deploy-to-ec2.sh`** from the repo root. That remains the intended path for real releases: full `rsync` of the repo, `npm install`, frontend build, `ec2_automation` setup, and `systemctl restart oscal-reporter`. **SSM** (optional `oscal_ssm_release_s3_prefix` and the periodic association) is only for light verification, optional artifact sync from a prefix in the logs bucket, and service nudges—not a substitute for this script when you need a normal code deploy.
+To **deploy or update application code** after Terraform apply, use **`./scripts/deploy-to-ec2.sh`** from the repo root. The script publishes the reviewed repository snapshot to `s3://<bucket>/installer/` when requested, then uses **SSM Run Command** to sync/build/restart on EC2, run readiness/smoke checks, and collect deployment logs. No SSH private key is required for this deployment path. The separate interactive `scripts/ssh-ec2.sh` and `scripts/debug/scp-to-ec2.sh` helpers remain SSH-based.
 
-Set **`TERRAFORM_DIR`** to your env (e.g. `export TERRAFORM_DIR=$PWD/terraform/envs/aws4403`) so Terraform outputs resolve to the current ASG instance IPs. SSH key from [Pass](https://www.passwordstore.org/) (e.g. `AWS/OSCAL-AWS4403-SSH`) or **`SSH_KEY_FILE`**.
+Set **`TERRAFORM_DIR`** to the intended environment (for example `export TERRAFORM_DIR=$PWD/terraform/envs/aws4403`) so Terraform outputs and workspace state match the AWS stack. AWS credentials are loaded from Pass (default `AWS/AMS_4403-STG`; override with `AWS_PASS_ENTRY`). SSM Run Command is noninteractive; it is not `aws ssm start-session`.
+
+The deploy caller needs AWS permissions for `ssm:SendCommand`, `ssm:GetCommandInvocation`, and EC2 instance discovery. Temporary file transfers use `logs/.ssm-deploy/`: allow `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and `s3:DeleteObjectVersion` on that object prefix, plus `s3:ListBucketVersions` on the bucket restricted to that prefix. The bucket's configured default encryption applies to staged files; the deployer removes staged objects and their versions on completion. EC2 instances must be SSM-managed, have a working SSM Agent and `AmazonSSMManagedInstanceCore`, and retain their normal logs-bucket permissions.
 
 ```bash
 export TERRAFORM_DIR=$PWD/terraform/envs/aws4403   # if not already the default
-./scripts/deploy-to-ec2.sh --update-s3   # upload repo to s3://<bucket>/installer/ (once per release)
+./scripts/deploy-to-ec2.sh --update-s3   # publish the code plus config/catalogues and config/constants
 ./scripts/deploy-to-ec2.sh --both        # Green + Blue pull installer/, build, restart (1.7.22+)
 ```
+
+In `active_passive`, `run-with-aws-pass.sh plan` and `apply` attempt to wake a stopped passive ASG before Terraform runs. Read-only wrapper commands such as `output` intentionally do not wake instances. For deployment, `deploy-to-ec2.sh --both` uses passive-first order and wakes the passive ASG itself if it has no InService IP; it waits for an InService instance and then resolves its target before deployment.
 
 **Release 1.7.22:** Safe deploy flags (`DEPLOY_CONFIG_S3_SKIP`, `DEPLOY_RDS_BOOTSTRAP_SKIP`), golden **`config/default/`** restore, laptop pass bundle **`PROD/OSCAL/AWS_SM`**. Before changing SSO secrets, publish or verify golden config: `./scripts/debug/publish-config-default-to-s3.sh --via-green`.
 
@@ -901,7 +911,7 @@ In the console: **Fleet Manager** → instances **Online**; **Patch Manager** �
 **Before plan/apply**
 
 - **Credentials:** Refresh AWS session if needed (`aws sts get-caller-identity` or `./terraform/run-with-aws-pass.sh plan`). Wrong account → set `TERRAFORM_DIR` and `AWS_PASS_ENTRY` for the intended env (e.g. aws4403).
-- **State vs code:** If you still have old **`aws_instance`** / **`aws_lb_target_group_attachment`** in state, follow **Migrating Terraform state** above *before* apply, or Terraform may try to destroy/recreate in the wrong order.
+- **State vs live AWS:** Before `plan` or `apply`, verify the AWS account, `TERRAFORM_DIR`, and `terraform workspace show`. This environment uses local Terraform state unless its backend is explicitly configured. If a plan proposes creating resources that already exist, or unexpected changes/destroys to the live ALB, RDS, VPC, or S3 bucket, stop—do not approve it. A `terraform.tfstate.backup` is only the previous local snapshot, not proof of a last-known-good state. Restore a verified state or build an isolated recovery workspace, import live resources, and review the resulting plan before applying.
 - **AMI:** Ensure `oscal_ami_id` / Image Factory / `image_factory_amazon_linux_ami_us_east_1` resolves (`terraform plan` must not fail the launch template precondition).
 - **AZ and EBS:** Green uses `public[0]` AZ, Blue uses `public[1]` AZ. Persistent volumes are created in those AZs only—do not change subnet/AZ in tfvars without a volume migration plan.
 - **SCP / IAM:** Org SCPs must allow **`ec2:RunInstances`**, **`autoscaling:*`** (as needed), **SSM**, and **ELB** APIs your role uses. PCL still applies to SGs and S3.
@@ -917,7 +927,7 @@ In the console: **Fleet Manager** → instances **Online**; **Patch Manager** �
 
 1. **Outputs:** `terraform output` (via wrapper) — `oscal_green_instance_id`, `oscal_*_public_ip` / `private_ip` should be non-null once instances are **running** (ASG may take a few minutes).
 2. **ALB targets:** EC2 → Target Groups → Green/Blue → targets **healthy** (HTTP `/health/ready` on `oscal_app_port`, default 3020, per `alb.tf`).
-3. **SSH / deploy:** `./scripts/deploy-to-ec2.sh` (or `--both`) so **`/opt/oscal/app`** matches your repo; restores full build after a fresh instance.
+3. **SSM Run Command / deploy:** `./scripts/deploy-to-ec2.sh` (or `--both`) so **`/opt/oscal/app`** matches the published installer snapshot; restores the full build after a fresh instance.
 4. **Data:** If new persistent volumes are **empty**, seed **`/opt/oscal/data`** from S3 `config/<green|blue>/` or snapshots before expecting the app to serve traffic.
 5. **SSM:** Systems Manager → **Run Command** / **Compliance** — association on document `oscal_post_boot_ssm_document_name` (output) should show successful invocations on tagged instances after ~30 minutes (or run the document manually once).
 6. **Persistence:** On a **replacement drill** (recommended quarterly), terminate one instance in the ASG and confirm: the same gp3 volume reattaches, `/health/ready` returns 200, SSO login-providers lists expected IdPs, and `./scripts/ci/post-deploy-smoke.sh ssh:<ip> 3020` passes (only when `oscal_persistent_ebs_enabled` is true).

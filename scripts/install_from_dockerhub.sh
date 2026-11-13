@@ -45,6 +45,8 @@ log() {
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
+# Optional settings file (Generic SSO / Guardian; template: .env.docker.example). Override the path with OSCAL_ENV_FILE.
+ENV_FILE="${OSCAL_ENV_FILE:-${SCRIPT_DIR}/.env.docker}"
 cd "$SCRIPT_DIR"
 
 # Parse command line options
@@ -647,9 +649,19 @@ fi
 log "Starting new container: $CONTAINER_NAME"
 print_info "Mounting persistent volume: ${DATA_VOLUME_PATH} -> /data"
 
+# Settings file goes first so the explicit -e values below (PORT, NODE_ENV, ...) always win.
+ENV_FILE_ARGS=()
+if [ -f "$ENV_FILE" ]; then
+  ENV_FILE_ARGS=(--env-file "$ENV_FILE")
+  print_info "Passing settings from $ENV_FILE (values are not logged)"
+else
+  print_info "No settings file at $ENV_FILE; Generic SSO / Guardian use the values saved in /data/config.json"
+fi
+
 if docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
+  "${ENV_FILE_ARGS[@]}" \
   -p "${CONTAINER_PORT}:${CONTAINER_PORT}" \
   -e PORT="$CONTAINER_PORT" \
   -e NODE_ENV="production" \

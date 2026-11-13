@@ -1,12 +1,14 @@
 {
   "name": "keekars-oscal-soa-ssp-ccm-generator",
-  "version": "1.8.02",
+  "version": "2.1.0",
   "description": "Keekar's OSCAL SOA/SSP/CCM Generator - Generate Statement of Applicability, System Security Plans, and Cloud Control Matrix",
   "scripts": {
     "probe-bedrock-gemma": "node backend/scripts/probe-bedrock-gemma.mjs",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
+    "dev:guardian-local": "node scripts/guardian-local-e2e.mjs",
+    "dev:local-guardian-e2e": "concurrently \"npm run dev:guardian-local\" \"npm run dev:frontend\"",
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "lint": "npx eslint .",
     "lint:fix": "npx eslint . --fix",

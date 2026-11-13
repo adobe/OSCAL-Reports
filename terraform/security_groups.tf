@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Mukesh Kesharwani
 #
 # Licensed under the MIT License. See LICENSE file for details.
+# Concept: Mukesh Kesharwani
+# Contact: mukesh.kesharwani@adobe.com
 
 # Security groups: ALB, OSCAL instances
 #
@@ -18,7 +20,7 @@ resource "aws_security_group" "alb" {
 
   # HTTPS 443: alb_allow_443_from_all = from default_allowed_cidr_blocks; else Australia prefix lists or default_allowed_cidr_blocks. No 0.0.0.0/0 (PCL).
   dynamic "ingress" {
-    for_each = var.alb_allow_443_from_all ? [1] : []
+    for_each = local.alb_use_https && var.alb_allow_443_from_all ? [1] : []
     content {
       from_port   = 443
       to_port     = 443
@@ -29,7 +31,7 @@ resource "aws_security_group" "alb" {
   }
 
   dynamic "ingress" {
-    for_each = !var.alb_allow_443_from_all && !var.alb_restrict_to_australia ? [1] : []
+    for_each = local.alb_use_https && !var.alb_allow_443_from_all && !var.alb_restrict_to_australia ? [1] : []
     content {
       from_port   = 443
       to_port     = 443
@@ -40,7 +42,7 @@ resource "aws_security_group" "alb" {
   }
 
   dynamic "ingress" {
-    for_each = !var.alb_allow_443_from_all && var.alb_restrict_to_australia ? aws_ec2_managed_prefix_list.au : {}
+    for_each = local.alb_use_https && !var.alb_allow_443_from_all && var.alb_restrict_to_australia ? aws_ec2_managed_prefix_list.au : {}
     content {
       from_port       = 443
       to_port         = 443

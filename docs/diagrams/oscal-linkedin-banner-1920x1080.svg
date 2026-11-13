@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1a30"/>
+      <stop offset="1" stop-color="#0e2743"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1920" height="10" fill="url(#accent)"/>
+
+  <!-- Header -->
+  <text x="80" y="115" font-size="30" font-weight="700" letter-spacing="7" fill="#5fa8e6">COMPLIANCE AUTOMATION</text>
+  <text x="78" y="205" font-size="84" font-weight="800" fill="#ffffff">OSCAL Report Generator</text>
+  <text x="80" y="262" font-size="38" font-weight="500" fill="#9cc3e8">The biggest update yet — built around what you need most.</text>
+  <rect x="80" y="292" width="1760" height="2" fill="#ffffff" fill-opacity="0.12"/>
+
+  <!-- Feature cards: one row of 4 -->
+  <!-- x positions: 80, 529, 978, 1427 ; width 413 ; height 268 ; top 340 -->
+  <g>
+    <rect x="80"   y="340" width="413" height="268" rx="14" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10"/>
+    <rect x="80"   y="340" width="6"   height="268" rx="3"  fill="url(#accent)"/>
+    <text x="120"  y="420" font-size="34" font-weight="700" fill="#ffffff">Broader coverage</text>
+    <text x="120"  y="470" font-size="23" fill="#a9bcd6">25 ready-to-use</text>
+    <text x="120"  y="502" font-size="23" fill="#a9bcd6">catalogues across</text>
+    <text x="120"  y="534" font-size="23" fill="#a9bcd6">7 publishers worldwide</text>
+  </g>
+  <g>
+    <rect x="529"  y="340" width="413" height="268" rx="14" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10"/>
+    <rect x="529"  y="340" width="6"   height="268" rx="3"  fill="url(#accent)"/>
+    <text x="569"  y="420" font-size="34" font-weight="700" fill="#ffffff">Reports you can trust</text>
+    <text x="569"  y="470" font-size="23" fill="#a9bcd6">Cleaner, more</text>
+    <text x="569"  y="502" font-size="23" fill="#a9bcd6">accurate SSP &amp;</text>
+    <text x="569"  y="534" font-size="23" fill="#a9bcd6">SAR output</text>
+  </g>
+  <g>
+    <rect x="978"  y="340" width="413" height="268" rx="14" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10"/>
+    <rect x="978"  y="340" width="6"   height="268" rx="3"  fill="url(#accent)"/>
+    <text x="1018" y="420" font-size="34" font-weight="700" fill="#ffffff">Secure by default</text>
+    <text x="1018" y="470" font-size="23" fill="#a9bcd6">Encrypted secrets</text>
+    <text x="1018" y="502" font-size="23" fill="#a9bcd6">end to end, no</text>
+    <text x="1018" y="534" font-size="23" fill="#a9bcd6">plaintext on disk</text>
+  </g>
+  <g>
+    <rect x="1427" y="340" width="413" height="268" rx="14" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.10"/>
+    <rect x="1427" y="340" width="6"   height="268" rx="3"  fill="url(#accent)"/>
+    <text x="1467" y="420" font-size="34" font-weight="700" fill="#ffffff">Modern experience</text>
+    <text x="1467" y="470" font-size="23" fill="#a9bcd6">Fully responsive</text>
+    <text x="1467" y="502" font-size="23" fill="#a9bcd6">UI that uses your</text>
+    <text x="1467" y="534" font-size="23" fill="#a9bcd6">full screen</text>
+  </g>
+
+  <!-- Publishers -->
+  <text x="960" y="680" text-anchor="middle" font-size="29" font-weight="700" fill="#7f9bc0" letter-spacing="1">FedRAMP Rev 5  ·  NIST 800-53  ·  CMS ARS 5.0  ·  ACSC ISM  ·  BSI  ·  CCCS  ·  GovTech SG</text>
+
+  <!-- CTA -->
+  <rect x="80" y="740" width="1760" height="170" rx="18" fill="url(#accent)"/>
+  <text x="130" y="820" font-size="46" font-weight="800" fill="#0a1a30">Now open for community testing</text>
+  <text x="130" y="868" font-size="27" font-weight="600" fill="#0a1a30" fill-opacity="0.85">Run it through your real workflow and tell us what you think.</text>
+
+  <!-- Hashtags -->
+  <text x="80" y="1000" font-size="27" font-weight="700" fill="#6b86a8">#OSCAL   #Compliance   #GRC   #CyberSecurity   #FedRAMP   #NIST   #ACSC   #ISM</text>
+</svg>

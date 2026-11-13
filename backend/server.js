@@ -17,7 +17,7 @@ import { generatePDFReport } from './pdfExport.js';
 import { compareWithExistingSSP, extractControlsFromSSP, prepareSspExportPayload } from './sspComparisonV3.js';
 import { parseCCMExcel } from './ccmImport.js';
 import { validateOSCAL, getValidatorStatus } from './oscalValidator.js';
-import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigForSave, getConfigDir, applyDatabaseEnvOverrides, ensureConfigSecretsProtected } from './configManager.js';
+import { loadConfig, getResolvedConfig, getResolvedDatabaseConfigForTest, saveConfig, validateConfig, prepareConfigForSave, getConfigDir, applyDatabaseEnvOverrides, applyGenericSsoEnvOverrides, ensureConfigSecretsProtected } from './configManager.js';
 import { testConnection, connectPgClient, ensureAdobeTeamsTable, getAdobeTeamOptions } from './database/dbClient.js';
 import { syncExportToDatabase } from './database/exportSync.js';
 import { mergeControlsFromExtendedData } from './database/mergeExtendedDataOnLoad.js';
@@ -101,6 +101,8 @@ import {
   GENERIC_OIDC_PROVIDER_ID,
   fetchOidcDiscovery as fetchGenericOidcDiscovery,
   probeOidcDiscovery,
+  normalizeGenericOidcScope,
+  genericAuthorizeScope,
   isGenericOidcTlsRelaxed,
   generateCodeVerifier as generateGenericCodeVerifier,
   computeCodeChallenge as computeGenericCodeChallenge,
@@ -108,12 +110,18 @@ import {
   verifySignedOidcState as verifySignedGenericOidcState,
   resolveGenericOidcRedirectUri,
   isRedirectUriAllowed,
+  diagnoseGenericOidcConfig,
+  discoveryFailureToLoginError,
+  genericOidcLoginErrorQuery,
   getEffectiveGenericOidcClientSecret,
   decodeGroupsFromJwt as decodeGenericGroupsFromJwt,
   postAuthorizationCodeToken as postGenericAuthorizationCodeToken,
   stripTrailingSlashes as stripGenericTrailingSlashes,
 } from './auth/genericOidc.js';
 import { authenticate, authorize, requireRole, optionalAuth } from './auth/middleware.js';
+import { guardianService } from './guardianService.js';
+import { guardianAssessmentService } from './guardianAssessments.js';
+import { guardianJsonMiddleware, registerGuardianRoutes } from './guardianRoutes.js';
 import { ROLES, PERMISSIONS } from './auth/roles.js';
 import { 
   createJob, 
@@ -264,6 +272,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 }));
 
+app.use('/api/guardian', guardianJsonMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -352,6 +361,8 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
 });
 
 // Serve static files from the public folder (warning page for backend)
+registerGuardianRoutes(app, authenticate);
+
 app.use(express.static('public'));
 
 // Health check endpoint for Docker (liveness — process listening)
@@ -1353,6 +1364,16 @@ app.post('/api/auth/okta/exchange-token', oktaExchangeTokenRateLimiter, async (r
         error: 'No application user found for this Okta account. Ask an admin to add your email to Users, enable JIT provisioning, or sign in with username/password.'
       });
     }
+    // Guardian is optional: an unavailable/invalid API token must not break OSCAL login.
+    try {
+      await guardianService.retain(validateSession(user.sessionToken), tokenRes.data);
+    } catch {
+      console.warn(JSON.stringify({
+        'service.name': 'oscal-report-generator',
+        'event.action': 'guardian_token_retention', 'event.outcome': 'failure',
+        severity: 'WARN',
+      }));
+    }
     res.json({
       success: true,
       user: {
@@ -1446,30 +1467,32 @@ app.get('/api/auth/oidc/generic-oidc/authorize', async (req, res) => {
     const oauth = config.ssoConfig?.oauth;
     const provider = oauth?.providers?.[GENERIC_OIDC_PROVIDER_ID];
     const clientSecret = getEffectiveGenericOidcClientSecret(provider);
-    if (
-      !oauth?.enabled ||
-      !provider?.enabled ||
-      !provider?.clientId?.trim() ||
-      !provider?.discoveryUrl?.trim() ||
-      !clientSecret
-    ) {
-      const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
-      return res.redirect(302, `${back}/?error=generic_oidc_not_configured`);
+    const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
+    // Report what actually failed (never a generic "not configured"), and log it for the operator.
+    const fail = (failure) => {
+      console.warn(JSON.stringify({
+        'service.name': 'oscal-report-generator', severity: 'WARN', 'event.action': 'generic_oidc_authorize_failed',
+        reason: failure.code, host: failure.host, detail: failure.detail ?? failure.missing ?? failure.status,
+      }));
+      return res.redirect(302, `${back}/?${genericOidcLoginErrorQuery(failure)}`);
+    };
+    const missing = diagnoseGenericOidcConfig(oauth, provider, clientSecret);
+    if (missing) {
+      return fail({ code: 'generic_oidc_not_configured', missing });
     }
-    let redirectUri = resolveGenericOidcRedirectUri(req, provider);
+    const redirectUri = resolveGenericOidcRedirectUri(req, provider);
     if (!redirectUri || !isRedirectUriAllowed(redirectUri, provider.redirectUriPatterns)) {
-      const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
-      return res.redirect(302, `${back}/?error=generic_oidc_not_configured`);
+      return fail({ code: 'generic_oidc_redirect_not_allowed', redirect: redirectUri || undefined });
     }
     const codeVerifier = generateGenericCodeVerifier();
     const codeChallenge = computeGenericCodeChallenge(codeVerifier);
     const state = createSignedGenericOidcState(redirectUri, clientSecret, codeVerifier);
-    const scope = (provider.scope || 'openid profile email').trim();
+    const scope = genericAuthorizeScope(provider.scope);
     const tlsRelaxed = isGenericOidcTlsRelaxed(provider);
-    const discovery = await fetchGenericOidcDiscovery(provider.discoveryUrl, { tlsRelaxed });
+    const probe = await probeOidcDiscovery(provider.discoveryUrl, tlsRelaxed);
+    const discovery = probe.discovery;
     if (!discovery?.authorization_endpoint) {
-      const back = stripGenericTrailingSlashes(req.get('Referer') || req.get('Origin') || '/');
-      return res.redirect(302, `${back}/?error=generic_oidc_not_configured`);
+      return fail(discoveryFailureToLoginError(probe.failure));
     }
     const params = new URLSearchParams({
       client_id: provider.clientId.trim(),
@@ -1589,6 +1612,7 @@ app.post('/api/auth/oidc/generic-oidc/exchange-token', oidcExchangeTokenRateLimi
       jitDefaultRole,
       groupToRoleMapping,
       syncRoleFromGroups,
+      idpProvider: GENERIC_OIDC_PROVIDER_ID,
     });
     if (!user) {
       return res.status(403).json({
@@ -1596,6 +1620,19 @@ app.post('/api/auth/oidc/generic-oidc/exchange-token', oidcExchangeTokenRateLimi
         error:
           'No application user found for this account. Ask an admin to add your email, enable JIT provisioning, or sign in with username/password.',
       });
+    }
+    // Guardian is optional: a missing/invalid Generic SSO access token must not break OSCAL login.
+    try {
+      await guardianAssessmentService.retainGenericSso(validateSession(user.sessionToken), tokenRes.data);
+    } catch (retentionError) {
+      console.warn(JSON.stringify({
+        'service.name': 'oscal-report-generator',
+        'event.action': 'guardian_generic_sso_token_retention', 'event.outcome': 'failure',
+        severity: 'WARN',
+        // Enumerated reason only (for example scope_missing); never token text or claim values.
+        'event.reason': typeof retentionError?.reason === 'string' ? retentionError.reason : 'unexpected_error',
+        ...(Number.isFinite(retentionError?.tokenLifetimeSeconds) ? { 'token.lifetime_seconds': retentionError.tokenLifetimeSeconds } : {}),
+      }));
     }
     res.json({
       success: true,
@@ -2249,7 +2286,9 @@ app.post('/api/users/:userId/reset-password', authenticate, requireRole(ROLES.PL
  */
 app.get('/api/sso/config', authenticate, (req, res) => {
   try {
-    const config = loadConfig();
+    // Show the effective Generic SSO values (environment overrides applied) without persisting them.
+    const config = JSON.parse(JSON.stringify(loadConfig()));
+    applyGenericSsoEnvOverrides(config);
     const ssoConfig = config.ssoConfig || {
       saml: { enabled: false },
       oauth: { enabled: false }
@@ -2300,6 +2339,8 @@ app.post('/api/sso/config', authenticate, requireRole(ROLES.PLATFORM_ADMIN), asy
           typeof incomingGeneric?.enabled === 'boolean'
             ? incomingGeneric.enabled
             : mergedGeneric.enabled,
+        // The only other field editable in Settings; identity values stay in deployment config.
+        scope: normalizeGenericOidcScope(incomingGeneric?.scope, mergedGeneric.scope),
       };
     }
     const currentConfig = { ...existingRaw, ssoConfig };
