@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:3b9c91fb-999b-4999-8ff0-26af29c3893f",
+  "serialNumber": "urn:uuid:d2edb14f-56a1-4de8-9405-2d1790388346",
   "version": 2,
   "metadata": {
-    "timestamp": "2026-11-13T06:03:15Z",
+    "timestamp": "2026-11-13T07:07:26Z",
     "tools": {
       "components": [
         {
@@ -82334,6 +82334,46 @@
         },
         {
           "name": "SrcFile",
+          "value": ".github/workflows/sbom-generation.yml"
+        },
+        {
+          "name": "cdx:github:workflow:name",
+          "value": "SBOM Generation"
+        },
+        {
+          "name": "cdx:github:workflow:file",
+          "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
+        },
+        {
+          "name": "cdx:github:job:name",
+          "value": "sbom"
+        },
+        {
+          "name": "cdx:github:step:name",
+          "value": "Checkout"
+        },
+        {
+          "name": "cdx:github:workflow:hasExplicitPermissionsBlock",
+          "value": "true"
+        },
+        {
+          "name": "cdx:github:workflow:hasAnyExplicitPermissionsBlock",
+          "value": "true"
+        },
+        {
+          "name": "cdx:github:workflow:triggers",
+          "value": "push,pull_request,workflow_dispatch"
+        },
+        {
+          "name": "cdx:github:workflow:hasWorkflowDispatchTrigger",
+          "value": "true"
+        },
+        {
+          "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
+          "value": "SBOM Generation,sbom-generation.yml,sbom-generation,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
+        },
+        {
+          "name": "SrcFile",
           "value": ".github/workflows/release.yml"
         },
         {
@@ -82363,10 +82403,6 @@
         {
           "name": "cdx:github:job:writeScopes",
           "value": "contents"
-        },
-        {
-          "name": "cdx:github:workflow:hasAnyExplicitPermissionsBlock",
-          "value": "true"
         },
         {
           "name": "cdx:github:workflow:hasWritePermissions",
@@ -82447,10 +82483,6 @@
         {
           "name": "cdx:github:job:writeScopes",
           "value": "security-events"
-        },
-        {
-          "name": "cdx:github:workflow:hasExplicitPermissionsBlock",
-          "value": "true"
         },
         {
           "name": "cdx:github:workflow:writeScopes",
@@ -82569,120 +82601,12 @@
     },
     {
       "group": "actions",
-      "name": "checkout",
-      "version": "v4",
-      "scope": "required",
-      "purl": "pkg:github/actions/checkout@v4",
-      "type": "application",
-      "bom-ref": "pkg:github/actions/checkout@v4",
-      "properties": [
-        {
-          "name": "SrcFile",
-          "value": ".github/workflows/sbom-generation.yml"
-        },
-        {
-          "name": "cdx:github:workflow:name",
-          "value": "SBOM Generation"
-        },
-        {
-          "name": "cdx:github:workflow:file",
-          "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
-        },
-        {
-          "name": "cdx:github:job:name",
-          "value": "sbom"
-        },
-        {
-          "name": "cdx:github:job:runner",
-          "value": "ubuntu-latest"
-        },
-        {
-          "name": "cdx:github:action:uses",
-          "value": "actions/checkout@v4"
-        },
-        {
-          "name": "cdx:github:action:versionPinningType",
-          "value": "tag"
-        },
-        {
-          "name": "cdx:github:action:isShaPinned",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:step:name",
-          "value": "Checkout"
-        },
-        {
-          "name": "cdx:actions:isOfficial",
-          "value": "true"
-        },
-        {
-          "name": "cdx:actions:isVerified",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:checkout:persistCredentials",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:step:hasSensitiveOperations",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:step:sensitiveOperations",
-          "value": "checkout-persist-credentials"
-        },
-        {
-          "name": "cdx:github:job:hasExplicitPermissionsBlock",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:workflow:hasExplicitPermissionsBlock",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:hasAnyExplicitPermissionsBlock",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:triggers",
-          "value": "push,pull_request,workflow_dispatch"
-        },
-        {
-          "name": "cdx:github:workflow:hasPullRequestTrigger",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:hasWorkflowDispatchTrigger",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
-          "value": "SBOM Generation,sbom-generation.yml,sbom-generation,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
-        }
-      ],
-      "evidence": {
-        "identity": {
-          "field": "purl",
-          "confidence": 0.5,
-          "methods": [
-            {
-              "technique": "source-code-analysis",
-              "confidence": 0.5,
-              "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "group": "actions",
       "name": "setup-node",
-      "version": "v4",
+      "version": "v7",
       "scope": "required",
-      "purl": "pkg:github/actions/setup-node@v4",
+      "purl": "pkg:github/actions/setup-node@v7",
       "type": "application",
-      "bom-ref": "pkg:github/actions/setup-node@v4",
+      "bom-ref": "pkg:github/actions/setup-node@v7",
       "properties": [
         {
           "name": "SrcFile",
@@ -82706,7 +82630,7 @@
         },
         {
           "name": "cdx:github:action:uses",
-          "value": "actions/setup-node@v4"
+          "value": "actions/setup-node@v7"
         },
         {
           "name": "cdx:github:action:versionPinningType",
@@ -82755,6 +82679,106 @@
         {
           "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
           "value": "SBOM Generation,sbom-generation.yml,sbom-generation,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
+        },
+        {
+          "name": "SrcFile",
+          "value": ".github/workflows/release.yml"
+        },
+        {
+          "name": "cdx:github:workflow:name",
+          "value": "Release"
+        },
+        {
+          "name": "cdx:github:workflow:file",
+          "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/release.yml"
+        },
+        {
+          "name": "cdx:github:job:name",
+          "value": "create-release"
+        },
+        {
+          "name": "cdx:github:step:name",
+          "value": "🟢 Setup Node.js"
+        },
+        {
+          "name": "cdx:github:job:hasExplicitPermissionsBlock",
+          "value": "true"
+        },
+        {
+          "name": "cdx:github:job:hasWritePermissions",
+          "value": "true"
+        },
+        {
+          "name": "cdx:github:job:writeScopes",
+          "value": "contents"
+        },
+        {
+          "name": "cdx:github:job:if",
+          "value": "github.repository == 'adobe/OSCAL-Reports'"
+        },
+        {
+          "name": "cdx:github:workflow:hasExplicitPermissionsBlock",
+          "value": "false"
+        },
+        {
+          "name": "cdx:github:workflow:hasWritePermissions",
+          "value": "true"
+        },
+        {
+          "name": "cdx:github:workflow:writeScopes",
+          "value": "contents"
+        },
+        {
+          "name": "cdx:github:workflow:triggers",
+          "value": "push"
+        },
+        {
+          "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
+          "value": "Release,release.yml,release,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/release.yml"
+        },
+        {
+          "name": "SrcFile",
+          "value": ".github/workflows/quality-gates.yml"
+        },
+        {
+          "name": "cdx:github:workflow:name",
+          "value": "Quality Gates"
+        },
+        {
+          "name": "cdx:github:workflow:file",
+          "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/quality-gates.yml"
+        },
+        {
+          "name": "cdx:github:job:name",
+          "value": "backend-unit-tests"
+        },
+        {
+          "name": "cdx:github:step:name",
+          "value": "Setup Node.js"
+        },
+        {
+          "name": "cdx:github:workflow:hasAnyExplicitPermissionsBlock",
+          "value": "false"
+        },
+        {
+          "name": "cdx:github:workflow:triggers",
+          "value": "pull_request,push"
+        },
+        {
+          "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
+          "value": "Quality Gates,quality-gates.yml,quality-gates,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/quality-gates.yml"
+        },
+        {
+          "name": "cdx:github:job:name",
+          "value": "catalogue-fetch-release"
+        },
+        {
+          "name": "cdx:github:job:name",
+          "value": "frontend-build"
+        },
+        {
+          "name": "cdx:github:job:name",
+          "value": "npm-audit"
         }
       ],
       "evidence": {
@@ -82765,7 +82789,7 @@
             {
               "technique": "source-code-analysis",
               "confidence": 0.5,
-              "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
+              "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/quality-gates.yml"
             }
           ]
         }
@@ -82774,11 +82798,11 @@
     {
       "group": "actions",
       "name": "upload-artifact",
-      "version": "v4",
+      "version": "v7",
       "scope": "required",
-      "purl": "pkg:github/actions/upload-artifact@v4",
+      "purl": "pkg:github/actions/upload-artifact@v7",
       "type": "application",
-      "bom-ref": "pkg:github/actions/upload-artifact@v4",
+      "bom-ref": "pkg:github/actions/upload-artifact@v7",
       "properties": [
         {
           "name": "SrcFile",
@@ -82802,7 +82826,7 @@
         },
         {
           "name": "cdx:github:action:uses",
-          "value": "actions/upload-artifact@v4"
+          "value": "actions/upload-artifact@v7"
         },
         {
           "name": "cdx:github:action:versionPinningType",
@@ -82862,166 +82886,6 @@
               "technique": "source-code-analysis",
               "confidence": 0.5,
               "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/sbom-generation.yml"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "group": "actions",
-      "name": "setup-node",
-      "version": "v7",
-      "scope": "required",
-      "purl": "pkg:github/actions/setup-node@v7",
-      "type": "application",
-      "bom-ref": "pkg:github/actions/setup-node@v7",
-      "properties": [
-        {
-          "name": "SrcFile",
-          "value": ".github/workflows/release.yml"
-        },
-        {
-          "name": "cdx:github:workflow:name",
-          "value": "Release"
-        },
-        {
-          "name": "cdx:github:workflow:file",
-          "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/release.yml"
-        },
-        {
-          "name": "cdx:github:job:name",
-          "value": "create-release"
-        },
-        {
-          "name": "cdx:github:job:runner",
-          "value": "ubuntu-latest"
-        },
-        {
-          "name": "cdx:github:action:uses",
-          "value": "actions/setup-node@v7"
-        },
-        {
-          "name": "cdx:github:action:versionPinningType",
-          "value": "tag"
-        },
-        {
-          "name": "cdx:github:action:isShaPinned",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:step:name",
-          "value": "🟢 Setup Node.js"
-        },
-        {
-          "name": "cdx:actions:isOfficial",
-          "value": "true"
-        },
-        {
-          "name": "cdx:actions:isVerified",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:job:hasExplicitPermissionsBlock",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:job:hasWritePermissions",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:job:writeScopes",
-          "value": "contents"
-        },
-        {
-          "name": "cdx:github:job:if",
-          "value": "github.repository == 'adobe/OSCAL-Reports'"
-        },
-        {
-          "name": "cdx:github:workflow:hasExplicitPermissionsBlock",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:workflow:hasAnyExplicitPermissionsBlock",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:hasWritePermissions",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:writeScopes",
-          "value": "contents"
-        },
-        {
-          "name": "cdx:github:workflow:triggers",
-          "value": "push"
-        },
-        {
-          "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
-          "value": "Release,release.yml,release,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/release.yml"
-        },
-        {
-          "name": "SrcFile",
-          "value": ".github/workflows/quality-gates.yml"
-        },
-        {
-          "name": "cdx:github:workflow:name",
-          "value": "Quality Gates"
-        },
-        {
-          "name": "cdx:github:workflow:file",
-          "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/quality-gates.yml"
-        },
-        {
-          "name": "cdx:github:job:name",
-          "value": "backend-unit-tests"
-        },
-        {
-          "name": "cdx:github:step:name",
-          "value": "Setup Node.js"
-        },
-        {
-          "name": "cdx:github:job:hasExplicitPermissionsBlock",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:workflow:hasAnyExplicitPermissionsBlock",
-          "value": "false"
-        },
-        {
-          "name": "cdx:github:workflow:triggers",
-          "value": "pull_request,push"
-        },
-        {
-          "name": "cdx:github:workflow:hasPullRequestTrigger",
-          "value": "true"
-        },
-        {
-          "name": "cdx:github:workflow:workflowDispatchReceiverAliases",
-          "value": "Quality Gates,quality-gates.yml,quality-gates,/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/quality-gates.yml"
-        },
-        {
-          "name": "cdx:github:job:name",
-          "value": "catalogue-fetch-release"
-        },
-        {
-          "name": "cdx:github:job:name",
-          "value": "frontend-build"
-        },
-        {
-          "name": "cdx:github:job:name",
-          "value": "npm-audit"
-        }
-      ],
-      "evidence": {
-        "identity": {
-          "field": "purl",
-          "confidence": 0.5,
-          "methods": [
-            {
-              "technique": "source-code-analysis",
-              "confidence": 0.5,
-              "value": "/Users/mkesharw/Documents/OSCAL_Reports/.github/workflows/quality-gates.yml"
             }
           ]
         }
